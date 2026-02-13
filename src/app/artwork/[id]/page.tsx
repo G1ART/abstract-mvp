@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import {
+  type ArtworkWithLikes,
   getArtworkById,
   getStorageUrl,
   recordArtworkView,
@@ -15,31 +16,7 @@ import { isFollowing } from "@/lib/supabase/follows";
 import { FollowButton } from "@/components/FollowButton";
 import { LikeButton } from "@/components/LikeButton";
 
-type ArtworkImage = { storage_path: string; sort_order?: number };
-type ArtistProfile = {
-  username: string;
-  display_name?: string | null;
-  avatar_url?: string | null;
-} | null;
-
-type Artwork = {
-  id: string;
-  title: string | null;
-  year: number | null;
-  medium: string | null;
-  story: string | null;
-  pricing_mode: string | null;
-  is_price_public: boolean | null;
-  price_usd: number | null;
-  ownership_status: string | null;
-  artist_id: string;
-  created_at?: string;
-  artwork_images: ArtworkImage[] | null;
-  profiles: ArtistProfile;
-  likes_count?: number;
-};
-
-function getPriceDisplay(artwork: Artwork): string {
+function getPriceDisplay(artwork: ArtworkWithLikes): string {
   if (artwork.pricing_mode === "inquire") return "Price upon request";
   if (artwork.is_price_public && artwork.price_usd != null) {
     return `$${Number(artwork.price_usd).toLocaleString()} USD`;
@@ -50,7 +27,7 @@ function getPriceDisplay(artwork: Artwork): string {
 function ArtworkDetailContent() {
   const params = useParams();
   const id = typeof params.id === "string" ? params.id : "";
-  const [artwork, setArtwork] = useState<Artwork | null>(null);
+  const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
@@ -82,7 +59,7 @@ function ArtworkDetailContent() {
         setError(msg);
         return;
       }
-      setArtwork(data as Artwork | null);
+      setArtwork(data as ArtworkWithLikes | null);
     });
   }, [id]);
 

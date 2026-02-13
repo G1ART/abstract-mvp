@@ -3,18 +3,12 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
+  type ArtworkWithLikes,
   listFollowingArtworks,
   listPublicArtworks,
 } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ArtworkCard } from "./ArtworkCard";
-
-type ArtworkWithLikes = {
-  id: string;
-  likes_count: number;
-  created_at?: string;
-  [key: string]: unknown;
-};
 
 type Props = {
   tab: "all" | "following";
@@ -43,7 +37,7 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
       setError(msg);
       return;
     }
-    let list = (data ?? []) as ArtworkWithLikes[];
+    let list = data ?? [];
     if (sort === "popular") {
       list = [...list].sort((a, b) => {
         const countA = Number(a.likes_count) || 0;

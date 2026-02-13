@@ -10,7 +10,7 @@ import {
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { type ArtworkWithLikes, getStorageUrl } from "@/lib/supabase/artworks";
 
 type Profile = {
   id: string;
@@ -24,7 +24,7 @@ type Profile = {
 export default function MePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
-  const [artworks, setArtworks] = useState<unknown[]>([]);
+  const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -193,11 +193,13 @@ export default function MePage() {
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {(artworks as Parameters<typeof ArtworkCard>[0]["artwork"][]).map(
-              (artwork) => (
-                <ArtworkCard key={artwork.id} artwork={artwork} />
-              )
-            )}
+            {artworks.map((artwork) => (
+              <ArtworkCard
+                key={artwork.id}
+                artwork={artwork}
+                likesCount={artwork.likes_count ?? 0}
+              />
+            ))}
           </div>
         )}
       </main>

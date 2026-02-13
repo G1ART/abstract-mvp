@@ -26,6 +26,38 @@ export type ArtworkRow = {
   created_at: string | null;
 };
 
+export type ArtworkImage = { storage_path: string; sort_order?: number };
+export type ArtistProfile = {
+  username: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+} | null;
+
+/** Base artwork shape returned from list/get with embedded images and profile. */
+export type Artwork = {
+  id: string;
+  title: string | null;
+  year: number | null;
+  medium: string | null;
+  size: string | null;
+  story: string | null;
+  visibility: string | null;
+  pricing_mode: string | null;
+  is_price_public: boolean | null;
+  price_usd: number | null;
+  price_input_amount: number | null;
+  price_input_currency: string | null;
+  fx_rate_to_usd: number | null;
+  fx_date: string | null;
+  ownership_status: string | null;
+  artist_id: string;
+  created_at: string | null;
+  artwork_images: ArtworkImage[] | null;
+  profiles: ArtistProfile;
+};
+
+export type ArtworkWithLikes = Artwork & { likes_count: number };
+
 type ListOptions = {
   limit?: number;
   sort?: "latest" | "popular";
@@ -54,7 +86,9 @@ const ARTWORK_SELECT = `
   artwork_likes(count)
 `;
 
-export async function listPublicArtworks(options: ListOptions = {}) {
+export async function listPublicArtworks(
+  options: ListOptions = {}
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
   const { limit = 50, sort = "latest" } = options;
 
   const query = supabase
@@ -66,7 +100,7 @@ export async function listPublicArtworks(options: ListOptions = {}) {
 
   const { data, error } = await query;
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)),
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
     error,
   };
 }
@@ -87,8 +121,8 @@ export function extractLikesCount(row: Record<string, unknown> | null | undefine
   return 0;
 }
 
-function normalizeArtworkRow<T extends Record<string, unknown>>(r: T): T & { likes_count: number } {
-  return { ...r, likes_count: extractLikesCount(r) };
+function normalizeArtworkRow(r: Record<string, unknown>): ArtworkWithLikes {
+  return { ...r, likes_count: extractLikesCount(r) } as ArtworkWithLikes;
 }
 
 type FollowingOptions = {
@@ -97,7 +131,7 @@ type FollowingOptions = {
 
 export async function listFollowingArtworks(
   options: FollowingOptions = {}
-): Promise<{ data: unknown[]; error: unknown }> {
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
   const { limit = 50 } = options;
 
   const {
@@ -123,7 +157,7 @@ export async function listFollowingArtworks(
 
   if (error) return { data: [], error };
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)),
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
     error: null,
   };
 }
@@ -134,7 +168,7 @@ type MyArtworksOptions = {
 
 export async function listMyArtworks(
   options: MyArtworksOptions = {}
-): Promise<{ data: unknown[]; error: unknown }> {
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
   const { limit = 50 } = options;
 
   const {
@@ -151,7 +185,7 @@ export async function listMyArtworks(
 
   if (error) return { data: [], error };
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)),
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
     error: null,
   };
 }
@@ -234,7 +268,9 @@ export async function createArtwork(
   return { data: (data as { id: string })?.id ?? null, error: null };
 }
 
-export async function getArtworkById(id: string) {
+export async function getArtworkById(
+  id: string
+): Promise<{ data: ArtworkWithLikes | null; error: unknown }> {
   const { data, error } = await supabase
     .from("artworks")
     .select(
@@ -266,7 +302,7 @@ export async function getArtworkById(id: string) {
 
   if (error) return { data: null, error };
   return {
-    data: data ? normalizeArtworkRow(data as Record<string, unknown>) : null,
+    data: data ? (normalizeArtworkRow(data as Record<string, unknown>) as ArtworkWithLikes) : null,
     error: null,
   };
 }

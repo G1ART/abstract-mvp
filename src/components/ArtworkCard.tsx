@@ -3,26 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { type Artwork, getStorageUrl } from "@/lib/supabase/artworks";
 import { LikeButton } from "./LikeButton";
-
-type ArtworkImage = { storage_path: string; sort_order?: number };
-type ArtistProfile = { username: string; display_name?: string | null; avatar_url?: string | null } | null;
-
-type Artwork = {
-  id: string;
-  title: string | null;
-  year: number | null;
-  medium: string | null;
-  story: string | null;
-  pricing_mode: string | null;
-  is_price_public: boolean | null;
-  price_usd: number | null;
-  ownership_status: string | null;
-  artist_id: string;
-  artwork_images: ArtworkImage[] | null;
-  profiles: ArtistProfile;
-};
 
 type Props = {
   artwork: Artwork;
