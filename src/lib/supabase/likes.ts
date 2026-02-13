@@ -1,0 +1,56 @@
+import { supabase } from "./client";
+
+export async function isLiked(artworkId: string): Promise<boolean> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return false;
+
+  const { count } = await supabase
+    .from("artwork_likes")
+    .select("*", { count: "exact", head: true })
+    .eq("artwork_id", artworkId)
+    .eq("user_id", session.user.id);
+
+  return (count ?? 0) > 0;
+}
+
+export async function like(artworkId: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+  return supabase.from("artwork_likes").insert({
+    artwork_id: artworkId,
+    user_id: session.user.id,
+  });
+}
+
+export async function unlike(artworkId: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+  return supabase
+    .from("artwork_likes")
+    .delete()
+    .eq("artwork_id", artworkId)
+    .eq("user_id", session.user.id);
+}
+
+export async function getLikedArtworkIds(
+  artworkIds: string[]
+): Promise<Set<string>> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id || artworkIds.length === 0) return new Set();
+
+  const { data } = await supabase
+    .from("artwork_likes")
+    .select("artwork_id")
+    .eq("user_id", session.user.id)
+    .in("artwork_id", artworkIds);
+
+  return new Set((data ?? []).map((r) => r.artwork_id));
+}

@@ -1,0 +1,209 @@
+"use client";
+
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  getSession,
+  HAS_PASSWORD_KEY,
+  sendMagicLink,
+  signInWithPassword,
+  signUpWithPassword,
+} from "@/lib/supabase/auth";
+import { getMyProfile } from "@/lib/supabase/profiles";
+
+const EMAIL_COOLDOWN_SEC = 30;
+const RATE_LIMIT_PATTERNS = [
+  "rate limit",
+  "too many",
+  "exceeded",
+  "429",
+  "email sending",
+];
+
+function isRateLimitError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+}
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [sent, setSent] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [magicCooldown, setMagicCooldown] = useState(0);
+
+  useEffect(() => {
+    getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const { data: profile } = await getMyProfile();
+      if (!profile) {
+        router.replace("/onboarding");
+        return;
+      }
+      if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {
+        router.replace("/set-password");
+        return;
+      }
+      router.replace("/feed?tab=all&sort=latest");
+    });
+  }, [router]);
+
+  useEffect(() => {
+    if (magicCooldown <= 0) return;
+    const t = setInterval(() => setMagicCooldown((c) => c - 1), 1000);
+    return () => clearInterval(t);
+  }, [magicCooldown]);
+
+  async function handleMagicLink(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const { error: err } = await sendMagicLink(email);
+    setLoading(false);
+    if (err) {
+      setError(
+        isRateLimitError(err.message)
+          ? "Email sending is temporarily limited. Please use password login or try later."
+          : err.message
+      );
+      return;
+    }
+    setSent(true);
+    setMagicCooldown(EMAIL_COOLDOWN_SEC);
+  }
+
+  async function handlePasswordSignIn(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const { error: err } = await signInWithPassword(email, password);
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
+    }
+    router.replace("/");
+  }
+
+  async function handlePasswordSignUp(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const { data, error: err } = await signUpWithPassword(email, password);
+    setLoading(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    if (data?.user && !data?.session) {
+      setSent(true);
+      return;
+    }
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
+    }
+    router.replace("/");
+  }
+
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center px-4">
+      <h1 className="mb-6 text-xl font-semibold">Log in to Abstract</h1>
+
+      {sent ? (
+        <p className="text-zinc-600">Check your email</p>
+      ) : (
+        <div className="w-full max-w-xs space-y-6">
+          {/* Password login (primary) */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+            }}
+            className="space-y-4"
+          >
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+              autoComplete="email"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+              autoComplete="current-password"
+            />
+            {error && (
+              <p className="text-sm text-red-600">{error}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handlePasswordSignIn}
+                disabled={loading}
+                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={handlePasswordSignUp}
+                disabled={loading}
+                className="flex-1 rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                Create account
+              </button>
+            </div>
+          </form>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-zinc-200" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="bg-white px-2 text-zinc-500">
+                Use email link instead
+              </span>
+            </div>
+          </div>
+
+          {/* Magic link fallback */}
+          <form
+            onSubmit={handleMagicLink}
+            className="space-y-4"
+          >
+            <input
+              type="email"
+              placeholder="Email (for magic link)"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded border border-zinc-300 px-3 py-2"
+              autoComplete="email"
+            />
+            <button
+              type="submit"
+              disabled={loading || magicCooldown > 0}
+              className="w-full rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {magicCooldown > 0
+                ? `Send magic link (${magicCooldown}s)`
+                : "Send magic link"}
+            </button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
