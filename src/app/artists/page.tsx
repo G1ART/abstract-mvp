@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
 import {
   getFollowingIds,
@@ -18,6 +19,7 @@ const DEBOUNCE_MS = 250;
 
 export default function ArtistsPage() {
   const router = useRouter();
+  const { t } = useT();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [profiles, setProfiles] = useState<PublicProfile[]>([]);
@@ -76,23 +78,23 @@ export default function ArtistsPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">Find artists</h1>
+        <h1 className="mb-6 text-xl font-semibold">{t("artists.title")}</h1>
 
         <input
           type="search"
-          placeholder="Search by username or display name..."
+          placeholder={t("artists.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="mb-6 w-full rounded border border-zinc-300 px-3 py-2"
         />
 
         {loading ? (
-          <p className="text-zinc-600">Loading...</p>
+          <p className="text-zinc-600">{t("artists.loading")}</p>
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : profiles.length === 0 ? (
           <p className="py-12 text-center text-zinc-600">
-            No artists found.
+            {t("artists.noArtists")}
           </p>
         ) : (
           <div className="space-y-4">

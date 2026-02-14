@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { useT } from "@/lib/i18n/useT";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getStorageUrl } from "@/lib/supabase/artworks";
@@ -23,6 +24,7 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
 }
 
 export function UserProfileContent({ profile, artworks }: Props) {
+  const { t } = useT();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
 
@@ -54,7 +56,7 @@ export function UserProfileContent({ profile, artworks }: Props) {
           role="status"
           className="mb-4 rounded bg-green-100 px-4 py-2 text-sm font-medium text-green-800"
         >
-          Profile updated
+          {t("profile.updatedBanner")}
         </div>
       )}
       <div className="mb-8 flex flex-col gap-4">
@@ -87,7 +89,7 @@ export function UserProfileContent({ profile, artworks }: Props) {
         {profile.bio ? (
           <p className="text-sm text-zinc-700">{profile.bio}</p>
         ) : (
-          <p className="text-sm text-zinc-400">No bio yet</p>
+          <p className="text-sm text-zinc-400">{t("profile.noBio")}</p>
         )}
 
         {roles.length > 0 && (
@@ -112,9 +114,9 @@ export function UserProfileContent({ profile, artworks }: Props) {
         )}
       </div>
 
-      <h2 className="mb-4 text-lg font-semibold text-zinc-900">Works</h2>
+      <h2 className="mb-4 text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
       {artworks.length === 0 ? (
-        <p className="py-8 text-center text-sm text-zinc-500">No public works yet</p>
+        <p className="py-8 text-center text-sm text-zinc-500">{t("profile.noWorks")}</p>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {artworks.map((artwork) => (

@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useT } from "@/lib/i18n/useT";
 import { FeedContent } from "@/components/FeedContent";
 
 export function FeedClient() {
   const router = useRouter();
+  const { t } = useT();
   const searchParams = useSearchParams();
   const tab = (searchParams.get("tab") ?? "all") as "all" | "following";
   const sort = searchParams.get("sort") ?? "latest";
@@ -29,7 +31,7 @@ export function FeedClient() {
             tab === "all" ? "text-zinc-900 underline" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
-          All
+          {t("nav.all")}
         </button>
         <button
           type="button"
@@ -38,7 +40,7 @@ export function FeedClient() {
             tab === "following" ? "text-zinc-900 underline" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
-          Following
+          {t("nav.following")}
         </button>
       </div>
       <div className="mb-4 flex gap-4 text-sm">
@@ -51,7 +53,7 @@ export function FeedClient() {
               : "text-zinc-500 hover:text-zinc-700"
           }
         >
-          Latest
+          {t("nav.latest")}
         </button>
         <button
           type="button"
@@ -62,7 +64,7 @@ export function FeedClient() {
               : "text-zinc-500 hover:text-zinc-700"
           }
         >
-          Popular
+          {t("nav.popular")}
         </button>
       </div>
       <FeedContent tab={tab} sort={sortValue} />

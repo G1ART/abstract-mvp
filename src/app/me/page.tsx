@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
+import { useT } from "@/lib/i18n/useT";
 import { ArtworkCard } from "@/components/ArtworkCard";
 import {
   getMyProfile,
@@ -22,6 +23,7 @@ type Profile = {
 };
 
 export default function MePage() {
+  const { t } = useT();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
@@ -77,7 +79,7 @@ export default function MePage() {
     return (
       <AuthGate>
         <main className="mx-auto max-w-4xl px-4 py-8">
-          <p className="text-zinc-600">Loading...</p>
+          <p className="text-zinc-600">{t("me.loading")}</p>
         </main>
       </AuthGate>
     );
@@ -175,20 +177,20 @@ export default function MePage() {
             href="/artists"
             className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
-            Find artists
+            {t("feed.followingEmptyCta")}
           </Link>
         </div>
 
         {/* My artworks */}
-        <h2 className="mb-4 text-lg font-semibold text-zinc-900">My artworks</h2>
+        <h2 className="mb-4 text-lg font-semibold text-zinc-900">{t("me.myArtworks")}</h2>
         {artworks.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
-            <p className="text-zinc-600">No works yet</p>
+            <p className="text-zinc-600">{t("me.noWorks")}</p>
             <Link
               href="/upload"
               className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
             >
-              Upload your first work
+              {t("me.uploadFirst")}
             </Link>
           </div>
         ) : (

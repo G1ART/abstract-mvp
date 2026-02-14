@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { useT } from "@/lib/i18n/useT";
 import {
   getMyProfile,
   updateMyProfile,
@@ -28,6 +29,7 @@ type Profile = {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { t } = useT();
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -78,7 +80,7 @@ export default function SettingsPage() {
       finalRoles.push(mainRole);
     }
     if (finalRoles.length < 1) {
-      setError("Select at least one role");
+      setError(t("common.selectRole"));
       return;
     }
 
@@ -120,28 +122,28 @@ export default function SettingsPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">Settings</h1>
+        <h1 className="mb-6 text-xl font-semibold">{t("settings.title")}</h1>
 
         <div className="mb-6">
-          <h2 className="mb-2 text-sm font-medium text-zinc-700">Security</h2>
+          <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.security")}</h2>
           <Link
             href="/set-password"
             className="text-sm text-zinc-600 underline hover:text-zinc-900"
           >
-            Set password
+            {t("settings.setPassword")}
           </Link>
           <p className="mt-1 text-xs text-zinc-500">
-            Use a password to sign in with email and password (no email link required).
+            {t("settings.setPasswordHint")}
           </p>
         </div>
 
         {loading ? (
-          <p className="text-zinc-600">Loading...</p>
+          <p className="text-zinc-600">{t("common.loading")}</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="flex items-center justify-between">
               <label htmlFor="isPublic" className="text-sm font-medium">
-                Public profile
+                {t("settings.publicToggle")}
               </label>
               <input
                 id="isPublic"
@@ -154,7 +156,7 @@ export default function SettingsPage() {
 
             <div>
               <label htmlFor="displayName" className="mb-1 block text-sm font-medium">
-                Display name
+                {t("settings.displayName")}
               </label>
               <input
                 id="displayName"
@@ -169,7 +171,7 @@ export default function SettingsPage() {
 
             <div>
               <label htmlFor="bio" className="mb-1 block text-sm font-medium">
-                Bio
+                {t("settings.bio")}
               </label>
               <textarea
                 id="bio"
@@ -183,7 +185,7 @@ export default function SettingsPage() {
 
             <div>
               <label htmlFor="location" className="mb-1 block text-sm font-medium">
-                Location
+                {t("settings.location")}
               </label>
               <input
                 id="location"
@@ -197,7 +199,7 @@ export default function SettingsPage() {
 
             <div>
               <label htmlFor="website" className="mb-1 block text-sm font-medium">
-                Website
+                {t("settings.website")}
               </label>
               <input
                 id="website"
@@ -211,7 +213,7 @@ export default function SettingsPage() {
 
             <div>
               <label htmlFor="mainRole" className="mb-1 block text-sm font-medium">
-                Main role
+                {t("settings.mainRole")}
               </label>
               <select
                 id="mainRole"
@@ -230,7 +232,7 @@ export default function SettingsPage() {
 
             <div>
               <span className="mb-2 block text-sm font-medium">
-                Roles * (at least one)
+                {t("settings.roles")}
               </span>
               <div className="flex flex-wrap gap-3">
                 {ROLES.map((r) => (
@@ -253,7 +255,7 @@ export default function SettingsPage() {
               <p className="text-sm text-red-600">{error}</p>
             )}
             {saved && (
-              <p className="text-sm text-green-600">Saved</p>
+              <p className="text-sm text-green-600">{t("settings.saveSuccess")}</p>
             )}
 
             <button
@@ -261,7 +263,7 @@ export default function SettingsPage() {
               disabled={saving}
               className="rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {saving ? "Saving..." : "Save"}
+              {saving ? t("common.loading") : t("common.save")}
             </button>
           </form>
         )}

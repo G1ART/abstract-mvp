@@ -5,6 +5,7 @@ import {
   type ProfilePublic,
 } from "@/lib/supabase/profiles";
 import { listPublicArtworksByArtistId } from "@/lib/supabase/artworks";
+import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
 type Props = { params: Promise<{ username: string }> };
@@ -16,6 +17,8 @@ function normalizeUsername(u: string | null): string {
 export default async function ProfilePage({ params }: Props) {
   const { username: paramUsername } = await params;
   const normalizedParam = paramUsername.trim().toLowerCase();
+  const locale = await getServerLocale();
+  const t = getT(locale);
 
   const { data: profile, isPrivate, notFound: profileNotFound, error } =
     await lookupPublicProfileByUsername(paramUsername);
@@ -37,7 +40,7 @@ export default async function ProfilePage({ params }: Props) {
     } else {
       return (
         <main className="mx-auto max-w-2xl px-4 py-8">
-          <p className="text-zinc-600">This profile is private.</p>
+          <p className="text-zinc-600">{t("profile.private")}</p>
         </main>
       );
     }

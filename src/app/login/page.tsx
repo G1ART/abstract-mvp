@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useT } from "@/lib/i18n/useT";
 import {
   getSession,
   HAS_PASSWORD_KEY,
@@ -27,6 +28,7 @@ function isRateLimitError(message: string): boolean {
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [sent, setSent] = useState(false);
@@ -112,10 +114,10 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4">
-      <h1 className="mb-6 text-xl font-semibold">Log in to Abstract</h1>
+      <h1 className="mb-6 text-xl font-semibold">{t("login.title")}</h1>
 
       {sent ? (
-        <p className="text-zinc-600">Check your email</p>
+        <p className="text-zinc-600">{t("login.checkEmail")}</p>
       ) : (
         <div className="w-full max-w-xs space-y-6">
           {/* Password login (primary) */}
@@ -153,7 +155,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
               >
-                Sign in
+                {t("login.signIn")}
               </button>
               <button
                 type="button"
@@ -161,7 +163,7 @@ export default function LoginPage() {
                 disabled={loading}
                 className="flex-1 rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50 disabled:opacity-50"
               >
-                Create account
+                {t("login.createAccount")}
               </button>
             </div>
           </form>
@@ -173,7 +175,7 @@ export default function LoginPage() {
             </div>
             <div className="relative flex justify-center text-xs">
               <span className="bg-white px-2 text-zinc-500">
-                Use email link instead
+                {t("login.useEmailLink")}
               </span>
             </div>
           </div>
@@ -185,7 +187,7 @@ export default function LoginPage() {
           >
             <input
               type="email"
-              placeholder="Email (for magic link)"
+              placeholder={t("login.magicLinkPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -198,8 +200,8 @@ export default function LoginPage() {
               className="w-full rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50 disabled:opacity-50"
             >
               {magicCooldown > 0
-                ? `Send magic link (${magicCooldown}s)`
-                : "Send magic link"}
+                ? `${t("login.sendMagicLink")} (${magicCooldown}s)`
+                : t("login.sendMagicLink")}
             </button>
           </form>
         </div>

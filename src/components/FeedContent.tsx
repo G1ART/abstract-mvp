@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { useT } from "@/lib/i18n/useT";
 import {
   type ArtworkWithLikes,
   listFollowingArtworks,
@@ -27,6 +28,7 @@ type Props = {
 };
 
 export function FeedContent({ tab, sort = "latest" }: Props) {
+  const { t } = useT();
   const [threads, setThreads] = useState<ThreadGroup[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
@@ -113,7 +115,7 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
-        <p className="text-zinc-600">Loading...</p>
+        <p className="text-zinc-600">{t("feed.loading")}</p>
       </div>
     );
   }
@@ -157,23 +159,23 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
           onClick={fetchArtworks}
           className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50"
         >
-          Refresh
+          {t("common.refresh")}
         </button>
       </div>
       {isFollowingEmpty ? (
         <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
           <p className="text-zinc-600">
-            Follow artists to personalize your feed.
+            {t("feed.followingEmptyTitle")}
           </p>
           <Link
             href="/artists"
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
           >
-            Find artists
+            {t("feed.followingEmptyCta")}
           </Link>
         </div>
       ) : isEmpty ? (
-        <p className="py-12 text-center text-zinc-600">No artworks yet</p>
+        <p className="py-12 text-center text-zinc-600">{t("feed.noArtworks")}</p>
       ) : (
         <div className="space-y-6">
           {threads.map(({ artist, artworks }) => (

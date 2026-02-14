@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useT } from "@/lib/i18n/useT";
 import { type ArtworkWithLikes, getStorageUrl } from "@/lib/supabase/artworks";
 import { FollowButton } from "./FollowButton";
 import { LikeButton } from "./LikeButton";
@@ -40,6 +41,7 @@ export function ArtistThreadCard({
   onLikeUpdate,
 }: Props) {
   const router = useRouter();
+  const { t } = useT();
   const username = artist.username ?? "";
   const displayName = artist.display_name ?? username;
   const avatarUrl = getAvatarUrl(artist.avatar_url);
@@ -173,7 +175,7 @@ export function ArtistThreadCard({
             href={`/u/${username}`}
             className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
           >
-            View profile →
+            {t("profile.viewProfile")} →
           </Link>
         </div>
       )}
