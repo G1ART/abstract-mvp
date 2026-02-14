@@ -358,6 +358,124 @@ export async function deleteArtwork(artworkId: string) {
   return { error };
 }
 
+export type DraftArtworkPayload = {
+  title: string;
+};
+
+export async function createDraftArtwork(
+  payload: DraftArtworkPayload
+): Promise<{ data: string | null; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { data: null, error: new Error("Not authenticated") };
+
+  const { data, error } = await supabase
+    .from("artworks")
+    .insert({
+      artist_id: session.user.id,
+      title: payload.title || "Untitled",
+      visibility: "draft",
+      ownership_status: "available",
+      pricing_mode: "inquire",
+      size: "",
+    })
+    .select("id")
+    .single();
+
+  if (error) return { data: null, error };
+  return { data: (data as { id: string })?.id ?? null, error: null };
+}
+
+export type UpdateArtworkPayload = Partial<{
+  title: string | null;
+  year: number | null;
+  medium: string | null;
+  size: string | null;
+  story: string | null;
+  ownership_status: string | null;
+  pricing_mode: "fixed" | "inquire" | null;
+  is_price_public: boolean;
+  price_input_amount: number | null;
+  price_input_currency: string | null;
+  visibility: "draft" | "public";
+}>;
+
+export async function updateArtwork(
+  id: string,
+  partial: UpdateArtworkPayload
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { error: new Error("Not authenticated") };
+
+  const { error } = await supabase
+    .from("artworks")
+    .update(partial)
+    .eq("id", id)
+    .eq("artist_id", session.user.id);
+
+  return { error };
+}
+
+export async function listMyDraftArtworks(
+  options: { limit?: number } = {}
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
+  const { limit = 100 } = options;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("artworks")
+    .select(ARTWORK_SELECT)
+    .eq("artist_id", session.user.id)
+    .eq("visibility", "draft")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return { data: [], error };
+  return {
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    error: null,
+  };
+}
+
+export function validatePublish(artwork: Artwork): { ok: boolean; missing: string[] } {
+  const missing: string[] = [];
+  if (!artwork.title?.trim()) missing.push("title");
+  if (!artwork.ownership_status) missing.push("ownership_status");
+  if (!artwork.pricing_mode) missing.push("pricing_mode");
+  const images = artwork.artwork_images ?? [];
+  if (images.length < 1) missing.push("image");
+  return { ok: missing.length === 0, missing };
+}
+
+export async function publishArtworks(
+  ids: string[]
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { error: new Error("Not authenticated") };
+  if (ids.length === 0) return { error: null };
+
+  const { error } = await supabase
+    .from("artworks")
+    .update({ visibility: "public" })
+    .eq("artist_id", session.user.id)
+    .in("id", ids)
+    .eq("visibility", "draft");
+
+  return { error };
+}
+
 export async function recordArtworkView(artworkId: string) {
   const {
     data: { session },

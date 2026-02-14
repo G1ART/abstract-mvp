@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import {
@@ -11,6 +12,7 @@ import {
 } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
 import { AuthGate } from "@/components/AuthGate";
+import { useT } from "@/lib/i18n/useT";
 
 const OWNERSHIP_STATUSES = [
   { value: "available", label: "Available" },
@@ -31,6 +33,7 @@ const PRICE_CURRENCIES = [
 
 export default function UploadPage() {
   const router = useRouter();
+  const { t } = useT();
   const [userId, setUserId] = useState<string | null>(null);
   const [image, setImage] = useState<File | null>(null);
   const [title, setTitle] = useState("");
@@ -144,7 +147,15 @@ export default function UploadPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">Upload artwork</h1>
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Upload artwork</h1>
+          <Link
+            href="/upload/bulk"
+            className="text-sm text-zinc-600 hover:text-zinc-900"
+          >
+            {t("bulk.linkToBulk")} →
+          </Link>
+        </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="image" className="mb-1 block text-sm font-medium">
