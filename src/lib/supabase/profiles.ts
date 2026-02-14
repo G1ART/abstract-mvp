@@ -66,6 +66,9 @@ export async function checkUsernameExists(
   return { exists, error: null };
 }
 
+const MY_PROFILE_SELECT =
+  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public";
+
 export async function getMyProfile() {
   const {
     data: { session },
@@ -73,7 +76,7 @@ export async function getMyProfile() {
   if (!session?.user?.id) return { data: null, error: null };
   const { data, error } = await supabase
     .from("profiles")
-    .select("*")
+    .select(MY_PROFILE_SELECT)
     .eq("id", session.user.id)
     .single();
   return { data, error };

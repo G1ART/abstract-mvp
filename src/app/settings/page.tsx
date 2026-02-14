@@ -100,12 +100,18 @@ export default function SettingsPage() {
       return;
     }
 
-    const targetUsername = username?.trim().toLowerCase();
-    if (targetUsername) {
+    // Fetch refreshed profile to get username (do not depend on possibly-stale state)
+    const { data: refreshed } = await getMyProfile();
+    const profileUsername =
+      (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
+
+    console.log("settings save redirect username:", profileUsername);
+
+    if (profileUsername) {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
       }
-      router.push(`/u/${targetUsername}`);
+      router.push(`/u/${profileUsername}`);
     } else {
       setSaved(true);
     }
