@@ -56,6 +56,7 @@ export type Artwork = {
   fx_date: string | null;
   ownership_status: string | null;
   artist_id: string;
+  artist_sort_order: number | null;
   created_at: string | null;
   artwork_images: ArtworkImage[] | null;
   profiles: ArtistProfile;
@@ -85,6 +86,7 @@ const ARTWORK_SELECT = `
   fx_date,
   ownership_status,
   artist_id,
+  artist_sort_order,
   created_at,
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
@@ -208,6 +210,7 @@ export async function listPublicArtworksByArtistId(
     .select(ARTWORK_SELECT)
     .eq("artist_id", artistId)
     .eq("visibility", "public")
+    .order("artist_sort_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -216,6 +219,34 @@ export async function listPublicArtworksByArtistId(
     data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
     error: null,
   };
+}
+
+/** Batch update artwork sort order for current user's artworks. */
+export async function updateMyArtworkOrder(
+  orderedIds: string[]
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { error: new Error("Not authenticated") };
+  if (orderedIds.length === 0) return { error: null };
+
+  const items = orderedIds.map((id, idx) => ({ id, idx }));
+  const errors: unknown[] = [];
+  await runWithLimit(items, async ({ id, idx }) => {
+    const { error } = await supabase
+      .from("artworks")
+      .update({
+        artist_sort_order: idx,
+        artist_sort_updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
+      .eq("artist_id", session.user.id);
+    if (error) errors.push(error);
+  });
+
+  return { error: errors.length > 0 ? errors[0] : null };
 }
 
 // MVP: KRW to USD rate - replace with real rate service later
@@ -319,6 +350,7 @@ export async function getArtworkById(
       fx_date,
       ownership_status,
       artist_id,
+      artist_sort_order,
       created_at,
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),

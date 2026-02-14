@@ -1,14 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useT } from "@/lib/i18n/useT";
+import { getSession } from "@/lib/supabase/auth";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ArtworkCard } from "./ArtworkCard";
+import { SortableArtworkCard } from "./SortableArtworkCard";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
 
@@ -25,12 +38,65 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
 
 export function UserProfileContent({ profile, artworks }: Props) {
   const { t } = useT();
+  const router = useRouter();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
+  const [isOwner, setIsOwner] = useState(false);
+  const [reorderMode, setReorderMode] = useState(false);
+  const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
+  const [saving, setSaving] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
+
+  useEffect(() => {
+    setLocalArtworks(artworks);
+  }, [artworks]);
+
+  useEffect(() => {
+    getSession().then(({ data: { session } }) => {
+      setIsOwner(Boolean(session?.user?.id && session.user.id === profile.id));
+    });
+  }, [profile.id]);
 
   useEffect(() => {
     const ids = artworks.map((a) => a.id);
     getLikedArtworkIds(ids).then(setLikedIds);
+  }, [artworks]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor)
+  );
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setLocalArtworks((prev) => {
+      const ids = prev.map((a) => a.id);
+      const oldIndex = ids.indexOf(active.id as string);
+      const newIndex = ids.indexOf(over.id as string);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const next = [...prev];
+      const [removed] = next.splice(oldIndex, 1);
+      next.splice(newIndex, 0, removed);
+      return next;
+    });
+  }, []);
+
+  const handleSaveReorder = useCallback(async () => {
+    setSaving(true);
+    const orderedIds = localArtworks.map((a) => a.id);
+    const { error } = await updateMyArtworkOrder(orderedIds);
+    setSaving(false);
+    if (error) return;
+    setReorderMode(false);
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 2000);
+    router.refresh();
+  }, [localArtworks, router]);
+
+  const handleCancelReorder = useCallback(() => {
+    setReorderMode(false);
+    setLocalArtworks(artworks);
   }, [artworks]);
 
   useEffect(() => {
@@ -114,8 +180,65 @@ export function UserProfileContent({ profile, artworks }: Props) {
         )}
       </div>
 
-      <h2 className="mb-4 text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
-      {artworks.length === 0 ? (
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
+        {isOwner && artworks.length > 0 && !reorderMode && (
+          <button
+            type="button"
+            onClick={() => setReorderMode(true)}
+            className="text-sm text-zinc-600 hover:text-zinc-900"
+          >
+            {t("profile.reorder")}
+          </button>
+        )}
+      </div>
+      {reorderMode && isOwner && (
+        <p className="mb-4 text-sm text-zinc-500">{t("profile.reorderHint")}</p>
+      )}
+      {reorderMode && isOwner && artworks.length > 0 ? (
+        <>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={localArtworks.map((a) => a.id)} strategy={rectSortingStrategy}>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {localArtworks.map((artwork) => (
+                  <SortableArtworkCard
+                    key={artwork.id}
+                    artwork={artwork}
+                    likesCount={artwork.likes_count ?? 0}
+                    isLiked={likedIds.has(artwork.id)}
+                    onLikeUpdate={(id, liked, count) => {
+                      setLikedIds((prev) => {
+                        const next = new Set(prev);
+                        if (liked) next.add(id);
+                        else next.delete(id);
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={handleSaveReorder}
+              disabled={saving}
+              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {t("profile.reorderSave")}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelReorder}
+              disabled={saving}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {t("profile.reorderCancel")}
+            </button>
+          </div>
+        </>
+      ) : artworks.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-500">{t("profile.noWorks")}</p>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
@@ -135,6 +258,11 @@ export function UserProfileContent({ profile, artworks }: Props) {
               }}
             />
           ))}
+        </div>
+      )}
+      {savedToast && (
+        <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+          {t("common.saved")}
         </div>
       )}
     </main>

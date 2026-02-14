@@ -14,6 +14,8 @@ type Props = {
   onLikeUpdate?: (artworkId: string, liked: boolean, count: number) => void;
   showDelete?: boolean;
   onDelete?: (artworkId: string) => void;
+  disableNavigation?: boolean;
+  dragHandle?: React.ReactNode;
 };
 
 function getPriceDisplay(artwork: Artwork): string {
@@ -24,7 +26,7 @@ function getPriceDisplay(artwork: Artwork): string {
   return "Price hidden";
 }
 
-export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete }: Props) {
+export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, disableNavigation = false, dragHandle }: Props) {
   const router = useRouter();
   const { t } = useT();
   const images = artwork.artwork_images ?? [];
@@ -37,10 +39,12 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
   const username = artist?.username ?? "";
 
   function handleArticleClick() {
+    if (disableNavigation) return;
     router.push(`/artwork/${artwork.id}`);
   }
 
   function handleArticleKeyDown(e: React.KeyboardEvent) {
+    if (disableNavigation) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       handleArticleClick();
@@ -49,12 +53,17 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
 
   return (
     <article
-      role="link"
-      tabIndex={0}
+      role={disableNavigation ? undefined : "link"}
+      tabIndex={disableNavigation ? undefined : 0}
       onClick={handleArticleClick}
       onKeyDown={handleArticleKeyDown}
-      className="cursor-pointer overflow-hidden rounded-lg border border-zinc-200 bg-white transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400"
+      className={`overflow-hidden rounded-lg border border-zinc-200 bg-white transition-shadow focus:outline-none focus:ring-2 focus:ring-zinc-400 ${disableNavigation ? "" : "cursor-pointer hover:shadow-md"}`}
     >
+      {dragHandle && (
+        <div className="flex items-center justify-end border-b border-zinc-100 bg-zinc-50 px-2 py-1" onClick={(e) => e.stopPropagation()}>
+          {dragHandle}
+        </div>
+      )}
       <div className="aspect-square w-full bg-zinc-100">
           {imageUrl ? (
             <Image
