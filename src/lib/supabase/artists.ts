@@ -7,9 +7,10 @@ export type PublicProfile = {
   main_role: string | null;
   roles: string[] | null;
   avatar_url: string | null;
+  bio?: string | null;
 };
 
-const PROFILE_SELECT = "id, username, display_name, main_role, roles, avatar_url";
+const PROFILE_SELECT = "id, username, display_name, main_role, roles, avatar_url, bio";
 
 type ListOptions = {
   limit?: number;

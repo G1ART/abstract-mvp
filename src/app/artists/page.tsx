@@ -138,6 +138,11 @@ export default function ArtistsPage() {
                       {profile.display_name ?? username}
                     </p>
                     <p className="text-sm text-zinc-500">@{username}</p>
+                    {profile.bio && (
+                      <p className="mt-1 line-clamp-2 text-sm text-zinc-600">
+                        {profile.bio}
+                      </p>
+                    )}
                     <div className="mt-1 flex flex-wrap gap-1">
                       {profile.main_role && (
                         <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700">

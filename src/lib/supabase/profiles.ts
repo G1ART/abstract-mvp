@@ -1,7 +1,20 @@
 import { supabase } from "./client";
 
+export type ProfilePublic = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  main_role: string | null;
+  roles: string[] | null;
+  is_public?: boolean;
+};
+
 export async function lookupPublicProfileByUsername(username: string): Promise<{
-  data: Record<string, unknown> | null;
+  data: ProfilePublic | null;
   isPrivate: boolean;
   notFound: boolean;
   error: unknown;
@@ -14,15 +27,29 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     return { data: null, isPrivate: false, notFound: true, error };
   }
 
-  const isPrivate = !!data && data.is_public === false;
-  const notFound = !data;
+  // Private profile: RPC returns only { is_public: false }
+  const raw = data as Record<string, unknown> | null;
+  const isPrivate = !!raw && raw.is_public === false;
+  const notFound = !raw;
 
-  return {
-    data: data && !isPrivate ? (data as Record<string, unknown>) : null,
-    isPrivate,
-    notFound,
-    error: null,
+  if (notFound || isPrivate) {
+    return { data: null, isPrivate, notFound, error: null };
+  }
+
+  const parsed: ProfilePublic = {
+    id: String(raw?.id ?? ""),
+    username: raw?.username != null ? String(raw.username) : null,
+    display_name: raw?.display_name != null ? String(raw.display_name) : null,
+    avatar_url: raw?.avatar_url != null ? String(raw.avatar_url) : null,
+    bio: raw?.bio != null ? String(raw.bio) : null,
+    location: raw?.location != null ? String(raw.location) : null,
+    website: raw?.website != null ? String(raw.website) : null,
+    main_role: raw?.main_role != null ? String(raw.main_role) : null,
+    roles: Array.isArray(raw?.roles) ? (raw.roles as string[]) : null,
+    is_public: raw?.is_public === true,
   };
+
+  return { data: parsed, isPrivate: false, notFound: false, error: null };
 }
 
 export async function checkUsernameExists(

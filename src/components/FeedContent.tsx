@@ -7,8 +7,19 @@ import {
   listFollowingArtworks,
   listPublicArtworks,
 } from "@/lib/supabase/artworks";
+import { getFollowingIds } from "@/lib/supabase/artists";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
-import { ArtworkCard } from "./ArtworkCard";
+import {
+  ArtistThreadCard,
+  type ArtistThreadArtist,
+} from "./ArtistThreadCard";
+
+const WORKS_PER_THREAD = 6;
+
+type ThreadGroup = {
+  artist: ArtistThreadArtist;
+  artworks: ArtworkWithLikes[];
+};
 
 type Props = {
   tab: "all" | "following";
@@ -16,18 +27,22 @@ type Props = {
 };
 
 export function FeedContent({ tab, sort = "latest" }: Props) {
-  const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [threads, setThreads] = useState<ThreadGroup[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchArtworks = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } =
+    const [artworksRes, followingRes] = await Promise.all([
       tab === "following"
-        ? await listFollowingArtworks({ limit: 50 })
-        : await listPublicArtworks({ limit: 50, sort: "latest" });
+        ? listFollowingArtworks({ limit: 50 })
+        : listPublicArtworks({ limit: 50, sort: "latest" }),
+      getFollowingIds(),
+    ]);
+    const { data: listRaw, error: err } = artworksRes;
     setLoading(false);
     if (err) {
       const msg =
@@ -37,7 +52,9 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
       setError(msg);
       return;
     }
-    let list = data ?? [];
+    setFollowingIds(followingRes.data ?? new Set());
+
+    let list = listRaw ?? [];
     if (sort === "popular") {
       list = [...list].sort((a, b) => {
         const countA = Number(a.likes_count) || 0;
@@ -48,9 +65,36 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
         return dateB - dateA;
       });
     }
-    setArtworks(list);
-    const ids = list.map((a) => a.id);
-    const liked = await getLikedArtworkIds(ids);
+
+    // Group by artist_id (preserve order)
+    const byArtist = new Map<string, ArtworkWithLikes[]>();
+    for (const a of list) {
+      const key = a.artist_id;
+      if (!byArtist.has(key)) byArtist.set(key, []);
+      byArtist.get(key)!.push(a);
+    }
+
+    const groups: ThreadGroup[] = [];
+    for (const [artistId, arts] of byArtist) {
+      const first = arts[0];
+      const profile = first?.profiles;
+      const artist: ArtistThreadArtist = {
+        id: artistId,
+        username: profile?.username ?? null,
+        display_name: profile?.display_name ?? null,
+        avatar_url: profile?.avatar_url ?? null,
+        bio: profile?.bio ?? null,
+        roles: profile?.roles ?? null,
+      };
+      groups.push({
+        artist,
+        artworks: arts.slice(0, WORKS_PER_THREAD),
+      });
+    }
+
+    setThreads(groups);
+    const allIds = list.map((a) => a.id);
+    const liked = await getLikedArtworkIds(allIds);
     setLikedIds(liked);
   }, [tab, sort]);
 
@@ -82,8 +126,28 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
     );
   }
 
-  const isEmpty = artworks.length === 0;
+  const isEmpty = threads.length === 0;
   const isFollowingEmpty = tab === "following" && isEmpty;
+
+  const handleLikeUpdate = useCallback(
+    (artworkId: string, liked: boolean, count: number) => {
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        if (liked) next.add(artworkId);
+        else next.delete(artworkId);
+        return next;
+      });
+      setThreads((prev) =>
+        prev.map((t) => ({
+          ...t,
+          artworks: t.artworks.map((a) =>
+            a.id === artworkId ? { ...a, likes_count: count } : a
+          ),
+        }))
+      );
+    },
+    []
+  );
 
   return (
     <div>
@@ -96,47 +160,34 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
           Refresh
         </button>
       </div>
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {isFollowingEmpty ? (
-          <div className="col-span-full flex flex-col items-center justify-center gap-4 py-12 text-center">
-            <p className="text-zinc-600">
-              Follow artists to personalize your feed.
-            </p>
-            <Link
-              href="/artists"
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-            >
-              Find artists
-            </Link>
-          </div>
-        ) : isEmpty ? (
-          <p className="col-span-full py-12 text-center text-zinc-600">
-            No artworks yet
+      {isFollowingEmpty ? (
+        <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+          <p className="text-zinc-600">
+            Follow artists to personalize your feed.
           </p>
-        ) : (
-          artworks.map((artwork) => (
-            <ArtworkCard
-              key={artwork.id}
-              artwork={artwork}
-              likesCount={Number(artwork.likes_count) || 0}
-              isLiked={likedIds.has(artwork.id)}
-              onLikeUpdate={(id, liked, count) => {
-                setLikedIds((prev) => {
-                  const next = new Set(prev);
-                  if (liked) next.add(id);
-                  else next.delete(id);
-                  return next;
-                });
-                setArtworks((prev) =>
-                  prev.map((a) =>
-                    a.id === id ? { ...a, likes_count: count } : a
-                  )
-                );
-              }}
+          <Link
+            href="/artists"
+            className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            Find artists
+          </Link>
+        </div>
+      ) : isEmpty ? (
+        <p className="py-12 text-center text-zinc-600">No artworks yet</p>
+      ) : (
+        <div className="space-y-6">
+          {threads.map(({ artist, artworks }) => (
+            <ArtistThreadCard
+              key={artist.id}
+              artist={artist}
+              artworks={artworks}
+              likedIds={likedIds}
+              initialFollowing={followingIds.has(artist.id)}
+              onLikeUpdate={handleLikeUpdate}
             />
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

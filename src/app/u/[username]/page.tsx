@@ -1,15 +1,12 @@
 import { notFound } from "next/navigation";
-import { lookupPublicProfileByUsername } from "@/lib/supabase/profiles";
-import { ProfileActions } from "@/components/ProfileActions";
+import {
+  lookupPublicProfileByUsername,
+  type ProfilePublic,
+} from "@/lib/supabase/profiles";
+import { listPublicArtworksByArtistId } from "@/lib/supabase/artworks";
+import { UserProfileContent } from "@/components/UserProfileContent";
 
 type Props = { params: Promise<{ username: string }> };
-
-type Profile = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  main_role: string | null;
-};
 
 export default async function ProfilePage({ params }: Props) {
   const { username } = await params;
@@ -32,22 +29,10 @@ export default async function ProfilePage({ params }: Props) {
     notFound();
   }
 
-  const p = profile as Profile;
+  const p = profile as ProfilePublic;
+  const { data: artworks } = await listPublicArtworksByArtistId(p.id, {
+    limit: 50,
+  });
 
-  return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
-      <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-xl font-semibold">
-            {p.display_name ?? p.username}
-          </h1>
-          <p className="text-sm text-zinc-500">@{p.username}</p>
-          {p.main_role && (
-            <p className="mt-1 text-sm text-zinc-600">{p.main_role}</p>
-          )}
-        </div>
-        <ProfileActions profileId={p.id} />
-      </div>
-    </main>
-  );
+  return <UserProfileContent profile={p} artworks={artworks ?? []} />;
 }

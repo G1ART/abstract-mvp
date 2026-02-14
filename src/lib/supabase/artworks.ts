@@ -28,9 +28,13 @@ export type ArtworkRow = {
 
 export type ArtworkImage = { storage_path: string; sort_order?: number };
 export type ArtistProfile = {
+  id?: string;
   username: string;
   display_name?: string | null;
   avatar_url?: string | null;
+  bio?: string | null;
+  main_role?: string | null;
+  roles?: string[] | null;
 } | null;
 
 /** Base artwork shape returned from list/get with embedded images and profile. */
@@ -82,7 +86,7 @@ const ARTWORK_SELECT = `
   artist_id,
   created_at,
   artwork_images(storage_path, sort_order),
-  profiles!artist_id(username, display_name, avatar_url),
+  profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count)
 `;
 
@@ -180,6 +184,29 @@ export async function listMyArtworks(
     .from("artworks")
     .select(ARTWORK_SELECT)
     .eq("artist_id", session.user.id)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return { data: [], error };
+  return {
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    error: null,
+  };
+}
+
+type ByArtistOptions = { limit?: number };
+
+export async function listPublicArtworksByArtistId(
+  artistId: string,
+  options: ByArtistOptions = {}
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
+  const { limit = 50 } = options;
+
+  const { data, error } = await supabase
+    .from("artworks")
+    .select(ARTWORK_SELECT)
+    .eq("artist_id", artistId)
+    .eq("visibility", "public")
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -293,7 +320,7 @@ export async function getArtworkById(
       artist_id,
       created_at,
       artwork_images(storage_path, sort_order),
-      profiles!artist_id(username, display_name, avatar_url),
+      profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count)
     `
     )
