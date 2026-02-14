@@ -30,6 +30,12 @@ export async function removeStorageFile(path: string): Promise<void> {
   await supabase.storage.from(BUCKET).remove([path]);
 }
 
+export async function removeStorageFiles(paths: string[]): Promise<{ error: unknown }> {
+  if (paths.length === 0) return { error: null };
+  const { error } = await supabase.storage.from(BUCKET).remove(paths);
+  return { error };
+}
+
 export function getPublicImageUrl(path: string): string {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;

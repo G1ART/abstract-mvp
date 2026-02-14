@@ -11,7 +11,7 @@ import {
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
-import { type ArtworkWithLikes, getStorageUrl } from "@/lib/supabase/artworks";
+import { type ArtworkWithLikes, deleteArtworkCascade, getStorageUrl } from "@/lib/supabase/artworks";
 
 type Profile = {
   id: string;
@@ -29,6 +29,7 @@ export default function MePage() {
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletedToast, setDeletedToast] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -74,6 +75,17 @@ export default function MePage() {
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [fetchData]);
+
+  async function handleDeleteArtwork(artworkId: string) {
+    const { error: err } = await deleteArtworkCascade(artworkId);
+    if (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+      return;
+    }
+    setDeletedToast(true);
+    setTimeout(() => setDeletedToast(false), 2000);
+    await fetchData();
+  }
 
   if (loading) {
     return (
@@ -194,15 +206,24 @@ export default function MePage() {
             </Link>
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {artworks.map((artwork) => (
-              <ArtworkCard
-                key={artwork.id}
-                artwork={artwork}
-                likesCount={artwork.likes_count ?? 0}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {artworks.map((artwork) => (
+                <ArtworkCard
+                  key={artwork.id}
+                  artwork={artwork}
+                  likesCount={artwork.likes_count ?? 0}
+                  showDelete
+                  onDelete={handleDeleteArtwork}
+                />
+              ))}
+            </div>
+            {deletedToast && (
+              <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+                {t("artwork.deleted")}
+              </div>
+            )}
+          </>
         )}
       </main>
     </AuthGate>

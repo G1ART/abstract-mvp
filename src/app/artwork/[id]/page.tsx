@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
+  deleteArtworkCascade,
   getArtworkById,
   getStorageUrl,
   recordArtworkView,
@@ -15,6 +17,7 @@ import { isLiked } from "@/lib/supabase/likes";
 import { isFollowing } from "@/lib/supabase/follows";
 import { FollowButton } from "@/components/FollowButton";
 import { LikeButton } from "@/components/LikeButton";
+import { useT } from "@/lib/i18n/useT";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
   if (artwork.pricing_mode === "inquire") return "Price upon request";
@@ -26,6 +29,8 @@ function getPriceDisplay(artwork: ArtworkWithLikes): string {
 
 function ArtworkDetailContent() {
   const params = useParams();
+  const router = useRouter();
+  const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
@@ -33,7 +38,24 @@ function ArtworkDetailContent() {
   const [following, setFollowing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+  const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
+
+  async function handleDelete() {
+    if (!id || !isOwner) return;
+    setDeleting(true);
+    const { error: err } = await deleteArtworkCascade(id);
+    setDeleting(false);
+    setShowDeleteConfirm(false);
+    if (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+      return;
+    }
+    router.push("/me");
+  }
 
   const recordView = useCallback(async () => {
     if (!id || typeof window === "undefined") return;
@@ -183,8 +205,44 @@ function ArtworkDetailContent() {
                 )}
               </div>
             )}
+            {isOwner && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  disabled={deleting}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  {t("common.delete")}
+                </button>
+              </div>
+            )}
           </div>
         </div>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="mx-4 w-full max-w-sm rounded-lg bg-white p-6 shadow-lg">
+              <p className="mb-4 text-sm text-zinc-700">{t("common.confirmDelete")}</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="rounded border border-zinc-300 px-4 py-2 text-sm"
+                >
+                  {t("common.cancel")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {t("common.delete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {artwork.story && (
           <p className="text-sm text-zinc-600">{artwork.story}</p>
         )}

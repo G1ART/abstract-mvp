@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type Artwork, getStorageUrl } from "@/lib/supabase/artworks";
+import { useT } from "@/lib/i18n/useT";
 import { LikeButton } from "./LikeButton";
 
 type Props = {
@@ -11,6 +12,8 @@ type Props = {
   likesCount?: number;
   isLiked?: boolean;
   onLikeUpdate?: (artworkId: string, liked: boolean, count: number) => void;
+  showDelete?: boolean;
+  onDelete?: (artworkId: string) => void;
 };
 
 function getPriceDisplay(artwork: Artwork): string {
@@ -21,8 +24,9 @@ function getPriceDisplay(artwork: Artwork): string {
   return "Price hidden";
 }
 
-export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate }: Props) {
+export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete }: Props) {
   const router = useRouter();
+  const { t } = useT();
   const images = artwork.artwork_images ?? [];
   const sortedImages = [...images].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
@@ -83,17 +87,33 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
             {getPriceDisplay(artwork)}
           </p>
           <div className="mt-2 flex items-center justify-between gap-2">
-            {username ? (
-              <Link
-                href={`/u/${username}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-sm text-zinc-500 hover:text-zinc-900"
-              >
-                @{username}
-              </Link>
-            ) : (
-              <span />
-            )}
+            <div className="flex items-center gap-2">
+              {username ? (
+                <Link
+                  href={`/u/${username}`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm text-zinc-500 hover:text-zinc-900"
+                >
+                  @{username}
+                </Link>
+              ) : (
+                <span />
+              )}
+              {showDelete && onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (typeof window !== "undefined" && window.confirm(t("common.confirmDeleteShort"))) {
+                      onDelete(artwork.id);
+                    }
+                  }}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  {t("common.delete")}
+                </button>
+              )}
+            </div>
             <LikeButton
               artworkId={artwork.id}
               likesCount={likesCount}

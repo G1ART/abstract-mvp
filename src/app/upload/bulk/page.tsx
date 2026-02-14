@@ -7,6 +7,7 @@ import {
   attachArtworkImage,
   createDraftArtwork,
   deleteArtwork,
+  deleteDraftArtworks,
   listMyDraftArtworks,
   publishArtworks,
   updateArtwork,
@@ -42,6 +43,9 @@ export default function BulkUploadPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(true);
+  const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -54,26 +58,45 @@ export default function BulkUploadPage() {
     fetchDrafts();
   }, [fetchDrafts]);
 
-  async function handleFiles(files: FileList | null) {
+  function addPendingFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const { data: { session } } = await getSession();
-    if (!session?.user?.id) {
-      setUploadError("Not authenticated");
-      return;
-    }
-    const userId = session.user.id;
     const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
     if (arr.length === 0) {
       setUploadError("Please select image files (JPG, PNG, WebP)");
       return;
     }
     setUploadError(null);
-    setUploading(true);
-    setUploadTotal(arr.length);
-    setUploadCurrent(0);
+    setPendingFiles((prev) => [
+      ...prev,
+      ...arr.map((file) => ({ id: crypto.randomUUID(), file })),
+    ]);
+  }
 
-    for (let i = 0; i < arr.length; i++) {
-      const file = arr[i];
+  function removePendingFile(id: string) {
+    setPendingFiles((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function clearPendingFiles() {
+    setPendingFiles([]);
+  }
+
+  async function startUpload() {
+    if (pendingFiles.length === 0) return;
+    const { data: { session } } = await getSession();
+    if (!session?.user?.id) {
+      setUploadError("Not authenticated");
+      return;
+    }
+    const userId = session.user.id;
+    setUploadError(null);
+    setUploading(true);
+    setUploadTotal(pendingFiles.length);
+    setUploadCurrent(0);
+    const queue = [...pendingFiles];
+    setPendingFiles([]);
+
+    for (let i = 0; i < queue.length; i++) {
+      const { file } = queue[i];
       setUploadCurrent(i + 1);
       const title = deriveTitle(file.name);
       let artworkId: string | null = null;
@@ -100,6 +123,30 @@ export default function BulkUploadPage() {
     }
     setUploading(false);
     await fetchDrafts();
+  }
+
+  async function handleDeleteSelected() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    await deleteDraftArtworks(ids);
+    setDeleting(false);
+    setSelected(new Set());
+    await fetchDrafts();
+    setToast(t("bulk.deleted"));
+    setTimeout(() => setToast(null), 2000);
+  }
+
+  async function handleDeleteAll() {
+    const ids = drafts.map((d) => d.id);
+    if (ids.length === 0) return;
+    setDeleting(true);
+    await deleteDraftArtworks(ids);
+    setDeleting(false);
+    setSelected(new Set());
+    await fetchDrafts();
+    setToast(t("bulk.deleted"));
+    setTimeout(() => setToast(null), 2000);
   }
 
   function toggleSelect(id: string) {
@@ -202,7 +249,7 @@ export default function BulkUploadPage() {
           onClick={() => document.getElementById("bulk-file-input")?.click()}
           onDrop={(e) => {
             e.preventDefault();
-            handleFiles(e.dataTransfer.files);
+            addPendingFiles(e.dataTransfer.files);
           }}
           onDragOver={(e) => e.preventDefault()}
         >
@@ -212,11 +259,52 @@ export default function BulkUploadPage() {
             accept="image/*"
             multiple
             className="hidden"
-            onChange={(e) => handleFiles(e.target.files)}
+            onChange={(e) => addPendingFiles(e.target.files)}
             disabled={uploading}
           />
           <p className="text-sm text-zinc-600">{t("bulk.dropzone")}</p>
         </div>
+
+        {/* Pending files */}
+        {pendingFiles.length > 0 && !uploading && (
+          <div className="mb-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+            <h3 className="mb-2 text-sm font-medium">{t("bulk.pendingFiles")} ({pendingFiles.length})</h3>
+            <div className="mb-3 flex flex-wrap gap-2">
+              {pendingFiles.map(({ id, file }) => (
+                <span
+                  key={id}
+                  className="inline-flex items-center gap-1 rounded bg-white px-2 py-1 text-sm text-zinc-700"
+                >
+                  {file.name}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removePendingFile(id); }}
+                    className="text-red-600 hover:text-red-800"
+                    aria-label={t("bulk.removePending")}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={startUpload}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                {t("bulk.startUpload")} ({pendingFiles.length})
+              </button>
+              <button
+                type="button"
+                onClick={clearPendingFiles}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        )}
 
         {uploading && (
           <p className="mb-4 text-sm text-zinc-600">
@@ -277,22 +365,46 @@ export default function BulkUploadPage() {
           </div>
         )}
 
-        {/* Publish panel */}
+        {/* Publish + Delete panel */}
         {drafts.length > 0 && (
-          <div className="mb-6 flex items-center justify-between rounded-lg border border-zinc-200 px-4 py-3">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-lg border border-zinc-200 px-4 py-3">
             <span className="text-sm">
               {t("bulk.readyToPublish")
                 .replace("{ready}", String(selectedIds.length > 0 ? selectedReady : readyCount))
                 .replace("{total}", String(selectedIds.length > 0 ? selectedIds.length : drafts.length))}
             </span>
-            <button
-              type="button"
-              onClick={handlePublish}
-              disabled={!canPublishSelected || publishing}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {t("bulk.publishSelected")}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleDeleteSelected}
+                disabled={selectedIds.length === 0 || deleting}
+                className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t("bulk.deleteSelected")}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAll}
+                disabled={deleting}
+                className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+              >
+                {t("bulk.deleteAll")}
+              </button>
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={!canPublishSelected || publishing}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {t("bulk.publishSelected")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+            {toast}
           </div>
         )}
 

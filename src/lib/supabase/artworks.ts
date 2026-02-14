@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { removeStorageFiles } from "./storage";
 
 const BUCKET = "artworks";
 
@@ -356,6 +357,78 @@ export async function deleteArtwork(artworkId: string) {
     .eq("id", artworkId)
     .eq("artist_id", session.user.id);
   return { error };
+}
+
+/** Delete artwork with cascade: storage files → artwork_images → artworks. Owner-only. */
+export async function deleteArtworkCascade(
+  artworkId: string
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { error: new Error("Not authenticated") };
+
+  const { data: artwork } = await supabase
+    .from("artworks")
+    .select("id, artist_id")
+    .eq("id", artworkId)
+    .single();
+
+  if (!artwork || (artwork as { artist_id: string }).artist_id !== session.user.id)
+    return { error: new Error("Artwork not found or not owned by you") };
+
+  const { data: images } = await supabase
+    .from("artwork_images")
+    .select("storage_path")
+    .eq("artwork_id", artworkId);
+
+  const paths = (images ?? []).map((r) => (r as { storage_path: string }).storage_path);
+  if (paths.length > 0) {
+    const { error: storageErr } = await removeStorageFiles(paths);
+    if (storageErr) {
+      if (typeof console !== "undefined") console.warn("Storage delete failed, continuing with DB cleanup:", storageErr);
+    }
+  }
+
+  const { error: imgErr } = await supabase
+    .from("artwork_images")
+    .delete()
+    .eq("artwork_id", artworkId);
+  if (imgErr) return { error: imgErr };
+
+  const { error } = await supabase
+    .from("artworks")
+    .delete()
+    .eq("id", artworkId)
+    .eq("artist_id", session.user.id);
+  return { error };
+}
+
+const CONCURRENCY = 5;
+function runWithLimit<T>(items: T[], fn: (x: T) => Promise<unknown>): Promise<void> {
+  let idx = 0;
+  async function worker(): Promise<void> {
+    while (idx < items.length) {
+      const i = idx++;
+      await fn(items[i]);
+    }
+  }
+  const workers = Array(Math.min(CONCURRENCY, items.length)).fill(0).map(() => worker());
+  return Promise.all(workers).then(() => {});
+}
+
+/** Delete multiple drafts with cascade. Owner-only, batches with concurrency limit. */
+export async function deleteDraftArtworks(
+  ids: string[]
+): Promise<{ error: unknown }> {
+  if (ids.length === 0) return { error: null };
+  const errors: unknown[] = [];
+  await runWithLimit(ids, async (id) => {
+    const res = await deleteArtworkCascade(id);
+    if (res.error) errors.push(res.error);
+  });
+  return { error: errors.length > 0 ? errors[0] : null };
 }
 
 export type DraftArtworkPayload = {
