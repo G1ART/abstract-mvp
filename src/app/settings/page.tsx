@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import {
   getMyProfile,
@@ -11,8 +12,11 @@ import {
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
+const PROFILE_UPDATED_KEY = "profile_updated";
 
 type Profile = {
+  id: string;
+  username: string | null;
   display_name: string | null;
   bio: string | null;
   location: string | null;
@@ -23,6 +27,8 @@ type Profile = {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
+  const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [location, setLocation] = useState("");
@@ -44,6 +50,7 @@ export default function SettingsPage() {
       }
       const p = profile as Profile | null;
       if (p) {
+        setUsername(p.username ?? null);
         setDisplayName(p.display_name ?? "");
         setBio(p.bio ?? "");
         setLocation(p.location ?? "");
@@ -92,7 +99,16 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save");
       return;
     }
-    setSaved(true);
+
+    const targetUsername = username?.trim().toLowerCase();
+    if (targetUsername) {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+      }
+      router.push(`/u/${targetUsername}`);
+    } else {
+      setSaved(true);
+    }
   }
 
   return (

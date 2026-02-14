@@ -79,6 +79,29 @@ export async function getMyProfile() {
   return { data, error };
 }
 
+/** Get own profile as ProfilePublic. Used when viewing own private profile. */
+export async function getMyProfileAsPublic(): Promise<{
+  data: ProfilePublic | null;
+  error: unknown;
+}> {
+  const { data, error } = await getMyProfile();
+  if (error || !data) return { data: null, error };
+  const row = data as Record<string, unknown>;
+  const parsed: ProfilePublic = {
+    id: String(row?.id ?? ""),
+    username: row?.username != null ? String(row.username) : null,
+    display_name: row?.display_name != null ? String(row.display_name) : null,
+    avatar_url: row?.avatar_url != null ? String(row.avatar_url) : null,
+    bio: row?.bio != null ? String(row.bio) : null,
+    location: row?.location != null ? String(row.location) : null,
+    website: row?.website != null ? String(row.website) : null,
+    main_role: row?.main_role != null ? String(row.main_role) : null,
+    roles: Array.isArray(row?.roles) ? (row.roles as string[]) : null,
+    is_public: row?.is_public === true,
+  };
+  return { data: parsed, error: null };
+}
+
 type UpsertProfileParams = {
   username: string;
   display_name?: string;

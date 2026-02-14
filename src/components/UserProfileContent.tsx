@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import Image from "next/image";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
@@ -9,6 +8,8 @@ import { getStorageUrl } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ArtworkCard } from "./ArtworkCard";
+
+const PROFILE_UPDATED_KEY = "profile_updated";
 
 type Props = {
   profile: ProfilePublic;
@@ -23,11 +24,22 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
 
 export function UserProfileContent({ profile, artworks }: Props) {
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
 
   useEffect(() => {
     const ids = artworks.map((a) => a.id);
     getLikedArtworkIds(ids).then(setLikedIds);
   }, [artworks]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem(PROFILE_UPDATED_KEY) === "true") {
+      window.sessionStorage.removeItem(PROFILE_UPDATED_KEY);
+      setShowUpdatedBanner(true);
+      const t = setTimeout(() => setShowUpdatedBanner(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const username = profile.username ?? "";
   const displayName = profile.display_name ?? username;
@@ -37,6 +49,14 @@ export function UserProfileContent({ profile, artworks }: Props) {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
+      {showUpdatedBanner && (
+        <div
+          role="status"
+          className="mb-4 rounded bg-green-100 px-4 py-2 text-sm font-medium text-green-800"
+        >
+          Profile updated
+        </div>
+      )}
       <div className="mb-8 flex flex-col gap-4">
         <div className="flex items-start gap-4">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-zinc-200">
