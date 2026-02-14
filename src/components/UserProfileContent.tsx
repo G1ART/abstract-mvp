@@ -15,6 +15,7 @@ import {
 import { SortableContext, rectSortingStrategy } from "@dnd-kit/sortable";
 import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
+import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
@@ -46,16 +47,50 @@ export function UserProfileContent({ profile, artworks }: Props) {
   const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalArtworks(artworks);
   }, [artworks]);
 
   useEffect(() => {
+    function resolveOwner(sessionUserId: string | undefined): void {
+      if (!sessionUserId) {
+        setIsOwner(false);
+        return;
+      }
+      const idMatch = !!profile?.id && profile.id === sessionUserId;
+      if (idMatch) {
+        setIsOwner(true);
+        return;
+      }
+      getMyProfile().then(({ data: myProfile }) => {
+        if (!myProfile) {
+          setIsOwner(idMatch);
+          return;
+        }
+        const usernameMatch =
+          profile?.username &&
+          (myProfile as { username?: string | null }).username &&
+          String(profile.username).trim().toLowerCase() ===
+            String((myProfile as { username?: string | null }).username).trim().toLowerCase();
+        setIsOwner(idMatch || (!!sessionUserId && !!usernameMatch));
+      });
+    }
+
     getSession().then(({ data: { session } }) => {
-      setIsOwner(Boolean(session?.user?.id && session.user.id === profile.id));
+      const uid = session?.user?.id;
+      if (uid) {
+        resolveOwner(uid);
+        return;
+      }
+      setTimeout(() => {
+        getSession().then(({ data: { session: retrySession } }) => {
+          resolveOwner(retrySession?.user?.id);
+        });
+      }, 400);
     });
-  }, [profile.id]);
+  }, [profile?.id, profile?.username]);
 
   useEffect(() => {
     const ids = artworks.map((a) => a.id);
@@ -83,11 +118,16 @@ export function UserProfileContent({ profile, artworks }: Props) {
   }, []);
 
   const handleSaveReorder = useCallback(async () => {
+    setSaveError(null);
     setSaving(true);
     const orderedIds = localArtworks.map((a) => a.id);
     const { error } = await updateMyArtworkOrder(orderedIds);
     setSaving(false);
-    if (error) return;
+    if (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setSaveError(msg);
+      return;
+    }
     setReorderMode(false);
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2000);
@@ -97,6 +137,7 @@ export function UserProfileContent({ profile, artworks }: Props) {
   const handleCancelReorder = useCallback(() => {
     setReorderMode(false);
     setLocalArtworks(artworks);
+    setSaveError(null);
   }, [artworks]);
 
   useEffect(() => {
@@ -185,7 +226,7 @@ export function UserProfileContent({ profile, artworks }: Props) {
         {isOwner && artworks.length > 0 && !reorderMode && (
           <button
             type="button"
-            onClick={() => setReorderMode(true)}
+            onClick={() => { setReorderMode(true); setSaveError(null); }}
             className="text-sm text-zinc-600 hover:text-zinc-900"
           >
             {t("profile.reorder")}
@@ -219,6 +260,19 @@ export function UserProfileContent({ profile, artworks }: Props) {
               </div>
             </SortableContext>
           </DndContext>
+          {saveError && (
+            <div className="mt-4 flex items-center gap-3 rounded border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+              <span>{t("profile.reorderSaveFailed")}: {saveError}</span>
+              <button
+                type="button"
+                onClick={handleSaveReorder}
+                disabled={saving}
+                className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {t("common.retry")}
+              </button>
+            </div>
+          )}
           <div className="mt-4 flex gap-2">
             <button
               type="button"

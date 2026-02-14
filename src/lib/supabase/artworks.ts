@@ -419,7 +419,20 @@ export async function deleteArtworkCascade(
   if (paths.length > 0) {
     const { error: storageErr } = await removeStorageFiles(paths);
     if (storageErr) {
-      if (typeof console !== "undefined") console.warn("Storage delete failed, continuing with DB cleanup:", storageErr);
+      const isDev = process.env.NODE_ENV === "development";
+      const logPayload = {
+        event: "storage_delete_failed",
+        artworkId,
+        paths,
+        error: storageErr instanceof Error ? storageErr.message : String(storageErr),
+      };
+      if (typeof console !== "undefined") {
+        if (isDev) {
+          console.warn("[deleteArtworkCascade] Storage delete failed, continuing DB cleanup. Orphan paths:", logPayload);
+        } else {
+          console.error("[deleteArtworkCascade] storage_delete_failed", JSON.stringify(logPayload));
+        }
+      }
     }
   }
 
