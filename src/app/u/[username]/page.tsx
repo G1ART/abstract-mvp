@@ -8,14 +8,18 @@ import { listPublicArtworksByArtistId } from "@/lib/supabase/artworks";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
-type Props = { params: Promise<{ username: string }> };
+type Props = {
+  params: Promise<{ username: string }>;
+  searchParams: Promise<{ mode?: string }>;
+};
 
 function normalizeUsername(u: string | null): string {
   return (u ?? "").trim().toLowerCase();
 }
 
-export default async function ProfilePage({ params }: Props) {
+export default async function ProfilePage({ params, searchParams }: Props) {
   const { username: paramUsername } = await params;
+  const { mode } = await searchParams;
   const normalizedParam = paramUsername.trim().toLowerCase();
   const locale = await getServerLocale();
   const t = getT(locale);
@@ -54,5 +58,11 @@ export default async function ProfilePage({ params }: Props) {
     limit: 50,
   });
 
-  return <UserProfileContent profile={p} artworks={artworks ?? []} />;
+  return (
+    <UserProfileContent
+      profile={p}
+      artworks={artworks ?? []}
+      initialReorderMode={mode === "reorder"}
+    />
+  );
 }

@@ -276,3 +276,29 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - Doc: `docs/QA_SMOKE.md`
 - Covers: bulk pending/draft/delete/publish, artwork delete, reorder persist, i18n cookie persistence
 
+---
+
+## 15) People rebrand + role filters + profile/reorder entry
+
+### Routing
+- `/people` — People directory (new)
+- `/artists` → 301 redirect to `/people`
+- Header: "Artists" → "People", add "Profile" tab (links to /u/\<username>)
+
+### People page
+- Role multi-filter chips: Artist, Curator, Gallerist, Collector
+- URL sync: `/people?roles=artist,curator&q=henry`
+- Debounced search + roles filter combined
+
+### Data layer
+- `src/lib/supabase/artists.ts`: `listPublicProfiles`, `searchPublicProfiles` accept `roles?: string[]`
+- Filter: `main_role.in.(...)` OR `roles.ov.{...}`
+
+### /me entry
+- "View public profile" → `/u/<username>`
+- "Reorder portfolio" → `/u/<username>?mode=reorder`
+- Username 없으면 "Complete profile" → /onboarding
+
+### Deep-link
+- `/u/[username]?mode=reorder` — owner면 reorder mode 자동 ON
+

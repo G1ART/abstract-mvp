@@ -69,7 +69,14 @@
 
 ---
 
-## 4. i18n Cookie Persist
+## 4. People + Role Filters
+
+- [ ] `/artists` 접속 시 `/people`로 redirect
+- [ ] `/people`에서 role chips (Artist, Curator 등) 멀티선택 가능
+- [ ] 검색어 + roles 필터 조합 동작
+- [ ] URL `?roles=artist,curator&q=henry` 새로고침 시 필터 유지
+
+## 6. i18n Cookie Persist
 
 - [ ] Header에서 locale 토글 (EN ↔ KO)
 - [ ] 페이지 새로고침 후에도 선택한 locale 유지
@@ -77,7 +84,7 @@
 
 ---
 
-## 5. Migration Guard (개발 환경)
+## 7. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."
 - [ ] 프로덕션: 토스트 미표시, console.error만 (Sentry 연동 시 추적 가능)

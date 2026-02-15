@@ -177,8 +177,31 @@ export default function MePage() {
           </div>
         </div>
 
-        {/* Upload CTA */}
-        <div className="mb-8 flex gap-3">
+        {/* Profile / Reorder / Upload CTA */}
+        <div className="mb-8 flex flex-wrap gap-3">
+          {profile?.username ? (
+            <>
+              <Link
+                href={`/u/${profile.username}`}
+                className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("me.viewPublicProfile")}
+              </Link>
+              <Link
+                href={`/u/${profile.username}?mode=reorder`}
+                className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("me.reorderPortfolio")}
+              </Link>
+            </>
+          ) : (
+            <Link
+              href="/onboarding"
+              className="inline-block rounded border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50"
+            >
+              Complete profile →
+            </Link>
+          )}
           <Link
             href="/upload"
             className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
@@ -186,7 +209,7 @@ export default function MePage() {
             Upload new work
           </Link>
           <Link
-            href="/artists"
+            href="/people"
             className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             {t("feed.followingEmptyCta")}

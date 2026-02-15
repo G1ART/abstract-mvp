@@ -6,15 +6,17 @@ import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { signOut } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
+import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
 
 const NAV_LINKS = [
   { href: "/feed?tab=all&sort=latest", key: "nav.feed" },
-  { href: "/artists", key: "nav.artists" },
+  { href: "/people", key: "nav.people" },
   { href: "/me", key: "nav.me" },
   { href: "/upload", key: "nav.upload" },
   { href: "/settings", key: "nav.settings" },
 ] as const;
+
 
 const linkClass = "text-sm text-zinc-600 hover:text-zinc-900";
 
@@ -23,6 +25,7 @@ export function Header() {
   const { t, locale, setLocale } = useT();
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
@@ -35,6 +38,17 @@ export function Header() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setProfileUsername(null);
+      return;
+    }
+    getMyProfile().then(({ data }) => {
+      const p = data as { username?: string | null } | null;
+      setProfileUsername(p?.username ?? null);
+    });
+  }, [session?.user?.id]);
 
   async function handleLogout() {
     await signOut();
@@ -62,6 +76,11 @@ export function Header() {
         {/* Desktop nav */}
         {ready && loggedIn && (
           <nav className="hidden md:flex items-center gap-4">
+            {profileUsername && (
+              <Link href={`/u/${profileUsername}`} className={linkClass}>
+                {t("nav.profile")}
+              </Link>
+            )}
             {NAV_LINKS.map(({ href, key }) => (
               <Link key={key} href={href} className={linkClass}>
                 {t(key)}
@@ -146,6 +165,15 @@ export function Header() {
       {mobileOpen && loggedIn && (
         <div className="md:hidden absolute top-full left-0 right-0 z-50 border-b border-zinc-200 bg-white shadow-sm">
           <nav className="flex flex-col p-4 gap-1">
+            {profileUsername && (
+              <Link
+                href={`/u/${profileUsername}`}
+                className={`${linkClass} py-2 px-1`}
+                onClick={closeMobile}
+              >
+                {t("nav.profile")}
+              </Link>
+            )}
             {NAV_LINKS.map(({ href, key }) => (
               <Link
                 key={key}

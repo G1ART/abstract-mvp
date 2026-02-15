@@ -29,6 +29,7 @@ const PROFILE_UPDATED_KEY = "profile_updated";
 type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
+  initialReorderMode?: boolean;
 };
 
 function getAvatarUrl(avatarUrl: string | null): string | null {
@@ -37,7 +38,7 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
   return getStorageUrl(avatarUrl);
 }
 
-export function UserProfileContent({ profile, artworks }: Props) {
+export function UserProfileContent({ profile, artworks, initialReorderMode = false }: Props) {
   const { t } = useT();
   const router = useRouter();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -52,6 +53,10 @@ export function UserProfileContent({ profile, artworks }: Props) {
   useEffect(() => {
     setLocalArtworks(artworks);
   }, [artworks]);
+
+  useEffect(() => {
+    if (initialReorderMode && isOwner && artworks.length > 0) setReorderMode(true);
+  }, [initialReorderMode, isOwner, artworks.length]);
 
   useEffect(() => {
     function resolveOwner(sessionUserId: string | undefined): void {

@@ -168,7 +168,7 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
             {t("feed.followingEmptyTitle")}
           </p>
           <Link
-            href="/artists"
+            href="/people"
             className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
           >
             {t("feed.followingEmptyCta")}
