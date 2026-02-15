@@ -21,6 +21,7 @@ import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
+import { ProfileViewTracker } from "./ProfileViewTracker";
 import { ArtworkCard } from "./ArtworkCard";
 import { SortableArtworkCard } from "./SortableArtworkCard";
 
@@ -162,8 +163,10 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
   const mainRole = profile.main_role;
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8">
-      {showUpdatedBanner && (
+    <>
+      <ProfileViewTracker profileId={profile.id} />
+      <main className="mx-auto max-w-2xl px-4 py-8">
+        {showUpdatedBanner && (
         <div
           role="status"
           className="mb-4 rounded bg-green-100 px-4 py-2 text-sm font-medium text-green-800"
@@ -324,6 +327,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
           {t("common.saved")}
         </div>
       )}
-    </main>
+      </main>
+    </>
   );
 }

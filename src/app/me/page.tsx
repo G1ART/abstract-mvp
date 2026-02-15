@@ -11,7 +11,17 @@ import {
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
-import { type ArtworkWithLikes, deleteArtworkCascade, getStorageUrl } from "@/lib/supabase/artworks";
+import {
+  getProfileViewsCount,
+  getProfileViewers,
+  type ProfileViewerRow,
+} from "@/lib/supabase/profileViews";
+import { getMyEntitlements, hasFeature, type Plan } from "@/lib/entitlements";
+import {
+  type ArtworkWithLikes,
+  deleteArtworkCascade,
+  getStorageUrl,
+} from "@/lib/supabase/artworks";
 
 type Profile = {
   id: string;
@@ -27,6 +37,9 @@ export default function MePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [profileViewsCount, setProfileViewsCount] = useState<number | null>(null);
+  const [viewers, setViewers] = useState<ProfileViewerRow[]>([]);
+  const [canViewViewers, setCanViewViewers] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deletedToast, setDeletedToast] = useState(false);
@@ -35,10 +48,11 @@ export default function MePage() {
     setLoading(true);
     setError(null);
     try {
-      const [profileRes, statsRes, artworksRes] = await Promise.all([
+      const [profileRes, statsRes, artworksRes, entRes] = await Promise.all([
         getMyProfile(),
         getMyStats(),
         listMyArtworks({ limit: 50 }),
+        getMyEntitlements(),
       ]);
 
       if (profileRes.error) {
@@ -54,9 +68,21 @@ export default function MePage() {
         return;
       }
 
-      setProfile(profileRes.data as Profile | null);
+      const profileData = profileRes.data as Profile | null;
+      setProfile(profileData);
       setStats(statsRes.data ?? null);
       setArtworks(artworksRes.data ?? []);
+      const canView = hasFeature(entRes.plan as Plan, "VIEW_PROFILE_VIEWERS_LIST");
+      setCanViewViewers(canView);
+
+      if (profileData?.id) {
+        const [countRes, viewersRes] = await Promise.all([
+          getProfileViewsCount(profileData.id, 7),
+          canView ? getProfileViewers(profileData.id, { limit: 10 }) : { data: [], nextCursor: null, error: null },
+        ]);
+        setProfileViewsCount(countRes.data);
+        setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
@@ -175,6 +201,78 @@ export default function MePage() {
             </p>
             <p className="text-sm text-zinc-500">Views</p>
           </div>
+        </div>
+
+        {/* Profile views insights */}
+        <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
+          <h3 className="mb-2 text-sm font-medium text-zinc-900">
+            {t("insights.profileViewsTitle")} ({t("insights.last7Days")})
+          </h3>
+          {profileViewsCount === null ? (
+            <p className="text-sm text-zinc-500">{t("common.loading")}</p>
+          ) : (
+            <>
+              <p className="text-2xl font-semibold text-zinc-900">{profileViewsCount}</p>
+              {canViewViewers ? (
+                <div className="mt-4">
+                  <p className="mb-2 text-sm font-medium text-zinc-700">
+                    {t("insights.recentViewers")}
+                  </p>
+                  {viewers.length === 0 ? (
+                    <p className="text-sm text-zinc-500">{t("insights.noViewsYet")}</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {viewers.map((row) => (
+                        <li key={row.id}>
+                          <Link
+                            href={`/u/${row.viewer_profile?.username ?? ""}`}
+                            className="flex items-center gap-3 text-sm text-zinc-700 hover:text-zinc-900"
+                          >
+                            {row.viewer_profile?.avatar_url ? (
+                              <img
+                                src={
+                                  row.viewer_profile.avatar_url.startsWith("http")
+                                    ? row.viewer_profile.avatar_url
+                                    : getStorageUrl(row.viewer_profile.avatar_url)
+                                }
+                                alt=""
+                                className="h-8 w-8 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
+                                {(row.viewer_profile?.display_name ?? row.viewer_profile?.username ?? "?").charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                            <span>
+                              {row.viewer_profile?.display_name ?? row.viewer_profile?.username ?? "—"}
+                            </span>
+                            {row.viewer_profile?.username && (
+                              <span className="text-zinc-500">@{row.viewer_profile.username}</span>
+                            )}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {viewers.length > 0 && (
+                    <Link
+                      href="/settings"
+                      className="mt-3 inline-block text-sm text-zinc-600 hover:text-zinc-900"
+                    >
+                      {t("insights.seeAll")}
+                    </Link>
+                  )}
+                </div>
+              ) : (
+                <Link
+                  href="/settings"
+                  className="mt-3 inline-block rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  {t("insights.upgradeToSeeViewers")}
+                </Link>
+              )}
+            </>
+          )}
         </div>
 
         {/* Profile / Reorder / Upload CTA */}

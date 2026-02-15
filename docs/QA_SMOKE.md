@@ -69,20 +69,38 @@
 
 ---
 
-## 4. People + Role Filters
+## 4. People (Recommended + Search)
 
 - [ ] `/artists` 접속 시 `/people`로 redirect
-- [ ] `/people`에서 role chips (Artist, Curator 등) 멀티선택 가능
-- [ ] 검색어 + roles 필터 조합 동작
-- [ ] URL `?roles=artist,curator&q=henry` 새로고침 시 필터 유지
+- [ ] q 없이 `/people` 진입: Recommended 탭, 15명만 로드
+- [ ] Load more 클릭 시 +10명 추가 (append)
+- [ ] role chips (Artist, Curator 등) 멀티선택 시 추천 결과 변경, URL 유지
+- [ ] `/people?q=henry` 검색 시 Search 탭으로 전환, debounced 검색 동작
+- [ ] Search 탭에서 Load more 동작
+- [ ] 전체 리스트(listPublicProfiles) 호출 없음 (q 없을 때 Recommended만)
 
-## 6. i18n Cookie Persist
+## 5. Profile Viewers (Entitlements skeleton)
+
+- [ ] 내 프로필 `/u/<me>` 접속 시 (다른 계정으로) profile_views 이벤트 기록 (로그인 기준)
+- [ ] `/me`에서 "Profile views (last 7 days)" 카드 노출, count 증가
+- [ ] plan=free: viewer list 숨김, "Upgrade to see who viewed you" CTA만
+- [ ] plan=artist_pro (entitlements row 수동 업데이트): viewer list 10명 노출
+
+## 6. i18n
+
+### Cookie persist
 
 - [ ] Header에서 locale 토글 (EN ↔ KO)
 - [ ] 페이지 새로고침 후에도 선택한 locale 유지
 - [ ] `ab_locale` 쿠키 존재 확인 (개발자 도구 → Application → Cookies)
 
 ---
+
+### People + insights keys
+- [ ] people.tabRecommended, people.tabSearch, people.recommendedTitle, people.loadMore
+- [ ] people.noRecommendations, people.noSearchResults
+- [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
+- [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
 ## 7. Migration Guard (개발 환경)
 

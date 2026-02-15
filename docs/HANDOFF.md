@@ -186,7 +186,12 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - Bulk import (CSV/zip/AI extraction) 아직 제한적
 
 ## 12) Operational checklist
-### Supabase
+### Supabase (People + Entitlements)
+- [ ] `supabase/migrations/people_rpc.sql` — get_recommended_people, search_people
+- [ ] `supabase/migrations/entitlements_profile_views.sql` — entitlements, profile_views tables + RLS
+- [ ] `supabase/migrations/profile_views_rpc.sql` — get_profile_views_count, get_profile_viewers
+
+### Supabase (기존)
 - [ ] `artwork_visibility` enum에 `draft` 포함 확인
 - [ ] `artwork_delete_rls.sql` 실행
 - [ ] `artwork_delete_storage.sql` 실행
@@ -285,14 +290,26 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - `/artists` → 301 redirect to `/people`
 - Header: "Artists" → "People", add "Profile" tab (links to /u/\<username>)
 
-### People page
+### People page (v1.14 — Recommended + Search, no full list)
+- Tabs: **Recommended** (default), **Search** (when q present)
 - Role multi-filter chips: Artist, Curator, Gallerist, Collector
-- URL sync: `/people?roles=artist,curator&q=henry`
-- Debounced search + roles filter combined
+- URL sync: `/people?tab=recommended&roles=artist,curator&cursor=<opaque>` or `?q=henry&tab=search&roles=...&cursor=...`
+- **Recommended**: initial 15, Load more +10, excludes self + already followed; no full list when q empty
+- **Search**: debounced search; q empty → Search results not fetched
+- Cursor pagination (keyset: id desc)
 
 ### Data layer
-- `src/lib/supabase/artists.ts`: `listPublicProfiles`, `searchPublicProfiles` accept `roles?: string[]`
-- Filter: `main_role.in.(...)` OR `roles.ov.{...}`
+- `src/lib/supabase/artists.ts`: `getRecommendedPeople`, `searchPeople` (RPC); `listPublicProfiles` removed
+- RPC: `get_recommended_people`, `search_people` (Supabase)
+
+### Entitlements + Profile Viewers (v1.14, no payments)
+- `entitlements` table: user_id, plan (free|artist_pro|collector_pro), status, valid_until
+- `profile_views` table: profile_id, viewer_id, created_at
+- RPC: `get_profile_views_count`, `get_profile_viewers` (Pro only)
+- `src/lib/entitlements.ts`: getMyEntitlements, hasFeature, ensureFreeEntitlement
+- `src/lib/supabase/profileViews.ts`: recordProfileView, getProfileViewsCount, getProfileViewers
+- Onboarding: ensureFreeEntitlement(userId) on completion
+- `/me` insights card: Profile views (7d) count; free: CTA "Upgrade to see viewers"; Pro: recent viewers list
 
 ### /me entry
 - "View public profile" → `/u/<username>`

@@ -8,79 +8,76 @@ export type PublicProfile = {
   roles: string[] | null;
   avatar_url: string | null;
   bio?: string | null;
+  reason?: string;
 };
-
-const PROFILE_SELECT = "id, username, display_name, main_role, roles, avatar_url, bio";
 
 export const ROLE_OPTIONS = ["artist", "curator", "gallerist", "collector"] as const;
 
-type ListOptions = {
-  limit?: number;
-  offset?: number;
-  roles?: string[];
-};
-
-function buildRolesFilter(roles: string[]): string | null {
-  if (roles.length === 0) return null;
-  const clean = roles.filter((r) => ROLE_OPTIONS.includes(r as (typeof ROLE_OPTIONS)[number]));
-  if (clean.length === 0) return null;
-  const inMain = `main_role.in.(${clean.join(",")})`;
-  const ovRoles = `roles.ov.{"${clean.join('","')}"}`;
-  return `${inMain},${ovRoles}`;
+/** Encode UUID as cursor for next page */
+export function encodePeopleCursor(id: string): string {
+  if (typeof btoa !== "undefined") {
+    return btoa(id);
+  }
+  return Buffer.from(id, "utf8").toString("base64");
 }
 
-export async function listPublicProfiles(
-  options: ListOptions = {}
-): Promise<{ data: PublicProfile[]; error: unknown }> {
-  const { limit = 50, offset = 0, roles } = options;
-
-  let query = supabase
-    .from("profiles")
-    .select(PROFILE_SELECT)
-    .eq("is_public", true)
-    .order("username", { ascending: true })
-    .range(offset, offset + limit - 1);
-
-  const rolesFilter = roles?.length ? buildRolesFilter(roles) : null;
-  if (rolesFilter) {
-    query = query.or(rolesFilter);
-  }
-
-  const { data, error } = await query;
-  if (error) return { data: [], error };
-  return { data: (data ?? []) as PublicProfile[], error: null };
-}
-
-type SearchOptions = {
-  limit?: number;
+export type GetRecommendedPeopleOptions = {
   roles?: string[];
+  limit: number;
+  cursor?: string | null;
 };
 
-export async function searchPublicProfiles(
-  q: string,
-  options: SearchOptions = {}
-): Promise<{ data: PublicProfile[]; error: unknown }> {
-  const { limit = 50, roles } = options;
-  const normalized = q.trim().toLowerCase();
-  if (!normalized) return listPublicProfiles({ limit, roles });
+export async function getRecommendedPeople(
+  options: GetRecommendedPeopleOptions
+): Promise<{ data: PublicProfile[]; nextCursor: string | null; error: unknown }> {
+  const { roles = [], limit = 15, cursor = null } = options;
+  const rolesArr = Array.isArray(roles) ? roles : [];
+  const cleanRoles = rolesArr.filter((r) => ROLE_OPTIONS.includes(r as (typeof ROLE_OPTIONS)[number]));
 
-  const pattern = `%${normalized}%`;
-  let query = supabase
-    .from("profiles")
-    .select(PROFILE_SELECT)
-    .eq("is_public", true)
-    .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
-    .order("username", { ascending: true })
-    .limit(limit);
+  const { data, error } = await supabase.rpc("get_recommended_people", {
+    p_roles: cleanRoles,
+    p_limit: limit,
+    p_cursor: cursor || null,
+  });
 
-  const rolesFilter = roles?.length ? buildRolesFilter(roles) : null;
-  if (rolesFilter) {
-    query = query.or(rolesFilter);
-  }
+  if (error) return { data: [], nextCursor: null, error };
+  const rows = (data ?? []) as PublicProfile[];
+  const nextCursor = rows.length >= limit && rows[rows.length - 1]?.id
+    ? encodePeopleCursor(rows[rows.length - 1].id)
+    : null;
+  return { data: rows, nextCursor, error: null };
+}
 
-  const { data, error } = await query;
-  if (error) return { data: [], error };
-  return { data: (data ?? []) as PublicProfile[], error: null };
+export type SearchPeopleOptions = {
+  q: string;
+  roles?: string[];
+  limit: number;
+  cursor?: string | null;
+};
+
+export async function searchPeople(
+  options: SearchPeopleOptions
+): Promise<{ data: PublicProfile[]; nextCursor: string | null; error: unknown }> {
+  const { q, roles = [], limit = 15, cursor = null } = options;
+  const normalized = q.trim();
+  if (!normalized) return { data: [], nextCursor: null, error: null };
+
+  const rolesArr = Array.isArray(roles) ? roles : [];
+  const cleanRoles = rolesArr.filter((r) => ROLE_OPTIONS.includes(r as (typeof ROLE_OPTIONS)[number]));
+
+  const { data, error } = await supabase.rpc("search_people", {
+    p_q: normalized,
+    p_roles: cleanRoles,
+    p_limit: limit,
+    p_cursor: cursor || null,
+  });
+
+  if (error) return { data: [], nextCursor: null, error };
+  const rows = (data ?? []) as PublicProfile[];
+  const nextCursor = rows.length >= limit && rows[rows.length - 1]?.id
+    ? encodePeopleCursor(rows[rows.length - 1].id)
+    : null;
+  return { data: rows, nextCursor, error: null };
 }
 
 export async function getFollowingIds(): Promise<{

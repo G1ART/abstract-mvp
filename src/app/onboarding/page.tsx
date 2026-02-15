@@ -6,6 +6,7 @@ import {
   getSession,
   sendPasswordReset,
 } from "@/lib/supabase/auth";
+import { ensureFreeEntitlement } from "@/lib/entitlements";
 import { checkUsernameExists, getMyProfile, upsertProfile } from "@/lib/supabase/profiles";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
@@ -32,7 +33,10 @@ export default function OnboardingPage() {
       }
       setUserEmail(session.user.email ?? null);
       const { data: profile } = await getMyProfile();
-      if (profile) router.replace("/feed?tab=all&sort=latest");
+      if (profile) {
+        await ensureFreeEntitlement(session.user.id);
+        router.replace("/feed?tab=all&sort=latest");
+      }
     });
   }, [router]);
 
@@ -88,6 +92,7 @@ export default function OnboardingPage() {
       return;
     }
 
+    await ensureFreeEntitlement(session.user.id);
     router.replace("/feed?tab=all&sort=latest");
   }
 
