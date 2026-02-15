@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState, KeyboardEvent, useCallback } from "react";
+import { FormEvent, useEffect, useState, useRef, KeyboardEvent, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
@@ -23,6 +23,16 @@ import {
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
 const PROFILE_UPDATED_KEY = "profile_updated";
+
+function payloadEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 type Profile = {
   id: string;
@@ -225,8 +235,11 @@ export default function SettingsPage() {
   const [programFocus, setProgramFocus] = useState<string[]>([]);
   const [profileDetailsOpen, setProfileDetailsOpen] = useState(false);
   const [hasOpenedDetails, setHasOpenedDetails] = useState(false);
+  const initialBaseRef = useRef<Record<string, unknown> | null>(null);
+  const initialDetailsRef = useRef<Record<string, unknown> | null>(null);
   const [maxSelectMessage, setMaxSelectMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -292,6 +305,48 @@ export default function SettingsPage() {
           setAffiliation((p as Profile).affiliation ?? "");
           setProgramFocus((p as Profile).program_focus ?? []);
         }
+
+        const w = (p as Profile)?.website ?? "";
+        const webNorm = !w || w === "https://" || w === "http://" ? null : w.trim() || null;
+        const ed = (p as Profile)?.education;
+        const eduArr = Array.isArray(ed) ? ed : [];
+        const r = (p as Profile)?.roles ?? [];
+        const rolesArr = Array.isArray(r) ? r : [];
+        const main = (p as Profile)?.main_role ?? "";
+        const mainNorm = main && rolesArr.includes(main) ? main : rolesArr[0] ?? main;
+        initialBaseRef.current = {
+          display_name: ((p as Profile)?.display_name ?? "").trim() || null,
+          bio: ((p as Profile)?.bio ?? "").trim() || null,
+          location: ((p as Profile)?.location ?? "").trim() || null,
+          website: webNorm,
+          main_role: mainNorm || null,
+          roles: [...rolesArr].sort(),
+          is_public: (p as Profile)?.is_public ?? true,
+          education: (eduArr as Array<{ school?: string; program?: string; year?: unknown; type?: string }>).map((x) => ({
+            school: (x.school ?? "").trim() || null,
+            program: (x.program ?? "").trim() || null,
+            year: x.year ?? null,
+            type: (x.type ?? "").trim() || null,
+          })),
+        };
+
+        const src = d ?? (p as Profile);
+        const c = src?.city ?? ""; const reg = src?.region ?? ""; const ctry = src?.country ?? "";
+        initialDetailsRef.current = {
+          career_stage: ((d ?? p as Profile)?.career_stage ?? "").trim() || null,
+          age_band: ((d ?? p as Profile)?.age_band ?? "").trim() || null,
+          city: c.trim() || null,
+          region: reg.trim() || null,
+          country: ctry.trim() || null,
+          themes: [...((d?.themes ?? (p as Profile)?.themes) ?? [])].sort(),
+          mediums: [...((d?.mediums ?? (p as Profile)?.mediums) ?? [])].sort(),
+          styles: [...((d?.styles ?? (p as Profile)?.styles) ?? [])].sort(),
+          keywords: [...((d?.keywords ?? (p as Profile)?.keywords) ?? [])].sort(),
+          price_band: ((d?.collector_price_band ?? (p as Profile)?.price_band) ?? "").trim() || null,
+          acquisition_channels: [...((d?.collector_acquisition_channels ?? (p as Profile)?.acquisition_channels) ?? [])].sort(),
+          affiliation: ((d?.affiliation ?? (p as Profile)?.affiliation) ?? "").trim() || null,
+          program_focus: [...((d?.program_focus ?? (p as Profile)?.program_focus) ?? [])].sort(),
+        };
       }
     );
   }, []);
@@ -338,6 +393,7 @@ export default function SettingsPage() {
     e.preventDefault();
     setError(null);
     setWarning(null);
+    setInfo(null);
     setSaved(false);
 
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
@@ -370,6 +426,54 @@ export default function SettingsPage() {
       program_focus: programFocus,
     });
 
+    const websiteVal = (website ?? "").trim();
+    const websiteFinal =
+      !websiteVal || websiteVal === "https://" || websiteVal === "http://"
+        ? null
+        : websiteVal;
+
+    const sanitizedBaseSnap: Record<string, unknown> = {
+      display_name: sanitized.display_name,
+      bio: sanitized.bio,
+      location: sanitized.location,
+      website: websiteFinal,
+      main_role: finalRoles[0] ?? null,
+      roles: [...finalRoles].sort(),
+      is_public: isPublic,
+      education: ((sanitized.education ?? []) as { school?: string | null; program?: string | null; year?: number | null; type?: string | null }[]).map((row) => ({
+        school: row.school ?? null,
+        program: row.program ?? null,
+        year: row.year ?? null,
+        type: row.type ?? null,
+      })),
+    };
+
+    const sanitizedDetailsSnap: Record<string, unknown> = {
+      career_stage: (careerStage ?? "").trim() || null,
+      age_band: (ageBand ?? "").trim() || null,
+      city: (city ?? "").trim() || null,
+      region: (region ?? "").trim() || null,
+      country: (country ?? "").trim() || null,
+      themes: [...(themes ?? [])].sort(),
+      mediums: [...(mediums ?? [])].sort(),
+      styles: [...(styles ?? [])].sort(),
+      keywords: [...(keywords ?? [])].sort(),
+      price_band: (priceBand ?? "").trim() || null,
+      acquisition_channels: [...(acquisitionChannels ?? [])].sort(),
+      affiliation: (affiliation ?? "").trim() || null,
+      program_focus: [...(programFocus ?? [])].sort(),
+    };
+
+    const isBaseDirty = !payloadEqual(initialBaseRef.current, sanitizedBaseSnap);
+    const isDetailsDirty =
+      hasOpenedDetails &&
+      !payloadEqual(initialDetailsRef.current, sanitizedDetailsSnap);
+
+    if (!isBaseDirty && !isDetailsDirty) {
+      setInfo(t("common.noChanges"));
+      return;
+    }
+
     const fullProfile = {
       username: username ?? undefined,
       display_name: sanitized.display_name ?? undefined,
@@ -390,10 +494,6 @@ export default function SettingsPage() {
       program_focus: sanitized.program_focus ?? undefined,
     };
     const { score } = computeCompleteness(fullProfile);
-
-    const websiteVal = (sanitized.website ?? "").trim();
-    const websiteFinal =
-      !websiteVal || websiteVal === "https://" ? null : websiteVal;
 
     const payloadBase: UpdateProfileParams = {
       display_name: sanitized.display_name,
@@ -432,37 +532,42 @@ export default function SettingsPage() {
 
     setSaving(true);
 
-    const baseRes = await updateMyProfile(payloadBase);
-    if (baseRes.error) {
-      setSaving(false);
-      if (process.env.NODE_ENV === "development") {
-        const err = baseRes.error as { code?: string; details?: string; hint?: string; message?: string };
-        console.warn("settings-save-failed", {
-          error: baseRes.error,
-          payloadBase,
-          payloadDetails,
-          code: err?.code,
-          details: err?.details,
-          hint: err?.hint,
-        });
-        const msg = baseRes.error instanceof Error ? baseRes.error.message : String(baseRes.error);
-        setError(err?.details ? `${msg} — ${err.details}` : err?.hint ? `${msg} (${err.hint})` : msg);
-      } else {
-        setError("Failed to save profile");
+    if (isBaseDirty) {
+      const baseRes = await updateMyProfile(payloadBase);
+      if (baseRes.error) {
+        setSaving(false);
+        const err = baseRes.error as { code?: string; message?: string; details?: string; hint?: string };
+        if (process.env.NODE_ENV === "development") {
+          console.warn("settings-save-failed", {
+            error: baseRes.error,
+            basePayload: payloadBase,
+            detailsPayload: payloadDetails,
+            code: err?.code,
+            details: err?.details,
+            hint: err?.hint,
+          });
+          const code = err?.code ? `[${err.code}] ` : "";
+          const msg = baseRes.error instanceof Error ? baseRes.error.message : String(baseRes.error);
+          setError(
+            `${code}${msg}${err?.details ? ` — ${err.details}` : ""}${err?.hint ? ` (${err.hint})` : ""}`
+          );
+        } else {
+          setError("Failed to save profile");
+        }
+        return;
       }
-      return;
     }
 
     let detailsErr: unknown = null;
-    if (hasOpenedDetails) {
+    if (isDetailsDirty) {
       const detailsRes = await upsertMyProfileDetails(payloadDetails);
       detailsErr = detailsRes.error;
       if (detailsErr && process.env.NODE_ENV === "development") {
-        const err = detailsErr as { code?: string; details?: string; hint?: string; message?: string };
+        const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
         console.warn("settings-save-failed", {
           error: detailsErr,
-          payloadBase,
-          payloadDetails,
+          basePayload: payloadBase,
+          detailsPayload: payloadDetails,
           code: err?.code,
           details: err?.details,
           hint: err?.hint,
@@ -473,11 +578,11 @@ export default function SettingsPage() {
     setSaving(false);
 
     if (detailsErr) {
-      const msg = detailsErr instanceof Error ? detailsErr.message : String(detailsErr);
+      const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
       setWarning(
         process.env.NODE_ENV === "development"
-          ? `Saved profile, but failed to save details: ${msg}`
-          : "Saved profile, but failed to save details"
+          ? `${t("settings.savePartialWarning")}: ${err?.code ? `[${err.code}] ` : ""}${detailsErr instanceof Error ? detailsErr.message : String(detailsErr)}`
+          : t("settings.savePartialWarning")
       );
     }
 
@@ -826,6 +931,11 @@ export default function SettingsPage() {
             {warning && (
               <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded">
                 {warning}
+              </p>
+            )}
+            {info && (
+              <p className="text-sm text-zinc-600 bg-zinc-100 px-3 py-2 rounded">
+                {info}
               </p>
             )}
             {saved && (
