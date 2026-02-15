@@ -244,6 +244,59 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isSavingRef = useRef(false);
+  const [debugEvents, setDebugEvents] = useState<
+    Array<{
+      step: string;
+      start: number;
+      end?: number;
+      durationMs?: number;
+      timeout?: boolean;
+      error?: { code?: string; message?: string; details?: string; hint?: string };
+    }>
+  >([]);
+
+  const SAVE_TIMEOUT_MS = 8000;
+  const isDev = process.env.NODE_ENV === "development";
+
+  async function withTimeout<T>(
+    label: string,
+    fn: () => Promise<T>
+  ): Promise<{ ok: true; data: T } | { ok: false; timeout: true } | { ok: false; error: unknown }> {
+    const start = Date.now();
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timeout after ${SAVE_TIMEOUT_MS}ms`)), SAVE_TIMEOUT_MS)
+    );
+    try {
+      const data = await Promise.race([fn(), timeoutPromise]);
+      const end = Date.now();
+      setDebugEvents((prev) =>
+        prev.concat({ step: label, start, end, durationMs: end - start })
+      );
+      return { ok: true, data };
+    } catch (e) {
+      const end = Date.now();
+      const isTimeout = e instanceof Error && e.message.startsWith("Timeout");
+      const err = e as { code?: string; message?: string; details?: string; hint?: string };
+      setDebugEvents((prev) =>
+        prev.concat({
+          step: label,
+          start,
+          end,
+          durationMs: end - start,
+          timeout: isTimeout,
+          error: {
+            code: err?.code,
+            message: err?.message ?? (e instanceof Error ? e.message : String(e)),
+            details: err?.details,
+            hint: err?.hint,
+          },
+        })
+      );
+      if (isTimeout) return { ok: false, timeout: true };
+      return { ok: false, error: e };
+    }
+  }
 
   useEffect(() => {
     if (maxSelectMessage) {
@@ -391,10 +444,12 @@ export default function SettingsPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
+    if (isSavingRef.current) return;
     setError(null);
     setWarning(null);
     setInfo(null);
     setSaved(false);
+    setDebugEvents([]);
 
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {
@@ -530,74 +585,76 @@ export default function SettingsPage() {
       program_focus: programFocus,
     };
 
+    isSavingRef.current = true;
     setSaving(true);
 
+    let baseSucceeded = false;
+    let detailsErr: unknown = null;
+
     if (isBaseDirty) {
-      const baseRes = await updateMyProfile(payloadBase);
-      if (baseRes.error) {
+      const baseRes = await withTimeout("updateProfiles", async () => {
+        const r = await updateMyProfile(payloadBase);
+        if (r.error) throw r.error;
+        return r.data;
+      });
+      if (!baseRes.ok) {
+        isSavingRef.current = false;
         setSaving(false);
-        const err = baseRes.error as { code?: string; message?: string; details?: string; hint?: string };
-        if (process.env.NODE_ENV === "development") {
-          console.warn("settings-save-failed", {
-            error: baseRes.error,
-            basePayload: payloadBase,
-            detailsPayload: payloadDetails,
-            code: err?.code,
-            details: err?.details,
-            hint: err?.hint,
-          });
-          const code = err?.code ? `[${err.code}] ` : "";
-          const msg = baseRes.error instanceof Error ? baseRes.error.message : String(baseRes.error);
-          setError(
-            `${code}${msg}${err?.details ? ` — ${err.details}` : ""}${err?.hint ? ` (${err.hint})` : ""}`
-          );
+        if (baseRes.timeout) {
+          setError(isDev ? "Failed at updateProfiles (timeout)" : "Failed to save profile");
         } else {
-          setError("Failed to save profile");
+          const err = baseRes.error as { code?: string; message?: string; details?: string; hint?: string };
+          setError(
+            isDev
+              ? `Failed at updateProfiles: ${err?.code ? `[${err.code}] ` : ""}${err?.message ?? String(baseRes.error)}${err?.details ? ` — ${err.details}` : ""}${err?.hint ? ` (${err.hint})` : ""}`
+              : "Failed to save profile"
+          );
         }
         return;
       }
+      baseSucceeded = true;
     }
 
-    let detailsErr: unknown = null;
     if (isDetailsDirty) {
-      const detailsRes = await upsertMyProfileDetails(payloadDetails);
-      detailsErr = detailsRes.error;
-      if (detailsErr && process.env.NODE_ENV === "development") {
-        const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
-        console.warn("settings-save-failed", {
-          error: detailsErr,
-          basePayload: payloadBase,
-          detailsPayload: payloadDetails,
-          code: err?.code,
-          details: err?.details,
-          hint: err?.hint,
-        });
+      const detailsRes = await withTimeout("upsertProfileDetails", async () => {
+        const r = await upsertMyProfileDetails(payloadDetails);
+        if (r.error) throw r.error;
+        return r.data;
+      });
+      if (!detailsRes.ok) {
+        detailsErr = detailsRes.timeout ? new Error("Timeout") : detailsRes.error;
+        if (isDev) {
+          const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
+          setWarning(
+            `Details failed (upsertProfileDetails): ${err?.code ? `[${err.code}] ` : ""}${detailsErr instanceof Error ? detailsErr.message : String(detailsErr)}`
+          );
+        } else {
+          setWarning(t("settings.savePartialWarning"));
+        }
       }
     }
 
+    const postRes = await withTimeout("postSaveRefresh", async () => {
+      const { data: refreshed } = await getMyProfile();
+      const profileUsername =
+        (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
+      if (profileUsername && !detailsErr) {
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+        }
+        router.push(`/u/${profileUsername}`);
+      } else if (baseSucceeded || (isDetailsDirty && !detailsErr)) {
+        setSaved(true);
+      }
+      return null;
+    });
+
+    if (!postRes.ok && isDev) {
+      setError(`Failed at postSaveRefresh: ${postRes.timeout ? "timeout" : String(postRes.error)}`);
+    }
+
+    isSavingRef.current = false;
     setSaving(false);
-
-    if (detailsErr) {
-      const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
-      setWarning(
-        process.env.NODE_ENV === "development"
-          ? `${t("settings.savePartialWarning")}: ${err?.code ? `[${err.code}] ` : ""}${detailsErr instanceof Error ? detailsErr.message : String(detailsErr)}`
-          : t("settings.savePartialWarning")
-      );
-    }
-
-    const { data: refreshed } = await getMyProfile();
-    const profileUsername =
-      (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
-
-    if (profileUsername && !detailsErr) {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
-      }
-      router.push(`/u/${profileUsername}`);
-    } else {
-      setSaved(true);
-    }
   }
 
   return (
@@ -945,11 +1002,46 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50 inline-flex items-center gap-2"
             >
+              {saving && (
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />
+              )}
               {saving ? t("common.loading") : t("common.save")}
             </button>
           </form>
+        )}
+
+        {isDev && debugEvents.length > 0 && (
+          <div className="mt-8 rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm">
+            <h3 className="mb-2 font-medium text-zinc-800">Save debug</h3>
+            <pre className="mb-3 max-h-48 overflow-auto rounded bg-zinc-100 p-2 text-xs">
+              {JSON.stringify(
+                debugEvents.map((ev) => ({
+                  step: ev.step,
+                  durationMs: ev.durationMs,
+                  timeout: ev.timeout,
+                  error: ev.error,
+                })),
+                null,
+                2
+              )}
+            </pre>
+            <button
+              type="button"
+              onClick={() => {
+                const json = JSON.stringify(
+                  { ts: Date.now(), events: debugEvents },
+                  null,
+                  2
+                );
+                void navigator.clipboard.writeText(json);
+              }}
+              className="rounded border border-zinc-400 px-2 py-1 text-xs hover:bg-zinc-200"
+            >
+              Copy debug
+            </button>
+          </div>
         )}
       </main>
     </AuthGate>

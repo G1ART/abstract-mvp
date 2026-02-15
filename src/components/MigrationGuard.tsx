@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import { checkSupabaseMigrations } from "@/lib/supabase/migrationGuard";
 
 const STORAGE_KEY = "ab_migration_check_done";
@@ -21,9 +22,12 @@ function showToast(message: string) {
 
 export function MigrationGuard() {
   const didRun = useRef(false);
+  const pathname = usePathname();
 
   useEffect(() => {
-    if (typeof window === "undefined" || didRun.current) return;
+    if (typeof window === "undefined") return;
+    if (pathname === "/settings") return;
+    if (didRun.current) return;
     didRun.current = true;
 
     try {
@@ -57,7 +61,7 @@ export function MigrationGuard() {
       .catch(() => {
         /* never block UI */
       });
-  }, []);
+  }, [pathname]);
 
   return null;
 }
