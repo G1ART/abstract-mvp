@@ -149,6 +149,63 @@ export type UpdateProfileParams = {
   profile_updated_at?: string | null;
 };
 
+/** Base-only columns for profiles table (no details). */
+const BASE_PROFILE_KEYS = [
+  "display_name",
+  "bio",
+  "location",
+  "website",
+  "avatar_url",
+  "main_role",
+  "roles",
+  "is_public",
+  "education",
+  "profile_completeness",
+  "profile_updated_at",
+] as const;
+
+export type UpdateProfileBaseParams = {
+  display_name?: string | null;
+  bio?: string | null;
+  location?: string | null;
+  website?: string | null;
+  avatar_url?: string | null;
+  main_role?: string | null;
+  roles?: string[] | null;
+  is_public?: boolean;
+  education?: EducationEntry[] | null;
+  profile_completeness?: number | null;
+  profile_updated_at?: string | null;
+};
+
+/** Update only base profile fields. Returns id, username. */
+export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { data: null, error: new Error("Not authenticated") };
+
+  const updates: Record<string, unknown> = {};
+  for (const key of BASE_PROFILE_KEYS) {
+    if (key in partial && partial[key] !== undefined) {
+      updates[key] = partial[key];
+    }
+  }
+  if (Object.keys(updates).length === 0) {
+    return { data: null, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(updates)
+    .eq("id", session.user.id)
+    .select("id, username")
+    .single();
+
+  return { data, error };
+}
+
 export async function updateMyProfile(partial: UpdateProfileParams) {
   const {
     data: { session },

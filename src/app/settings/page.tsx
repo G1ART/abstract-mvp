@@ -7,13 +7,17 @@ import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import {
   getMyProfile,
-  updateMyProfile,
-  type UpdateProfileParams,
+  updateMyProfileBase,
   type EducationEntry,
 } from "@/lib/supabase/profiles";
 import { getMyProfileDetails, upsertMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { computeCompleteness } from "@/lib/profile/completeness";
-import { sanitizeProfileDetails } from "@/lib/profile/sanitizeProfileDetails";
+import {
+  normalizeProfileBase,
+  normalizeProfileDetails,
+  type NormalizedBasePayload,
+  type NormalizedDetailsPayload,
+} from "@/lib/profile/normalizeProfilePayload";
 import {
   TAXONOMY,
   TAXONOMY_LIMITS,
@@ -245,54 +249,26 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isSavingRef = useRef(false);
-  const [debugEvents, setDebugEvents] = useState<
-    Array<{
-      step: string;
-      start: number;
-      end?: number;
-      durationMs?: number;
-      timeout?: boolean;
-      error?: { code?: string; message?: string; details?: string; hint?: string };
-    }>
-  >([]);
+  const [lastError, setLastError] = useState<{
+    step: "base" | "details";
+    supabaseError: { code?: string; message?: string; details?: string; hint?: string };
+    normalizedPayload: Record<string, unknown>;
+  } | null>(null);
 
   const SAVE_TIMEOUT_MS = 8000;
   const isDev = process.env.NODE_ENV === "development";
 
   async function withTimeout<T>(
-    label: string,
     fn: () => Promise<T>
   ): Promise<{ ok: true; data: T } | { ok: false; timeout: true } | { ok: false; error: unknown }> {
-    const start = Date.now();
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Timeout after ${SAVE_TIMEOUT_MS}ms`)), SAVE_TIMEOUT_MS)
+      setTimeout(() => reject(new Error("Timeout")), SAVE_TIMEOUT_MS)
     );
     try {
       const data = await Promise.race([fn(), timeoutPromise]);
-      const end = Date.now();
-      setDebugEvents((prev) =>
-        prev.concat({ step: label, start, end, durationMs: end - start })
-      );
       return { ok: true, data };
     } catch (e) {
-      const end = Date.now();
-      const isTimeout = e instanceof Error && e.message.startsWith("Timeout");
-      const err = e as { code?: string; message?: string; details?: string; hint?: string };
-      setDebugEvents((prev) =>
-        prev.concat({
-          step: label,
-          start,
-          end,
-          durationMs: end - start,
-          timeout: isTimeout,
-          error: {
-            code: err?.code,
-            message: err?.message ?? (e instanceof Error ? e.message : String(e)),
-            details: err?.details,
-            hint: err?.hint,
-          },
-        })
-      );
+      const isTimeout = e instanceof Error && e.message === "Timeout";
       if (isTimeout) return { ok: false, timeout: true };
       return { ok: false, error: e };
     }
@@ -359,47 +335,35 @@ export default function SettingsPage() {
           setProgramFocus((p as Profile).program_focus ?? []);
         }
 
-        const w = (p as Profile)?.website ?? "";
-        const webNorm = !w || w === "https://" || w === "http://" ? null : w.trim() || null;
-        const ed = (p as Profile)?.education;
-        const eduArr = Array.isArray(ed) ? ed : [];
-        const r = (p as Profile)?.roles ?? [];
-        const rolesArr = Array.isArray(r) ? r : [];
-        const main = (p as Profile)?.main_role ?? "";
-        const mainNorm = main && rolesArr.includes(main) ? main : rolesArr[0] ?? main;
-        initialBaseRef.current = {
-          display_name: ((p as Profile)?.display_name ?? "").trim() || null,
-          bio: ((p as Profile)?.bio ?? "").trim() || null,
-          location: ((p as Profile)?.location ?? "").trim() || null,
-          website: webNorm,
-          main_role: mainNorm || null,
-          roles: [...rolesArr].sort(),
+        const baseForNorm = {
+          display_name: (p as Profile)?.display_name ?? "",
+          bio: (p as Profile)?.bio ?? "",
+          location: (p as Profile)?.location ?? "",
+          website: (p as Profile)?.website ?? "",
+          main_role: (p as Profile)?.main_role ?? "",
+          roles: (p as Profile)?.roles ?? [],
           is_public: (p as Profile)?.is_public ?? true,
-          education: (eduArr as Array<{ school?: string; program?: string; year?: unknown; type?: string }>).map((x) => ({
-            school: (x.school ?? "").trim() || null,
-            program: (x.program ?? "").trim() || null,
-            year: x.year ?? null,
-            type: (x.type ?? "").trim() || null,
-          })),
+          education: (p as Profile)?.education ?? [],
         };
+        initialBaseRef.current = normalizeProfileBase(baseForNorm) as unknown as Record<string, unknown>;
 
         const src = d ?? (p as Profile);
-        const c = src?.city ?? ""; const reg = src?.region ?? ""; const ctry = src?.country ?? "";
-        initialDetailsRef.current = {
-          career_stage: ((d ?? p as Profile)?.career_stage ?? "").trim() || null,
-          age_band: ((d ?? p as Profile)?.age_band ?? "").trim() || null,
-          city: c.trim() || null,
-          region: reg.trim() || null,
-          country: ctry.trim() || null,
-          themes: [...((d?.themes ?? (p as Profile)?.themes) ?? [])].sort(),
-          mediums: [...((d?.mediums ?? (p as Profile)?.mediums) ?? [])].sort(),
-          styles: [...((d?.styles ?? (p as Profile)?.styles) ?? [])].sort(),
-          keywords: [...((d?.keywords ?? (p as Profile)?.keywords) ?? [])].sort(),
-          price_band: ((d?.collector_price_band ?? (p as Profile)?.price_band) ?? "").trim() || null,
-          acquisition_channels: [...((d?.collector_acquisition_channels ?? (p as Profile)?.acquisition_channels) ?? [])].sort(),
-          affiliation: ((d?.affiliation ?? (p as Profile)?.affiliation) ?? "").trim() || null,
-          program_focus: [...((d?.program_focus ?? (p as Profile)?.program_focus) ?? [])].sort(),
+        const detailsForNorm = {
+          career_stage: src?.career_stage ?? "",
+          age_band: src?.age_band ?? "",
+          city: src?.city ?? "",
+          region: src?.region ?? "",
+          country: src?.country ?? "",
+          themes: src?.themes ?? [],
+          mediums: src?.mediums ?? [],
+          styles: src?.styles ?? [],
+          keywords: src?.keywords ?? [],
+          price_band: (d as { collector_price_band?: string } | undefined)?.collector_price_band ?? (p as Profile)?.price_band ?? "",
+          acquisition_channels: (d as { collector_acquisition_channels?: string[] } | undefined)?.collector_acquisition_channels ?? (p as Profile)?.acquisition_channels ?? [],
+          affiliation: src?.affiliation ?? "",
+          program_focus: src?.program_focus ?? [],
         };
+        initialDetailsRef.current = normalizeProfileDetails(detailsForNorm) as unknown as Record<string, unknown>;
       }
     );
   }, []);
@@ -449,7 +413,7 @@ export default function SettingsPage() {
     setWarning(null);
     setInfo(null);
     setSaved(false);
-    setDebugEvents([]);
+    setLastError(null);
 
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {
@@ -460,11 +424,18 @@ export default function SettingsPage() {
       return;
     }
 
-    const sanitized = sanitizeProfileDetails({
+    const normalizedBase: NormalizedBasePayload = normalizeProfileBase({
       display_name: displayName,
       bio,
       location,
       website,
+      main_role: mainRole,
+      roles: finalRoles,
+      is_public: isPublic,
+      education,
+    });
+
+    const normalizedDetails: NormalizedDetailsPayload = normalizeProfileDetails({
       career_stage: careerStage,
       age_band: ageBand,
       city,
@@ -474,55 +445,17 @@ export default function SettingsPage() {
       mediums,
       styles,
       keywords,
-      education,
       price_band: priceBand,
       acquisition_channels: acquisitionChannels,
       affiliation,
       program_focus: programFocus,
     });
 
-    const websiteVal = (website ?? "").trim();
-    const websiteFinal =
-      !websiteVal || websiteVal === "https://" || websiteVal === "http://"
-        ? null
-        : websiteVal;
-
-    const sanitizedBaseSnap: Record<string, unknown> = {
-      display_name: sanitized.display_name,
-      bio: sanitized.bio,
-      location: sanitized.location,
-      website: websiteFinal,
-      main_role: finalRoles[0] ?? null,
-      roles: [...finalRoles].sort(),
-      is_public: isPublic,
-      education: ((sanitized.education ?? []) as { school?: string | null; program?: string | null; year?: number | null; type?: string | null }[]).map((row) => ({
-        school: row.school ?? null,
-        program: row.program ?? null,
-        year: row.year ?? null,
-        type: row.type ?? null,
-      })),
-    };
-
-    const sanitizedDetailsSnap: Record<string, unknown> = {
-      career_stage: (careerStage ?? "").trim() || null,
-      age_band: (ageBand ?? "").trim() || null,
-      city: (city ?? "").trim() || null,
-      region: (region ?? "").trim() || null,
-      country: (country ?? "").trim() || null,
-      themes: [...(themes ?? [])].sort(),
-      mediums: [...(mediums ?? [])].sort(),
-      styles: [...(styles ?? [])].sort(),
-      keywords: [...(keywords ?? [])].sort(),
-      price_band: (priceBand ?? "").trim() || null,
-      acquisition_channels: [...(acquisitionChannels ?? [])].sort(),
-      affiliation: (affiliation ?? "").trim() || null,
-      program_focus: [...(programFocus ?? [])].sort(),
-    };
-
-    const isBaseDirty = !payloadEqual(initialBaseRef.current, sanitizedBaseSnap);
+    const baseSnap: Record<string, unknown> = { ...normalizedBase };
+    const detailsSnap: Record<string, unknown> = { ...normalizedDetails };
+    const isBaseDirty = !payloadEqual(initialBaseRef.current, baseSnap);
     const isDetailsDirty =
-      hasOpenedDetails &&
-      !payloadEqual(initialDetailsRef.current, sanitizedDetailsSnap);
+      hasOpenedDetails && !payloadEqual(initialDetailsRef.current, detailsSnap);
 
     if (!isBaseDirty && !isDetailsDirty) {
       setInfo(t("common.noChanges"));
@@ -531,59 +464,24 @@ export default function SettingsPage() {
 
     const fullProfile = {
       username: username ?? undefined,
-      display_name: sanitized.display_name ?? undefined,
+      display_name: normalizedBase.display_name ?? undefined,
       avatar_url: avatarUrl ?? undefined,
-      bio: sanitized.bio ?? undefined,
-      main_role: finalRoles[0] ?? mainRole,
-      roles: finalRoles,
-      city: sanitized.city ?? undefined,
-      region: sanitized.region ?? undefined,
-      country: sanitized.country ?? undefined,
-      themes: sanitized.themes ?? undefined,
-      mediums: sanitized.mediums ?? undefined,
-      styles: sanitized.styles ?? undefined,
-      education: sanitized.education ?? undefined,
-      price_band: sanitized.price_band ?? undefined,
-      acquisition_channels: sanitized.acquisition_channels ?? undefined,
-      affiliation: sanitized.affiliation ?? undefined,
-      program_focus: sanitized.program_focus ?? undefined,
+      bio: normalizedBase.bio ?? undefined,
+      main_role: normalizedBase.main_role ?? undefined,
+      roles: normalizedBase.roles,
+      city: normalizedDetails.city ?? undefined,
+      region: normalizedDetails.region ?? undefined,
+      country: normalizedDetails.country ?? undefined,
+      themes: normalizedDetails.themes ?? undefined,
+      mediums: normalizedDetails.mediums ?? undefined,
+      styles: normalizedDetails.styles ?? undefined,
+      education: normalizedBase.education ?? undefined,
+      price_band: normalizedDetails.price_band ?? undefined,
+      acquisition_channels: normalizedDetails.acquisition_channels ?? undefined,
+      affiliation: normalizedDetails.affiliation ?? undefined,
+      program_focus: normalizedDetails.program_focus ?? undefined,
     };
     const { score } = computeCompleteness(fullProfile);
-
-    const payloadBase: UpdateProfileParams = {
-      display_name: sanitized.display_name,
-      bio: sanitized.bio,
-      location: sanitized.location,
-      website: websiteFinal,
-      main_role: finalRoles[0] ?? null,
-      roles: finalRoles,
-      is_public: isPublic,
-      education:
-        sanitized.education?.map((row) => ({
-          school: row.school,
-          program: row.program,
-          year: row.year,
-          type: row.type,
-        })) ?? null,
-      profile_completeness: score,
-      profile_updated_at: new Date().toISOString(),
-    };
-
-    const payloadDetails = {
-      career_stage: careerStage,
-      age_band: ageBand,
-      city,
-      region,
-      country,
-      themes,
-      mediums,
-      styles,
-      keywords,
-      price_band: priceBand,
-      acquisition_channels: acquisitionChannels,
-      affiliation,
-      program_focus: programFocus,
-    };
 
     isSavingRef.current = true;
     setSaving(true);
@@ -592,49 +490,85 @@ export default function SettingsPage() {
     let detailsErr: unknown = null;
 
     if (isBaseDirty) {
-      const baseRes = await withTimeout("updateProfiles", async () => {
-        const r = await updateMyProfile(payloadBase);
+      const payloadBase = {
+        ...normalizedBase,
+        profile_completeness: score,
+        profile_updated_at: new Date().toISOString(),
+      };
+      const baseRes = await withTimeout(async () => {
+        const r = await updateMyProfileBase({
+          display_name: payloadBase.display_name,
+          bio: payloadBase.bio,
+          location: payloadBase.location,
+          website: payloadBase.website,
+          main_role: payloadBase.main_role,
+          roles: payloadBase.roles,
+          is_public: payloadBase.is_public,
+          education: payloadBase.education,
+          profile_completeness: payloadBase.profile_completeness,
+          profile_updated_at: payloadBase.profile_updated_at,
+        });
         if (r.error) throw r.error;
         return r.data;
       });
       if (!baseRes.ok) {
         isSavingRef.current = false;
         setSaving(false);
-        if (baseRes.timeout) {
-          setError(isDev ? "Failed at updateProfiles (timeout)" : "Failed to save profile");
-        } else {
-          const err = baseRes.error as { code?: string; message?: string; details?: string; hint?: string };
-          setError(
-            isDev
-              ? `Failed at updateProfiles: ${err?.code ? `[${err.code}] ` : ""}${err?.message ?? String(baseRes.error)}${err?.details ? ` — ${err.details}` : ""}${err?.hint ? ` (${err.hint})` : ""}`
-              : "Failed to save profile"
-          );
-        }
+        const isTimeout = "timeout" in baseRes && baseRes.timeout;
+        const errObj = !isTimeout && "error" in baseRes
+          ? (baseRes.error as { code?: string; message?: string; details?: string; hint?: string } | undefined)
+          : undefined;
+        setLastError({
+          step: "base",
+          supabaseError: {
+            code: errObj?.code,
+            message: isTimeout ? "Timeout" : (errObj?.message ?? String("error" in baseRes ? baseRes.error : "Unknown")),
+            details: errObj?.details,
+            hint: errObj?.hint,
+          },
+          normalizedPayload: payloadBase as unknown as Record<string, unknown>,
+        });
+        setError(
+          isTimeout
+            ? (isDev ? "Failed at base (timeout)" : "Failed to save profile")
+            : (isDev && errObj
+                ? `${errObj.code ? `[${errObj.code}] ` : ""}${errObj.message ?? ""}${errObj.details ? ` — ${errObj.details}` : ""}${errObj.hint ? ` (${errObj.hint})` : ""}`
+                : "Failed to save profile")
+        );
         return;
       }
       baseSucceeded = true;
     }
 
     if (isDetailsDirty) {
-      const detailsRes = await withTimeout("upsertProfileDetails", async () => {
-        const r = await upsertMyProfileDetails(payloadDetails);
+      const detailsRes = await withTimeout(async () => {
+        const r = await upsertMyProfileDetails(normalizedDetails);
         if (r.error) throw r.error;
         return r.data;
       });
       if (!detailsRes.ok) {
-        detailsErr = detailsRes.timeout ? new Error("Timeout") : detailsRes.error;
-        if (isDev) {
-          const err = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
-          setWarning(
-            `Details failed (upsertProfileDetails): ${err?.code ? `[${err.code}] ` : ""}${detailsErr instanceof Error ? detailsErr.message : String(detailsErr)}`
-          );
-        } else {
-          setWarning(t("settings.savePartialWarning"));
-        }
+        const detailsTimeout = "timeout" in detailsRes && detailsRes.timeout;
+        detailsErr = detailsTimeout ? new Error("Timeout") : ("error" in detailsRes ? detailsRes.error : new Error("Unknown"));
+        const errObj = detailsErr as { code?: string; message?: string; details?: string; hint?: string } | undefined;
+        setLastError({
+          step: "details",
+          supabaseError: {
+            code: errObj?.code,
+            message: detailsTimeout ? "Timeout" : (errObj?.message ?? String(detailsErr)),
+            details: errObj?.details,
+            hint: errObj?.hint,
+          },
+          normalizedPayload: detailsSnap,
+        });
+        setWarning(
+          baseSucceeded
+            ? (isDev ? "Base saved, details failed" : t("settings.savePartialWarning"))
+            : (isDev ? "Details failed" : t("settings.savePartialWarning"))
+        );
       }
     }
 
-    const postRes = await withTimeout("postSaveRefresh", async () => {
+    if (baseSucceeded || (isDetailsDirty && !detailsErr)) {
       const { data: refreshed } = await getMyProfile();
       const profileUsername =
         (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
@@ -643,14 +577,9 @@ export default function SettingsPage() {
           window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
         }
         router.push(`/u/${profileUsername}`);
-      } else if (baseSucceeded || (isDetailsDirty && !detailsErr)) {
+      } else {
         setSaved(true);
       }
-      return null;
-    });
-
-    if (!postRes.ok && isDev) {
-      setError(`Failed at postSaveRefresh: ${postRes.timeout ? "timeout" : String(postRes.error)}`);
     }
 
     isSavingRef.current = false;
@@ -1012,26 +941,29 @@ export default function SettingsPage() {
           </form>
         )}
 
-        {isDev && debugEvents.length > 0 && (
+        {isDev && lastError && (
           <div className="mt-8 rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm">
             <h3 className="mb-2 font-medium text-zinc-800">Save debug</h3>
+            <p className="mb-1 text-xs text-zinc-600">
+              step: <strong>{lastError.step}</strong>
+            </p>
+            <p className="mb-1 text-xs text-red-700">
+              code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}
+            </p>
+            {lastError.supabaseError.details && (
+              <p className="mb-1 text-xs text-zinc-700">details: {lastError.supabaseError.details}</p>
+            )}
+            {lastError.supabaseError.hint && (
+              <p className="mb-2 text-xs text-zinc-600">hint: {lastError.supabaseError.hint}</p>
+            )}
             <pre className="mb-3 max-h-48 overflow-auto rounded bg-zinc-100 p-2 text-xs">
-              {JSON.stringify(
-                debugEvents.map((ev) => ({
-                  step: ev.step,
-                  durationMs: ev.durationMs,
-                  timeout: ev.timeout,
-                  error: ev.error,
-                })),
-                null,
-                2
-              )}
+              {JSON.stringify(lastError.normalizedPayload, null, 2)}
             </pre>
             <button
               type="button"
               onClick={() => {
                 const json = JSON.stringify(
-                  { ts: Date.now(), events: debugEvents },
+                  { step: lastError.step, supabaseError: lastError.supabaseError, normalizedPayload: lastError.normalizedPayload, ts: Date.now() },
                   null,
                   2
                 );
