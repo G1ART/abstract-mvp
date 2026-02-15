@@ -36,7 +36,27 @@ export async function checkSupabaseMigrations(): Promise<MigrationCheckResult> {
     failed.push("artworks_artist_sort_order");
   }
 
-  // (c) Delete RLS - attempt benign delete (non-existent row)
+  // (c) AI recs tables
+  try {
+    const { error: embErr } = await supabase
+      .from("artwork_embeddings")
+      .select("artwork_id")
+      .limit(0);
+    if (embErr) failed.push("ai_embeddings");
+  } catch {
+    failed.push("ai_embeddings");
+  }
+  try {
+    const { error: tasteErr } = await supabase
+      .from("user_taste_profiles")
+      .select("user_id")
+      .limit(0);
+    if (tasteErr) failed.push("ai_taste_profiles");
+  } catch {
+    failed.push("ai_taste_profiles");
+  }
+
+  // (d) Delete RLS - attempt benign delete (non-existent row)
   try {
     const {
       data: { session },

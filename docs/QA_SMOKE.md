@@ -87,14 +87,20 @@
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 
-## 6. Profile Viewers (Entitlements skeleton)
+## 6. AI Recs v0
+
+- [ ] 좋아요 클릭 → taste profile 업데이트 (user_taste_profiles debug liked_count 증가)
+- [ ] Feed tab=all에서 3개 레인 (For You, Expand, Signals) 표시
+- [ ] embeddings null 상태에서도 fallback 동작 (popular + latest mix)
+
+## 7. Profile Viewers (Entitlements skeleton)
 
 - [ ] 내 프로필 `/u/<me>` 접속 시 (다른 계정으로) profile_views 이벤트 기록 (로그인 기준)
 - [ ] `/me`에서 "Profile views (last 7 days)" 카드 노출, count 증가
 - [ ] plan=free: viewer list 숨김, "Upgrade to see who viewed you" CTA만
 - [ ] plan=artist_pro (entitlements row 수동 업데이트): viewer list 10명 노출
 
-## 7. i18n
+## 8. i18n
 
 ### Cookie persist
 
@@ -110,7 +116,7 @@
 - [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
 - [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
-## 8. Migration Guard (개발 환경)
+## 9. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."
 - [ ] 프로덕션: 토스트 미표시, console.error만 (Sentry 연동 시 추적 가능)

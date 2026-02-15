@@ -1,15 +1,24 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
+import { getSession } from "@/lib/supabase/auth";
 import { FeedContent } from "@/components/FeedContent";
 
 export function FeedClient() {
   const router = useRouter();
   const { t } = useT();
   const searchParams = useSearchParams();
+  const [userId, setUserId] = useState<string | null>(null);
   const tab = (searchParams.get("tab") ?? "all") as "all" | "following";
   const sort = searchParams.get("sort") ?? "latest";
+
+  useEffect(() => {
+    getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id ?? null);
+    });
+  }, []);
 
   function setTab(newTab: "all" | "following") {
     router.push(`/feed?tab=${newTab}&sort=${sort}`);
@@ -67,7 +76,7 @@ export function FeedClient() {
           {t("nav.popular")}
         </button>
       </div>
-      <FeedContent tab={tab} sort={sortValue} />
+      <FeedContent tab={tab} sort={sortValue} userId={userId} />
     </main>
   );
 }

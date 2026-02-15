@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { updateTasteFromLike } from "@/lib/ai/taste";
 
 export async function isLiked(artworkId: string): Promise<boolean> {
   const {
@@ -20,10 +21,14 @@ export async function like(artworkId: string) {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { error: new Error("Not authenticated") };
-  return supabase.from("artwork_likes").insert({
+  const result = await supabase.from("artwork_likes").insert({
     artwork_id: artworkId,
     user_id: session.user.id,
   });
+  if (!result.error) {
+    updateTasteFromLike(session.user.id, artworkId).catch(() => {});
+  }
+  return result;
 }
 
 export async function unlike(artworkId: string) {

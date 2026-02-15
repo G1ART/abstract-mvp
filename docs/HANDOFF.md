@@ -186,8 +186,10 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - Bulk import (CSV/zip/AI extraction) 아직 제한적
 
 ## 12) Operational checklist
-### Supabase (People + Entitlements + Profile v0)
+### Supabase (People + Entitlements + Profile v0 + AI Recs)
 - [ ] `supabase/migrations/profile_v0_fields.sql` — profiles v0 columns + indexes
+- [ ] `supabase/migrations/ai_embeddings.sql` — artwork_embeddings + pgvector
+- [ ] `supabase/migrations/ai_taste_profiles.sql` — user_taste_profiles
 - [ ] `supabase/migrations/people_rpc.sql` — get_recommended_people (reason_tags), search_people
 - [ ] `supabase/migrations/entitlements_profile_views.sql` — entitlements, profile_views tables + RLS
 - [ ] `supabase/migrations/profile_views_rpc.sql` — get_profile_views_count, get_profile_viewers
@@ -339,6 +341,16 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 
 ### /me
 - "Profile completeness: X/100" 카드 + "Improve profile" CTA → /settings
+
+### AI Recs v0 skeleton (v1.16)
+- `artwork_embeddings`: artwork_id, image_embedding, text_embedding (vector 768), pgvector
+- `user_taste_profiles`: user_id, taste_embedding (vector 768), taste_updated_at, last_event_at, debug
+- `src/lib/ai/embeddingProvider.ts`: placeholder (returns null)
+- `src/lib/ai/vectorMath.ts`: averageVectors, cosineSimilarity, normalize
+- `src/lib/ai/taste.ts`: updateTasteFromLike (v0: debug counters when embeddings null)
+- Like action → updateTasteFromLike (best-effort)
+- `src/lib/recs/lanes.ts`: getForYou, getExpand, getSignals (v0 rule-based)
+- Feed 3 lanes: For You, Expand, Signals (tab=all)
 
 ### People 추천 reason (설명 가능한 추천)
 - `get_recommended_people` 반환: reason_tags (array), reason_detail (sharedThemesTop, sharedSchool)

@@ -10,10 +10,12 @@ import {
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
+import { getForYou, getExpand, getSignals } from "@/lib/recs/lanes";
 import {
   ArtistThreadCard,
   type ArtistThreadArtist,
 } from "./ArtistThreadCard";
+import { FeedLaneSection } from "./FeedLaneSection";
 
 const WORKS_PER_THREAD = 6;
 
@@ -25,9 +27,10 @@ type ThreadGroup = {
 type Props = {
   tab: "all" | "following";
   sort?: "latest" | "popular";
+  userId: string | null;
 };
 
-export function FeedContent({ tab, sort = "latest" }: Props) {
+export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const { t } = useT();
   const [threads, setThreads] = useState<ThreadGroup[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -130,6 +133,40 @@ export function FeedContent({ tab, sort = "latest" }: Props) {
 
   const isEmpty = threads.length === 0;
   const isFollowingEmpty = tab === "following" && isEmpty;
+
+  if (tab === "all") {
+    return (
+      <div>
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50"
+          >
+            {t("common.refresh")}
+          </button>
+        </div>
+        <FeedLaneSection
+          titleKey="feed.laneForYou"
+          hintKey="feed.laneForYouHint"
+          fetcher={(limit) => getForYou({ userId, limit })}
+          userId={userId}
+        />
+        <FeedLaneSection
+          titleKey="feed.laneExpand"
+          hintKey="feed.laneExpandHint"
+          fetcher={(limit) => getExpand({ userId, limit })}
+          userId={userId}
+        />
+        <FeedLaneSection
+          titleKey="feed.laneSignals"
+          hintKey="feed.laneSignalsHint"
+          fetcher={(limit) => getSignals({ userId, limit })}
+          userId={userId}
+        />
+      </div>
+    );
+  }
 
   const handleLikeUpdate = useCallback(
     (artworkId: string, liked: boolean, count: number) => {
