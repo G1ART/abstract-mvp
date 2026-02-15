@@ -118,11 +118,14 @@ export function PeopleClient() {
           cursor: null,
         });
         if (res.error) {
-          setError(res.error instanceof Error ? res.error.message : "Failed to load people");
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[People] searchPeople RPC error:", res.error);
+          }
+          setError(t("people.loadFailed"));
           return;
         }
-        setProfiles(res.data);
-        setNextCursor(res.nextCursor);
+        setProfiles(res.data ?? []);
+        setNextCursor(res.nextCursor ?? null);
       } else {
         const res = await getRecommendedPeople({
           roles: rolesArr,
@@ -130,18 +133,24 @@ export function PeopleClient() {
           cursor: null,
         });
         if (res.error) {
-          setError(res.error instanceof Error ? res.error.message : "Failed to load people");
+          if (process.env.NODE_ENV === "development") {
+            console.warn("[People] getRecommendedPeople RPC error:", res.error);
+          }
+          setError(t("people.loadFailed"));
           return;
         }
-        setProfiles(res.data);
-        setNextCursor(res.nextCursor);
+        setProfiles(res.data ?? []);
+        setNextCursor(res.nextCursor ?? null);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      if (process.env.NODE_ENV === "development") {
+        console.warn("[People] fetch error:", err);
+      }
+      setError(t("people.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, [tab, debouncedSearch, rolesArr.join(",")]);
+  }, [tab, debouncedSearch, rolesArr.join(","), t]);
 
   useEffect(() => {
     fetchInitial();
@@ -274,9 +283,35 @@ export function PeopleClient() {
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : emptyRecommendations ? (
-          <p className="py-12 text-center text-zinc-600">{t("people.noRecommendations")}</p>
+          <div className="py-12 text-center">
+            <p className="mb-4 text-zinc-600">{t("people.noRecommendations")}</p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => searchInputRef.current?.focus()}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("people.trySearch")}
+              </button>
+              <a
+                href="/onboarding"
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("people.completeProfile")}
+              </a>
+            </div>
+          </div>
         ) : emptySearch ? (
-          <p className="py-12 text-center text-zinc-600">{t("people.noSearchResults")}</p>
+          <div className="py-12 text-center">
+            <p className="mb-4 text-zinc-600">{t("people.noSearchResults")}</p>
+            <button
+              type="button"
+              onClick={clearRoles}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {t("people.filterAll")}
+            </button>
+          </div>
         ) : (
           <>
             {tab === "recommended" && (
