@@ -11,6 +11,7 @@ import {
   type UpdateProfileParams,
   type EducationEntry,
 } from "@/lib/supabase/profiles";
+import { getMyProfileDetails, upsertMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { computeCompleteness } from "@/lib/profile/completeness";
 import { sanitizeProfileDetails } from "@/lib/profile/sanitizeProfileDetails";
 import {
@@ -237,40 +238,60 @@ export default function SettingsPage() {
   }, [maxSelectMessage]);
 
   useEffect(() => {
-    getMyProfile().then(({ data: profile, error: err }) => {
-      setLoading(false);
-      if (err) {
-        setError(err instanceof Error ? err.message : "Failed to load profile");
-        return;
+    Promise.all([getMyProfile(), getMyProfileDetails()]).then(
+      ([profileRes, detailsRes]) => {
+        setLoading(false);
+        const err = profileRes.error;
+        if (err) {
+          setError(err instanceof Error ? err.message : "Failed to load profile");
+          return;
+        }
+        const p = profileRes.data as Profile | null;
+        const d = detailsRes.data;
+        if (p) {
+          setUsername(p.username ?? null);
+          setAvatarUrl(p.avatar_url ?? null);
+          setDisplayName(p.display_name ?? "");
+          setBio(p.bio ?? "");
+          setLocation(p.location ?? "");
+          setWebsite(p.website ?? "");
+          setMainRole(p.main_role ?? "");
+          setRoles((p.roles as string[]) ?? []);
+          setIsPublic(p.is_public ?? true);
+          const ed = (p.education as EducationEntry[] | null) ?? [];
+          setEducation(ed.length ? ed : [{ school: "", program: "", year: "", type: null }]);
+        }
+        if (d) {
+          setCareerStage(d.career_stage ?? "");
+          setAgeBand(d.age_band ?? "");
+          setCity(d.city ?? "");
+          setRegion(d.region ?? "");
+          setCountry(d.country ?? "");
+          setThemes(d.themes ?? []);
+          setMediums(d.mediums ?? []);
+          setStyles(d.styles ?? []);
+          setKeywords(d.keywords ?? []);
+          setPriceBand(d.collector_price_band ?? "");
+          setAcquisitionChannels(d.collector_acquisition_channels ?? []);
+          setAffiliation(d.affiliation ?? "");
+          setProgramFocus(d.program_focus ?? []);
+        } else if (p) {
+          setCareerStage((p as Profile).career_stage ?? "");
+          setAgeBand((p as Profile).age_band ?? "");
+          setCity((p as Profile).city ?? "");
+          setRegion((p as Profile).region ?? "");
+          setCountry((p as Profile).country ?? "");
+          setThemes((p as Profile).themes ?? []);
+          setMediums((p as Profile).mediums ?? []);
+          setStyles((p as Profile).styles ?? []);
+          setKeywords((p as Profile).keywords ?? []);
+          setPriceBand((p as Profile).price_band ?? "");
+          setAcquisitionChannels((p as Profile).acquisition_channels ?? []);
+          setAffiliation((p as Profile).affiliation ?? "");
+          setProgramFocus((p as Profile).program_focus ?? []);
+        }
       }
-      const p = profile as Profile | null;
-      if (p) {
-        setUsername(p.username ?? null);
-        setAvatarUrl(p.avatar_url ?? null);
-        setDisplayName(p.display_name ?? "");
-        setBio(p.bio ?? "");
-        setLocation(p.location ?? "");
-        setWebsite(p.website ?? "");
-        setMainRole(p.main_role ?? "");
-        setRoles((p.roles as string[]) ?? []);
-        setIsPublic(p.is_public ?? true);
-        setCareerStage(p.career_stage ?? "");
-        setAgeBand(p.age_band ?? "");
-        setCity(p.city ?? "");
-        setRegion(p.region ?? "");
-        setCountry(p.country ?? "");
-        setThemes((p.themes as string[]) ?? []);
-        setMediums((p.mediums as string[]) ?? []);
-        setStyles((p.styles as string[]) ?? []);
-        setKeywords((p.keywords as string[]) ?? []);
-        setPriceBand((p as Profile).price_band ?? "");
-        setAcquisitionChannels((p as Profile).acquisition_channels ?? []);
-        setAffiliation((p as Profile).affiliation ?? "");
-        setProgramFocus((p as Profile).program_focus ?? []);
-        const ed = (p.education as EducationEntry[] | null) ?? [];
-        setEducation(ed.length ? ed : [{ school: "", program: "", year: "", type: null }]);
-      }
-    });
+    );
   }, []);
 
   const { score: completeness } = computeCompleteness({
@@ -367,7 +388,7 @@ export default function SettingsPage() {
     };
     const { score } = computeCompleteness(fullProfile);
 
-    const payload: UpdateProfileParams = {
+    const basicsPayload: UpdateProfileParams = {
       display_name: sanitized.display_name,
       bio: sanitized.bio,
       location: sanitized.location,
@@ -375,15 +396,6 @@ export default function SettingsPage() {
       main_role: mainRole || null,
       roles: finalRoles,
       is_public: isPublic,
-      career_stage: sanitized.career_stage,
-      age_band: sanitized.age_band,
-      city: sanitized.city,
-      region: sanitized.region,
-      country: sanitized.country,
-      themes: sanitized.themes,
-      mediums: sanitized.mediums,
-      styles: sanitized.styles,
-      keywords: sanitized.keywords,
       education:
         sanitized.education?.map((row) => ({
           school: row.school,
@@ -391,33 +403,51 @@ export default function SettingsPage() {
           year: row.year,
           type: row.type,
         })) ?? null,
-      price_band: sanitized.price_band,
-      acquisition_channels: sanitized.acquisition_channels,
-      affiliation: sanitized.affiliation,
-      program_focus: sanitized.program_focus,
       profile_completeness: score,
       profile_updated_at: new Date().toISOString(),
     };
 
+    const detailsPayload = {
+      career_stage: careerStage,
+      age_band: ageBand,
+      city,
+      region,
+      country,
+      themes,
+      mediums,
+      styles,
+      keywords,
+      price_band: priceBand,
+      acquisition_channels: acquisitionChannels,
+      affiliation,
+      program_focus: programFocus,
+    };
+
     setSaving(true);
-    const { error: err } = await updateMyProfile(payload);
+    const [profileErr, detailsErr] = await Promise.all([
+      updateMyProfile(basicsPayload).then((r) => r.error),
+      upsertMyProfileDetails(detailsPayload).then((r) => r.error),
+    ]);
     setSaving(false);
 
-    if (err) {
+    const err = profileErr ?? detailsErr;
+    if (profileErr) {
       if (process.env.NODE_ENV === "development") {
-        const detail = err as { code?: string; details?: string; hint?: string; message?: string };
-        console.warn("[Settings] save failed", {
-          payload,
-          error: err,
-          code: detail?.code,
-          details: detail?.details,
-          hint: detail?.hint,
-        });
-        const msg =
-          err instanceof Error ? err.message : String(err);
-        setError(
-          detail?.details ? `${msg} — ${detail.details}` : msg
-        );
+        const detail = profileErr as { code?: string; details?: string; hint?: string; message?: string };
+        console.warn("profile-details-save-failed", { payload: basicsPayload, error: profileErr, code: detail?.code, details: detail?.details, hint: detail?.hint });
+        const msg = profileErr instanceof Error ? profileErr.message : String(profileErr);
+        setError(detail?.details ? `${msg} — ${detail.details}` : detail?.hint ? `${msg} (${detail.hint})` : msg);
+      } else {
+        setError("Failed to save");
+      }
+      return;
+    }
+    if (detailsErr) {
+      if (process.env.NODE_ENV === "development") {
+        const detail = detailsErr as { code?: string; details?: string; hint?: string; message?: string };
+        console.warn("profile-details-save-failed", { payload: detailsPayload, error: detailsErr, code: detail?.code, details: detail?.details, hint: detail?.hint });
+        const msg = detailsErr instanceof Error ? detailsErr.message : String(detailsErr);
+        setError(detail?.details ? `${msg} — ${detail.details}` : detail?.hint ? `${msg} (${detail.hint})` : msg);
       } else {
         setError("Failed to save");
       }
