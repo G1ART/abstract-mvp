@@ -69,17 +69,28 @@
 
 ---
 
-## 4. People (Recommended + Search)
+## 4. People (3-lane recs + Search)
 
 - [ ] `/artists` 접속 시 `/people`로 redirect
-- [ ] q 없이 `/people` 진입: Recommended 탭, 15명만 로드
-- [ ] Load more 클릭 시 +10명 추가 (append)
-- [ ] role chips (Artist, Curator 등) 멀티선택 시 추천 결과 변경, URL 유지
-- [ ] `/people?q=henry` 검색 시 Search 탭으로 전환, debounced 검색 동작
-- [ ] Search 탭에서 Load more 동작
-- [ ] 전체 리스트(listPublicProfiles) 호출 없음 (q 없을 때 Recommended만)
+- [ ] q 없이 `/people` 진입: 3-lane 추천 (From people you follow / Based on what you like / A bit different)
+- [ ] lane 전환 시 결과 바뀌는지
+- [ ] roles 필터 적용되는지, URL 유지
+- [ ] Load more 클릭 시 +10명 추가
+- [ ] q 입력 시 Search 모드로 전환, debounced 검색 동작
+- [ ] search 0건: "No results" + filter reset CTA
+- [ ] lane 추천 0건: "No recommendations yet" + Try search CTA
 
-## 5. Profile v0 + Completeness
+## 5. Feed (Following + interleave)
+
+- [ ] Following 탭: 팔로우한 아티스트 작품 스트림
+- [ ] 조건 충족 시 (score>=2) Recommended 프로필 카드가 5개당 1개씩 간헐적으로 삽입되는지
+- [ ] 추천 카드 클릭 → /u/[username] 이동
+- [ ] 추천 카드에서 Follow 버튼 동작 확인
+- [ ] All 탭: 단일 스트림 (Latest/Popular)
+
+---
+
+## 6. Profile v0 + Completeness
 
 - [ ] `/settings`에서 Profile details 펼치기 → themes 3개 추가 → 저장
 - [ ] 저장 후 completeness 진행 바 증가 확인
@@ -87,20 +98,20 @@
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 
-## 6. AI Recs v0
+## 7. AI Recs v0 (embeddings / taste profile 유지)
 
 - [ ] 좋아요 클릭 → taste profile 업데이트 (user_taste_profiles debug liked_count 증가)
-- [ ] Feed tab=all에서 3개 레인 (For You, Expand, Signals) 표시
-- [ ] embeddings null 상태에서도 fallback 동작 (popular + latest mix)
+- [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
+- [ ] embeddings null 상태에서도 fallback 동작
 
-## 7. Profile Viewers (Entitlements skeleton)
+## 8. Profile Viewers (Entitlements skeleton)
 
 - [ ] 내 프로필 `/u/<me>` 접속 시 (다른 계정으로) profile_views 이벤트 기록 (로그인 기준)
 - [ ] `/me`에서 "Profile views (last 7 days)" 카드 노출, count 증가
 - [ ] plan=free: viewer list 숨김, "Upgrade to see who viewed you" CTA만
 - [ ] plan=artist_pro (entitlements row 수동 업데이트): viewer list 10명 노출
 
-## 8. i18n
+## 9. i18n
 
 ### Cookie persist
 
@@ -111,12 +122,13 @@
 ---
 
 ### People + insights keys
-- [ ] people.tabRecommended, people.tabSearch, people.recommendedTitle, people.loadMore
+- [ ] people.lanes.followGraphTitle, people.lanes.likesBasedTitle, people.lanes.expandTitle
+- [ ] people.reason.followGraph, people.reason.likesBased, people.reason.expand
 - [ ] people.noRecommendations, people.noSearchResults
 - [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
 - [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
-## 9. Migration Guard (개발 환경)
+## 10. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."
 - [ ] 프로덕션: 토스트 미표시, console.error만 (Sentry 연동 시 추적 가능)

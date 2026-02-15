@@ -56,7 +56,20 @@ export async function checkSupabaseMigrations(): Promise<MigrationCheckResult> {
     failed.push("ai_taste_profiles");
   }
 
-  // (d) Delete RLS - attempt benign delete (non-existent row)
+  // (d) get_people_recs RPC exists
+  try {
+    const { error: rpcErr } = await supabase.rpc("get_people_recs", {
+      p_mode: "follow_graph",
+      p_roles: [],
+      p_limit: 1,
+      p_cursor: null,
+    });
+    if (rpcErr) failed.push("get_people_recs");
+  } catch {
+    failed.push("get_people_recs");
+  }
+
+  // (e) Delete RLS - attempt benign delete (non-existent row)
   try {
     const {
       data: { session },

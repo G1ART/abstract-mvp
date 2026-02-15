@@ -4,13 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
+import { getFollowingIds } from "@/lib/supabase/artists";
 import {
-  getFollowingIds,
-  getRecommendedPeople,
+  getPeopleRecs,
   searchPeople,
   ROLE_OPTIONS,
-  type PublicProfile,
-} from "@/lib/supabase/artists";
+  type PeopleRec,
+  type PeopleRecMode,
+} from "@/lib/supabase/peopleRecs";
 import { getStorageUrl } from "@/lib/supabase/artworks";
 import { AuthGate } from "@/components/AuthGate";
 import { FollowButton } from "@/components/FollowButton";
@@ -19,31 +20,46 @@ const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
 const LOAD_MORE_LIMIT = 10;
 
-type Tab = "recommended" | "search";
+type LaneKey = "follow" | "likes" | "expand";
+const LANE_TO_MODE: Record<LaneKey, PeopleRecMode> = {
+  follow: "follow_graph",
+  likes: "likes_based",
+  expand: "expand",
+};
 
-function formatReasonLine(
-  profile: PublicProfile,
-  t: (key: string) => string
-): string {
+function formatReasonLine(profile: PeopleRec, t: (key: string) => string): string {
   const tags = profile.reason_tags ?? [];
-  const detail = profile.reason_detail;
   const parts: string[] = [];
   for (const tag of tags) {
-    if (tag === "shared_themes" && detail?.sharedThemesTop?.length) {
+    if (tag === "follow_graph") parts.push(t("people.reason.followGraph"));
+    else if (tag === "likes_based") parts.push(t("people.reason.likesBased"));
+    else if (tag === "expand") parts.push(t("people.reason.expand"));
+    else if (tag === "shared_themes" && profile.reason_detail?.sharedThemesTop) {
       parts.push(
-        `${t("people.reason.sharedThemes")}: ${detail.sharedThemesTop.join(", ")}`
+        `${t("people.reason.sharedThemes")}: ${(profile.reason_detail.sharedThemesTop as string[]).join(", ")}`
       );
-    } else if (tag === "shared_school" && detail?.sharedSchool) {
-      parts.push(`${t("people.reason.sharedSchool")}: ${detail.sharedSchool}`);
-    } else if (tag === "role_match") {
-      parts.push(t("people.reason.roleMatch"));
-    } else if (tag === "same_city") {
-      parts.push(t("people.reason.sameCity"));
-    } else if (tag === "shared_medium") {
-      parts.push(t("people.reason.sharedMedium"));
-    }
+    } else if (tag === "shared_school" && profile.reason_detail?.sharedSchool) {
+      parts.push(
+        `${t("people.reason.sharedSchool")}: ${profile.reason_detail.sharedSchool as string}`
+      );
+    } else if (tag === "role_match") parts.push(t("people.reason.roleMatch"));
+    else if (tag === "same_city") parts.push(t("people.reason.sameCity"));
+    else if (tag === "shared_medium") parts.push(t("people.reason.sharedMedium"));
   }
   return parts.join(" · ");
+}
+
+function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string | null {
+  const mut = profile.mutual_follow_sources ?? 0;
+  const liked = profile.liked_artists_count ?? 0;
+  const tags = profile.reason_tags ?? [];
+  if (tags.includes("follow_graph") && mut >= 2) {
+    return `${mut} ${t("people.reason.followGraph")}`;
+  }
+  if (tags.includes("likes_based") && liked >= 2) {
+    return `${liked} signals`;
+  }
+  return null;
 }
 
 export function PeopleClient() {
@@ -52,21 +68,27 @@ export function PeopleClient() {
   const { t } = useT();
 
   const qFromUrl = searchParams.get("q") ?? "";
-  const tabFromUrl = (searchParams.get("tab") as Tab) ?? null;
+  const laneFromUrl = (searchParams.get("lane") as LaneKey) ?? "follow";
+  const validLane = ["follow", "likes", "expand"].includes(laneFromUrl)
+    ? laneFromUrl
+    : "follow";
   const rolesFromUrl = searchParams.get("roles") ?? "";
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [search, setSearch] = useState(qFromUrl);
   const [debouncedSearch, setDebouncedSearch] = useState(qFromUrl);
+  const [lane, setLane] = useState<LaneKey>(validLane);
   const [selectedRoles, setSelectedRoles] = useState<Set<string>>(() => {
     if (!rolesFromUrl) return new Set();
     return new Set(
-      rolesFromUrl.split(",").filter((x) => ROLE_OPTIONS.includes(x as (typeof ROLE_OPTIONS)[number]))
+      rolesFromUrl
+        .split(",")
+        .filter((x) => ROLE_OPTIONS.includes(x as (typeof ROLE_OPTIONS)[number]))
     );
   });
-  const tab = tabFromUrl === "search" || debouncedSearch.trim() ? "search" : "recommended";
+  const isSearchMode = !!debouncedSearch.trim();
 
-  const [profiles, setProfiles] = useState<PublicProfile[]>([]);
+  const [profiles, setProfiles] = useState<PeopleRec[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -75,7 +97,7 @@ export function PeopleClient() {
   const [error, setError] = useState<string | null>(null);
 
   const updateUrl = useCallback(
-    (opts: { q?: string; roles?: Set<string>; tab?: Tab; cursor?: string | null }) => {
+    (opts: { q?: string; roles?: Set<string>; lane?: LaneKey }) => {
       const params = new URLSearchParams(searchParams.toString());
       if (opts.q !== undefined) {
         const v = opts.q.trim();
@@ -83,16 +105,13 @@ export function PeopleClient() {
         else params.delete("q");
       }
       if (opts.roles !== undefined) {
-        if (opts.roles.size > 0) params.set("roles", Array.from(opts.roles).sort().join(","));
+        if (opts.roles.size > 0)
+          params.set("roles", Array.from(opts.roles).sort().join(","));
         else params.delete("roles");
       }
-      if (opts.tab !== undefined) {
-        if (opts.tab === "search") params.set("tab", "search");
-        else params.delete("tab");
-      }
-      if (opts.cursor !== undefined) {
-        if (opts.cursor) params.set("cursor", opts.cursor);
-        else params.delete("cursor");
+      if (opts.lane !== undefined) {
+        if (opts.lane !== "follow") params.set("lane", opts.lane);
+        else params.delete("lane");
       }
       const s = params.toString();
       router.replace(s ? `/people?${s}` : "/people", { scroll: false });
@@ -113,9 +132,9 @@ export function PeopleClient() {
 
   useEffect(() => {
     if (debouncedSearch.trim()) {
-      updateUrl({ q: debouncedSearch, tab: "search" });
+      updateUrl({ q: debouncedSearch });
     } else {
-      updateUrl({ q: "", tab: "recommended", cursor: null });
+      updateUrl({ q: "", lane });
     }
   }, [debouncedSearch]);
 
@@ -131,7 +150,7 @@ export function PeopleClient() {
       const [followingRes] = await Promise.all([getFollowingIds()]);
       setFollowingIds(followingRes.data);
 
-      if (tab === "search") {
+      if (isSearchMode) {
         if (!debouncedSearch.trim()) {
           setLoading(false);
           return;
@@ -152,14 +171,16 @@ export function PeopleClient() {
         setProfiles(res.data ?? []);
         setNextCursor(res.nextCursor ?? null);
       } else {
-        const res = await getRecommendedPeople({
+        const mode = LANE_TO_MODE[lane];
+        const res = await getPeopleRecs({
+          mode,
           roles: rolesArr,
           limit: INITIAL_LIMIT,
           cursor: null,
         });
         if (res.error) {
           if (process.env.NODE_ENV === "development") {
-            console.warn("[People] getRecommendedPeople RPC error:", res.error);
+            console.warn("[People] getPeopleRecs RPC error:", res.error);
           }
           setError(t("people.loadFailed"));
           return;
@@ -175,7 +196,7 @@ export function PeopleClient() {
     } finally {
       setLoading(false);
     }
-  }, [tab, debouncedSearch, rolesArr.join(","), t]);
+  }, [isSearchMode, lane, debouncedSearch, rolesArr.join(","), t]);
 
   useEffect(() => {
     fetchInitial();
@@ -185,7 +206,7 @@ export function PeopleClient() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      if (tab === "search") {
+      if (isSearchMode) {
         const res = await searchPeople({
           q: debouncedSearch.trim(),
           roles: rolesArr,
@@ -195,9 +216,10 @@ export function PeopleClient() {
         if (res.error) return;
         setProfiles((prev) => [...prev, ...res.data]);
         setNextCursor(res.nextCursor);
-        updateUrl({ cursor: res.nextCursor });
       } else {
-        const res = await getRecommendedPeople({
+        const mode = LANE_TO_MODE[lane];
+        const res = await getPeopleRecs({
+          mode,
           roles: rolesArr,
           limit: LOAD_MORE_LIMIT,
           cursor: nextCursor,
@@ -205,12 +227,16 @@ export function PeopleClient() {
         if (res.error) return;
         setProfiles((prev) => [...prev, ...res.data]);
         setNextCursor(res.nextCursor);
-        updateUrl({ cursor: res.nextCursor });
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [tab, debouncedSearch, rolesArr.join(","), nextCursor, loadingMore, updateUrl]);
+  }, [isSearchMode, lane, debouncedSearch, rolesArr.join(","), nextCursor, loadingMore]);
+
+  function setLaneAndUpdate(l: LaneKey) {
+    setLane(l);
+    updateUrl({ lane: l });
+  }
 
   function toggleRole(role: string) {
     setSelectedRoles((prev) => {
@@ -231,41 +257,14 @@ export function PeopleClient() {
     router.push(`/u/${username}`);
   }
 
-  const emptyRecommendations = !loading && tab === "recommended" && profiles.length === 0;
-  const emptySearch = !loading && tab === "search" && profiles.length === 0;
+  const emptyRecommendations =
+    !loading && !isSearchMode && profiles.length === 0;
+  const emptySearch = !loading && isSearchMode && profiles.length === 0;
 
   return (
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-xl font-semibold">{t("people.title")}</h1>
-
-        <div className="mb-4 flex gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setSearch("");
-              setDebouncedSearch("");
-            }}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === "recommended"
-                ? "bg-zinc-900 text-white"
-                : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-            }`}
-          >
-            {t("people.tabRecommended")}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              if (!search.trim()) searchInputRef.current?.focus();
-            }}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${
-              tab === "search" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-            }`}
-          >
-            {t("people.tabSearch")}
-          </button>
-        </div>
 
         <input
           ref={searchInputRef}
@@ -275,6 +274,34 @@ export function PeopleClient() {
           onChange={(e) => setSearch(e.target.value)}
           className="mb-4 w-full rounded border border-zinc-300 px-3 py-2"
         />
+
+        {!isSearchMode && (
+          <div className="mb-4 flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {(["follow", "likes", "expand"] as LaneKey[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => setLaneAndUpdate(l)}
+                  className={`rounded-lg px-3 py-2 text-left text-sm font-medium ${
+                    lane === l
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  }`}
+                >
+                  {l === "follow" && t("people.lanes.followGraphTitle")}
+                  {l === "likes" && t("people.lanes.likesBasedTitle")}
+                  {l === "expand" && t("people.lanes.expandTitle")}
+                </button>
+              ))}
+            </div>
+            {lane === "follow" && (
+              <p className="text-xs text-zinc-500">
+                {t("people.lanes.followGraphSubtitle")}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mb-6 flex flex-wrap items-center gap-2">
           <span className="text-sm text-zinc-500">{t("people.filtersLabel")}:</span>
@@ -339,17 +366,17 @@ export function PeopleClient() {
           </div>
         ) : (
           <>
-            {tab === "recommended" && (
-              <h2 className="mb-4 text-sm font-medium text-zinc-600">
-                {t("people.recommendedTitle")}
-              </h2>
-            )}
             <div className="space-y-4">
               {profiles.map((profile) => {
                 const username = profile.username ?? "";
                 if (!username) return null;
                 const isSelf = userId === profile.id;
                 const initialFollowing = followingIds.has(profile.id);
+                const reasonLine =
+                  !isSearchMode && (profile.reason_tags?.length ?? 0) > 0
+                    ? formatReasonLine(profile, t)
+                    : null;
+                const badge = !isSearchMode ? getScoreBadge(profile, t) : null;
 
                 return (
                   <article
@@ -378,7 +405,9 @@ export function PeopleClient() {
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-500">
-                          {(profile.display_name ?? username).charAt(0).toUpperCase()}
+                          {(profile.display_name ?? username)
+                            .charAt(0)
+                            .toUpperCase()}
                         </div>
                       )}
                     </div>
@@ -388,7 +417,9 @@ export function PeopleClient() {
                       </p>
                       <p className="text-sm text-zinc-500">@{username}</p>
                       {profile.bio && (
-                        <p className="mt-1 line-clamp-2 text-sm text-zinc-600">{profile.bio}</p>
+                        <p className="mt-1 line-clamp-2 text-sm text-zinc-600">
+                          {profile.bio}
+                        </p>
                       )}
                       <div className="mt-1 flex flex-wrap gap-1">
                         {profile.main_role && (
@@ -407,13 +438,18 @@ export function PeopleClient() {
                             </span>
                           ))}
                       </div>
-                      {tab === "recommended" &&
-                        (profile.reason_tags?.length ?? 0) > 0 && (
-                          <p className="mt-2 text-xs text-zinc-500">
-                            {t("people.whyRecommended")}:{" "}
-                            {formatReasonLine(profile, t)}
-                          </p>
-                        )}
+                      {reasonLine && (
+                        <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+                          <span>
+                            {t("people.whyRecommended")}: {reasonLine}
+                          </span>
+                          {badge && (
+                            <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-600">
+                              {badge}
+                            </span>
+                          )}
+                        </p>
+                      )}
                     </div>
                     {!isSelf && (
                       <div
