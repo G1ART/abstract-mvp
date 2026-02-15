@@ -50,7 +50,7 @@ begin
     where p.is_public = true
       and p.id != coalesce(v_uid, '00000000-0000-0000-0000-000000000000'::uuid)
       and (array_length(v_roles, 1) is null or array_length(v_roles, 1) = 0
-           or p.main_role = any(v_roles) or p.roles && v_roles)
+           or (p.main_role::text = any(v_roles)) or (coalesce(p.roles, '{}'::text[]) && v_roles))
       and (v_uid is null or not exists (
         select 1 from follows f where f.follower_id = v_uid and f.following_id = p.id
       ))
@@ -74,7 +74,7 @@ begin
     where p.is_public = true
       and p.id != coalesce(v_uid, '00000000-0000-0000-0000-000000000000'::uuid)
       and (array_length(v_roles, 1) is null or array_length(v_roles, 1) = 0
-           or p.main_role = any(v_roles) or p.roles && v_roles)
+           or (p.main_role::text = any(v_roles)) or (coalesce(p.roles, '{}'::text[]) && v_roles))
       and (v_cursor_id is null or p.id < v_cursor_id)
       and not exists (select 1 from primary_result limit 1)
     order by p.id desc
@@ -140,9 +140,14 @@ begin
   where p.is_public = true
     and (p.username ilike v_pattern or p.display_name ilike v_pattern)
     and (array_length(v_roles, 1) is null or array_length(v_roles, 1) = 0
-         or p.main_role = any(v_roles) or p.roles && v_roles)
+         or (p.main_role::text = any(v_roles)) or (coalesce(p.roles, '{}'::text[]) && v_roles))
     and (v_cursor_id is null or p.id < v_cursor_id)
   order by p.id desc
   limit v_limit;
 end;
 $$;
+
+grant execute on function public.get_recommended_people(text[], int, text) to authenticated;
+grant execute on function public.get_recommended_people(text[], int, text) to anon;
+grant execute on function public.search_people(text, text[], int, text) to authenticated;
+grant execute on function public.search_people(text, text[], int, text) to anon;
