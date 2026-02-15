@@ -224,7 +224,9 @@ export default function SettingsPage() {
   const [affiliation, setAffiliation] = useState("");
   const [programFocus, setProgramFocus] = useState<string[]>([]);
   const [profileDetailsOpen, setProfileDetailsOpen] = useState(false);
+  const [hasOpenedDetails, setHasOpenedDetails] = useState(false);
   const [maxSelectMessage, setMaxSelectMessage] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -335,11 +337,12 @@ export default function SettingsPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    setWarning(null);
     setSaved(false);
 
-    const finalRoles = [...roles];
-    if (mainRole && !finalRoles.includes(mainRole)) {
-      finalRoles.push(mainRole);
+    let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
+    if (mainRole && mainRole.trim()) {
+      if (!finalRoles.includes(mainRole)) finalRoles.push(mainRole);
     }
     if (finalRoles.length < 1) {
       setError(t("common.selectRole"));
@@ -372,7 +375,7 @@ export default function SettingsPage() {
       display_name: sanitized.display_name ?? undefined,
       avatar_url: avatarUrl ?? undefined,
       bio: sanitized.bio ?? undefined,
-      main_role: mainRole,
+      main_role: finalRoles[0] ?? mainRole,
       roles: finalRoles,
       city: sanitized.city ?? undefined,
       region: sanitized.region ?? undefined,
@@ -388,12 +391,16 @@ export default function SettingsPage() {
     };
     const { score } = computeCompleteness(fullProfile);
 
-    const basicsPayload: UpdateProfileParams = {
+    const websiteVal = (sanitized.website ?? "").trim();
+    const websiteFinal =
+      !websiteVal || websiteVal === "https://" ? null : websiteVal;
+
+    const payloadBase: UpdateProfileParams = {
       display_name: sanitized.display_name,
       bio: sanitized.bio,
       location: sanitized.location,
-      website: sanitized.website,
-      main_role: mainRole || null,
+      website: websiteFinal,
+      main_role: finalRoles[0] ?? null,
       roles: finalRoles,
       is_public: isPublic,
       education:
@@ -407,7 +414,7 @@ export default function SettingsPage() {
       profile_updated_at: new Date().toISOString(),
     };
 
-    const detailsPayload = {
+    const payloadDetails = {
       career_stage: careerStage,
       age_band: ageBand,
       city,
@@ -424,41 +431,61 @@ export default function SettingsPage() {
     };
 
     setSaving(true);
-    const [profileErr, detailsErr] = await Promise.all([
-      updateMyProfile(basicsPayload).then((r) => r.error),
-      upsertMyProfileDetails(detailsPayload).then((r) => r.error),
-    ]);
-    setSaving(false);
 
-    const err = profileErr ?? detailsErr;
-    if (profileErr) {
+    const baseRes = await updateMyProfile(payloadBase);
+    if (baseRes.error) {
+      setSaving(false);
       if (process.env.NODE_ENV === "development") {
-        const detail = profileErr as { code?: string; details?: string; hint?: string; message?: string };
-        console.warn("profile-details-save-failed", { payload: basicsPayload, error: profileErr, code: detail?.code, details: detail?.details, hint: detail?.hint });
-        const msg = profileErr instanceof Error ? profileErr.message : String(profileErr);
-        setError(detail?.details ? `${msg} — ${detail.details}` : detail?.hint ? `${msg} (${detail.hint})` : msg);
+        const err = baseRes.error as { code?: string; details?: string; hint?: string; message?: string };
+        console.warn("settings-save-failed", {
+          error: baseRes.error,
+          payloadBase,
+          payloadDetails,
+          code: err?.code,
+          details: err?.details,
+          hint: err?.hint,
+        });
+        const msg = baseRes.error instanceof Error ? baseRes.error.message : String(baseRes.error);
+        setError(err?.details ? `${msg} — ${err.details}` : err?.hint ? `${msg} (${err.hint})` : msg);
       } else {
-        setError("Failed to save");
+        setError("Failed to save profile");
       }
       return;
     }
-    if (detailsErr) {
-      if (process.env.NODE_ENV === "development") {
-        const detail = detailsErr as { code?: string; details?: string; hint?: string; message?: string };
-        console.warn("profile-details-save-failed", { payload: detailsPayload, error: detailsErr, code: detail?.code, details: detail?.details, hint: detail?.hint });
-        const msg = detailsErr instanceof Error ? detailsErr.message : String(detailsErr);
-        setError(detail?.details ? `${msg} — ${detail.details}` : detail?.hint ? `${msg} (${detail.hint})` : msg);
-      } else {
-        setError("Failed to save");
+
+    let detailsErr: unknown = null;
+    if (hasOpenedDetails) {
+      const detailsRes = await upsertMyProfileDetails(payloadDetails);
+      detailsErr = detailsRes.error;
+      if (detailsErr && process.env.NODE_ENV === "development") {
+        const err = detailsErr as { code?: string; details?: string; hint?: string; message?: string };
+        console.warn("settings-save-failed", {
+          error: detailsErr,
+          payloadBase,
+          payloadDetails,
+          code: err?.code,
+          details: err?.details,
+          hint: err?.hint,
+        });
       }
-      return;
+    }
+
+    setSaving(false);
+
+    if (detailsErr) {
+      const msg = detailsErr instanceof Error ? detailsErr.message : String(detailsErr);
+      setWarning(
+        process.env.NODE_ENV === "development"
+          ? `Saved profile, but failed to save details: ${msg}`
+          : "Saved profile, but failed to save details"
+      );
     }
 
     const { data: refreshed } = await getMyProfile();
     const profileUsername =
       (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
 
-    if (profileUsername) {
+    if (profileUsername && !detailsErr) {
       if (typeof window !== "undefined") {
         window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
       }
@@ -613,7 +640,11 @@ export default function SettingsPage() {
             <div className="border-t border-zinc-200 pt-6">
               <button
                 type="button"
-                onClick={() => setProfileDetailsOpen(!profileDetailsOpen)}
+                onClick={() => {
+                  const next = !profileDetailsOpen;
+                  setProfileDetailsOpen(next);
+                  if (next) setHasOpenedDetails(true);
+                }}
                 className="flex w-full items-center justify-between py-2 text-sm font-medium text-zinc-700"
               >
                 {t("settings.profileDetailsTitle")}
@@ -792,6 +823,11 @@ export default function SettingsPage() {
             </div>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
+            {warning && (
+              <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded">
+                {warning}
+              </p>
+            )}
             {saved && (
               <p className="text-sm text-green-600">{t("settings.saveSuccess")}</p>
             )}
