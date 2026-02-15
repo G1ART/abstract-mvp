@@ -9,6 +9,11 @@ export type PublicProfile = {
   avatar_url: string | null;
   bio?: string | null;
   reason?: string;
+  reason_tags?: string[];
+  reason_detail?: {
+    sharedThemesTop?: string[];
+    sharedSchool?: string;
+  };
 };
 
 export const ROLE_OPTIONS = ["artist", "curator", "gallerist", "collector"] as const;

@@ -186,8 +186,9 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - Bulk import (CSV/zip/AI extraction) 아직 제한적
 
 ## 12) Operational checklist
-### Supabase (People + Entitlements)
-- [ ] `supabase/migrations/people_rpc.sql` — get_recommended_people, search_people
+### Supabase (People + Entitlements + Profile v0)
+- [ ] `supabase/migrations/profile_v0_fields.sql` — profiles v0 columns + indexes
+- [ ] `supabase/migrations/people_rpc.sql` — get_recommended_people (reason_tags), search_people
 - [ ] `supabase/migrations/entitlements_profile_views.sql` — entitlements, profile_views tables + RLS
 - [ ] `supabase/migrations/profile_views_rpc.sql` — get_profile_views_count, get_profile_viewers
 
@@ -318,4 +319,29 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 
 ### Deep-link
 - `/u/[username]?mode=reorder` — owner면 reorder mode 자동 ON
+
+---
+
+## 16) Profile v0 + Completeness + Recommendation reasons (v1.15)
+
+### Profile v0 fields (profile_v0_fields.sql)
+- `profiles` 컬럼 추가: career_stage, age_band, city, region, country, themes, mediums, styles, keywords (text[]), education, residencies, exhibitions, awards (jsonb), profile_completeness (smallint), profile_updated_at
+- 인덱스: themes, mediums, styles (gin), city
+
+### Profile completeness
+- `src/lib/profileCompleteness.ts`: computeProfileCompleteness(profile) → 0–100
+- 규칙: username +10, display_name +10, avatar +10, bio +10, roles +10, city/region/country +10, themes≥3 +10, mediums≥1 +10, styles≥1 +10, education≥1 +10
+- /settings 저장 시 profile_completeness + profile_updated_at 업데이트
+
+### Settings UI
+- Profile details 섹션 (접기/펼치기): career_stage, age_band, city/region/country, themes/mediums/styles/keywords (chip input), education (반복 폼)
+- 상단에 Profile completeness 진행 바
+
+### /me
+- "Profile completeness: X/100" 카드 + "Improve profile" CTA → /settings
+
+### People 추천 reason (설명 가능한 추천)
+- `get_recommended_people` 반환: reason_tags (array), reason_detail (sharedThemesTop, sharedSchool)
+- 규칙: role_match, same_city, shared_themes (≥2), shared_medium (≥1), shared_school (학교명 매칭)
+- People 카드에 "Why recommended" 라인 표시 (Recommended 탭만)
 

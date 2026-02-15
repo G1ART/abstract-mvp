@@ -67,7 +67,7 @@ export async function checkUsernameExists(
 }
 
 const MY_PROFILE_SELECT =
-  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public";
+  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, residencies, exhibitions, awards, profile_completeness, profile_updated_at";
 
 export async function getMyProfile() {
   const {
@@ -112,6 +112,13 @@ type UpsertProfileParams = {
   roles?: string[];
 };
 
+export type EducationEntry = {
+  school?: string | null;
+  program?: string | null;
+  year?: string | null;
+  type?: "university" | "grad" | "art_hs" | "art_ms" | "other" | null;
+};
+
 export type UpdateProfileParams = {
   display_name?: string | null;
   bio?: string | null;
@@ -121,6 +128,21 @@ export type UpdateProfileParams = {
   main_role?: string | null;
   roles?: string[] | null;
   is_public?: boolean;
+  career_stage?: string | null;
+  age_band?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  themes?: string[] | null;
+  mediums?: string[] | null;
+  styles?: string[] | null;
+  keywords?: string[] | null;
+  education?: EducationEntry[] | null;
+  residencies?: unknown[] | null;
+  exhibitions?: unknown[] | null;
+  awards?: unknown[] | null;
+  profile_completeness?: number | null;
+  profile_updated_at?: string | null;
 };
 
 export async function updateMyProfile(partial: UpdateProfileParams) {
@@ -139,6 +161,21 @@ export async function updateMyProfile(partial: UpdateProfileParams) {
     "main_role",
     "roles",
     "is_public",
+    "career_stage",
+    "age_band",
+    "city",
+    "region",
+    "country",
+    "themes",
+    "mediums",
+    "styles",
+    "keywords",
+    "education",
+    "residencies",
+    "exhibitions",
+    "awards",
+    "profile_completeness",
+    "profile_updated_at",
   ] as const;
   const updates: Record<string, unknown> = {};
   for (const key of allowed) {

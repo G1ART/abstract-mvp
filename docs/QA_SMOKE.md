@@ -79,14 +79,22 @@
 - [ ] Search 탭에서 Load more 동작
 - [ ] 전체 리스트(listPublicProfiles) 호출 없음 (q 없을 때 Recommended만)
 
-## 5. Profile Viewers (Entitlements skeleton)
+## 5. Profile v0 + Completeness
+
+- [ ] `/settings`에서 Profile details 펼치기 → themes 3개 추가 → 저장
+- [ ] 저장 후 completeness 진행 바 증가 확인
+- [ ] `/me`에서 "Profile completeness: X/100" 카드 노출
+- [ ] "Improve profile" 클릭 시 /settings 이동
+- [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
+
+## 6. Profile Viewers (Entitlements skeleton)
 
 - [ ] 내 프로필 `/u/<me>` 접속 시 (다른 계정으로) profile_views 이벤트 기록 (로그인 기준)
 - [ ] `/me`에서 "Profile views (last 7 days)" 카드 노출, count 증가
 - [ ] plan=free: viewer list 숨김, "Upgrade to see who viewed you" CTA만
 - [ ] plan=artist_pro (entitlements row 수동 업데이트): viewer list 10명 노출
 
-## 6. i18n
+## 7. i18n
 
 ### Cookie persist
 
@@ -102,7 +110,7 @@
 - [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
 - [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
-## 7. Migration Guard (개발 환경)
+## 8. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."
 - [ ] 프로덕션: 토스트 미표시, console.error만 (Sentry 연동 시 추적 가능)

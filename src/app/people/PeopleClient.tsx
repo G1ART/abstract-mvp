@@ -21,6 +21,31 @@ const LOAD_MORE_LIMIT = 10;
 
 type Tab = "recommended" | "search";
 
+function formatReasonLine(
+  profile: PublicProfile,
+  t: (key: string) => string
+): string {
+  const tags = profile.reason_tags ?? [];
+  const detail = profile.reason_detail;
+  const parts: string[] = [];
+  for (const tag of tags) {
+    if (tag === "shared_themes" && detail?.sharedThemesTop?.length) {
+      parts.push(
+        `${t("people.reason.sharedThemes")}: ${detail.sharedThemesTop.join(", ")}`
+      );
+    } else if (tag === "shared_school" && detail?.sharedSchool) {
+      parts.push(`${t("people.reason.sharedSchool")}: ${detail.sharedSchool}`);
+    } else if (tag === "role_match") {
+      parts.push(t("people.reason.roleMatch"));
+    } else if (tag === "same_city") {
+      parts.push(t("people.reason.sameCity"));
+    } else if (tag === "shared_medium") {
+      parts.push(t("people.reason.sharedMedium"));
+    }
+  }
+  return parts.join(" · ");
+}
+
 export function PeopleClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -382,6 +407,13 @@ export function PeopleClient() {
                             </span>
                           ))}
                       </div>
+                      {tab === "recommended" &&
+                        (profile.reason_tags?.length ?? 0) > 0 && (
+                          <p className="mt-2 text-xs text-zinc-500">
+                            {t("people.whyRecommended")}:{" "}
+                            {formatReasonLine(profile, t)}
+                          </p>
+                        )}
                     </div>
                     {!isSelf && (
                       <div

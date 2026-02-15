@@ -1,10 +1,5 @@
 -- People recommended + search RPCs with cursor pagination.
--- Run in Supabase SQL Editor.
--- No full list: use get_recommended_people when q empty, search_people when q present.
--- Roles/cursor: NULL or invalid never raises; fallback when 0 results.
-
--- Recommended: excludes self + already followed, role filter, keyset pagination.
--- Fallback: when 0 results, return latest public profiles (exclude self only, relax follows).
+-- get_recommended_people: reason_tags + reason_detail (explainable recommendations).
 create or replace function get_recommended_people(
   p_roles text[] default '{}',
   p_limit int default 15,
@@ -22,7 +17,6 @@ declare
   v_roles text[] := coalesce(p_roles, '{}');
   v_limit int := least(greatest(coalesce(p_limit, 15), 1), 50);
 begin
-  -- Cursor: invalid or empty -> treat as first page (no raise)
   if p_cursor is not null and length(trim(p_cursor)) > 0 then
     begin
       v_cursor_id := convert_from(decode(p_cursor, 'base64'), 'UTF8')::uuid;
@@ -34,19 +28,20 @@ begin
   end if;
 
   return query
-  with primary_result as (
-    select jsonb_build_object(
-      'id', p.id,
-      'username', p.username,
-      'display_name', p.display_name,
-      'avatar_url', p.avatar_url,
-      'bio', p.bio,
-      'main_role', p.main_role,
-      'roles', p.roles,
-      'is_public', p.is_public,
-      'reason', 'role_match'
-    )
+  with viewer_data as (
+    select vd.city, vd.themes, vd.mediums, vd.education
+    from (select 1) dummy
+    left join profiles vd on vd.id = v_uid
+  ),
+  primary_rows as (
+    select p.id, p.username, p.display_name, p.avatar_url, p.bio,
+           p.main_role, p.roles, p.is_public,
+           p.city as p_city, p.themes as p_themes, p.mediums as p_mediums, p.education as p_education,
+           vd.city as v_city, vd.themes as v_themes, vd.mediums as v_mediums, vd.education as v_education,
+           (array_length(v_roles, 1) is not null and array_length(v_roles, 1) > 0
+            and ((p.main_role::text = any(v_roles)) or (coalesce(p.roles, '{}'::text[]) && v_roles))) as role_matched
     from profiles p
+    cross join viewer_data vd
     where p.is_public = true
       and p.id != coalesce(v_uid, '00000000-0000-0000-0000-000000000000'::uuid)
       and (array_length(v_roles, 1) is null or array_length(v_roles, 1) = 0
@@ -58,19 +53,53 @@ begin
     order by p.id desc
     limit v_limit
   ),
-  fallback_result as (
+  primary_with_reasons as (
+    select pr.*,
+      array_remove(array[
+        case when pr.role_matched then 'role_match' end,
+        case when pr.v_city is not null and pr.p_city is not null
+             and lower(trim(pr.p_city)) = lower(trim(pr.v_city)) then 'same_city' end,
+        case when (select count(*) from unnest(coalesce(pr.p_themes,'{}')::text[]) t
+                   where t = any(coalesce(pr.v_themes,'{}')::text[])) >= 2 then 'shared_themes' end,
+        case when (select count(*) from unnest(coalesce(pr.p_mediums,'{}')::text[]) m
+                   where m = any(coalesce(pr.v_mediums,'{}')::text[])) >= 1 then 'shared_medium' end,
+        case when exists (
+          select 1 from jsonb_array_elements(coalesce(pr.v_education,'[]'::jsonb)) ve,
+                       jsonb_array_elements(coalesce(pr.p_education,'[]'::jsonb)) pe
+          where trim(lower(coalesce(ve->>'school',''))) = trim(lower(coalesce(pe->>'school','')))
+            and trim(coalesce(ve->>'school','')) != ''
+        ) then 'shared_school' end
+      ], null) as reason_tags,
+      (select jsonb_agg(to_jsonb(t)) from unnest(coalesce(pr.p_themes,'{}')::text[]) t
+       where t = any(coalesce(pr.v_themes,'{}')::text[])) as shared_themes_arr
+    from primary_rows pr
+  ),
+  primary_result as (
     select jsonb_build_object(
-      'id', p.id,
-      'username', p.username,
-      'display_name', p.display_name,
-      'avatar_url', p.avatar_url,
-      'bio', p.bio,
-      'main_role', p.main_role,
-      'roles', p.roles,
-      'is_public', p.is_public,
-      'reason', 'fallback'
+      'id', pw.id, 'username', pw.username, 'display_name', pw.display_name,
+      'avatar_url', pw.avatar_url, 'bio', pw.bio, 'main_role', pw.main_role,
+      'roles', pw.roles, 'is_public', pw.is_public,
+      'reason', 'role_match',
+      'reason_tags', coalesce(pw.reason_tags, '{}'),
+      'reason_detail', jsonb_build_object(
+        'sharedThemesTop', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from (select x from jsonb_array_elements_text(coalesce(pw.shared_themes_arr,'[]'::jsonb)) x limit 2) sub),
+        'sharedSchool', (select trim(ve->>'school') from jsonb_array_elements(coalesce(pw.v_education,'[]'::jsonb)) ve
+                        where exists (select 1 from jsonb_array_elements(coalesce(pw.p_education,'[]'::jsonb)) pe
+                                      where trim(lower(coalesce(ve->>'school',''))) = trim(lower(coalesce(pe->>'school',''))))
+                        limit 1)
+      )
     )
+    from primary_with_reasons pw
+  ),
+  fallback_rows as (
+    select p.id, p.username, p.display_name, p.avatar_url, p.bio,
+           p.main_role, p.roles, p.is_public,
+           p.city as p_city, p.themes as p_themes, p.mediums as p_mediums, p.education as p_education,
+           vd.city as v_city, vd.themes as v_themes, vd.mediums as v_mediums, vd.education as v_education,
+           (array_length(v_roles, 1) is not null and array_length(v_roles, 1) > 0
+            and ((p.main_role::text = any(v_roles)) or (coalesce(p.roles, '{}'::text[]) && v_roles))) as role_matched
     from profiles p
+    cross join viewer_data vd
     where p.is_public = true
       and p.id != coalesce(v_uid, '00000000-0000-0000-0000-000000000000'::uuid)
       and (array_length(v_roles, 1) is null or array_length(v_roles, 1) = 0
@@ -79,6 +108,44 @@ begin
       and not exists (select 1 from primary_result limit 1)
     order by p.id desc
     limit v_limit
+  ),
+  fallback_with_reasons as (
+    select fr.*,
+      array_remove(array[
+        case when fr.role_matched then 'role_match' end,
+        case when fr.v_city is not null and fr.p_city is not null
+             and lower(trim(fr.p_city)) = lower(trim(fr.v_city)) then 'same_city' end,
+        case when (select count(*) from unnest(coalesce(fr.p_themes,'{}')::text[]) t
+                   where t = any(coalesce(fr.v_themes,'{}')::text[])) >= 2 then 'shared_themes' end,
+        case when (select count(*) from unnest(coalesce(fr.p_mediums,'{}')::text[]) m
+                   where m = any(coalesce(fr.v_mediums,'{}')::text[])) >= 1 then 'shared_medium' end,
+        case when exists (
+          select 1 from jsonb_array_elements(coalesce(fr.v_education,'[]'::jsonb)) ve,
+                       jsonb_array_elements(coalesce(fr.p_education,'[]'::jsonb)) pe
+          where trim(lower(coalesce(ve->>'school',''))) = trim(lower(coalesce(pe->>'school','')))
+            and trim(coalesce(ve->>'school','')) != ''
+        ) then 'shared_school' end
+      ], null) as reason_tags,
+      (select jsonb_agg(to_jsonb(t)) from unnest(coalesce(fr.p_themes,'{}')::text[]) t
+       where t = any(coalesce(fr.v_themes,'{}')::text[])) as shared_themes_arr
+    from fallback_rows fr
+  ),
+  fallback_result as (
+    select jsonb_build_object(
+      'id', fw.id, 'username', fw.username, 'display_name', fw.display_name,
+      'avatar_url', fw.avatar_url, 'bio', fw.bio, 'main_role', fw.main_role,
+      'roles', fw.roles, 'is_public', fw.is_public,
+      'reason', 'fallback',
+      'reason_tags', coalesce(fw.reason_tags, '{}'),
+      'reason_detail', jsonb_build_object(
+        'sharedThemesTop', (select coalesce(jsonb_agg(to_jsonb(x)), '[]'::jsonb) from (select x from jsonb_array_elements_text(coalesce(fw.shared_themes_arr,'[]'::jsonb)) x limit 2) sub),
+        'sharedSchool', (select trim(ve->>'school') from jsonb_array_elements(coalesce(fw.v_education,'[]'::jsonb)) ve
+                        where exists (select 1 from jsonb_array_elements(coalesce(fw.p_education,'[]'::jsonb)) pe
+                                      where trim(lower(coalesce(ve->>'school',''))) = trim(lower(coalesce(pe->>'school',''))))
+                        limit 1)
+      )
+    )
+    from fallback_with_reasons fw
   )
   select * from primary_result
   union all
@@ -87,7 +154,6 @@ end;
 $$;
 
 -- Search: q for username/display_name ilike, role filter, keyset pagination.
--- Empty q returns empty set. Roles/cursor NULL or invalid handled safely.
 create or replace function search_people(
   p_q text,
   p_roles text[] default '{}',
@@ -109,11 +175,8 @@ begin
   if trim(coalesce(p_q, '')) = '' then
     return;
   end if;
-
   v_pattern := '%' || lower(trim(p_q)) || '%';
   v_limit := least(greatest(coalesce(p_limit, 15), 1), 50);
-
-  -- Cursor: invalid or empty -> treat as first page (no raise)
   if p_cursor is not null and length(trim(p_cursor)) > 0 then
     begin
       v_cursor_id := convert_from(decode(p_cursor, 'base64'), 'UTF8')::uuid;
@@ -126,15 +189,9 @@ begin
 
   return query
   select jsonb_build_object(
-    'id', p.id,
-    'username', p.username,
-    'display_name', p.display_name,
-    'avatar_url', p.avatar_url,
-    'bio', p.bio,
-    'main_role', p.main_role,
-    'roles', p.roles,
-    'is_public', p.is_public,
-    'reason', 'search'
+    'id', p.id, 'username', p.username, 'display_name', p.display_name,
+    'avatar_url', p.avatar_url, 'bio', p.bio, 'main_role', p.main_role,
+    'roles', p.roles, 'is_public', p.is_public, 'reason', 'search'
   )
   from profiles p
   where p.is_public = true

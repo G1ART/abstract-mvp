@@ -30,6 +30,7 @@ type Profile = {
   avatar_url: string | null;
   main_role: string | null;
   roles: string[] | null;
+  profile_completeness?: number | null;
 };
 
 export default function MePage() {
@@ -178,6 +179,26 @@ export default function MePage() {
             className="text-sm text-zinc-500 hover:text-zinc-900"
           >
             Edit profile
+          </Link>
+        </div>
+
+        {/* Profile completeness */}
+        <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
+          <h3 className="mb-2 text-sm font-medium text-zinc-900">
+            {t("me.profileCompletenessTitle")}: {(profile?.profile_completeness ?? 0)}/100
+          </h3>
+          <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
+            <div
+              className="h-full bg-zinc-900 transition-all"
+              style={{ width: `${profile?.profile_completeness ?? 0}%` }}
+            />
+          </div>
+          <p className="mb-3 text-sm text-zinc-600">{t("me.completenessHint")}</p>
+          <Link
+            href="/settings"
+            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            {t("me.improveProfile")}
           </Link>
         </div>
 
