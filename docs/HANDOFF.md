@@ -99,6 +99,10 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - One-time banner: “Profile updated” (sessionStorage flag)
 - MigrationGuard warnings do not block UI
 
+### Profile taxonomy & persona modules
+- **Single source of truth**: `docs/PROFILE_TAXONOMY.md` + `src/lib/profile/taxonomy.ts`
+- Profile details (Settings): Core + Artist/Collector/Curator modules (역할별 optional). Save 전 `sanitizeProfileDetails` 적용; Dev 저장 실패 시 error detail 로그.
+
 ---
 
 ## 6) Bulk Upload + Draft System (v1.12)

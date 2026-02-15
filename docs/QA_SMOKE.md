@@ -90,28 +90,39 @@
 
 ---
 
-## 6. Profile v0 + Completeness
+## 6. Profile details save + persona sections
 
-- [ ] `/settings`에서 Profile details 펼치기 → themes 3개 추가 → 저장
+- [ ] **Roles=collector**: Collector module만 표시, mediums/styles 비워도 저장 성공
+- [ ] **Roles=collector**: price_band + themes + acquisition_channels 입력 후 저장 성공
+- [ ] **Roles=artist**: Artist module 표시, mediums/styles/themes 입력 후 저장 성공
+- [ ] **Education**: 빈 row가 있어도 저장 실패하지 않음 (빈 row drop)
+- [ ] **Year**: year='' 입력되어도 null로 저장 (에러 없음)
+- [ ] **i18n**: EN/KO 모두 taxonomy/섹션 라벨 표시
+- [ ] **Max select**: themes 5개 초과 시 "You can select up to 5" 메시지
+- [ ] **Dev**: 저장 실패 시 콘솔에 payload + error detail 노출
+
+## 7. Profile v0 + Completeness
+
+- [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
 - [ ] 저장 후 completeness 진행 바 증가 확인
 - [ ] `/me`에서 "Profile completeness: X/100" 카드 노출
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 
-## 7. AI Recs v0 (embeddings / taste profile 유지)
+## 8. AI Recs v0 (embeddings / taste profile 유지)
 
 - [ ] 좋아요 클릭 → taste profile 업데이트 (user_taste_profiles debug liked_count 증가)
 - [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
 - [ ] embeddings null 상태에서도 fallback 동작
 
-## 8. Profile Viewers (Entitlements skeleton)
+## 9. Profile Viewers (Entitlements skeleton)
 
 - [ ] 내 프로필 `/u/<me>` 접속 시 (다른 계정으로) profile_views 이벤트 기록 (로그인 기준)
 - [ ] `/me`에서 "Profile views (last 7 days)" 카드 노출, count 증가
 - [ ] plan=free: viewer list 숨김, "Upgrade to see who viewed you" CTA만
 - [ ] plan=artist_pro (entitlements row 수동 업데이트): viewer list 10명 노출
 
-## 9. i18n
+## 10. i18n
 
 ### Cookie persist
 
@@ -128,7 +139,7 @@
 - [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
 - [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
-## 10. Migration Guard (개발 환경)
+## 11. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."
 - [ ] 프로덕션: 토스트 미표시, console.error만 (Sentry 연동 시 추적 가능)

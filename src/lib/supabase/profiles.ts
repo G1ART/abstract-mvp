@@ -67,7 +67,7 @@ export async function checkUsernameExists(
 }
 
 const MY_PROFILE_SELECT =
-  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, residencies, exhibitions, awards, profile_completeness, profile_updated_at";
+  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, price_band, acquisition_channels, affiliation, program_focus, residencies, exhibitions, awards, profile_completeness, profile_updated_at";
 
 export async function getMyProfile() {
   const {
@@ -115,8 +115,8 @@ type UpsertProfileParams = {
 export type EducationEntry = {
   school?: string | null;
   program?: string | null;
-  year?: string | null;
-  type?: "university" | "grad" | "art_hs" | "art_ms" | "other" | null;
+  year?: string | number | null;
+  type?: string | null;
 };
 
 export type UpdateProfileParams = {
@@ -138,6 +138,10 @@ export type UpdateProfileParams = {
   styles?: string[] | null;
   keywords?: string[] | null;
   education?: EducationEntry[] | null;
+  price_band?: string | null;
+  acquisition_channels?: string[] | null;
+  affiliation?: string | null;
+  program_focus?: string[] | null;
   residencies?: unknown[] | null;
   exhibitions?: unknown[] | null;
   awards?: unknown[] | null;
@@ -171,6 +175,10 @@ export async function updateMyProfile(partial: UpdateProfileParams) {
     "styles",
     "keywords",
     "education",
+    "price_band",
+    "acquisition_channels",
+    "affiliation",
+    "program_focus",
     "residencies",
     "exhibitions",
     "awards",
