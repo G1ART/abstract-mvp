@@ -317,6 +317,14 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Fixed Settings stale symbol reference, ProfileBootstrap PromiseLike catch, and diffPatch keyof indexing TS error.
 - Next step after deploy: address profile save + completeness/flash issues (functional).
 
+## 2026-02-16 — P0: Profile details SSOT stabilized
+
+- Enforced single SSOT for profile details: `profiles.profile_details` (jsonb).
+- Removed/ignored any legacy `profile_details` table reads/writes in app layer.
+- Settings/My/Header now read via `getMyProfile()` + `PROFILE_ME_SELECT` consistently.
+- Save flow: treat RPC success as success, then re-fetch profile once to prevent false failure UI.
+- Header: tri-state gating prevents "Complete your profile" flash during profile load.
+
 ---
 
 ## 17) Immediate next steps (recommended)

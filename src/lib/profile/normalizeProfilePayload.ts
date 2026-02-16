@@ -155,7 +155,7 @@ export function normalizeProfileBase(input: NormalizedBaseInput): NormalizedBase
   };
 }
 
-/** Details payload (profile_details table). */
+/** Details payload (profiles.profile_details jsonb). */
 export type NormalizedDetailsInput = {
   career_stage?: string | null;
   age_band?: string | null;

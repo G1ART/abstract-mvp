@@ -69,29 +69,25 @@ function jsonbToDetailsRow(
   };
 }
 
-/** Get profile details from profiles.profile_details (via getMyProfile). */
+/** Derive ProfileDetailsRow from profile row (SSOT: profiles.profile_details jsonb). */
+export function profileDetailsFromProfile(profile: {
+  id?: string;
+  profile_details?: Record<string, unknown> | null;
+} | null): ProfileDetailsRow | null {
+  if (!profile?.id) return null;
+  return jsonbToDetailsRow(profile.id, profile.profile_details ?? null);
+}
+
+/** Get profile details from profiles.profile_details. Uses getMyProfile() for single SSOT. */
 export async function getMyProfileDetails(): Promise<{
   data: ProfileDetailsRow | null;
   error: unknown;
 }> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) return { data: null, error: null };
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, profile_details")
-    .eq("id", session.user.id)
-    .single();
-
+  const { getMyProfile } = await import("./profiles");
+  const { data, error } = await getMyProfile();
   if (error) return { data: null, error };
-  const row = data as { id?: string; profile_details?: Record<string, unknown> | null } | null;
-  const details = jsonbToDetailsRow(
-    session.user.id,
-    row?.profile_details ?? null
-  );
-  return { data: details, error: null };
+  const details = profileDetailsFromProfile(data as { id?: string; profile_details?: Record<string, unknown> | null } | null);
+  return { data: details ?? null, error: null };
 }
 
 export type UpdateDetailsRpcResult = {
