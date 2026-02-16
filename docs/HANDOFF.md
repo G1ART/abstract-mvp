@@ -104,8 +104,11 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Details in `profiles.profile_details` jsonb; **single save path**: RPC `update_my_profile_details` (merge semantics)
 - `updateMyProfileDetailsViaRpc(detailsJson, completeness)` in `src/lib/supabase/profileDetails.ts`; base update does NOT touch profile_details
 - Completeness sync: Settings and /my both read `profile_completeness` from DB; no local override. Save flow refreshes initial refs from DB return payload.
-- **Completeness overwrite guard (v5.3)**: Never write 0 unless confidence=high. `computeProfileCompleteness()` returns `{ score, confidence }`; when confidence=low, score=null and we omit `profile_completeness` from payloads. UI shows "—" when value is null/undefined.
+- **Completeness overwrite guard (v5.3)**: Never write 0 unless confidence=high. `computeProfileCompleteness()` returns `{ score, confidence }`; when confidence=low (base not loaded, details not loaded), score=null and we omit `profile_completeness`. Only return 0 if profile is truly empty. UI shows "—" when null/undefined.
 - **Selectors**: `src/lib/supabase/selectors.ts` exports `PROFILE_ME_SELECT`; getMyProfile and base update use it for consistent profile_completeness + profile_details reads.
+- **Save timeouts (v5.3-r1)**: base_update 10s, details_rpc 25s (avoid spurious timeouts).
+- **Retry details UX**: When base saved but details failed, inline panel shows "Retry details" button; retry calls details RPC only.
+- **Details payload**: compact diff (only changed keys); omit empty arrays/strings to minimize payload.
 
 ### Bio newlines (v5.2)
 - Bio textarea preserves Enter/newlines; `normalizeBioString` trims edges only, preserves internal `\n`
@@ -114,7 +117,7 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 ### Profile taxonomy & persona modules
 - **Single source of truth**: `docs/PROFILE_TAXONOMY.md` + `src/lib/profile/taxonomy.ts`
 - Profile details (Settings): Core + Artist/Collector/Curator modules (역할별 optional). Save 전 `sanitizeProfileDetails` 적용; Dev 저장 실패 시 error detail 로그.
-- **Failure logging (v5.3)**: On save failure (base_update or details_rpc), `console.error` logs structured event `{ event: "profile_save_failed", step, code, message, details, hint, payloadSummary }` in all envs. Dev DebugPanel shows step, RPC name+args (for details_rpc), full supabaseError.
+- **Failure logging (v5.3)**: On save failure, `console.error` logs structured event; details failure: `{ event: "details_save_failed", ms, step, code, message, details, hint }` with duration. Dev DebugPanel shows step, duration (ms), RPC name+args (for details_rpc), full supabaseError.
 
 ---
 

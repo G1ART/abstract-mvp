@@ -11,7 +11,7 @@ import {
   updateMyProfileBase,
   type EducationEntry,
 } from "@/lib/supabase/profiles";
-import { getMyProfileDetails, upsertMyProfileDetails, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
+import { getMyProfileDetails, upsertMyProfileDetails, saveProfileDetailsViaRpc, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   normalizeProfileBase,
@@ -37,6 +37,25 @@ function payloadEqual(a: Record<string, unknown> | null, b: Record<string, unkno
   } catch {
     return false;
   }
+}
+
+/** Build compact diff: only changed keys. Include null to clear; omit empty arrays/strings for compactness. */
+function buildCompactDetailsDiff(
+  initial: Record<string, unknown> | null,
+  normalized: NormalizedDetailsPayload
+): Record<string, unknown> {
+  const init = initial ?? {};
+  const keys = ["career_stage", "age_band", "city", "region", "country", "themes", "mediums", "styles", "keywords", "price_band", "acquisition_channels", "affiliation", "program_focus"] as const;
+  const out: Record<string, unknown> = {};
+  for (const k of keys) {
+    const v = (normalized as Record<string, unknown>)[k];
+    const prev = init[k];
+    if (JSON.stringify(v) === JSON.stringify(prev)) continue;
+    if (v != null && Array.isArray(v) && v.length === 0) continue;
+    if (v != null && typeof v === "string" && v.trim() === "") continue;
+    out[k] = v;
+  }
+  return out;
 }
 
 function TestRpcButton() {
@@ -289,16 +308,20 @@ export default function SettingsPage() {
     step: "base_update" | "details_rpc";
     supabaseError: { code?: string; message?: string; details?: string; hint?: string };
     normalizedPayload: Record<string, unknown>;
+    durationMs?: number;
   } | null>(null);
+  const [showRetryDetails, setShowRetryDetails] = useState(false);
 
-  const SAVE_TIMEOUT_MS = 8000;
+  const BASE_TIMEOUT_MS = 10000;
+  const DETAILS_TIMEOUT_MS = 25000;
   const isDev = process.env.NODE_ENV === "development";
 
   async function withTimeout<T>(
-    fn: () => Promise<T>
+    fn: () => Promise<T>,
+    ms: number
   ): Promise<{ ok: true; data: T } | { ok: false; timeout: true } | { ok: false; error: unknown }> {
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout")), SAVE_TIMEOUT_MS)
+      setTimeout(() => reject(new Error("Timeout")), ms)
     );
     try {
       const data = await Promise.race([fn(), timeoutPromise]);
@@ -435,6 +458,119 @@ export default function SettingsPage() {
     );
   }
 
+  async function handleRetryDetails() {
+    if (isSavingRef.current) return;
+    setError(null);
+    setWarning(null);
+    setLastError(null);
+    isSavingRef.current = true;
+    setSaving(true);
+    const normalizedDetails = normalizeProfileDetails({
+      career_stage: careerStage,
+      age_band: ageBand,
+      city,
+      region,
+      country,
+      themes,
+      mediums,
+      styles,
+      keywords,
+      price_band: priceBand,
+      acquisition_channels: acquisitionChannels,
+      affiliation,
+      program_focus: programFocus,
+    });
+    const fullProfile = {
+      username: username ?? undefined,
+      display_name: displayName,
+      avatar_url: avatarUrl ?? undefined,
+      bio,
+      main_role: mainRole,
+      roles,
+      city: normalizedDetails.city ?? undefined,
+      region: normalizedDetails.region ?? undefined,
+      country: normalizedDetails.country ?? undefined,
+      themes: normalizedDetails.themes ?? undefined,
+      mediums: normalizedDetails.mediums ?? undefined,
+      styles: normalizedDetails.styles ?? undefined,
+      education,
+      price_band: normalizedDetails.price_band ?? undefined,
+      acquisition_channels: normalizedDetails.acquisition_channels ?? undefined,
+      affiliation: normalizedDetails.affiliation ?? undefined,
+      program_focus: normalizedDetails.program_focus ?? undefined,
+    };
+    const { score, confidence } = computeProfileCompleteness(fullProfile, { hasDetailsLoaded: true });
+    const computedScore = confidence === "high" && score !== null ? score : null;
+    const pDetailsPayload = buildCompactDetailsDiff(initialDetailsRef.current, normalizedDetails);
+    const detailsStart = performance.now();
+    const detailsRes = await withTimeout(
+      () => saveProfileDetailsViaRpc(pDetailsPayload, computedScore),
+      DETAILS_TIMEOUT_MS
+    );
+    const detailsRpcMs = Math.round(performance.now() - detailsStart);
+    if (detailsRes.ok && detailsRes.data) {
+      const row = detailsRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
+      if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
+      const pd = row.profile_details;
+      if (pd && typeof pd === "object") {
+        initialDetailsRef.current = {
+          career_stage: (pd.career_stage as string) ?? null,
+          age_band: (pd.age_band as string) ?? null,
+          city: (pd.city as string) ?? null,
+          region: (pd.region as string) ?? null,
+          country: (pd.country as string) ?? null,
+          themes: (pd.themes as string[]) ?? null,
+          mediums: (pd.mediums as string[]) ?? null,
+          styles: (pd.styles as string[]) ?? null,
+          keywords: (pd.keywords as string[]) ?? null,
+          price_band: (pd.price_band as string) ?? null,
+          acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
+          affiliation: (pd.affiliation as string) ?? null,
+          program_focus: (pd.program_focus as string[]) ?? null,
+        } as unknown as Record<string, unknown>;
+      }
+      setShowRetryDetails(false);
+      const { data: refreshed } = await getMyProfile();
+      const pc = (refreshed as { profile_completeness?: number | null } | null)?.profile_completeness;
+      if (pc != null) setDbProfileCompleteness(pc);
+      const profileUsername = (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
+      if (profileUsername) {
+        if (typeof window !== "undefined") window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+        router.push(`/u/${profileUsername}`);
+      } else {
+        setSaved(true);
+      }
+    } else {
+      const detailsTimeout = "timeout" in detailsRes && detailsRes.timeout;
+      const detailsErr = detailsTimeout ? new Error("Timeout") : ("error" in detailsRes ? detailsRes.error : new Error("Unknown"));
+      const errObj = detailsErr as { code?: string; message?: string; details?: string; hint?: string };
+      setLastError({
+        step: "details_rpc",
+        supabaseError: {
+          code: errObj?.code,
+          message: detailsTimeout ? "Timeout" : (errObj?.message ?? String(detailsErr)),
+          details: errObj?.details,
+          hint: errObj?.hint,
+        },
+        normalizedPayload: pDetailsPayload as Record<string, unknown>,
+        durationMs: detailsRpcMs,
+      });
+      console.error(JSON.stringify({
+        event: "details_save_failed",
+        ms: detailsRpcMs,
+        step: "details_rpc",
+        rpc: "update_my_profile_details",
+        code: errObj?.code,
+        message: errObj?.message,
+        details: errObj?.details,
+        hint: errObj?.hint,
+      }));
+      setWarning(isDev ? "Retry failed" : t("settings.savePartialWarning"));
+    }
+    isSavingRef.current = false;
+    setSaving(false);
+  }
+
   function addEducation() {
     setEducation((prev) => [...prev, { school: "", program: "", year: "", type: null }]);
   }
@@ -455,6 +591,7 @@ export default function SettingsPage() {
     setInfo(null);
     setSaved(false);
     setLastError(null);
+    setShowRetryDetails(false);
 
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {
@@ -541,6 +678,7 @@ export default function SettingsPage() {
       if (computedScore !== null) {
         payloadBase.profile_completeness = computedScore;
       }
+      const baseStart = performance.now();
       const baseRes = await withTimeout(async () => {
         const r = await updateMyProfileBase({
           display_name: payloadBase.display_name as string | null,
@@ -556,7 +694,8 @@ export default function SettingsPage() {
         });
         if (r.error) throw r.error;
         return r.data;
-      });
+      }, BASE_TIMEOUT_MS);
+      const baseUpdateMs = Math.round(performance.now() - baseStart);
       if (!baseRes.ok) {
         isSavingRef.current = false;
         setSaving(false);
@@ -576,10 +715,12 @@ export default function SettingsPage() {
           step,
           supabaseError,
           normalizedPayload: payloadSummary as Record<string, unknown>,
+          durationMs: baseUpdateMs,
         });
         console.error(JSON.stringify({
           event: "profile_save_failed",
           step,
+          base_update_ms: baseUpdateMs,
           code: supabaseError.code,
           message: supabaseError.message,
           details: supabaseError.details,
@@ -603,11 +744,14 @@ export default function SettingsPage() {
 
     let detailsSucceeded = false;
     if (isDetailsDirty) {
+      const detailsStart = performance.now();
+      const pDetailsPayload = buildCompactDetailsDiff(initialDetailsRef.current, normalizedDetails);
       const detailsRes = await withTimeout(async () => {
-        const r = await upsertMyProfileDetails(normalizedDetails, computedScore);
+        const r = await saveProfileDetailsViaRpc(pDetailsPayload, computedScore);
         if (r.error) throw r.error;
         return r.data;
-      });
+      }, DETAILS_TIMEOUT_MS);
+      const detailsRpcMs = Math.round(performance.now() - detailsStart);
       if (detailsRes.ok && detailsRes.data) {
         detailsSucceeded = true;
         const row = detailsRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
@@ -646,23 +790,25 @@ export default function SettingsPage() {
           step,
           supabaseError,
           normalizedPayload: detailsSnap,
+          durationMs: detailsRpcMs,
         });
         console.error(JSON.stringify({
-          event: "profile_save_failed",
+          event: "details_save_failed",
+          ms: detailsRpcMs,
           step,
           rpc: "update_my_profile_details",
-          rpcArgs: { p_details: Object.keys(detailsSnap), p_completeness: computedScore },
+          rpcArgs: { p_details: Object.keys(pDetailsPayload), p_completeness: computedScore },
           code: supabaseError.code,
           message: supabaseError.message,
           details: supabaseError.details,
           hint: supabaseError.hint,
-          payloadSummary: detailsSnap,
         }));
         setWarning(
           baseSucceeded
-            ? (isDev ? "Base saved, details_rpc failed" : t("settings.savePartialWarning"))
+            ? (isDev ? "Base saved, details failed" : t("settings.savePartialWarning"))
             : (isDev ? "details_rpc failed" : t("settings.savePartialWarning"))
         );
+        if (baseSucceeded) setShowRetryDetails(true);
       }
     }
 
@@ -1015,9 +1161,19 @@ export default function SettingsPage() {
 
             {error && <p className="text-sm text-red-600">{error}</p>}
             {warning && (
-              <p className="text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded">
-                {warning}
-              </p>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-amber-700 bg-amber-50 px-3 py-2 rounded">
+                <span>{warning}</span>
+                {showRetryDetails && (
+                  <button
+                    type="button"
+                    onClick={handleRetryDetails}
+                    disabled={saving}
+                    className="rounded border border-amber-600 px-2 py-1 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {saving ? t("common.loading") : "Retry details"}
+                  </button>
+                )}
+              </div>
             )}
             {info && (
               <p className="text-sm text-zinc-600 bg-zinc-100 px-3 py-2 rounded">
@@ -1048,6 +1204,7 @@ export default function SettingsPage() {
               <>
                 <p className="mb-1 text-xs text-zinc-600">
                   step: <strong>{lastError.step}</strong>
+                  {lastError.durationMs != null && ` (${lastError.durationMs}ms)`}
                 </p>
                 {lastError.step === "details_rpc" && (
                   <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_details(p_details, p_completeness)</p>

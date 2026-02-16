@@ -110,6 +110,7 @@
 - [ ] 저장 후 completeness 진행 바 증가 확인 (0 고정 아님)
 - [ ] `/my`와 Settings에서 completeness 동일하게 표시 (단일 소스 DB)
 - [ ] Completeness가 null/미상일 때 "—" 표시 (0 강제 표시 아님)
+- [ ] Details 저장 실패 후 "Retry details" 버튼 노출, 클릭 시 details RPC만 재시도
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 - [ ] Bio: Enter로 줄바꿈 입력 → 저장 → 프로필/피드/People 카드에 줄바꿈 렌더링 (whitespace-pre-line)

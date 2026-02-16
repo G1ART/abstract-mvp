@@ -103,7 +103,7 @@ export function computeCompleteness(
 
 /**
  * Returns { score, confidence }.
- * If confidence="low" (missing base or profile_details not loaded), returns score=null.
+ * Return null (not 0) when required inputs missing. Only return 0 if profile is truly empty.
  * Never use score=null to write to DB - omit profile_completeness instead.
  */
 export function computeProfileCompleteness(
@@ -118,6 +118,10 @@ export function computeProfileCompleteness(
   const hasCurator = roles.includes("curator") || main === "curator";
   const hasGallerist = roles.includes("gallerist") || main === "gallerist";
 
+  const baseLoaded = profile.username != null && String(profile.username).trim().length >= 3;
+  if (!baseLoaded) {
+    return { score: null, confidence: "low", missingRecommendations: ["base_not_loaded"] };
+  }
   const needsDetails = hasArtist || hasCollector || hasCurator || hasGallerist;
   if (needsDetails && !hasDetailsLoaded) {
     return { score: null, confidence: "low", missingRecommendations: ["details_not_loaded"] };

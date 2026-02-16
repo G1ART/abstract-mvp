@@ -179,3 +179,11 @@ export async function upsertMyProfileDetails(
 
   return updateMyProfileDetailsViaRpc(pDetails, completeness);
 }
+
+/** Save pre-built payload (e.g. compact diff). For retry or when caller builds payload. */
+export async function saveProfileDetailsViaRpc(
+  payload: Record<string, unknown>,
+  completeness: number | null
+): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
+  return updateMyProfileDetailsViaRpc(payload, completeness);
+}
