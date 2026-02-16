@@ -311,6 +311,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 - Fixed TS error in makePatch by stringifying keyof before indexing Record<string, unknown>.
 
+## 2026-02-16 — Emergency: restore deploy without PR (PR creation suspended)
+
+- GitHub account blocked from opening PRs, so we pushed build-fix commits directly to main.
+- Fixed Settings stale symbol reference, ProfileBootstrap PromiseLike catch, and diffPatch keyof indexing TS error.
+- Next step after deploy: address profile save + completeness/flash issues (functional).
+
 ---
 
 ## 17) Immediate next steps (recommended)
