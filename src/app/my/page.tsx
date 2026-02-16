@@ -223,7 +223,7 @@ export default function MyPage() {
         {/* Profile completeness */}
         <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
           <h3 className="mb-2 text-sm font-medium text-zinc-900">
-            {t("me.profileCompletenessTitle")}: {(profile?.profile_completeness ?? 0)}/100
+            {t("me.profileCompletenessTitle")}: {profile?.profile_completeness != null ? `${profile.profile_completeness}/100` : "—"}
           </h3>
           <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
             <div

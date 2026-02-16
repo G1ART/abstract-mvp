@@ -103,10 +103,11 @@ export type UpdateDetailsRpcResult = {
 
 /**
  * Single source of truth for details save. Merges via RPC, returns updated row.
+ * completeness: number | null — when null, RPC keeps existing value (no 0 overwrite).
  */
 export async function updateMyProfileDetailsViaRpc(
   detailsJson: Record<string, unknown>,
-  completeness: number
+  completeness: number | null
 ): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
   const {
     data: { session },
@@ -115,20 +116,34 @@ export async function updateMyProfileDetailsViaRpc(
     return { data: null, error: new Error("Not authenticated") };
   }
 
-  const { data, error } = await supabase.rpc("update_my_profile_details", {
-    p_details: detailsJson,
-    p_completeness: completeness,
-  });
+  const rpcArgs = { p_details: detailsJson, p_completeness: completeness };
+  const { data, error } = await supabase.rpc("update_my_profile_details", rpcArgs);
 
-  if (error) return { data: null, error };
+  if (error) {
+    console.error("[profileDetails] RPC failed", {
+      event: "profile_save_failed",
+      step: "details_rpc",
+      rpc: "update_my_profile_details",
+      argsKeys: Object.keys(rpcArgs),
+      code: (error as { code?: string })?.code,
+      message: (error as { message?: string })?.message,
+    });
+    return { data: null, error };
+  }
+
   const row = Array.isArray(data) && data[0] ? (data[0] as UpdateDetailsRpcResult) : null;
+  if (!row) {
+    const err = new Error("RPC returned no rows");
+    console.error("[profileDetails] RPC returned no rows", { event: "profile_save_failed", step: "details_rpc" });
+    return { data: null, error: err };
+  }
   return { data: row, error: null };
 }
 
 /** Save details via RPC (merge). Normalizes input, delegates to updateMyProfileDetailsViaRpc. */
 export async function upsertMyProfileDetails(
   input: ProfileDetailsInput,
-  completeness: number
+  completeness: number | null
 ): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
   const normalized: NormalizedDetailsPayload = normalizeProfileDetails({
     career_stage: input.career_stage,

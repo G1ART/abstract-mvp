@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { PROFILE_ME_SELECT } from "./selectors";
 
 export type ProfilePublic = {
   id: string;
@@ -66,9 +67,6 @@ export async function checkUsernameExists(
   return { exists, error: null };
 }
 
-const MY_PROFILE_SELECT =
-  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, price_band, acquisition_channels, affiliation, program_focus, residencies, exhibitions, awards, profile_completeness, profile_updated_at, profile_details";
-
 export async function getMyProfile() {
   const {
     data: { session },
@@ -76,7 +74,7 @@ export async function getMyProfile() {
   if (!session?.user?.id) return { data: null, error: null };
   const { data, error } = await supabase
     .from("profiles")
-    .select(MY_PROFILE_SELECT)
+    .select(PROFILE_ME_SELECT)
     .eq("id", session.user.id)
     .single();
   return { data, error };
@@ -200,7 +198,7 @@ export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
     .from("profiles")
     .update(updates)
     .eq("id", session.user.id)
-    .select("id, username, profile_completeness, profile_details")
+    .select(PROFILE_ME_SELECT)
     .single();
 
   return { data, error };

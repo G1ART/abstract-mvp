@@ -101,13 +101,15 @@
 - [ ] **i18n**: EN/KO 모두 taxonomy/섹션 라벨 표시
 - [ ] **Max select**: themes 5개 초과 시 "You can select up to 5" 메시지
 - [ ] **Dev**: 저장 실패 시 Debug panel에 step (base_update / details_rpc) + supabaseError code/message/details/hint 노출
+- [ ] **Dev**: 저장 실패 시 console에 profile_save_failed 이벤트 구조화 로그
 
-## 7. Profile v0 + Completeness + Details save (v5.2)
+## 7. Profile v0 + Completeness + Details save (v5.2 / v5.3)
 
 - [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
 - [ ] details 필드 수정 → Save → 새로고침 후 값 유지 (RPC merge, reset 없음)
-- [ ] 저장 후 completeness 진행 바 증가 확인 (0이 아님)
+- [ ] 저장 후 completeness 진행 바 증가 확인 (0 고정 아님)
 - [ ] `/my`와 Settings에서 completeness 동일하게 표시 (단일 소스 DB)
+- [ ] Completeness가 null/미상일 때 "—" 표시 (0 강제 표시 아님)
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 - [ ] Bio: Enter로 줄바꿈 입력 → 저장 → 프로필/피드/People 카드에 줄바꿈 렌더링 (whitespace-pre-line)
@@ -132,7 +134,7 @@
 - [ ] `/my` KPIs: Following, Followers, Posts 숫자 표시
 - [ ] Following 클릭 → `/my/following` (내가 팔로우한 사람 목록)
 - [ ] Followers 클릭 → `/my/followers` (나를 팔로우한 사람 목록)
-- [ ] 프로필 completeness가 설정 저장 후 0이 아님
+- [ ] 프로필 completeness가 설정 저장 후 0 고정되지 않음; null이면 "—" 표시
 
 ## 9. Profile Viewers (Entitlements skeleton)
 

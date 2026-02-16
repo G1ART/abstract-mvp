@@ -29,6 +29,12 @@ export type CompletenessResult = {
   missingRecommendations: string[];
 };
 
+export type CompletenessResultWithConfidence = {
+  score: number | null;
+  confidence: "high" | "low";
+  missingRecommendations: string[];
+};
+
 const CORE_WEIGHT = 50;
 const MODULE_WEIGHT = 50;
 
@@ -88,12 +94,34 @@ function curatorModuleScore(p: ProfileForCompleteness): number {
 export function computeCompleteness(
   profile: ProfileForCompleteness
 ): CompletenessResult {
+  const r = computeProfileCompleteness(profile, { hasDetailsLoaded: true });
+  return {
+    score: r.score ?? 0,
+    missingRecommendations: r.missingRecommendations,
+  };
+}
+
+/**
+ * Returns { score, confidence }.
+ * If confidence="low" (missing base or profile_details not loaded), returns score=null.
+ * Never use score=null to write to DB - omit profile_completeness instead.
+ */
+export function computeProfileCompleteness(
+  profile: ProfileForCompleteness,
+  options?: { hasDetailsLoaded?: boolean }
+): CompletenessResultWithConfidence {
+  const hasDetailsLoaded = options?.hasDetailsLoaded ?? true;
   const roles = Array.isArray(profile.roles) ? profile.roles : [];
   const main = profile.main_role ?? "";
   const hasArtist = roles.includes("artist") || main === "artist";
   const hasCollector = roles.includes("collector") || main === "collector";
   const hasCurator = roles.includes("curator") || main === "curator";
   const hasGallerist = roles.includes("gallerist") || main === "gallerist";
+
+  const needsDetails = hasArtist || hasCollector || hasCurator || hasGallerist;
+  if (needsDetails && !hasDetailsLoaded) {
+    return { score: null, confidence: "low", missingRecommendations: ["details_not_loaded"] };
+  }
 
   const core = coreScore(profile);
   let moduleScore = 0;
@@ -119,5 +147,5 @@ export function computeCompleteness(
   if (hasCollector && collectorModuleScore(profile) < MODULE_WEIGHT) missing.push("collector_module");
   if ((hasCurator || hasGallerist) && curatorModuleScore(profile) < MODULE_WEIGHT) missing.push("curator_module");
 
-  return { score, missingRecommendations: missing };
+  return { score, confidence: "high", missingRecommendations: missing };
 }

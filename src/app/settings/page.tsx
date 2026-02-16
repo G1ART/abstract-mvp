@@ -11,8 +11,8 @@ import {
   updateMyProfileBase,
   type EducationEntry,
 } from "@/lib/supabase/profiles";
-import { getMyProfileDetails, upsertMyProfileDetails } from "@/lib/supabase/profileDetails";
-import { computeCompleteness } from "@/lib/profile/completeness";
+import { getMyProfileDetails, upsertMyProfileDetails, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
+import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   normalizeProfileBase,
   normalizeProfileDetails,
@@ -37,6 +37,40 @@ function payloadEqual(a: Record<string, unknown> | null, b: Record<string, unkno
   } catch {
     return false;
   }
+}
+
+function TestRpcButton() {
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const run = async () => {
+    setTesting(true);
+    setResult(null);
+    try {
+      const r = await updateMyProfileDetailsViaRpc({ _ping: "ok" }, null);
+      if (r.error) {
+        setResult(`Error: ${r.error instanceof Error ? r.error.message : String(r.error)}`);
+        return;
+      }
+      setResult(r.data ? "RPC OK" : "RPC returned no rows");
+    } catch (e) {
+      setResult(`Throw: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+  return (
+    <div className="mt-2 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={run}
+        disabled={testing}
+        className="rounded border border-zinc-400 px-2 py-1 text-xs hover:bg-zinc-200 disabled:opacity-50"
+      >
+        {testing ? "Testing..." : "Test RPC"}
+      </button>
+      {result && <span className="text-xs text-zinc-600">{result}</span>}
+    </div>
+  );
 }
 
 type Profile = {
@@ -372,25 +406,28 @@ export default function SettingsPage() {
     );
   }, []);
 
-  const { score: completeness } = computeCompleteness({
-    username: username ?? undefined,
-    display_name: displayName,
-    avatar_url: avatarUrl ?? undefined,
-    bio,
-    main_role: mainRole,
-    roles,
-    city: city || undefined,
-    region: region || undefined,
-    country: country || undefined,
-    themes,
-    mediums,
-    styles,
-    education,
-    price_band: priceBand || undefined,
-    acquisition_channels: acquisitionChannels,
-    affiliation: affiliation || undefined,
-    program_focus: programFocus,
-  });
+  const { score: completeness } = computeProfileCompleteness(
+    {
+      username: username ?? undefined,
+      display_name: displayName,
+      avatar_url: avatarUrl ?? undefined,
+      bio,
+      main_role: mainRole,
+      roles,
+      city: city || undefined,
+      region: region || undefined,
+      country: country || undefined,
+      themes,
+      mediums,
+      styles,
+      education,
+      price_band: priceBand || undefined,
+      acquisition_channels: acquisitionChannels,
+      affiliation: affiliation || undefined,
+      program_focus: programFocus,
+    },
+    { hasDetailsLoaded: true }
+  );
 
   function toggleRole(role: string) {
     setRoles((prev) =>
@@ -485,7 +522,10 @@ export default function SettingsPage() {
       affiliation: normalizedDetails.affiliation ?? undefined,
       program_focus: normalizedDetails.program_focus ?? undefined,
     };
-    const { score } = computeCompleteness(fullProfile);
+    const { score, confidence } = computeProfileCompleteness(fullProfile, {
+      hasDetailsLoaded: true,
+    });
+    const computedScore = confidence === "high" && score !== null ? score : null;
 
     isSavingRef.current = true;
     setSaving(true);
@@ -494,23 +534,25 @@ export default function SettingsPage() {
     let detailsErr: unknown = null;
 
     if (isBaseDirty) {
-      const payloadBase = {
+      const payloadBase: Record<string, unknown> = {
         ...normalizedBase,
-        profile_completeness: score,
         profile_updated_at: new Date().toISOString(),
       };
+      if (computedScore !== null) {
+        payloadBase.profile_completeness = computedScore;
+      }
       const baseRes = await withTimeout(async () => {
         const r = await updateMyProfileBase({
-          display_name: payloadBase.display_name,
-          bio: payloadBase.bio,
-          location: payloadBase.location,
-          website: payloadBase.website,
-          main_role: payloadBase.main_role,
-          roles: payloadBase.roles,
-          is_public: payloadBase.is_public,
-          education: payloadBase.education,
-          profile_completeness: payloadBase.profile_completeness,
-          profile_updated_at: payloadBase.profile_updated_at,
+          display_name: payloadBase.display_name as string | null,
+          bio: payloadBase.bio as string | null,
+          location: payloadBase.location as string | null,
+          website: payloadBase.website as string | null,
+          main_role: payloadBase.main_role as string | null,
+          roles: payloadBase.roles as string[],
+          is_public: payloadBase.is_public as boolean,
+          education: payloadBase.education as EducationEntry[] | null,
+          profile_updated_at: payloadBase.profile_updated_at as string,
+          ...(computedScore !== null && { profile_completeness: computedScore }),
         });
         if (r.error) throw r.error;
         return r.data;
@@ -522,21 +564,33 @@ export default function SettingsPage() {
         const errObj = !isTimeout && "error" in baseRes
           ? (baseRes.error as { code?: string; message?: string; details?: string; hint?: string } | undefined)
           : undefined;
+        const step = "base_update";
+        const supabaseError = {
+          code: errObj?.code,
+          message: isTimeout ? "Timeout" : (errObj?.message ?? String("error" in baseRes ? baseRes.error : "Unknown")),
+          details: errObj?.details,
+          hint: errObj?.hint,
+        };
+        const payloadSummary = { ...payloadBase };
         setLastError({
-          step: "base_update",
-          supabaseError: {
-            code: errObj?.code,
-            message: isTimeout ? "Timeout" : (errObj?.message ?? String("error" in baseRes ? baseRes.error : "Unknown")),
-            details: errObj?.details,
-            hint: errObj?.hint,
-          },
-          normalizedPayload: payloadBase as unknown as Record<string, unknown>,
+          step,
+          supabaseError,
+          normalizedPayload: payloadSummary as Record<string, unknown>,
         });
+        console.error(JSON.stringify({
+          event: "profile_save_failed",
+          step,
+          code: supabaseError.code,
+          message: supabaseError.message,
+          details: supabaseError.details,
+          hint: supabaseError.hint,
+          payloadSummary,
+        }));
         setError(
           isTimeout
-            ? (isDev ? "Failed at base (timeout)" : "Failed to save profile")
+            ? (isDev ? "base_update failed (timeout)" : "Failed to save profile")
             : (isDev && errObj
-                ? `${errObj.code ? `[${errObj.code}] ` : ""}${errObj.message ?? ""}${errObj.details ? ` — ${errObj.details}` : ""}${errObj.hint ? ` (${errObj.hint})` : ""}`
+                ? `base_update failed: ${errObj.code ? `[${errObj.code}] ` : ""}${errObj.message ?? ""}${errObj.details ? ` — ${errObj.details}` : ""}${errObj.hint ? ` (${errObj.hint})` : ""}`
                 : "Failed to save profile")
         );
         return;
@@ -550,7 +604,7 @@ export default function SettingsPage() {
     let detailsSucceeded = false;
     if (isDetailsDirty) {
       const detailsRes = await withTimeout(async () => {
-        const r = await upsertMyProfileDetails(normalizedDetails, score);
+        const r = await upsertMyProfileDetails(normalizedDetails, computedScore);
         if (r.error) throw r.error;
         return r.data;
       });
@@ -581,20 +635,33 @@ export default function SettingsPage() {
         const detailsTimeout = "timeout" in detailsRes && detailsRes.timeout;
         detailsErr = detailsTimeout ? new Error("Timeout") : ("error" in detailsRes ? detailsRes.error : new Error("Unknown"));
         const errObj = detailsErr as { code?: string; message?: string; details?: string; hint?: string } | undefined;
+        const step = "details_rpc";
+        const supabaseError = {
+          code: errObj?.code,
+          message: detailsTimeout ? "Timeout" : (errObj?.message ?? String(detailsErr)),
+          details: errObj?.details,
+          hint: errObj?.hint,
+        };
         setLastError({
-          step: "details_rpc",
-          supabaseError: {
-            code: errObj?.code,
-            message: detailsTimeout ? "Timeout" : (errObj?.message ?? String(detailsErr)),
-            details: errObj?.details,
-            hint: errObj?.hint,
-          },
+          step,
+          supabaseError,
           normalizedPayload: detailsSnap,
         });
+        console.error(JSON.stringify({
+          event: "profile_save_failed",
+          step,
+          rpc: "update_my_profile_details",
+          rpcArgs: { p_details: Object.keys(detailsSnap), p_completeness: computedScore },
+          code: supabaseError.code,
+          message: supabaseError.message,
+          details: supabaseError.details,
+          hint: supabaseError.hint,
+          payloadSummary: detailsSnap,
+        }));
         setWarning(
           baseSucceeded
-            ? (isDev ? "Base saved, details failed" : t("settings.savePartialWarning"))
-            : (isDev ? "Details failed" : t("settings.savePartialWarning"))
+            ? (isDev ? "Base saved, details_rpc failed" : t("settings.savePartialWarning"))
+            : (isDev ? "details_rpc failed" : t("settings.savePartialWarning"))
         );
       }
     }
@@ -641,12 +708,12 @@ export default function SettingsPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
               <p className="mb-2 text-sm font-medium text-zinc-700">
-                {t("profile.completeness")}: {dbProfileCompleteness ?? completeness}/100
+                {t("profile.completeness")}: {dbProfileCompleteness != null ? `${dbProfileCompleteness}/100` : (completeness != null ? `${completeness}/100` : "—")}
               </p>
               <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
                 <div
                   className="h-full bg-zinc-900 transition-all"
-                  style={{ width: `${dbProfileCompleteness ?? completeness}%` }}
+                  style={{ width: `${dbProfileCompleteness ?? completeness ?? 0}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-zinc-500">{t("profile.completenessHint")}</p>
@@ -974,25 +1041,30 @@ export default function SettingsPage() {
           </form>
         )}
 
-        {isDev && lastError && (
+        {isDev && (
           <div className="mt-8 rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm">
-            <h3 className="mb-2 font-medium text-zinc-800">Save debug</h3>
-            <p className="mb-1 text-xs text-zinc-600">
-              step: <strong>{lastError.step}</strong>
-            </p>
-            <p className="mb-1 text-xs text-red-700">
-              code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}
-            </p>
-            {lastError.supabaseError.details && (
-              <p className="mb-1 text-xs text-zinc-700">details: {lastError.supabaseError.details}</p>
-            )}
-            {lastError.supabaseError.hint && (
-              <p className="mb-2 text-xs text-zinc-600">hint: {lastError.supabaseError.hint}</p>
-            )}
-            <pre className="mb-3 max-h-48 overflow-auto rounded bg-zinc-100 p-2 text-xs">
-              {JSON.stringify(lastError.normalizedPayload, null, 2)}
-            </pre>
-            <button
+            <h3 className="mb-2 font-medium text-zinc-800">Dev debug</h3>
+            {lastError && (
+              <>
+                <p className="mb-1 text-xs text-zinc-600">
+                  step: <strong>{lastError.step}</strong>
+                </p>
+                {lastError.step === "details_rpc" && (
+                  <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_details(p_details, p_completeness)</p>
+                )}
+                <p className="mb-1 text-xs text-red-700">
+                  code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}
+                </p>
+                {lastError.supabaseError.details && (
+                  <p className="mb-1 text-xs text-zinc-700">details: {lastError.supabaseError.details}</p>
+                )}
+                {lastError.supabaseError.hint && (
+                  <p className="mb-2 text-xs text-zinc-600">hint: {lastError.supabaseError.hint}</p>
+                )}
+                <pre className="mb-3 max-h-48 overflow-auto rounded bg-zinc-100 p-2 text-xs">
+                  {JSON.stringify(lastError.normalizedPayload, null, 2)}
+                </pre>
+                <button
               type="button"
               onClick={() => {
                 const json = JSON.stringify(
@@ -1002,10 +1074,13 @@ export default function SettingsPage() {
                 );
                 void navigator.clipboard.writeText(json);
               }}
-              className="rounded border border-zinc-400 px-2 py-1 text-xs hover:bg-zinc-200"
+              className="mr-2 rounded border border-zinc-400 px-2 py-1 text-xs hover:bg-zinc-200"
             >
               Copy debug
             </button>
+              </>
+            )}
+            <TestRpcButton />
           </div>
         )}
 
