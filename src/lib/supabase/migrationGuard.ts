@@ -69,18 +69,24 @@ export async function checkSupabaseMigrations(): Promise<MigrationCheckResult> {
     failed.push("get_people_recs");
   }
 
-  // (e) profile_details table + upsert_profile_details RPC
+  // (e) profiles.profile_details column + update_my_profile_details RPC (v5.1 merge)
   try {
-    const { error: tblErr } = await supabase.from("profile_details").select("user_id").limit(0);
-    if (tblErr) failed.push("profile_details_table");
+    const { error: colErr } = await supabase
+      .from("profiles")
+      .select("profile_details")
+      .limit(0);
+    if (colErr) failed.push("profile_details_merge");
   } catch {
-    failed.push("profile_details_table");
+    failed.push("profile_details_merge");
   }
   try {
-    const { error: rpcErr } = await supabase.rpc("upsert_profile_details", { p: {} });
-    if (rpcErr) failed.push("upsert_profile_details");
+    const { error: rpcErr } = await supabase.rpc("update_my_profile_details", {
+      p_details: {},
+      p_completeness: 0,
+    });
+    if (rpcErr) failed.push("profile_details_merge");
   } catch {
-    failed.push("upsert_profile_details");
+    failed.push("profile_details_merge");
   }
 
   // (f) Delete RLS - attempt benign delete (non-existent row)

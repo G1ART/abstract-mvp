@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState, useRef, KeyboardEvent, useCallback } fr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import {
   getMyProfile,
@@ -247,6 +248,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [dbProfileCompleteness, setDbProfileCompleteness] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const [lastError, setLastError] = useState<{
@@ -292,6 +294,8 @@ export default function SettingsPage() {
         }
         const p = profileRes.data as Profile | null;
         const d = detailsRes.data;
+        const pc = (p as { profile_completeness?: number | null } | null)?.profile_completeness;
+        if (pc != null) setDbProfileCompleteness(pc);
         if (p) {
           setUsername(p.username ?? null);
           setAvatarUrl(p.avatar_url ?? null);
@@ -542,7 +546,7 @@ export default function SettingsPage() {
 
     if (isDetailsDirty) {
       const detailsRes = await withTimeout(async () => {
-        const r = await upsertMyProfileDetails(normalizedDetails);
+        const r = await upsertMyProfileDetails(normalizedDetails, score);
         if (r.error) throw r.error;
         return r.data;
       });
@@ -569,6 +573,7 @@ export default function SettingsPage() {
     }
 
     if (baseSucceeded || (isDetailsDirty && !detailsErr)) {
+      setDbProfileCompleteness(score);
       const { data: refreshed } = await getMyProfile();
       const profileUsername =
         (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
@@ -608,12 +613,12 @@ export default function SettingsPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
               <p className="mb-2 text-sm font-medium text-zinc-700">
-                {t("profile.completeness")}: {completeness}/100
+                {t("profile.completeness")}: {dbProfileCompleteness ?? completeness}/100
               </p>
               <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
                 <div
                   className="h-full bg-zinc-900 transition-all"
-                  style={{ width: `${completeness}%` }}
+                  style={{ width: `${dbProfileCompleteness ?? completeness}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-zinc-500">{t("profile.completenessHint")}</p>
@@ -975,6 +980,20 @@ export default function SettingsPage() {
             </button>
           </div>
         )}
+
+        <div className="mt-12 border-t border-zinc-200 pt-8">
+          <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.logoutSection")}</h2>
+          <button
+            type="button"
+            onClick={async () => {
+              await signOut();
+              router.replace("/login");
+            }}
+            className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            {t("nav.logout")}
+          </button>
+        </div>
       </main>
     </AuthGate>
   );

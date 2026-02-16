@@ -38,8 +38,9 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 ### Navigation
 - Header logo routes to `/feed`
-- Logged-in nav includes: Feed / People / Profile(/u/<username>) / Upload / Settings / **My Profile** (near language toggle)
-- `/me` → redirect(`/my`) (legacy alias, old links preserved)
+- Logged-in nav: Feed / People / Upload / Settings (no standalone Profile link; **My Profile** or "Complete profile" near language toggle)
+- Logout moved to Settings page (header shows Settings link, not Logout)
+- `/me` → redirect(`/my`) (legacy alias)
 - `/artists` → redirect(`/people`) (legacy alias)
 
 ### Feed (Thread style)
@@ -87,13 +88,18 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Popular sorting based on likes_count
 
 ### My dashboard (/my)
-- `/my` (primary): Profile header, View public profile / Edit profile. KPI: Following, Followers, Posts. Profile completeness from DB. Bulk delete (multi-select). `listMyArtworks({ publicOnly: true })`.
+- `/my` (primary): Profile header. **Edit profile (Settings)** primary CTA; View public profile secondary. KPI: Following, Followers, Posts. Profile completeness from `profiles.profile_completeness`. Bulk delete (multi-select). `listMyArtworks({ publicOnly: true })`.
 - `/me` → redirect `/my` (legacy). `/my/followers`, `/my/following` — lists with Follow button.
+- Mobile: My Profile / Complete profile appears once (no duplicate).
 
 ### Settings UX
 - `/settings` save redirects to **/u/<username>**
-- One-time banner: “Profile updated” (sessionStorage flag)
+- **Log out** button at bottom (signOut → redirect /login)
+- One-time banner: "Profile updated" (sessionStorage flag)
 - MigrationGuard warnings do not block UI
+
+### Profile details (profiles.profile_details jsonb, v5.1)
+- Details in `profiles.profile_details` jsonb; RPC `update_my_profile_details` (merge); completeness source-of-truth
 
 ### Profile taxonomy & persona modules
 - **Single source of truth**: `docs/PROFILE_TAXONOMY.md` + `src/lib/profile/taxonomy.ts`

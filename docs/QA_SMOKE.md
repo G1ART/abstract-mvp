@@ -102,11 +102,12 @@
 - [ ] **Max select**: themes 5개 초과 시 "You can select up to 5" 메시지
 - [ ] **Dev**: 저장 실패 시 콘솔에 payload + error detail 노출
 
-## 7. Profile v0 + Completeness
+## 7. Profile v0 + Completeness + Details save
 
 - [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
+- [ ] details 필드 수정 → Save → 새로고침 후 값 유지 (merge, reset 없음)
 - [ ] 저장 후 completeness 진행 바 증가 확인 (0이 아님)
-- [ ] `/my`에서 "Profile completeness: X/100" 카드 노출
+- [ ] `/my`와 Settings에서 completeness 동일하게 표시
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 
@@ -116,9 +117,15 @@
 - [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
 - [ ] embeddings null 상태에서도 fallback 동작
 
+## 8.4 Nav + Logout
+
+- [ ] Desktop: Profile 탭 없음; My Profile + Settings 노출
+- [ ] Logout: Settings 하단에 "Log out" 버튼, 클릭 시 로그아웃 후 /login 이동
+- [ ] Mobile: My Profile 또는 Complete profile 한 번만 노출 (중복 없음)
+
 ## 8.5 My Profile (/my) + Followers/Following
 
-- [ ] Header에서 "My Profile" 클릭 → `/my` 진입
+- [ ] Header에서 "My Profile" 또는 "Complete profile" 클릭 → `/my` 또는 `/onboarding` 진입
 - [ ] `/my` KPIs: Following, Followers, Posts 숫자 표시
 - [ ] Following 클릭 → `/my/following` (내가 팔로우한 사람 목록)
 - [ ] Followers 클릭 → `/my/followers` (나를 팔로우한 사람 목록)

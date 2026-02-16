@@ -1,10 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
-import { signOut } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
@@ -20,7 +18,6 @@ const NAV_LINKS = [
 const linkClass = "text-sm text-zinc-600 hover:text-zinc-900";
 
 export function Header() {
-  const router = useRouter();
   const { t, locale, setLocale } = useT();
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -49,12 +46,6 @@ export function Header() {
     });
   }, [session?.user?.id]);
 
-  async function handleLogout() {
-    await signOut();
-    setMobileOpen(false);
-    router.replace("/login");
-  }
-
   function closeMobile() {
     setMobileOpen(false);
   }
@@ -72,14 +63,9 @@ export function Header() {
           Abstract
         </Link>
 
-        {/* Desktop nav */}
+        {/* Desktop nav - no Profile link, My Profile is the hub */}
         {ready && loggedIn && (
           <nav className="hidden md:flex items-center gap-4">
-            {profileUsername && (
-              <Link href={`/u/${profileUsername}`} className={linkClass}>
-                {t("nav.profile")}
-              </Link>
-            )}
             {NAV_LINKS.map(({ href, key }) => (
               <Link key={key} href={href} className={linkClass}>
                 {t(key)}
@@ -90,10 +76,10 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* My Profile - near auth */}
+        {/* My Profile or Complete profile - single entry */}
         {ready && loggedIn && (
-          <Link href="/my" className={linkClass}>
-            {t("nav.myProfile")}
+          <Link href={profileUsername ? "/my" : "/onboarding"} className={linkClass}>
+            {profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
           </Link>
         )}
         {/* Language toggle - always visible */}
@@ -115,17 +101,16 @@ export function Header() {
           </button>
         </span>
 
-        {/* Desktop: Logout / Login */}
+        {/* Desktop: Settings / Login (Logout moved to Settings) */}
         {ready && (
           <div className="hidden md:block">
             {loggedIn ? (
-              <button
-                type="button"
-                onClick={handleLogout}
+              <Link
+                href="/settings"
                 className="rounded px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100"
               >
-                {t("nav.logout")}
-              </button>
+                {t("nav.settings")}
+              </Link>
             ) : (
               <Link
                 href="/login"
@@ -166,26 +151,17 @@ export function Header() {
         </div>
       </div>
 
-      {/* Mobile menu panel */}
+      {/* Mobile menu panel - My Profile or Complete profile (one only), no duplication */}
       {mobileOpen && loggedIn && (
         <div className="md:hidden absolute top-full left-0 right-0 z-50 border-b border-zinc-200 bg-white shadow-sm">
           <nav className="flex flex-col p-4 gap-1">
             <Link
-              href="/my"
+              href={profileUsername ? "/my" : "/onboarding"}
               className={`${linkClass} py-2 px-1`}
               onClick={closeMobile}
             >
-              {t("nav.myProfile")}
+              {profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
             </Link>
-            {profileUsername && (
-              <Link
-                href={`/u/${profileUsername}`}
-                className={`${linkClass} py-2 px-1`}
-                onClick={closeMobile}
-              >
-                {t("nav.profile")}
-              </Link>
-            )}
             {NAV_LINKS.map(({ href, key }) => (
               <Link
                 key={key}
@@ -196,13 +172,6 @@ export function Header() {
                 {t(key)}
               </Link>
             ))}
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="text-left py-2 px-1 text-sm text-zinc-600 hover:text-zinc-900"
-            >
-              {t("nav.logout")}
-            </button>
           </nav>
         </div>
       )}

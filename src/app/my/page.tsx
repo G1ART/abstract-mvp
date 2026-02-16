@@ -195,6 +195,12 @@ export default function MyPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link
+              href="/settings"
+              className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            >
+              {t("my.actions.editProfile")}
+            </Link>
             {profile?.username && (
               <>
                 <Link
@@ -211,12 +217,6 @@ export default function MyPage() {
                 </Link>
               </>
             )}
-            <Link
-              href="/settings"
-              className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              {t("my.actions.editProfile")}
-            </Link>
           </div>
         </div>
 

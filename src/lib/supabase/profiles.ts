@@ -67,7 +67,7 @@ export async function checkUsernameExists(
 }
 
 const MY_PROFILE_SELECT =
-  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, price_band, acquisition_channels, affiliation, program_focus, residencies, exhibitions, awards, profile_completeness, profile_updated_at";
+  "id, username, display_name, bio, location, website, avatar_url, main_role, roles, is_public, career_stage, age_band, city, region, country, themes, mediums, styles, keywords, education, price_band, acquisition_channels, affiliation, program_focus, residencies, exhibitions, awards, profile_completeness, profile_updated_at, profile_details";
 
 export async function getMyProfile() {
   const {

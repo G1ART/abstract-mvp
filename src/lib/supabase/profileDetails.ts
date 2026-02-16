@@ -1,9 +1,13 @@
 /**
- * Profile details (profile_details table) — 1:1 with user, upsert via RPC.
+ * Profile details: stored as profiles.profile_details jsonb.
+ * Read from profiles, save via update_my_profile_details RPC (merge semantics).
  */
 
 import { supabase } from "./client";
-import { sanitizeProfileDetails, type SanitizedProfileDetails } from "@/lib/profile/sanitizeProfileDetails";
+import {
+  normalizeProfileDetails,
+  type NormalizedDetailsPayload,
+} from "@/lib/profile/normalizeProfilePayload";
 import type { ProfileDetailsInput } from "@/lib/profile/sanitizeProfileDetails";
 
 export type ProfileDetailsRow = {
@@ -21,27 +25,51 @@ export type ProfileDetailsRow = {
   collector_acquisition_channels: string[] | null;
   affiliation: string | null;
   program_focus: string[] | null;
-  updated_at: string;
+  updated_at?: string;
 };
 
-function sanitizedToRpcPayload(s: SanitizedProfileDetails): Record<string, unknown> {
+/** Map profile_details jsonb to ProfileDetailsRow (for Settings compatibility). */
+function jsonbToDetailsRow(
+  userId: string,
+  json: Record<string, unknown> | null
+): ProfileDetailsRow {
+  if (!json || typeof json !== "object") {
+    return {
+      user_id: userId,
+      career_stage: null,
+      age_band: null,
+      city: null,
+      region: null,
+      country: null,
+      themes: null,
+      keywords: null,
+      mediums: null,
+      styles: null,
+      collector_price_band: null,
+      collector_acquisition_channels: null,
+      affiliation: null,
+      program_focus: null,
+    };
+  }
   return {
-    career_stage: s.career_stage,
-    age_band: s.age_band,
-    city: s.city,
-    region: s.region,
-    country: s.country,
-    themes: s.themes,
-    keywords: s.keywords,
-    mediums: s.mediums,
-    styles: s.styles,
-    collector_price_band: s.price_band,
-    collector_acquisition_channels: s.acquisition_channels,
-    affiliation: s.affiliation,
-    program_focus: s.program_focus,
+    user_id: userId,
+    career_stage: (json.career_stage as string) ?? null,
+    age_band: (json.age_band as string) ?? null,
+    city: (json.city as string) ?? null,
+    region: (json.region as string) ?? null,
+    country: (json.country as string) ?? null,
+    themes: (json.themes as string[]) ?? null,
+    keywords: (json.keywords as string[]) ?? null,
+    mediums: (json.mediums as string[]) ?? null,
+    styles: (json.styles as string[]) ?? null,
+    collector_price_band: (json.price_band as string) ?? null,
+    collector_acquisition_channels: (json.acquisition_channels as string[]) ?? null,
+    affiliation: (json.affiliation as string) ?? null,
+    program_focus: (json.program_focus as string[]) ?? null,
   };
 }
 
+/** Get profile details from profiles.profile_details (via getMyProfile). */
 export async function getMyProfileDetails(): Promise<{
   data: ProfileDetailsRow | null;
   error: unknown;
@@ -52,19 +80,25 @@ export async function getMyProfileDetails(): Promise<{
   if (!session?.user?.id) return { data: null, error: null };
 
   const { data, error } = await supabase
-    .from("profile_details")
-    .select("*")
-    .eq("user_id", session.user.id)
-    .maybeSingle();
+    .from("profiles")
+    .select("id, profile_details")
+    .eq("id", session.user.id)
+    .single();
 
   if (error) return { data: null, error };
-  return { data: data as ProfileDetailsRow | null, error: null };
+  const row = data as { id?: string; profile_details?: Record<string, unknown> | null } | null;
+  const details = jsonbToDetailsRow(
+    session.user.id,
+    row?.profile_details ?? null
+  );
+  return { data: details, error: null };
 }
 
-export async function upsertMyProfileDetails(input: ProfileDetailsInput): Promise<{
-  data: ProfileDetailsRow | null;
-  error: unknown;
-}> {
+/** Save details via RPC (merge into profiles.profile_details). */
+export async function upsertMyProfileDetails(
+  input: ProfileDetailsInput,
+  completeness: number
+): Promise<{ data: unknown; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -72,33 +106,43 @@ export async function upsertMyProfileDetails(input: ProfileDetailsInput): Promis
     return { data: null, error: new Error("Not authenticated") };
   }
 
-  const sanitized = sanitizeProfileDetails(input);
-  const payload = sanitizedToRpcPayload(sanitized);
-  const p = payload as Record<string, unknown>;
-  const jsonbPayload = {
-    career_stage: p.career_stage ?? null,
-    age_band: p.age_band ?? null,
-    city: p.city ?? null,
-    region: p.region ?? null,
-    country: p.country ?? null,
-    themes: p.themes ?? null,
-    keywords: p.keywords ?? null,
-    mediums: p.mediums ?? null,
-    styles: p.styles ?? null,
-    collector_price_band: p.collector_price_band ?? null,
-    collector_acquisition_channels: p.collector_acquisition_channels ?? null,
-    affiliation: p.affiliation ?? null,
-    program_focus: p.program_focus ?? null,
+  const normalized: NormalizedDetailsPayload = normalizeProfileDetails({
+    career_stage: input.career_stage,
+    age_band: input.age_band,
+    city: input.city,
+    region: input.region,
+    country: input.country,
+    themes: input.themes,
+    mediums: input.mediums,
+    styles: input.styles,
+    keywords: input.keywords,
+    price_band: input.price_band,
+    acquisition_channels: input.acquisition_channels,
+    affiliation: input.affiliation,
+    program_focus: input.program_focus,
+  });
+
+  const pDetails = {
+    career_stage: normalized.career_stage,
+    age_band: normalized.age_band,
+    city: normalized.city,
+    region: normalized.region,
+    country: normalized.country,
+    themes: normalized.themes,
+    keywords: normalized.keywords,
+    mediums: normalized.mediums,
+    styles: normalized.styles,
+    price_band: normalized.price_band,
+    acquisition_channels: normalized.acquisition_channels,
+    affiliation: normalized.affiliation,
+    program_focus: normalized.program_focus,
   };
 
-  if (process.env.NODE_ENV === "development") {
-    console.warn("[profile-details] save request payload", jsonbPayload);
-  }
-
-  const { data: result, error } = await supabase.rpc("upsert_profile_details", {
-    p: jsonbPayload,
+  const { data, error } = await supabase.rpc("update_my_profile_details", {
+    p_details: pDetails,
+    p_completeness: completeness,
   });
 
   if (error) return { data: null, error };
-  return { data: result as ProfileDetailsRow | null, error: null };
+  return { data, error: null };
 }
