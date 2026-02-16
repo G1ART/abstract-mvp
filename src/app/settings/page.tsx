@@ -9,8 +9,7 @@ import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
-import { saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
-import { saveMyProfileBaseRpc } from "@/lib/profile/saveProfileBase";
+import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
@@ -56,15 +55,9 @@ function TestRpcButton() {
   const run = async () => {
     setTesting(true);
     setResult(null);
-    try {
-      const res = await saveMyProfileBaseRpc({ patch: {}, completeness: null });
-      if (res.error) throw res.error;
-      setResult("RPC OK");
-    } catch (e) {
-      setResult(`Throw: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setTesting(false);
-    }
+    const res = await saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness: null });
+    setTesting(false);
+    setResult(res.ok ? "RPC OK" : `${res.code ?? ""} ${res.message}`);
   };
   return (
     <div className="mt-2 flex items-center gap-2">
@@ -267,7 +260,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const [lastError, setLastError] = useState<{
-    step: "base_update" | "details_rpc";
+    step: "base_update" | "details_rpc" | "unified_upsert";
     supabaseError: { code?: string; message?: string; details?: string; hint?: string };
     normalizedPayload: Record<string, unknown>;
     durationMs?: number;
@@ -464,8 +457,21 @@ export default function SettingsPage() {
       setSaving(false);
       return;
     }
+    const res = await saveProfileUnified({ basePatch: {}, detailsPatch, completeness: computedScore });
+    if (!res.ok) {
+      setLastError({
+        step: "unified_upsert",
+        supabaseError: { code: res.code, message: res.message, details: res.details, hint: res.hint },
+        normalizedPayload: detailsPatch as Record<string, unknown>,
+        durationMs: 0,
+      });
+      setError(`Save failed: ${res.code ?? ""} ${res.message}`);
+      setWarning(isDev ? "Retry failed" : t("settings.savePartialWarning"));
+      isSavingRef.current = false;
+      setSaving(false);
+      return;
+    }
     try {
-      await saveProfileDetailsRpc(detailsPatch, computedScore);
       const { data: row } = await getMyProfile();
       const rowTyped = row as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null } | null;
       if (rowTyped?.profile_completeness != null) setDbProfileCompleteness(rowTyped.profile_completeness);
@@ -488,6 +494,7 @@ export default function SettingsPage() {
         } as unknown as Record<string, unknown>;
       }
       setShowRetryDetails(false);
+      setLastError(null);
       const profileUsername = (row as Profile | null)?.username?.trim().toLowerCase() ?? "";
       if (profileUsername) {
         if (typeof window !== "undefined") window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
@@ -496,20 +503,7 @@ export default function SettingsPage() {
         setSaved(true);
       }
     } catch (saveErr) {
-      const errObj = saveErr as { code?: string; message?: string; details?: string; hint?: string };
-      setLastError({
-        step: "details_rpc",
-        supabaseError: {
-          code: errObj?.code,
-          message: errObj?.message ?? String(saveErr),
-          details: errObj?.details,
-          hint: errObj?.hint,
-        },
-        normalizedPayload: detailsPatch as Record<string, unknown>,
-        durationMs: 0,
-      });
-      console.error("settings_retry_details_failed", saveErr);
-      setWarning(isDev ? "Retry failed" : t("settings.savePartialWarning"));
+      console.error("settings_retry_details_refresh_failed", saveErr);
     } finally {
       isSavingRef.current = false;
       setSaving(false);
@@ -640,14 +634,24 @@ export default function SettingsPage() {
       console.info("[save] patchKeys", { base: Object.keys(basePatch), details: Object.keys(detailsPatch) });
     }
 
+    const res = await saveProfileUnified({
+      basePatch,
+      detailsPatch,
+      completeness: computedScore,
+    });
+    if (!res.ok) {
+      setLastError({
+        step: "unified_upsert",
+        supabaseError: { code: res.code, message: res.message, details: res.details, hint: res.hint },
+        normalizedPayload: { base: basePatch, details: detailsPatch },
+        durationMs: 0,
+      });
+      setError(`Save failed: ${res.code ?? ""} ${res.message}`);
+      isSavingRef.current = false;
+      setSaving(false);
+      return;
+    }
     try {
-      if (Object.keys(basePatch).length > 0) {
-        const baseRes = await saveMyProfileBaseRpc({ patch: basePatch, completeness: computedScore });
-        if (baseRes.error) throw baseRes.error;
-      }
-      if (Object.keys(detailsPatch).length > 0) {
-        await saveProfileDetailsRpc(detailsPatch, computedScore);
-      }
       const { data: refreshed } = await getMyProfile();
       const ref = refreshed;
       const pc = ref?.profile_completeness;
@@ -1083,8 +1087,8 @@ export default function SettingsPage() {
                   step: <strong>{lastError.step}</strong>
                   {lastError.durationMs != null && ` (${lastError.durationMs}ms)`}
                 </p>
-                {lastError.step === "details_rpc" && (
-                  <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_base + update_my_profile_details (no PATCH)</p>
+                {(lastError.step === "details_rpc" || lastError.step === "unified_upsert") && (
+                  <p className="mb-1 text-xs text-zinc-600">RPC: {lastError.step === "unified_upsert" ? "upsert_my_profile" : "update_my_profile_base + update_my_profile_details"} (no PATCH)</p>
                 )}
                 <p className="mb-1 text-xs text-red-700">
                   code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}

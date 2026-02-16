@@ -225,16 +225,13 @@ export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
   if (Object.keys(updates).length === 0) {
     return { data: null, error: null };
   }
-  try {
-    const row = await saveProfileUnified({
-      basePatch: updates,
-      detailsPatch: {},
-      completeness: (partial.profile_completeness ?? null) as number | null,
-    });
-    return { data: row as { id: string; username: string | null } & Record<string, unknown>, error: null };
-  } catch (error) {
-    return { data: null, error };
-  }
+  const res = await saveProfileUnified({
+    basePatch: updates,
+    detailsPatch: {},
+    completeness: (partial.profile_completeness ?? null) as number | null,
+  });
+  if (!res.ok) return { data: null, error: res };
+  return { data: res.data as { id: string; username: string | null } & Record<string, unknown>, error: null };
 }
 
 /** Patch update via RPC (no direct PATCH). Skips if patch empty. */
@@ -253,19 +250,16 @@ export async function updateMyProfileBasePatch(patch: Partial<UpdateProfileBaseP
   if (Object.keys(updates).length === 0) {
     return { data: null, error: null, skipped: true };
   }
-  try {
-    const row = await saveProfileUnified({
-      basePatch: updates,
-      detailsPatch: {},
-      completeness: (patch.profile_completeness ?? null) as number | null,
-    });
-    return {
-      data: row as { id: string; username: string | null; profile_completeness: number | null; profile_details: Record<string, unknown> | null },
-      error: null,
-    };
-  } catch (error) {
-    return { data: null, error };
-  }
+  const res = await saveProfileUnified({
+    basePatch: updates,
+    detailsPatch: {},
+    completeness: (patch.profile_completeness ?? null) as number | null,
+  });
+  if (!res.ok) return { data: null, error: res };
+  return {
+    data: res.data as { id: string; username: string | null; profile_completeness: number | null; profile_details: Record<string, unknown> | null },
+    error: null,
+  };
 }
 
 /** Update profile via RPC (no direct PATCH). Base fields in basePatch, details in detailsPatch. */
@@ -290,29 +284,23 @@ export async function updateMyProfile(partial: UpdateProfileParams) {
   if (Object.keys(basePatch).length === 0 && Object.keys(detailsPatch).length === 0) {
     return { data: null, error: null };
   }
-  try {
-    const row = await saveProfileUnified({
-      basePatch,
-      detailsPatch,
-      completeness: (partial.profile_completeness ?? null) as number | null,
-    });
-    return { data: row, error: null };
-  } catch (error) {
-    return { data: null, error };
-  }
+  const res = await saveProfileUnified({
+    basePatch,
+    detailsPatch,
+    completeness: (partial.profile_completeness ?? null) as number | null,
+  });
+  if (!res.ok) return { data: null, error: res };
+  return { data: res.data, error: null };
 }
 
 /** Onboarding: create/update profile via RPC (no direct upsert). */
 export async function upsertProfile(params: UpsertProfileParams) {
   const { username, ...rest } = params;
-  try {
-    const row = await saveProfileUnified({
-      basePatch: { username: username.toLowerCase(), ...rest },
-      detailsPatch: {},
-      completeness: null,
-    });
-    return { data: row, error: null };
-  } catch (error) {
-    return { data: null, error };
-  }
+  const res = await saveProfileUnified({
+    basePatch: { username: username.toLowerCase(), ...rest },
+    detailsPatch: {},
+    completeness: null,
+  });
+  if (!res.ok) return { data: null, error: res };
+  return { data: res.data, error: null };
 }

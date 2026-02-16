@@ -4,6 +4,7 @@
  */
 
 import { supabase } from "./client";
+import type { ProfileSaveError, ProfileSaveResult } from "./profileSaveTypes";
 
 export type ProfileSaveUnifiedArgs = {
   basePatch: Record<string, unknown>;
@@ -54,13 +55,16 @@ function toBasePatch(raw: Record<string, unknown>): Record<string, unknown> {
 
 /**
  * Save base + details + completeness in one RPC. Verifies session before call.
+ * Returns structured error for UI/debug; never throws on RPC failure.
  */
-export async function saveProfileUnified(args: ProfileSaveUnifiedArgs): Promise<Record<string, unknown>> {
+export async function saveProfileUnified(args: ProfileSaveUnifiedArgs): Promise<
+  ProfileSaveResult<Record<string, unknown>>
+> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) {
-    throw new Error("Not authenticated");
+    return { ok: false, message: "Not authenticated", step: "unified_upsert" };
   }
 
   const p_base = toBasePatch(args.basePatch);
@@ -68,23 +72,30 @@ export async function saveProfileUnified(args: ProfileSaveUnifiedArgs): Promise<
   const p_completeness = args.completeness ?? null;
 
   const { data, error } = await supabase.rpc("upsert_my_profile", {
-    p_base: p_base,
-    p_details: p_details,
-    p_completeness: p_completeness,
+    p_base,
+    p_details,
+    p_completeness,
   });
 
   if (error) {
-    console.error("saveProfileUnified failed", {
-      message: error.message,
+    const err: ProfileSaveError = {
+      ok: false,
       code: (error as { code?: string }).code,
+      message: error.message,
       details: (error as { details?: string }).details,
       hint: (error as { hint?: string }).hint,
+      step: "unified_upsert",
+    };
+    console.error("saveProfileUnified failed", {
+      rpc: "upsert_my_profile",
+      argsKeys: { base: Object.keys(p_base), details: Object.keys(p_details) },
+      ...err,
     });
-    throw error;
+    return err;
   }
 
   if (data == null || typeof data !== "object") {
-    throw new Error("RPC returned no data");
+    return { ok: false, message: "RPC returned no data", step: "unified_upsert" };
   }
-  return data as Record<string, unknown>;
+  return { ok: true, data: data as Record<string, unknown> };
 }

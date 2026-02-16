@@ -80,23 +80,21 @@ export default function OnboardingPage() {
     }
 
     setLoading(true);
-    try {
-      await saveProfileUnified({
-        basePatch: {
-          username: normalizedUsername,
-          display_name: displayName.trim() || undefined,
-          main_role: mainRole || undefined,
-          roles,
-        },
-        detailsPatch: {},
-        completeness: null,
-      });
-    } catch (err) {
-      setLoading(false);
-      setError(err instanceof Error ? err.message : "Failed to save");
+    const res = await saveProfileUnified({
+      basePatch: {
+        username: normalizedUsername,
+        display_name: displayName.trim() || undefined,
+        main_role: mainRole || undefined,
+        roles,
+      },
+      detailsPatch: {},
+      completeness: null,
+    });
+    setLoading(false);
+    if (!res.ok) {
+      setError(`${res.code ?? "Error"} ${res.message}`);
       return;
     }
-    setLoading(false);
 
     await ensureFreeEntitlement(session.user.id);
     router.replace("/feed?tab=all&sort=latest");
