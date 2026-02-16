@@ -8,6 +8,7 @@ import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
+import { requireSession } from "@/lib/supabase/requireSession";
 import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
@@ -566,6 +567,24 @@ export default function SettingsPage() {
     }
     isSavingRef.current = false;
     setSaving(false);
+    } catch (err) {
+      const step = "profile_save";
+      const errObj = err as { code?: string; message?: string; details?: string; hint?: string } | undefined;
+      const code = errObj?.code ?? "";
+      const message = errObj?.message ?? (err instanceof Error ? err.message : String(err));
+      const details = errObj?.details;
+      const hint = errObj?.hint;
+      console.error({ event: "profile_save_failed", step, message, code, details, hint, err });
+      setLastError({
+        step,
+        supabaseError: { code, message, details, hint },
+        normalizedPayload: {},
+        durationMs: 0,
+      });
+      setError(isDev ? `${code ? code + " " : ""}${message}`.trim() || "Save failed" : "Fail to save changes");
+      isSavingRef.current = false;
+      setSaving(false);
+    }
   }
 
   function addEducation() {
@@ -590,12 +609,21 @@ export default function SettingsPage() {
     setLastError(null);
     setShowRetryDetails(false);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) {
-      setError(isDev ? "Session not ready, try again" : t("common.tryAgain"));
+    try {
+      await requireSession(supabase);
+    } catch (authErr) {
+      const msg = authErr instanceof Error ? authErr.message : String(authErr);
+      if (msg === "not_authenticated") {
+        setError("Session expired. Please log in again.");
+        await signOut();
+        router.push("/login");
+        return;
+      }
+      setError(isDev ? `Auth: ${msg}` : t("common.tryAgain"));
       return;
     }
 
+    try {
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {
       if (!finalRoles.includes(mainRole)) finalRoles.push(mainRole);

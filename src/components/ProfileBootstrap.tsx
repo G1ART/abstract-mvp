@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { requireSession } from "@/lib/supabase/requireSession";
 
 const BOOTSTRAP_KEY = "ab_profile_bootstrap_done";
 
@@ -28,6 +29,7 @@ function doEnsure(session: { user: { id: string } } | null) {
 
   void (async () => {
     try {
+      await requireSession(supabase);
       const { error } = await supabase.rpc("ensure_my_profile");
       if (!error) {
         setBootstrapDone();

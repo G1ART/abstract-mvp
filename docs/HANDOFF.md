@@ -325,6 +325,13 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Save flow: treat RPC success as success, then re-fetch profile once to prevent false failure UI.
 - Header: tri-state gating prevents "Complete your profile" flash during profile load.
 
+## 2026-02-16 — P0: Fix profile save by enforcing auth session on RPC calls
+
+- Root issue: save RPCs could be invoked without an auth-bearing browser session, causing auth.uid() to be null server-side.
+- Added `requireSession()` guard and ensured Settings/My save paths use browser supabase client with session.
+- Improved save error logging (code/message/details) to eliminate "false failure" heuristics.
+- Adjusted build stamp rendering to avoid confusing "local" label in prod when env var missing.
+
 ---
 
 ## 17) Immediate next steps (recommended)
