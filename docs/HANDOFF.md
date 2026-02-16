@@ -306,6 +306,7 @@ Last updated: 2026-02-15 (America/Los_Angeles)
   - Single transactional RPC `upsert_my_profile(p_base jsonb, p_details jsonb, p_completeness int)` saves base+details+completeness in one roundtrip.
   - Frontend "verify-after-error": on RPC error/timeout it refetches profile and treats as success if patch applied, preventing false failure banners.
 - Migration: run `supabase/migrations/my_profile_upsert_one_rpc.sql` manually in Supabase SQL editor.
+- Hotfix: fixed TS build error in ProfileBootstrap by converting fire-and-forget `.catch` chain to async IIFE try/catch.
 
 ---
 
