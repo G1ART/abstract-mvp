@@ -11,7 +11,7 @@ export type ProfileSaveUnifiedArgs = {
   completeness: number | null;
 };
 
-/** Whitelist for base: never send id, profile_details, profile_completeness, profile_updated_at. */
+/** Whitelist for base. Include username only when caller explicitly sets a non-empty value (e.g. onboarding). */
 const BASE_KEYS = new Set([
   "display_name",
   "bio",
@@ -25,10 +25,22 @@ const BASE_KEYS = new Set([
   "username",
 ]);
 
-function toBasePatch(raw: Record<string, unknown>): Record<string, unknown> {
+/** Strip null/undefined/"" so we never send username=null to RPC (prevents 23502). */
+function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(raw)) {
-    if (BASE_KEYS.has(k) && v !== undefined) out[k] = v;
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null) continue;
+    if (typeof v === "string" && v.trim() === "") continue;
+    out[k] = v;
+  }
+  return out;
+}
+
+function toBasePatch(raw: Record<string, unknown>): Record<string, unknown> {
+  const compact = compactPatch(raw);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(compact)) {
+    if (BASE_KEYS.has(k)) out[k] = v;
   }
   return out;
 }

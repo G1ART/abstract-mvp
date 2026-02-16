@@ -1,5 +1,6 @@
 /**
  * Single entry point for main profile base save. Uses update_my_profile_base RPC only (no PATCH).
+ * Never sends username (main profile save must not overwrite username with null).
  */
 
 import { supabase } from "@/lib/supabase/client";
@@ -17,10 +18,22 @@ const BASE_PATCH_WHITELIST = new Set([
   "education",
 ]);
 
-function whitelist(patch: Record<string, unknown>): Record<string, unknown> {
+/** Remove null, undefined, and "" so RPC never receives username=null / empty. */
+function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(patch)) {
-    if (BASE_PATCH_WHITELIST.has(key) && value !== undefined) {
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined || value === null) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+function whitelist(patch: Record<string, unknown>): Record<string, unknown> {
+  const compact = compactPatch(patch);
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(compact)) {
+    if (BASE_PATCH_WHITELIST.has(key)) {
       out[key] = value;
     }
   }
