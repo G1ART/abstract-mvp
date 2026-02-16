@@ -337,6 +337,10 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Marked key RPCs as SECURITY DEFINER (best-effort) and granted execute/CRUD to authenticated to prevent silent write blocks.
 - Removed confusing "local" badge fallback when NEXT_PUBLIC_BUILD_STAMP is not set.
 
+## 2026-02-16 — P0: unified profile save to upsert_my_profile
+
+- Unified profile save to single RPC (upsert_my_profile) to avoid PostgREST 42702/42804 from legacy update_my_profile_base / update_my_profile_details.
+
 ---
 
 ## 17) Immediate next steps (recommended)

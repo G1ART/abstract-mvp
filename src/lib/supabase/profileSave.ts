@@ -1,6 +1,6 @@
 /**
  * Profile save via RPC (auth.uid() 기반).
- * Base and details both use DB RPC; no frontend .from('profiles').update().
+ * Single path: upsert_my_profile. Legacy update_my_profile_base / update_my_profile_details are not used (PostgREST 42702/42804).
  */
 
 import { supabase } from "./client";
@@ -12,42 +12,25 @@ export type ProfileSaveRpcResult = {
   profile_details: Record<string, unknown> | null;
 };
 
-/** Base update via update_my_profile_base RPC. Patch is jsonb-ready. */
-export async function saveProfileBaseRpc(
-  basePatch: Record<string, unknown>,
-  completeness?: number | null
-): Promise<{ data: ProfileSaveRpcResult | null; error: unknown; skipped?: boolean }> {
-  if (Object.keys(basePatch).length === 0) {
-    return { data: null, error: null, skipped: true };
-  }
-  const { data, error } = await supabase.rpc("update_my_profile_base", {
-    p_patch: basePatch,
-    p_completeness: completeness ?? null,
-  });
-  if (error) return { data: null, error, skipped: false };
-  const row = Array.isArray(data) && data[0] ? (data[0] as ProfileSaveRpcResult) : null;
-  if (!row) {
-    return { data: null, error: new Error("RPC returned no rows"), skipped: false };
-  }
-  return { data: row, error: null };
-}
+export type SaveMyProfileUpsertArgs = {
+  basePatch: Record<string, unknown>;
+  detailsPatch: Record<string, unknown>;
+  completeness: number | null;
+};
 
-/** Details merge via update_my_profile_details RPC. */
-export async function saveProfileDetailsRpc(
-  detailsPatch: Record<string, unknown>,
-  completeness?: number | null
-): Promise<{ data: ProfileSaveRpcResult | null; error: unknown; skipped?: boolean }> {
-  if (Object.keys(detailsPatch).length === 0) {
-    return { data: null, error: null, skipped: true };
-  }
-  const { data, error } = await supabase.rpc("update_my_profile_details", {
-    p_details: detailsPatch,
-    p_completeness: completeness ?? null,
+/**
+ * Single RPC to upsert base + details. Returns row or throws.
+ */
+export async function saveMyProfileUpsertRpc(
+  args: SaveMyProfileUpsertArgs
+): Promise<ProfileSaveRpcResult> {
+  const { data, error } = await supabase.rpc("upsert_my_profile", {
+    p_base: args.basePatch,
+    p_details: args.detailsPatch,
+    p_completeness: args.completeness,
   });
-  if (error) return { data: null, error, skipped: false };
+  if (error) throw error;
   const row = Array.isArray(data) && data[0] ? (data[0] as ProfileSaveRpcResult) : null;
-  if (!row) {
-    return { data: null, error: new Error("RPC returned no rows"), skipped: false };
-  }
-  return { data: row, error: null };
+  if (!row) throw new Error("RPC returned no rows");
+  return row;
 }
