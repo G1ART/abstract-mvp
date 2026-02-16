@@ -11,7 +11,6 @@ import {
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
-import { persistCompletenessOnly } from "@/lib/supabase/profileSaveUnified";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   getProfileViewsCount,
@@ -50,6 +49,7 @@ export default function MyPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -82,29 +82,21 @@ export default function MyPage() {
       const canView = hasFeature(entRes.plan as Plan, "VIEW_PROFILE_VIEWERS_LIST");
       setCanViewViewers(canView);
 
+      if (profileData) {
+        const base = profileData as Record<string, unknown>;
+        const details = (base?.profile_details && typeof base.profile_details === "object")
+          ? (base.profile_details as Record<string, unknown>) : {};
+        const full = { ...base, ...details };
+        const { score } = computeProfileCompleteness(
+          full as Parameters<typeof computeProfileCompleteness>[0],
+          { hasDetailsLoaded: true }
+        );
+        setComputedCompleteness(score);
+      } else {
+        setComputedCompleteness(null);
+      }
+
       if (profileData?.id) {
-        const pc = (profileData as { profile_completeness?: number | null }).profile_completeness;
-        const pcInitKey = `ab_pc_init_${profileData.id}`;
-        if (pc == null && typeof window !== "undefined" && !sessionStorage.getItem(pcInitKey)) {
-          try {
-            sessionStorage.setItem(pcInitKey, "1");
-            const base = profileData as Record<string, unknown>;
-            const details = (base?.profile_details && typeof base.profile_details === "object")
-              ? (base.profile_details as Record<string, unknown>) : {};
-            const full = { ...base, ...details };
-            const { score, confidence } = computeProfileCompleteness(
-              full as Parameters<typeof computeProfileCompleteness>[0],
-              { hasDetailsLoaded: true }
-            );
-            if (confidence === "high" && score != null) {
-              void persistCompletenessOnly(score).then((res) => {
-                if (res.ok) fetchData();
-              });
-            }
-          } catch {
-            /* best-effort; ignore */
-          }
-        }
         const [countRes, viewersRes] = await Promise.all([
           getProfileViewsCount(profileData.id, 7),
           canView ? getProfileViewers(profileData.id, { limit: 10 }) : { data: [], nextCursor: null, error: null },
@@ -247,12 +239,12 @@ export default function MyPage() {
         {/* Profile completeness */}
         <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
           <h3 className="mb-2 text-sm font-medium text-zinc-900">
-            {t("me.profileCompletenessTitle")}: {loading ? "—" : (profile?.profile_completeness != null ? `${profile.profile_completeness}/100` : "—")}
+            {t("me.profileCompletenessTitle")}: {loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}
           </h3>
           <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
             <div
               className="h-full bg-zinc-900 transition-all"
-              style={{ width: `${loading || profile?.profile_completeness == null ? 0 : profile.profile_completeness}%` }}
+              style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
             />
           </div>
           <p className="mb-3 text-sm text-zinc-600">{t("me.completenessHint")}</p>

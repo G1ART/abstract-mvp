@@ -47,9 +47,6 @@ export function ProfileBootstrap() {
       if (!session?.user?.id) {
         try {
           sessionStorage.removeItem(BOOTSTRAP_KEY);
-          Object.keys(sessionStorage)
-            .filter((k) => k.startsWith("ab_pc_init_"))
-            .forEach((k) => sessionStorage.removeItem(k));
         } catch {
           /* ignore */
         }

@@ -89,6 +89,24 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
+## 2026-02-16 — Completeness: compute-only on /my, persist only on save
+
+- **My page**: Completeness is computed from profile data on load and displayed. No DB write on /my load. Removed `persistCompletenessOnly` call and `ab_pc_init_*` sessionStorage logic.
+- **Settings / Onboarding**: Completeness is computed and persisted only when user saves (via `saveProfileUnified`).
+- **Display**: Treat 0 same as null — show "—" when completeness is 0 or null. Bar width 0 for empty.
+- **ProfileBootstrap**: Removed `ab_pc_init_*` cleanup on sign-out (no longer used).
+- **Verified**: No 0 flash on new login; DB completeness updated only on save; RPC-only.
+
+---
+
+## 표준 워크플로우 (Standard Workflow)
+
+코드 변경 후 다음 순서로 진행:
+
+1. **로컬 빌드**: `npm run build`
+2. **Git 커밋 및 푸시**: `git status && git add -A && git commit -m "<메시지>" && git push origin main`
+3. **HANDOFF.md 업데이트**: 변경 내용을 상단에 새 섹션으로 추가
+
 ---
 
 ## 1) Project identity

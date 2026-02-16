@@ -736,12 +736,12 @@ export default function SettingsPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
               <p className="mb-2 text-sm font-medium text-zinc-700">
-                {t("profile.completeness")}: {dbProfileCompleteness != null ? `${dbProfileCompleteness}/100` : (completeness != null ? `${completeness}/100` : "—")}
+                {t("profile.completeness")}: {dbProfileCompleteness != null && dbProfileCompleteness > 0 ? `${dbProfileCompleteness}/100` : (completeness != null && completeness > 0 ? `${completeness}/100` : "—")}
               </p>
               <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
                 <div
                   className="h-full bg-zinc-900 transition-all"
-                  style={{ width: `${dbProfileCompleteness ?? completeness ?? 0}%` }}
+                  style={{ width: `${(dbProfileCompleteness != null && dbProfileCompleteness > 0) || (completeness != null && completeness > 0) ? (dbProfileCompleteness ?? completeness ?? 0) : 0}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-zinc-500">{t("profile.completenessHint")}</p>
