@@ -210,7 +210,21 @@ export default function MyPage() {
               )}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Compact completeness status - click → settings */}
+            <Link
+              href="/settings"
+              title={t("me.completenessHint")}
+              className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <span className="flex h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">
+                <span
+                  className="h-full bg-zinc-600 transition-all"
+                  style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
+                />
+              </span>
+              <span>{loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}</span>
+            </Link>
             <Link
               href="/settings"
               className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
@@ -234,26 +248,6 @@ export default function MyPage() {
               </>
             )}
           </div>
-        </div>
-
-        {/* Profile completeness */}
-        <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
-          <h3 className="mb-2 text-sm font-medium text-zinc-900">
-            {t("me.profileCompletenessTitle")}: {loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}
-          </h3>
-          <div className="mb-2 h-2 w-full overflow-hidden rounded-full bg-zinc-200">
-            <div
-              className="h-full bg-zinc-900 transition-all"
-              style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
-            />
-          </div>
-          <p className="mb-3 text-sm text-zinc-600">{t("me.completenessHint")}</p>
-          <Link
-            href="/settings"
-            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            {t("me.improveProfile")}
-          </Link>
         </div>
 
         {/* KPI row - Following / Followers / Posts */}

@@ -89,6 +89,11 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
+## 2026-02-16 — My/Settings UX: completeness compact status + i18n
+
+- **My page**: Moved Profile completeness from large top block to compact status in header (top-right, next to action buttons). Small bar + "X/100" or "—", click → /settings, hover shows hint.
+- **Settings i18n**: "Edit profile details" KO → "상세 프로필 수정".
+
 ## 2026-02-16 — Completeness: compute-only on /my, persist only on save
 
 - **My page**: Completeness is computed from profile data on load and displayed. No DB write on /my load. Removed `persistCompletenessOnly` call and `ab_pc_init_*` sessionStorage logic.

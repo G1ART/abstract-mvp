@@ -404,7 +404,7 @@ export const messages = {
     "settings.setPasswordHint": "이메일과 비밀번호로 로그인할 수 있도록 설정하세요 (이메일 링크 불필요).",
     "settings.profileDetailsTitle": "프로필 상세",
     "settings.addProfileDetails": "프로필 상세 추가",
-    "settings.editProfileDetails": "프로필 상세 수정",
+    "settings.editProfileDetails": "상세 프로필 수정",
     "settings.careerStage": "커리어 단계",
     "settings.ageBand": "연령대",
     "settings.city": "도시",
