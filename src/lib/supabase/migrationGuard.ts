@@ -100,6 +100,18 @@ export async function checkSupabaseMigrations(): Promise<MigrationCheckResult> {
     failed.push("profile_base_rpc");
   }
 
+  // (e3) upsert_my_profile RPC (P0 single-RPC save)
+  try {
+    const { error: upsertErr } = await supabase.rpc("upsert_my_profile", {
+      p_base: {},
+      p_details: {},
+      p_completeness: null,
+    });
+    if (upsertErr) failed.push("my_profile_upsert_one_rpc");
+  } catch {
+    failed.push("my_profile_upsert_one_rpc");
+  }
+
   // (f) Delete RLS - attempt benign delete (non-existent row)
   try {
     const {

@@ -299,6 +299,17 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 ---
 
+## P0 Root Fix — Save truthfulness + single RPC (2026-02-16)
+
+- Root issue: DB save succeeded but frontend showed "Failed to save profile" due to timeout/abort/unmount or partial save (base ok, details failed).
+- Fix:
+  - Single transactional RPC `upsert_my_profile(p_base jsonb, p_details jsonb, p_completeness int)` saves base+details+completeness in one roundtrip.
+  - Frontend "verify-after-error": on RPC error/timeout it refetches profile and treats as success if patch applied, preventing false failure banners.
+- Migration: run `supabase/migrations/my_profile_upsert_one_rpc.sql` manually in Supabase SQL editor.
+- Hotfix: fixed TS build error in ProfileBootstrap by converting fire-and-forget `.catch` chain to async IIFE try/catch.
+
+---
+
 ## 17) Immediate next steps (recommended)
 P0:
 1) AI Recs v0 skeleton 구현(임베딩 테이블 + taste profile + 3 레인 UI)
