@@ -9,7 +9,8 @@ import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
-import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
+import { saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
+import { saveMyProfileBaseRpc } from "@/lib/profile/saveProfileBase";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
@@ -56,7 +57,8 @@ function TestRpcButton() {
     setTesting(true);
     setResult(null);
     try {
-      await saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness: null });
+      const res = await saveMyProfileBaseRpc({ patch: {}, completeness: null });
+      if (res.error) throw res.error;
       setResult("RPC OK");
     } catch (e) {
       setResult(`Throw: ${e instanceof Error ? e.message : String(e)}`);
@@ -490,14 +492,11 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const row = await saveProfileUnified({
-        basePatch: {},
-        detailsPatch,
-        completeness: computedScore,
-      });
-      const rowTyped = row as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
-      if (rowTyped.profile_completeness != null) setDbProfileCompleteness(rowTyped.profile_completeness);
-      const pd = rowTyped.profile_details;
+      await saveProfileDetailsRpc(detailsPatch, computedScore);
+      const { data: row } = await getMyProfile();
+      const rowTyped = row as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null } | null;
+      if (rowTyped?.profile_completeness != null) setDbProfileCompleteness(rowTyped.profile_completeness);
+      const pd = rowTyped?.profile_details;
       if (pd && typeof pd === "object") {
         initialDetailsRef.current = {
           career_stage: (pd.career_stage as string) ?? null,
@@ -516,10 +515,7 @@ export default function SettingsPage() {
         } as unknown as Record<string, unknown>;
       }
       setShowRetryDetails(false);
-      const { data: refreshed } = await getMyProfile();
-      const pc = (refreshed as { profile_completeness?: number | null } | null)?.profile_completeness;
-      if (pc != null) setDbProfileCompleteness(pc);
-      const profileUsername = (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
+      const profileUsername = (row as Profile | null)?.username?.trim().toLowerCase() ?? "";
       if (profileUsername) {
         if (typeof window !== "undefined") window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
         router.push(`/u/${profileUsername}`);
@@ -672,40 +668,46 @@ export default function SettingsPage() {
     }
 
     try {
-      const row = await saveProfileUnified({
-        basePatch,
-        detailsPatch,
-        completeness: computedScore,
-      });
-      if (row && typeof row === "object") {
-        const pc = (row as { profile_completeness?: number | null }).profile_completeness;
-        if (pc != null) setDbProfileCompleteness(pc);
-        initialBaseRef.current = baseSnap;
-        const pd = (row as { profile_details?: Record<string, unknown> | null }).profile_details;
-        if (pd && typeof pd === "object") {
-          initialDetailsRef.current = {
-            career_stage: (pd.career_stage as string) ?? null,
-            age_band: (pd.age_band as string) ?? null,
-            city: (pd.city as string) ?? null,
-            region: (pd.region as string) ?? null,
-            country: (pd.country as string) ?? null,
-            themes: (pd.themes as string[]) ?? null,
-            mediums: (pd.mediums as string[]) ?? null,
-            styles: (pd.styles as string[]) ?? null,
-            keywords: (pd.keywords as string[]) ?? null,
-            price_band: (pd.price_band as string) ?? null,
-            acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
-            affiliation: (pd.affiliation as string) ?? null,
-            program_focus: (pd.program_focus as string[]) ?? null,
-          } as unknown as Record<string, unknown>;
-        } else {
-          initialDetailsRef.current = detailsSnap as Record<string, unknown>;
-        }
+      if (Object.keys(basePatch).length > 0) {
+        const baseRes = await saveMyProfileBaseRpc({ patch: basePatch, completeness: computedScore });
+        if (baseRes.error) throw baseRes.error;
+      }
+      if (Object.keys(detailsPatch).length > 0) {
+        await saveProfileDetailsRpc(detailsPatch, computedScore);
       }
       const { data: refreshed } = await getMyProfile();
-      const pc = (refreshed as { profile_completeness?: number | null } | null)?.profile_completeness;
+      const ref = refreshed as Profile | null;
+      const pc = ref?.profile_completeness;
       if (pc != null) setDbProfileCompleteness(pc);
-      const profileUsername = (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
+      if (ref) {
+        initialBaseRef.current = {
+          display_name: ref.display_name ?? undefined,
+          bio: ref.bio ?? undefined,
+          location: ref.location ?? undefined,
+          website: ref.website ?? undefined,
+          main_role: ref.main_role ?? undefined,
+          roles: ref.roles ?? undefined,
+          is_public: ref.is_public ?? undefined,
+          education: ref.education ?? undefined,
+        } as Record<string, unknown>;
+        const pd = profileDetailsFromProfile(ref);
+        initialDetailsRef.current = {
+          career_stage: pd.career_stage ?? undefined,
+          age_band: pd.age_band ?? undefined,
+          city: pd.city ?? undefined,
+          region: pd.region ?? undefined,
+          country: pd.country ?? undefined,
+          themes: pd.themes ?? undefined,
+          mediums: pd.mediums ?? undefined,
+          styles: pd.styles ?? undefined,
+          keywords: pd.keywords ?? undefined,
+          price_band: pd.price_band ?? undefined,
+          acquisition_channels: pd.acquisition_channels ?? undefined,
+          affiliation: pd.affiliation ?? undefined,
+          program_focus: pd.program_focus ?? undefined,
+        } as Record<string, unknown>;
+      }
+      const profileUsername = ref?.username?.trim().toLowerCase() ?? "";
       if (profileUsername) {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
@@ -1107,7 +1109,7 @@ export default function SettingsPage() {
                   {lastError.durationMs != null && ` (${lastError.durationMs}ms)`}
                 </p>
                 {lastError.step === "details_rpc" && (
-                  <p className="mb-1 text-xs text-zinc-600">RPC: upsert_my_profile(p_base, p_details, p_completeness)</p>
+                  <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_base + update_my_profile_details (no PATCH)</p>
                 )}
                 <p className="mb-1 text-xs text-red-700">
                   code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}

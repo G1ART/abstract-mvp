@@ -8,7 +8,7 @@ set search_path = public
 as $$
 begin
   if NEW.username is null or trim(NEW.username) = '' then
-    NEW.username := 'user_' || substring(NEW.id::text from 1 for 8);
+    NEW.username := 'user_' || left(replace(NEW.id::text, '-', ''), 12);
   end if;
   return NEW;
 end;
