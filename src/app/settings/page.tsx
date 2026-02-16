@@ -8,11 +8,13 @@ import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import {
   getMyProfile,
-  updateMyProfileBase,
+  updateMyProfileBasePatch,
   type EducationEntry,
+  type UpdateProfileBaseParams,
 } from "@/lib/supabase/profiles";
-import { getMyProfileDetails, upsertMyProfileDetails, saveProfileDetailsViaRpc, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
+import { getMyProfileDetails, updateMyProfileDetails, saveProfileDetailsViaRpc, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
+import { makePatch } from "@/lib/profile/diffPatch";
 import {
   normalizeProfileBase,
   normalizeProfileDetails,
@@ -39,23 +41,13 @@ function payloadEqual(a: Record<string, unknown> | null, b: Record<string, unkno
   }
 }
 
-/** Build compact diff: only changed keys. Include null to clear; omit empty arrays/strings for compactness. */
-function buildCompactDetailsDiff(
-  initial: Record<string, unknown> | null,
-  normalized: NormalizedDetailsPayload
-): Record<string, unknown> {
-  const init = initial ?? {};
-  const keys = ["career_stage", "age_band", "city", "region", "country", "themes", "mediums", "styles", "keywords", "price_band", "acquisition_channels", "affiliation", "program_focus"] as const;
+/** Remove undefined keys; keep null. */
+function omitUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
   const out: Record<string, unknown> = {};
-  for (const k of keys) {
-    const v = (normalized as Record<string, unknown>)[k];
-    const prev = init[k];
-    if (JSON.stringify(v) === JSON.stringify(prev)) continue;
-    if (v != null && Array.isArray(v) && v.length === 0) continue;
-    if (v != null && typeof v === "string" && v.trim() === "") continue;
-    out[k] = v;
+  for (const [k, v] of Object.entries(obj)) {
+    if (v !== undefined) out[k] = v;
   }
-  return out;
+  return out as Partial<T>;
 }
 
 function TestRpcButton() {
@@ -501,12 +493,21 @@ export default function SettingsPage() {
     };
     const { score, confidence } = computeProfileCompleteness(fullProfile, { hasDetailsLoaded: true });
     const computedScore = confidence === "high" && score !== null ? score : null;
-    const pDetailsPayload = buildCompactDetailsDiff(initialDetailsRef.current, normalizedDetails);
+    const detailsSnap = { ...normalizedDetails } as Record<string, unknown>;
+    const detailsPatch = omitUndefined(makePatch(initialDetailsRef.current, detailsSnap) as Record<string, unknown>);
+    if (Object.keys(detailsPatch).length === 0) {
+      setInfo(t("common.noChanges"));
+      isSavingRef.current = false;
+      setSaving(false);
+      return;
+    }
     const detailsStart = performance.now();
-    const detailsRes = await withTimeout(
-      () => saveProfileDetailsViaRpc(pDetailsPayload, computedScore),
-      DETAILS_TIMEOUT_MS
-    );
+    const detailsRes = await withTimeout(async () => {
+      const r = await updateMyProfileDetails(detailsPatch, computedScore);
+      if (r.skipped) return null;
+      if (r.error) throw r.error;
+      return r.data;
+    }, DETAILS_TIMEOUT_MS);
     const detailsRpcMs = Math.round(performance.now() - detailsStart);
     if (detailsRes.ok && detailsRes.data) {
       const row = detailsRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
@@ -552,7 +553,7 @@ export default function SettingsPage() {
           details: errObj?.details,
           hint: errObj?.hint,
         },
-        normalizedPayload: pDetailsPayload as Record<string, unknown>,
+        normalizedPayload: detailsPatch as Record<string, unknown>,
         durationMs: detailsRpcMs,
       });
       console.error(JSON.stringify({
@@ -629,16 +630,11 @@ export default function SettingsPage() {
       program_focus: programFocus,
     });
 
-    const baseSnap: Record<string, unknown> = { ...normalizedBase };
-    const detailsSnap: Record<string, unknown> = { ...normalizedDetails };
-    const isBaseDirty = !payloadEqual(initialBaseRef.current, baseSnap);
-    const isDetailsDirty =
-      hasOpenedDetails && !payloadEqual(initialDetailsRef.current, detailsSnap);
-
-    if (!isBaseDirty && !isDetailsDirty) {
-      setInfo(t("common.noChanges"));
-      return;
-    }
+    const baseSnap = { ...normalizedBase } as Record<string, unknown>;
+    const detailsSnap = { ...normalizedDetails } as Record<string, unknown>;
+    let basePatch = makePatch(initialBaseRef.current, baseSnap) as Record<string, unknown>;
+    const detailsPatchRaw = hasOpenedDetails ? makePatch(initialDetailsRef.current, detailsSnap) as Record<string, unknown> : {};
+    let detailsPatch = omitUndefined(detailsPatchRaw);
 
     const fullProfile = {
       username: username ?? undefined,
@@ -664,41 +660,31 @@ export default function SettingsPage() {
     });
     const computedScore = confidence === "high" && score !== null ? score : null;
 
+    if (computedScore !== null && Object.keys(basePatch).length > 0) {
+      basePatch = { ...basePatch, profile_completeness: computedScore };
+    }
+    basePatch = omitUndefined(basePatch);
+
+    if (Object.keys(basePatch).length === 0 && Object.keys(detailsPatch).length === 0) {
+      setInfo(t("common.noChanges"));
+      return;
+    }
+
     isSavingRef.current = true;
     setSaving(true);
 
-    let baseSucceeded = false;
     let detailsErr: unknown = null;
 
-    if (isBaseDirty) {
-      const payloadBase: Record<string, unknown> = {
-        ...normalizedBase,
-        profile_updated_at: new Date().toISOString(),
-      };
-      if (computedScore !== null) {
-        payloadBase.profile_completeness = computedScore;
-      }
+    if (Object.keys(basePatch).length > 0) {
       const baseStart = performance.now();
       const baseRes = await withTimeout(async () => {
-        const r = await updateMyProfileBase({
-          display_name: payloadBase.display_name as string | null,
-          bio: payloadBase.bio as string | null,
-          location: payloadBase.location as string | null,
-          website: payloadBase.website as string | null,
-          main_role: payloadBase.main_role as string | null,
-          roles: payloadBase.roles as string[],
-          is_public: payloadBase.is_public as boolean,
-          education: payloadBase.education as EducationEntry[] | null,
-          profile_updated_at: payloadBase.profile_updated_at as string,
-          ...(computedScore !== null && { profile_completeness: computedScore }),
-        });
+        const r = await updateMyProfileBasePatch(basePatch as Partial<UpdateProfileBaseParams>);
+        if (r.skipped) return null;
         if (r.error) throw r.error;
         return r.data;
       }, BASE_TIMEOUT_MS);
       const baseUpdateMs = Math.round(performance.now() - baseStart);
       if (!baseRes.ok) {
-        isSavingRef.current = false;
-        setSaving(false);
         const isTimeout = "timeout" in baseRes && baseRes.timeout;
         const errObj = !isTimeout && "error" in baseRes
           ? (baseRes.error as { code?: string; message?: string; details?: string; hint?: string } | undefined)
@@ -710,44 +696,45 @@ export default function SettingsPage() {
           details: errObj?.details,
           hint: errObj?.hint,
         };
-        const payloadSummary = { ...payloadBase };
         setLastError({
           step,
           supabaseError,
-          normalizedPayload: payloadSummary as Record<string, unknown>,
+          normalizedPayload: basePatch as Record<string, unknown>,
           durationMs: baseUpdateMs,
         });
-        console.error(JSON.stringify({
-          event: "profile_save_failed",
-          step,
-          base_update_ms: baseUpdateMs,
-          code: supabaseError.code,
-          message: supabaseError.message,
-          details: supabaseError.details,
-          hint: supabaseError.hint,
-          payloadSummary,
-        }));
-        setError(
-          isTimeout
-            ? (isDev ? "base_update failed (timeout)" : "Failed to save profile")
-            : (isDev && errObj
-                ? `base_update failed: ${errObj.code ? `[${errObj.code}] ` : ""}${errObj.message ?? ""}${errObj.details ? ` — ${errObj.details}` : ""}${errObj.hint ? ` (${errObj.hint})` : ""}`
-                : "Failed to save profile")
-        );
+        if (isDev) {
+          console.error(JSON.stringify({
+            event: "profile_save_failed",
+            step,
+            base_update_ms: baseUpdateMs,
+            code: supabaseError.code,
+            message: supabaseError.message,
+            details: supabaseError.details,
+            hint: supabaseError.hint,
+            patch: basePatch,
+          }));
+        }
+        setError(isDev ? `base_update failed: ${supabaseError.message}` : "Failed to save profile");
+        baseOk = false;
+        isSavingRef.current = false;
+        setSaving(false);
         return;
       }
       baseSucceeded = true;
-      const baseData = baseRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null } | null;
-      if (baseData?.profile_completeness != null) setDbProfileCompleteness(baseData.profile_completeness);
-      initialBaseRef.current = baseSnap;
+      const baseData = baseRes.data as { profile_completeness?: number | null } | null;
+        if (baseData?.profile_completeness != null) setDbProfileCompleteness(baseData.profile_completeness);
+        initialBaseRef.current = baseSnap;
+      }
     }
 
+    let baseSucceeded = false;
     let detailsSucceeded = false;
-    if (isDetailsDirty) {
+
+    if (Object.keys(detailsPatch).length > 0) {
       const detailsStart = performance.now();
-      const pDetailsPayload = buildCompactDetailsDiff(initialDetailsRef.current, normalizedDetails);
       const detailsRes = await withTimeout(async () => {
-        const r = await saveProfileDetailsViaRpc(pDetailsPayload, computedScore);
+        const r = await updateMyProfileDetails(detailsPatch, computedScore);
+        if (r.skipped) return null;
         if (r.error) throw r.error;
         return r.data;
       }, DETAILS_TIMEOUT_MS);
@@ -789,20 +776,22 @@ export default function SettingsPage() {
         setLastError({
           step,
           supabaseError,
-          normalizedPayload: detailsSnap,
+          normalizedPayload: detailsPatch as Record<string, unknown>,
           durationMs: detailsRpcMs,
         });
-        console.error(JSON.stringify({
-          event: "details_save_failed",
-          ms: detailsRpcMs,
-          step,
-          rpc: "update_my_profile_details",
-          rpcArgs: { p_details: Object.keys(pDetailsPayload), p_completeness: computedScore },
+        if (isDev) {
+          console.error(JSON.stringify({
+            event: "details_save_failed",
+            ms: detailsRpcMs,
+            step,
+            rpc: "update_my_profile_details",
+            rpcArgs: { p_details: Object.keys(detailsPatch), p_completeness: computedScore },
           code: supabaseError.code,
           message: supabaseError.message,
           details: supabaseError.details,
           hint: supabaseError.hint,
-        }));
+          }));
+        }
         setWarning(
           baseSucceeded
             ? (isDev ? "Base saved, details failed" : t("settings.savePartialWarning"))

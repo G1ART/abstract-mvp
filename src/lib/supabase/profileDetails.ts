@@ -187,3 +187,15 @@ export async function saveProfileDetailsViaRpc(
 ): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
   return updateMyProfileDetailsViaRpc(payload, completeness);
 }
+
+/** Details patch save: merge only changed keys. Skips if patch empty. */
+export async function updateMyProfileDetails(
+  patch: Record<string, unknown>,
+  completeness: number | null = null
+): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown; skipped?: boolean }> {
+  if (Object.keys(patch).length === 0) {
+    return { data: null, error: null, skipped: true };
+  }
+  const r = await updateMyProfileDetailsViaRpc(patch, completeness);
+  return { data: r.data, error: r.error };
+}

@@ -204,6 +204,43 @@ export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
   return { data, error };
 }
 
+/** Patch update: only changed fields. Skips if patch empty. */
+export async function updateMyProfileBasePatch(patch: Partial<UpdateProfileBaseParams>): Promise<{
+  data: { id: string; username: string | null; profile_completeness: number | null; profile_details: Record<string, unknown> | null } | null;
+  error: unknown;
+  skipped?: boolean;
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) {
+    return { data: null, error: new Error("Not authenticated") };
+  }
+
+  const allowed = new Set(BASE_PROFILE_KEYS);
+  const updates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (allowed.has(key as (typeof BASE_PROFILE_KEYS)[number]) && value !== undefined) {
+      updates[key] = value;
+    }
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return { data: null, error: null, skipped: true };
+  }
+
+  updates.profile_updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(updates)
+    .eq("id", session.user.id)
+    .select("id, username, profile_completeness, profile_details")
+    .single();
+
+  return { data, error };
+}
+
 export async function updateMyProfile(partial: UpdateProfileParams) {
   const {
     data: { session },

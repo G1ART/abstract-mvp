@@ -109,6 +109,13 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - **Save timeouts (v5.3-r1)**: base_update 10s, details_rpc 25s (avoid spurious timeouts).
 - **Retry details UX**: When base saved but details failed, inline panel shows "Retry details" button; retry calls details RPC only.
 - **Details payload**: compact diff (only changed keys); omit empty arrays/strings to minimize payload.
+- **v5.3 Profile Save Patch**:
+  - Root cause: full-payload update included problematic fields; patch update prevents invalid fields from being sent.
+  - `makePatch(initial, current)` in `src/lib/profile/diffPatch.ts` returns only changed keys.
+  - `updateMyProfileBasePatch(patch)` sends only changed base fields (no full payload).
+  - Details saved via `updateMyProfileDetails(patch, completeness)` — merge RPC with patch only.
+  - No changes Save => "No changes to save", no network/DB calls.
+  - PROD: generic error messages only; DEV: Debug panel shows step, supabaseError, patch.
 
 ### Bio newlines (v5.2)
 - Bio textarea preserves Enter/newlines; `normalizeBioString` trims edges only, preserves internal `\n`

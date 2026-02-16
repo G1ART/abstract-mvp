@@ -103,8 +103,12 @@
 - [ ] **Dev**: 저장 실패 시 Debug panel에 step (base_update / details_rpc) + supabaseError code/message/details/hint 노출
 - [ ] **Dev**: 저장 실패 시 console에 profile_save_failed 이벤트 구조화 로그
 
-## 7. Profile v0 + Completeness + Details save (v5.2 / v5.3)
+## 7. Profile v0 + Completeness + Details save (v5.2 / v5.3 / v5.3-patch)
 
+- [ ] Settings: 아무것도 안 바꾸고 Save => "No changes to save", 네트워크/DB 호출 0
+- [ ] Settings: Bio만 수정 후 Save => "Saved" (base patch 성공)
+- [ ] Settings: Details(예: collector price band)만 수정 후 Save => "Saved" (details RPC 성공)
+- [ ] Settings: Base+Details 둘 다 수정 후 Save => "Saved" (순차 저장)
 - [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
 - [ ] details 필드 수정 → Save → 새로고침 후 값 유지 (RPC merge, reset 없음)
 - [ ] 저장 후 completeness 진행 바 증가 확인 (0 고정 아님)
