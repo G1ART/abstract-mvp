@@ -319,6 +319,7 @@ Last updated: 2026-02-15 (America/Los_Angeles)
   - Patched `update_my_profile_base` / `update_my_profile_details` to preserve existing completeness when p_completeness is NULL (no more NULL→0 clobber).
   - Frontend save path unified to single RPC `upsert_my_profile` (no split base/details saves).
 - Manual: run `supabase/migrations/profile_details_ssot_and_completeness_fix.sql` in Supabase SQL Editor. If `profile_details` table does not exist, skip the backfill block.
+- Hotfix: fixed TS build error in diffPatch (keyof T indexing) by stringifying key before indexing Record<string, unknown>.
 
 ---
 
