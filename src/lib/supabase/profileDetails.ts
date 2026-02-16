@@ -94,11 +94,20 @@ export async function getMyProfileDetails(): Promise<{
   return { data: details, error: null };
 }
 
-/** Save details via RPC (merge into profiles.profile_details). */
-export async function upsertMyProfileDetails(
-  input: ProfileDetailsInput,
+export type UpdateDetailsRpcResult = {
+  id: string;
+  username: string | null;
+  profile_completeness: number | null;
+  profile_details: Record<string, unknown> | null;
+};
+
+/**
+ * Single source of truth for details save. Merges via RPC, returns updated row.
+ */
+export async function updateMyProfileDetailsViaRpc(
+  detailsJson: Record<string, unknown>,
   completeness: number
-): Promise<{ data: unknown; error: unknown }> {
+): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -106,6 +115,21 @@ export async function upsertMyProfileDetails(
     return { data: null, error: new Error("Not authenticated") };
   }
 
+  const { data, error } = await supabase.rpc("update_my_profile_details", {
+    p_details: detailsJson,
+    p_completeness: completeness,
+  });
+
+  if (error) return { data: null, error };
+  const row = Array.isArray(data) && data[0] ? (data[0] as UpdateDetailsRpcResult) : null;
+  return { data: row, error: null };
+}
+
+/** Save details via RPC (merge). Normalizes input, delegates to updateMyProfileDetailsViaRpc. */
+export async function upsertMyProfileDetails(
+  input: ProfileDetailsInput,
+  completeness: number
+): Promise<{ data: UpdateDetailsRpcResult | null; error: unknown }> {
   const normalized: NormalizedDetailsPayload = normalizeProfileDetails({
     career_stage: input.career_stage,
     age_band: input.age_band,
@@ -122,7 +146,7 @@ export async function upsertMyProfileDetails(
     program_focus: input.program_focus,
   });
 
-  const pDetails = {
+  const pDetails: Record<string, unknown> = {
     career_stage: normalized.career_stage,
     age_band: normalized.age_band,
     city: normalized.city,
@@ -138,11 +162,5 @@ export async function upsertMyProfileDetails(
     program_focus: normalized.program_focus,
   };
 
-  const { data, error } = await supabase.rpc("update_my_profile_details", {
-    p_details: pDetails,
-    p_completeness: completeness,
-  });
-
-  if (error) return { data: null, error };
-  return { data, error: null };
+  return updateMyProfileDetailsViaRpc(pDetails, completeness);
 }

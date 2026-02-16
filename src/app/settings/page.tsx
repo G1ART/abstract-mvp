@@ -252,7 +252,7 @@ export default function SettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const isSavingRef = useRef(false);
   const [lastError, setLastError] = useState<{
-    step: "base" | "details";
+    step: "base_update" | "details_rpc";
     supabaseError: { code?: string; message?: string; details?: string; hint?: string };
     normalizedPayload: Record<string, unknown>;
   } | null>(null);
@@ -523,7 +523,7 @@ export default function SettingsPage() {
           ? (baseRes.error as { code?: string; message?: string; details?: string; hint?: string } | undefined)
           : undefined;
         setLastError({
-          step: "base",
+          step: "base_update",
           supabaseError: {
             code: errObj?.code,
             message: isTimeout ? "Timeout" : (errObj?.message ?? String("error" in baseRes ? baseRes.error : "Unknown")),
@@ -542,20 +542,47 @@ export default function SettingsPage() {
         return;
       }
       baseSucceeded = true;
+      const baseData = baseRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null } | null;
+      if (baseData?.profile_completeness != null) setDbProfileCompleteness(baseData.profile_completeness);
+      initialBaseRef.current = baseSnap;
     }
 
+    let detailsSucceeded = false;
     if (isDetailsDirty) {
       const detailsRes = await withTimeout(async () => {
         const r = await upsertMyProfileDetails(normalizedDetails, score);
         if (r.error) throw r.error;
         return r.data;
       });
+      if (detailsRes.ok && detailsRes.data) {
+        detailsSucceeded = true;
+        const row = detailsRes.data as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
+        if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
+        const pd = row.profile_details;
+        if (pd && typeof pd === "object") {
+          initialDetailsRef.current = {
+            career_stage: (pd.career_stage as string) ?? null,
+            age_band: (pd.age_band as string) ?? null,
+            city: (pd.city as string) ?? null,
+            region: (pd.region as string) ?? null,
+            country: (pd.country as string) ?? null,
+            themes: (pd.themes as string[]) ?? null,
+            mediums: (pd.mediums as string[]) ?? null,
+            styles: (pd.styles as string[]) ?? null,
+            keywords: (pd.keywords as string[]) ?? null,
+            price_band: (pd.price_band as string) ?? null,
+            acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
+            affiliation: (pd.affiliation as string) ?? null,
+            program_focus: (pd.program_focus as string[]) ?? null,
+          } as unknown as Record<string, unknown>;
+        }
+      }
       if (!detailsRes.ok) {
         const detailsTimeout = "timeout" in detailsRes && detailsRes.timeout;
         detailsErr = detailsTimeout ? new Error("Timeout") : ("error" in detailsRes ? detailsRes.error : new Error("Unknown"));
         const errObj = detailsErr as { code?: string; message?: string; details?: string; hint?: string } | undefined;
         setLastError({
-          step: "details",
+          step: "details_rpc",
           supabaseError: {
             code: errObj?.code,
             message: detailsTimeout ? "Timeout" : (errObj?.message ?? String(detailsErr)),
@@ -572,9 +599,10 @@ export default function SettingsPage() {
       }
     }
 
-    if (baseSucceeded || (isDetailsDirty && !detailsErr)) {
-      setDbProfileCompleteness(score);
+    if (baseSucceeded || detailsSucceeded) {
       const { data: refreshed } = await getMyProfile();
+      const pc = (refreshed as { profile_completeness?: number | null } | null)?.profile_completeness;
+      if (pc != null) setDbProfileCompleteness(pc);
       const profileUsername =
         (refreshed as Profile | null)?.username?.trim().toLowerCase() ?? "";
       if (profileUsername && !detailsErr) {

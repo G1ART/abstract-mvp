@@ -200,7 +200,7 @@ export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
     .from("profiles")
     .update(updates)
     .eq("id", session.user.id)
-    .select("id, username")
+    .select("id, username, profile_completeness, profile_details")
     .single();
 
   return { data, error };

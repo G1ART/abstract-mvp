@@ -36,10 +36,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
   - `/set-password` page via `supabase.auth.updateUser({ password })`
   - localStorage flag `has_password` (MVP enforcement)
 
-### Navigation
+### Navigation (v5.2)
 - Header logo routes to `/feed`
-- Logged-in nav: Feed / People / Upload / Settings (no standalone Profile link; **My Profile** or "Complete profile" near language toggle)
-- Logout moved to Settings page (header shows Settings link, not Logout)
+- Logged-in nav order: **Feed** → **People** → **Upload** (main tabs) || **My Profile** → **EN/KR** → **Avatar menu**
+- **Settings** is NOT a top-level tab; Settings and Logout live in **Avatar dropdown** (Update profile → /settings, Logout at bottom, danger)
+- My Profile or "Complete profile" links to /my or /onboarding (no duplication with onboarding CTA)
+- Mobile: same IA; Settings only inside avatar/account menu
 - `/me` → redirect(`/my`) (legacy alias)
 - `/artists` → redirect(`/people`) (legacy alias)
 
@@ -54,7 +56,7 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 ### Profiles
 - `/u/[username]`:
-  - public profile shows: avatar, display_name, @username, bio, roles, website/location (if present)
+  - public profile shows: avatar, display_name, @username, bio (whitespace-pre-line for line breaks), roles, website/location (if present)
   - shows that artist’s public artworks
   - FollowButton when viewer is not self
 - Private profile:
@@ -98,8 +100,14 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - One-time banner: "Profile updated" (sessionStorage flag)
 - MigrationGuard warnings do not block UI
 
-### Profile details (profiles.profile_details jsonb, v5.1)
-- Details in `profiles.profile_details` jsonb; RPC `update_my_profile_details` (merge); completeness source-of-truth
+### Profile details (profiles.profile_details jsonb, v5.1 / v5.2)
+- Details in `profiles.profile_details` jsonb; **single save path**: RPC `update_my_profile_details` (merge semantics)
+- `updateMyProfileDetailsViaRpc(detailsJson, completeness)` in `src/lib/supabase/profileDetails.ts`; base update does NOT touch profile_details
+- Completeness sync: Settings and /my both read `profile_completeness` from DB; no local override. Save flow refreshes initial refs from DB return payload.
+
+### Bio newlines (v5.2)
+- Bio textarea preserves Enter/newlines; `normalizeBioString` trims edges only, preserves internal `\n`
+- Display: `whitespace-pre-line` on profile header, people cards, feed thread cards; 2-line previews use `whitespace-pre-line line-clamp-2`
 
 ### Profile taxonomy & persona modules
 - **Single source of truth**: `docs/PROFILE_TAXONOMY.md` + `src/lib/profile/taxonomy.ts`
@@ -185,6 +193,8 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - `src/lib/supabase/migrationGuard.ts` 점검:
   - artworks.visibility='draft' 쿼리 가능 여부
   - artist_sort_order 컬럼 존재
+  - profiles.profile_details 컬럼 존재
+  - update_my_profile_details RPC 존재
   - policy/permission 관련 에러 감지
 - `src/components/MigrationGuard.tsx`: layout 마운트, 5분 TTL 캐시
   - Dev: toast + console warn

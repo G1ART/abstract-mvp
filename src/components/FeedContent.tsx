@@ -321,7 +321,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
                   </p>
                   <p className="text-sm text-zinc-500">@{username}</p>
                   {p.bio && (
-                    <p className="mt-1 line-clamp-2 text-sm text-zinc-600">
+                    <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
                       {p.bio}
                     </p>
                   )}

@@ -202,7 +202,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
         </div>
 
         {profile.bio ? (
-          <p className="text-sm text-zinc-700">{profile.bio}</p>
+          <p className="whitespace-pre-line text-sm text-zinc-700">{profile.bio}</p>
         ) : (
           <p className="text-sm text-zinc-400">{t("profile.noBio")}</p>
         )}

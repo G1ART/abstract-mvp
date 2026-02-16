@@ -100,7 +100,7 @@ export function ArtistThreadCard({
 
       {/* Bio (clamp 2 lines) */}
       {artist.bio && (
-        <p className="line-clamp-2 px-4 pb-2 text-sm text-zinc-600">{artist.bio}</p>
+        <p className="line-clamp-2 whitespace-pre-line px-4 pb-2 text-sm text-zinc-600">{artist.bio}</p>
       )}
 
       {/* Mini gallery */}

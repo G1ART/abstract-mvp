@@ -417,7 +417,7 @@ export function PeopleClient() {
                       </p>
                       <p className="text-sm text-zinc-500">@{username}</p>
                       {profile.bio && (
-                        <p className="mt-1 line-clamp-2 text-sm text-zinc-600">
+                        <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
                           {profile.bio}
                         </p>
                       )}

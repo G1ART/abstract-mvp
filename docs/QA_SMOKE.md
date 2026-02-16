@@ -100,16 +100,17 @@
 - [ ] **Year**: year='' 입력되어도 null로 저장 (에러 없음)
 - [ ] **i18n**: EN/KO 모두 taxonomy/섹션 라벨 표시
 - [ ] **Max select**: themes 5개 초과 시 "You can select up to 5" 메시지
-- [ ] **Dev**: 저장 실패 시 콘솔에 payload + error detail 노출
+- [ ] **Dev**: 저장 실패 시 Debug panel에 step (base_update / details_rpc) + supabaseError code/message/details/hint 노출
 
-## 7. Profile v0 + Completeness + Details save
+## 7. Profile v0 + Completeness + Details save (v5.2)
 
 - [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
-- [ ] details 필드 수정 → Save → 새로고침 후 값 유지 (merge, reset 없음)
+- [ ] details 필드 수정 → Save → 새로고침 후 값 유지 (RPC merge, reset 없음)
 - [ ] 저장 후 completeness 진행 바 증가 확인 (0이 아님)
-- [ ] `/my`와 Settings에서 completeness 동일하게 표시
+- [ ] `/my`와 Settings에서 completeness 동일하게 표시 (단일 소스 DB)
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
+- [ ] Bio: Enter로 줄바꿈 입력 → 저장 → 프로필/피드/People 카드에 줄바꿈 렌더링 (whitespace-pre-line)
 
 ## 8. AI Recs v0 (embeddings / taste profile 유지)
 
@@ -117,11 +118,13 @@
 - [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
 - [ ] embeddings null 상태에서도 fallback 동작
 
-## 8.4 Nav + Logout
+## 8.4 Nav + Avatar menu (v5.2)
 
-- [ ] Desktop: Profile 탭 없음; My Profile + Settings 노출
-- [ ] Logout: Settings 하단에 "Log out" 버튼, 클릭 시 로그아웃 후 /login 이동
-- [ ] Mobile: My Profile 또는 Complete profile 한 번만 노출 (중복 없음)
+- [ ] Desktop: 탭 순서 Feed → People → Upload; Settings 탭 없음
+- [ ] Desktop: My Profile, EN/KR, Avatar 버튼 (오른쪽)
+- [ ] Avatar 메뉴: "Update profile" (→ /settings), 구분선, "Logout" (위험 스타일)
+- [ ] Logout 클릭 시 signOut → /login 이동
+- [ ] Mobile: Feed/People/Upload/My Profile; Settings는 Avatar 메뉴 내부에만
 
 ## 8.5 My Profile (/my) + Followers/Following
 

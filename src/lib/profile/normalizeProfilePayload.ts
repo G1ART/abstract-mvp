@@ -33,6 +33,13 @@ export function normalizeString(value: string | null | undefined): string | null
   return s === "" ? null : s;
 }
 
+/** Bio: trim edges only, preserve internal newlines (\\n). "" → null */
+export function normalizeBioString(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const s = String(value).trim(); // trim only leading/trailing, preserves \n
+  return s === "" ? null : s;
+}
+
 /** undefined/null → null; filter empty/whitespace, length 0 → null */
 export function normalizeStringArray(
   arr: string[] | null | undefined
@@ -138,7 +145,7 @@ export function normalizeProfileBase(input: NormalizedBaseInput): NormalizedBase
 
   return {
     display_name: normalizeString(input.display_name),
-    bio: normalizeString(input.bio),
+    bio: normalizeBioString(input.bio),
     location: normalizeString(input.location),
     website: normalizeUrl(input.website),
     main_role,

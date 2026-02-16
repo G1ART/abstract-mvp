@@ -92,7 +92,7 @@ export default function MyFollowersPage() {
                       <p className="text-sm text-zinc-500">@{p.username}</p>
                     )}
                     {p.bio && (
-                      <p className="mt-0.5 truncate text-sm text-zinc-600">{p.bio}</p>
+                      <p className="mt-0.5 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">{p.bio}</p>
                     )}
                   </div>
                 </Link>
