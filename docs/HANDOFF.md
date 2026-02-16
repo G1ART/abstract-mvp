@@ -307,6 +307,10 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 - Fixed TS build error in ProfileBootstrap by removing .catch() on PromiseLike and using async IIFE with try/catch (fire-and-forget).
 
+## 2026-02-16 — Hotfix: diffPatch TS build fix
+
+- Fixed TS error in makePatch by stringifying keyof before indexing Record<string, unknown>.
+
 ---
 
 ## 17) Immediate next steps (recommended)
