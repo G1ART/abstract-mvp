@@ -100,6 +100,14 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - One-time banner: "Profile updated" (sessionStorage flag)
 - MigrationGuard warnings do not block UI
 
+### v5.4 Profile Save Root Fix
+- **Base save**: `update_my_profile_base` RPC (auth.uid() 기반, 프론트 `.from('profiles').update()` 제거)
+- **Details save**: `update_my_profile_details` RPC (동일)
+- **profileSave.ts**: `saveProfileBaseRpc(basePatch, completeness)`, `saveProfileDetailsRpc(detailsPatch, completeness)` — Settings/MyProfile 모두 사용
+- **Build stamp**: `NEXT_PUBLIC_BUILD_STAMP` (Vercel env) → Header dropdown + Settings 상단 우측 + console.info on mount
+- **Loading skeleton**: `src/app/my/loading.tsx` — My Profile 로딩 시 flash 최소화
+- **Completeness sync**: RPC 반환값으로 profile_completeness 즉시 갱신; My Profile/Settings 동일 숫자 표시
+
 ### Profile details (profiles.profile_details jsonb, v5.1 / v5.2 / v5.3)
 - Details in `profiles.profile_details` jsonb; **single save path**: RPC `update_my_profile_details` (merge semantics)
 - `updateMyProfileDetailsViaRpc(detailsJson, completeness)` in `src/lib/supabase/profileDetails.ts`; base update does NOT touch profile_details
@@ -208,6 +216,7 @@ Last updated: 2026-02-15 (America/Los_Angeles)
   - artist_sort_order 컬럼 존재
   - profiles.profile_details 컬럼 존재
   - update_my_profile_details RPC 존재
+  - update_my_profile_base RPC 존재 (v5.4)
   - policy/permission 관련 에러 감지
 - `src/components/MigrationGuard.tsx`: layout 마운트, 5분 TTL 캐시
   - Dev: toast + console warn

@@ -165,6 +165,29 @@
 - [ ] insights.profileViewsTitle, insights.last7Days, insights.upgradeToSeeViewers
 - [ ] insights.recentViewers, insights.noViewsYet, insights.seeAll
 
+## 10.5 DB lock / timeout 디버깅 (저장 실패 시)
+
+저장 RPC가 타임아웃되면 아래 SQL을 Supabase SQL Editor에서 실행해 장기 실행 트랜잭션/락 확인:
+
+```sql
+-- profiles 테이블 관련 장기 실행 쿼리
+SELECT pid, now() - pg_stat_activity.query_start AS duration, query, state
+FROM pg_stat_activity
+WHERE (query ILIKE '%profiles%' OR query ILIKE '%update_my_profile%')
+  AND state != 'idle'
+  AND now() - pg_stat_activity.query_start > interval '5 seconds';
+
+-- profiles 테이블 락
+SELECT relation::regclass, locktype, mode, granted
+FROM pg_locks
+WHERE relation = 'public.profiles'::regclass;
+```
+
+- 위 쿼리에서 duration > 5초 행이 있으면 해당 세션이 profiles를 잠그고 있을 수 있음
+- migration에서는 자동 종료하지 않음; 필요 시 Supabase Dashboard에서 해당 connection 종료
+
+---
+
 ## 11. Migration Guard (개발 환경)
 
 - [ ] migrations 미적용 시: 콘솔 경고 + 토스트 "Supabase migration not applied: ..."

@@ -6,13 +6,9 @@ import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
-import {
-  getMyProfile,
-  updateMyProfileBasePatch,
-  type EducationEntry,
-  type UpdateProfileBaseParams,
-} from "@/lib/supabase/profiles";
-import { getMyProfileDetails, updateMyProfileDetails, saveProfileDetailsViaRpc, updateMyProfileDetailsViaRpc } from "@/lib/supabase/profileDetails";
+import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
+import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
+import { getMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
 import {
@@ -26,6 +22,7 @@ import {
   TAXONOMY_LIMITS,
   type TaxonomyOption,
 } from "@/lib/profile/taxonomy";
+import { BuildStamp } from "@/components/BuildStamp";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -57,7 +54,7 @@ function TestRpcButton() {
     setTesting(true);
     setResult(null);
     try {
-      const r = await updateMyProfileDetailsViaRpc({ _ping: "ok" }, null);
+      const r = await saveProfileDetailsRpc({ _ping: "ok" }, null);
       if (r.error) {
         setResult(`Error: ${r.error instanceof Error ? r.error.message : String(r.error)}`);
         return;
@@ -503,7 +500,7 @@ export default function SettingsPage() {
     }
     const detailsStart = performance.now();
     const detailsRes = await withTimeout(async () => {
-      const r = await updateMyProfileDetails(detailsPatch, computedScore);
+      const r = await saveProfileDetailsRpc(detailsPatch, computedScore);
       if (r.skipped) return null;
       if (r.error) throw r.error;
       return r.data;
@@ -660,9 +657,6 @@ export default function SettingsPage() {
     });
     const computedScore = confidence === "high" && score !== null ? score : null;
 
-    if (computedScore !== null && Object.keys(basePatch).length > 0) {
-      basePatch = { ...basePatch, profile_completeness: computedScore };
-    }
     basePatch = omitUndefined(basePatch);
 
     if (Object.keys(basePatch).length === 0 && Object.keys(detailsPatch).length === 0) {
@@ -673,12 +667,14 @@ export default function SettingsPage() {
     isSavingRef.current = true;
     setSaving(true);
 
+    let baseSucceeded = false;
+    let detailsSucceeded = false;
     let detailsErr: unknown = null;
 
     if (Object.keys(basePatch).length > 0) {
       const baseStart = performance.now();
       const baseRes = await withTimeout(async () => {
-        const r = await updateMyProfileBasePatch(basePatch as Partial<UpdateProfileBaseParams>);
+        const r = await saveProfileBaseRpc(basePatch, computedScore);
         if (r.skipped) return null;
         if (r.error) throw r.error;
         return r.data;
@@ -715,20 +711,15 @@ export default function SettingsPage() {
           }));
         }
         setError(isDev ? `base_update failed: ${supabaseError.message}` : "Failed to save profile");
-        baseOk = false;
         isSavingRef.current = false;
         setSaving(false);
         return;
       }
       baseSucceeded = true;
       const baseData = baseRes.data as { profile_completeness?: number | null } | null;
-        if (baseData?.profile_completeness != null) setDbProfileCompleteness(baseData.profile_completeness);
-        initialBaseRef.current = baseSnap;
-      }
+      if (baseData?.profile_completeness != null) setDbProfileCompleteness(baseData.profile_completeness);
+      initialBaseRef.current = baseSnap;
     }
-
-    let baseSucceeded = false;
-    let detailsSucceeded = false;
 
     if (Object.keys(detailsPatch).length > 0) {
       const detailsStart = performance.now();
@@ -824,7 +815,10 @@ export default function SettingsPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">{t("settings.title")}</h1>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <h1 className="text-xl font-semibold">{t("settings.title")}</h1>
+          <BuildStamp />
+        </div>
 
         <div className="mb-6">
           <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.security")}</h2>

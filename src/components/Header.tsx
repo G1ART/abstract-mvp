@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { BuildStamp } from "./BuildStamp";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
@@ -144,6 +145,10 @@ export function Header() {
               </button>
               {avatarOpen && (
                 <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                  <div className="px-4 py-2 text-[10px] text-zinc-400">
+                    <BuildStamp />
+                  </div>
+                  <div className="my-1 border-t border-zinc-100" />
                   <Link
                     href="/settings"
                     className="block px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"

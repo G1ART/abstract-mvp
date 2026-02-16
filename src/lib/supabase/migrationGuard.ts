@@ -89,6 +89,17 @@ export async function checkSupabaseMigrations(): Promise<MigrationCheckResult> {
     failed.push("profile_details_merge");
   }
 
+  // (e2) update_my_profile_base RPC (v5.4 profile save root fix)
+  try {
+    const { error: baseRpcErr } = await supabase.rpc("update_my_profile_base", {
+      p_patch: {},
+      p_completeness: null,
+    });
+    if (baseRpcErr) failed.push("profile_base_rpc");
+  } catch {
+    failed.push("profile_base_rpc");
+  }
+
   // (f) Delete RLS - attempt benign delete (non-existent row)
   try {
     const {
