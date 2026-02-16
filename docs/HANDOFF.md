@@ -82,6 +82,13 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **RPCs patched**: `upsert_my_profile`, `update_my_profile_base`.
 - **Verified**: siennako can save base/details; other accounts unchanged; still no PostgREST PATCH writes.
 
+## 2026-02-16 — Batch A: Profile Details CTA + completeness init (no more 0 on first login)
+
+- **Settings UX**: Replaced subtle "Profile details" label with a clear CTA button: "Add profile details" (primary style) when empty; "Edit profile details" (secondary) when details exist. Button toggles accordion and scrolls into view.
+- **Completeness init fix**: Removed `0` fallback while loading/unknown; render "—" until hydrated. Bar width uses 0 when loading or `profile_completeness == null`. If DB completeness is null, compute once after hydration (confidence-gated) and persist via `persistCompletenessOnly` RPC (best-effort). SessionStorage key `ab_pc_init_<uid>` prevents loops; cleared on sign-out.
+- **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
+- **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
+
 ---
 
 ## 1) Project identity

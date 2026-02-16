@@ -248,6 +248,7 @@ export default function SettingsPage() {
   const [programFocus, setProgramFocus] = useState<string[]>([]);
   const [profileDetailsOpen, setProfileDetailsOpen] = useState(false);
   const [hasOpenedDetails, setHasOpenedDetails] = useState(false);
+  const profileDetailsRef = useRef<HTMLDivElement>(null);
   const initialBaseRef = useRef<Record<string, unknown> | null>(null);
   const initialDetailsRef = useRef<Record<string, unknown> | null>(null);
   const [maxSelectMessage, setMaxSelectMessage] = useState<string | null>(null);
@@ -855,19 +856,44 @@ export default function SettingsPage() {
             </div>
 
             {/* Profile details accordion */}
-            <div className="border-t border-zinc-200 pt-6">
-              <button
-                type="button"
-                onClick={() => {
-                  const next = !profileDetailsOpen;
-                  setProfileDetailsOpen(next);
-                  if (next) setHasOpenedDetails(true);
-                }}
-                className="flex w-full items-center justify-between py-2 text-sm font-medium text-zinc-700"
-              >
-                {t("settings.profileDetailsTitle")}
-                <span className="text-zinc-400">{profileDetailsOpen ? "−" : "+"}</span>
-              </button>
+            <div ref={profileDetailsRef} className="border-t border-zinc-200 pt-6">
+              {(() => {
+                const hasDetailsContent = Boolean(
+                  (careerStage && careerStage.trim()) ||
+                  (ageBand && ageBand.trim()) ||
+                  (city && city.trim()) ||
+                  (region && region.trim()) ||
+                  (country && country.trim()) ||
+                  (themes?.length ?? 0) > 0 ||
+                  (mediums?.length ?? 0) > 0 ||
+                  (styles?.length ?? 0) > 0 ||
+                  (keywords?.length ?? 0) > 0 ||
+                  (priceBand && priceBand.trim()) ||
+                  (acquisitionChannels?.length ?? 0) > 0 ||
+                  (affiliation && affiliation.trim()) ||
+                  (programFocus?.length ?? 0) > 0
+                );
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !profileDetailsOpen;
+                      setProfileDetailsOpen(next);
+                      if (next) {
+                        setHasOpenedDetails(true);
+                        setTimeout(() => profileDetailsRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
+                      }
+                    }}
+                    className={`w-full rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                      hasDetailsContent
+                        ? "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                        : "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
+                    }`}
+                  >
+                    {hasDetailsContent ? t("settings.editProfileDetails") : t("settings.addProfileDetails")}
+                  </button>
+                );
+              })()}
               {profileDetailsOpen && (
                 <div className="space-y-6 pt-2">
                   {maxSelectMessage && (

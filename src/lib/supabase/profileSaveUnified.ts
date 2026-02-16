@@ -99,3 +99,17 @@ export async function saveProfileUnified(args: ProfileSaveUnifiedArgs): Promise<
   }
   return { ok: true, data: data as Record<string, unknown> };
 }
+
+/**
+ * Persist profile_completeness only (base+details empty). Best-effort init for null DB completeness.
+ * Call once per session per user; set sessionStorage flag to avoid loops.
+ */
+export async function persistCompletenessOnly(
+  score: number
+): Promise<ProfileSaveResult<Record<string, unknown>>> {
+  return saveProfileUnified({
+    basePatch: {},
+    detailsPatch: {},
+    completeness: score,
+  });
+}
