@@ -75,6 +75,13 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **DB hardening**: `p0_profile_bootstrap_rpc_harden.sql` — `ensure_my_profile` delegates to `ensure_profile_row` (username-safe insert); re-grants on `ensure_my_profile`, `upsert_my_profile`, `update_my_profile_base`, `update_my_profile_details` to authenticated.
 - **Verified**: Save succeeds for problematic accounts; no PATCH /profiles; logs show only RPC calls.
 
+## 2026-02-16 — P0: Fix RPC save failure 42804 (main_role enum vs text CASE mismatch)
+
+- **Root cause**: Postgres 42804 "CASE types main_role and text cannot be matched". `profiles.main_role` is enum; RPC used `p_base->>'main_role'` (text) in CASE without casting.
+- **Fix**: `p0_fix_main_role_case_cast.sql` — parse `v_main_role := nullif(trim(coalesce(p_base->>'main_role','')), '')` and set `main_role = case when v_main_role is not null then v_main_role::public.main_role else p.main_role end` so both branches return enum.
+- **RPCs patched**: `upsert_my_profile`, `update_my_profile_base`.
+- **Verified**: siennako can save base/details; other accounts unchanged; still no PostgREST PATCH writes.
+
 ---
 
 ## 1) Project identity
