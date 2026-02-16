@@ -100,6 +100,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - One-time banner: "Profile updated" (sessionStorage flag)
 - MigrationGuard warnings do not block UI
 
+### v5.5 Profile Save Guaranteed (UPSERT RPC)
+- **Base + Details**: 둘 다 INSERT ... ON CONFLICT (id) DO UPDATE로 UPSERT
+- **상황 대응**: (a) profile row 없음, (b) profiles.id 불일치, (c) RLS update 차단 → 모두 저장 성공
+- **마이그레이션**: `supabase/migrations/profiles_upsert_rpc.sql` — Supabase SQL Editor에서 수동 실행
+- **Backend**: profiles 단일 테이블 + profile_details jsonb + 2개 RPC
+
 ### v5.4 Profile Save Root Fix
 - **Base save**: `update_my_profile_base` RPC (auth.uid() 기반, 프론트 `.from('profiles').update()` 제거)
 - **Details save**: `update_my_profile_details` RPC (동일)
