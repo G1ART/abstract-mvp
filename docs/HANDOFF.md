@@ -89,6 +89,13 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
+## 2026-02-16 — Batch B: Price multi-select, artwork aspect, upload redirect, reorder UX
+
+- **Price band**: Multi-select (max 5) via TaxonomyChipSelect. DB stores `price_band` as string[] in profile_details. Backward compat: string→array when reading.
+- **Artwork aspect ratio**: `object-cover` → `object-contain` on ArtworkCard, ArtistThreadCard, artwork detail page so non-square images display without cropping.
+- **Upload**: After successful upload, redirect to `/u/{username}` (public profile) instead of artwork detail.
+- **Reorder**: Save/Cancel buttons moved above the artwork grid (where Reorder button was).
+
 ## 2026-02-16 — My/Settings UX: completeness compact status + i18n
 
 - **My page**: Moved Profile completeness from large top block to compact status in header (top-right, next to action buttons). Small label "Profile completeness" + icon bar + "X/100" or "—", click → /settings, hover shows hint.

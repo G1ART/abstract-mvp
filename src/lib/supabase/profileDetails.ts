@@ -21,7 +21,7 @@ export type ProfileDetailsRow = {
   keywords: string[] | null;
   mediums: string[] | null;
   styles: string[] | null;
-  collector_price_band: string | null;
+  collector_price_band: string | string[] | null;
   collector_acquisition_channels: string[] | null;
   affiliation: string | null;
   program_focus: string[] | null;
@@ -62,7 +62,12 @@ function jsonbToDetailsRow(
     keywords: (json.keywords as string[]) ?? null,
     mediums: (json.mediums as string[]) ?? null,
     styles: (json.styles as string[]) ?? null,
-    collector_price_band: (json.price_band as string) ?? null,
+    collector_price_band: (() => {
+      const v = json.price_band;
+      if (v == null) return null;
+      if (Array.isArray(v)) return v as string[];
+      return [v as string];
+    })(),
     collector_acquisition_channels: (json.acquisition_channels as string[]) ?? null,
     affiliation: (json.affiliation as string) ?? null,
     program_focus: (json.program_focus as string[]) ?? null,

@@ -18,7 +18,7 @@ export type ProfileForCompleteness = {
   styles?: string[] | null;
   keywords?: string[] | null;
   education?: unknown[] | null;
-  price_band?: string | null;
+  price_band?: string | string[] | null;
   acquisition_channels?: string[] | null;
   affiliation?: string | null;
   program_focus?: string[] | null;
@@ -76,7 +76,8 @@ function collectorModuleScore(p: ProfileForCompleteness): number {
   const total = 3;
   const themes = Array.isArray(p.themes) ? p.themes : [];
   if (themes.length >= 2) n++;
-  if (p.price_band && String(p.price_band).trim().length > 0) n++;
+  const pb = Array.isArray(p.price_band) ? p.price_band : (p.price_band ? [String(p.price_band)] : []);
+  if (pb.some((s) => s && String(s).trim().length > 0)) n++;
   const ch = Array.isArray(p.acquisition_channels) ? p.acquisition_channels : [];
   if (ch.length >= 1) n++;
   return (n / total) * MODULE_WEIGHT;

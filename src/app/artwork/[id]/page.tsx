@@ -149,7 +149,7 @@ function ArtworkDetailContent() {
                 alt={artwork.title ?? "Artwork"}
                 width={600}
                 height={600}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
                 unoptimized
               />
             ) : (

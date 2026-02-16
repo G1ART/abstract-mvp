@@ -242,7 +242,7 @@ export default function SettingsPage() {
   const [styles, setStyles] = useState<string[]>([]);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [education, setEducation] = useState<EducationEntry[]>([{ school: "", program: "", year: "", type: null }]);
-  const [priceBand, setPriceBand] = useState("");
+  const [priceBand, setPriceBand] = useState<string[]>([]);
   const [acquisitionChannels, setAcquisitionChannels] = useState<string[]>([]);
   const [affiliation, setAffiliation] = useState("");
   const [programFocus, setProgramFocus] = useState<string[]>([]);
@@ -312,7 +312,7 @@ export default function SettingsPage() {
           setMediums(d.mediums ?? []);
           setStyles(d.styles ?? []);
           setKeywords(d.keywords ?? []);
-          setPriceBand(d.collector_price_band ?? "");
+          setPriceBand(Array.isArray(d.collector_price_band) ? d.collector_price_band : (d.collector_price_band ? [d.collector_price_band] : []));
           setAcquisitionChannels(d.collector_acquisition_channels ?? []);
           setAffiliation(d.affiliation ?? "");
           setProgramFocus(d.program_focus ?? []);
@@ -326,7 +326,11 @@ export default function SettingsPage() {
           setMediums((p as Profile).mediums ?? []);
           setStyles((p as Profile).styles ?? []);
           setKeywords((p as Profile).keywords ?? []);
-          setPriceBand((p as Profile).price_band ?? "");
+          setPriceBand((() => {
+          const v = (p as Profile).price_band;
+          if (v == null) return [];
+          return Array.isArray(v) ? v : [v];
+        })());
           setAcquisitionChannels((p as Profile).acquisition_channels ?? []);
           setAffiliation((p as Profile).affiliation ?? "");
           setProgramFocus((p as Profile).program_focus ?? []);
@@ -355,7 +359,11 @@ export default function SettingsPage() {
           mediums: src?.mediums ?? [],
           styles: src?.styles ?? [],
           keywords: src?.keywords ?? [],
-          price_band: (d as { collector_price_band?: string } | undefined)?.collector_price_band ?? (p as Profile)?.price_band ?? "",
+          price_band: (() => {
+          const v = (d as { collector_price_band?: string | string[] } | undefined)?.collector_price_band ?? (p as Profile)?.price_band;
+          if (v == null) return [];
+          return Array.isArray(v) ? v : [v];
+        })(),
           acquisition_channels: (d as { collector_acquisition_channels?: string[] } | undefined)?.collector_acquisition_channels ?? (p as Profile)?.acquisition_channels ?? [],
           affiliation: src?.affiliation ?? "",
           program_focus: src?.program_focus ?? [],
@@ -379,7 +387,7 @@ export default function SettingsPage() {
       mediums,
       styles,
       education,
-      price_band: priceBand || undefined,
+      price_band: priceBand.length > 0 ? priceBand : undefined,
       acquisition_channels: acquisitionChannels,
       affiliation: affiliation || undefined,
       program_focus: programFocus,
@@ -488,7 +496,11 @@ export default function SettingsPage() {
           mediums: (pd.mediums as string[]) ?? null,
           styles: (pd.styles as string[]) ?? null,
           keywords: (pd.keywords as string[]) ?? null,
-          price_band: (pd.price_band as string) ?? null,
+          price_band: (() => {
+          const v = pd.price_band;
+          if (v == null) return null;
+          return Array.isArray(v) ? v : [v];
+        })(),
           acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
           affiliation: (pd.affiliation as string) ?? null,
           program_focus: (pd.program_focus as string[]) ?? null,
@@ -680,7 +692,11 @@ export default function SettingsPage() {
               mediums: pd.mediums ?? undefined,
               styles: pd.styles ?? undefined,
               keywords: pd.keywords ?? undefined,
-              price_band: pd.collector_price_band ?? undefined,
+              price_band: (() => {
+              const v = pd.collector_price_band;
+              if (v == null) return undefined;
+              return Array.isArray(v) ? v : [v];
+            })(),
               acquisition_channels: pd.collector_acquisition_channels ?? undefined,
               affiliation: pd.affiliation ?? undefined,
               program_focus: pd.program_focus ?? undefined,
@@ -868,7 +884,7 @@ export default function SettingsPage() {
                   (mediums?.length ?? 0) > 0 ||
                   (styles?.length ?? 0) > 0 ||
                   (keywords?.length ?? 0) > 0 ||
-                  (priceBand && priceBand.trim()) ||
+                  (priceBand?.length ?? 0) > 0 ||
                   (acquisitionChannels?.length ?? 0) > 0 ||
                   (affiliation && affiliation.trim()) ||
                   (programFocus?.length ?? 0) > 0
@@ -1024,12 +1040,7 @@ export default function SettingsPage() {
                       <div className="space-y-4">
                         <div>
                           <label className="mb-1 block text-sm font-medium">Price band ({t("profileDetails.optional")})</label>
-                          <select value={priceBand} onChange={(e) => setPriceBand(e.target.value)} className="w-full rounded border border-zinc-300 px-3 py-2">
-                            <option value="">Select</option>
-                            {TAXONOMY.priceBandOptions.map((o) => (
-                              <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
-                            ))}
-                          </select>
+                          <TaxonomyChipSelect options={TAXONOMY.priceBandOptions} value={priceBand} onChange={setPriceBand} max={TAXONOMY_LIMITS.priceBand} t={t} onMaxReached={() => setMaxSelectMessage(t("profileDetails.maxSelectHint").replace("{max}", String(TAXONOMY_LIMITS.priceBand)))} />
                         </div>
                         <div>
                           <label className="mb-1 block text-sm font-medium">Acquisition channels ({t("profileDetails.optional")})</label>

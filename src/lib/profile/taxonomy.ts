@@ -176,4 +176,5 @@ export const TAXONOMY_LIMITS = {
   acquisitionChannels: 4,
   acquisitionChannelsOther: 2,
   programFocus: 5,
+  priceBand: 5,
 } as const;

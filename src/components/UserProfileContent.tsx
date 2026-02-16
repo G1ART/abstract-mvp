@@ -240,6 +240,26 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
             {t("profile.reorder")}
           </button>
         )}
+        {reorderMode && isOwner && artworks.length > 0 && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleSaveReorder}
+              disabled={saving}
+              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {t("profile.reorderSave")}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelReorder}
+              disabled={saving}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {t("profile.reorderCancel")}
+            </button>
+          </div>
+        )}
       </div>
       {reorderMode && isOwner && (
         <p className="mb-4 text-sm text-zinc-500">{t("profile.reorderHint")}</p>
@@ -281,24 +301,6 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
               </button>
             </div>
           )}
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={handleSaveReorder}
-              disabled={saving}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {t("profile.reorderSave")}
-            </button>
-            <button
-              type="button"
-              onClick={handleCancelReorder}
-              disabled={saving}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-            >
-              {t("profile.reorderCancel")}
-            </button>
-          </div>
         </>
       ) : artworks.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-500">{t("profile.noWorks")}</p>

@@ -166,7 +166,7 @@ export type NormalizedDetailsInput = {
   mediums?: string[] | null;
   styles?: string[] | null;
   keywords?: string[] | null;
-  price_band?: string | null;
+  price_band?: string | string[] | null;
   acquisition_channels?: string[] | null;
   affiliation?: string | null;
   program_focus?: string[] | null;
@@ -182,7 +182,7 @@ export type NormalizedDetailsPayload = {
   mediums: string[] | null;
   styles: string[] | null;
   keywords: string[] | null;
-  price_band: string | null;
+  price_band: string[] | null;
   acquisition_channels: string[] | null;
   affiliation: string | null;
   program_focus: string[] | null;
@@ -200,7 +200,13 @@ export function normalizeProfileDetails(input: NormalizedDetailsInput): Normaliz
     mediums: normalizeStringArray(input.mediums ?? []),
     styles: normalizeStringArray(input.styles ?? []),
     keywords: normalizeStringArray(input.keywords ?? []),
-    price_band: normalizeOptionalSelect(input.price_band) ?? normalizeString(input.price_band),
+    price_band: (() => {
+      const v = input.price_band;
+      if (v == null) return null;
+      if (Array.isArray(v)) return normalizeStringArray(v);
+      const s = normalizeOptionalSelect(v) ?? normalizeString(v);
+      return s ? [s] : null;
+    })(),
     acquisition_channels: normalizeStringArray(input.acquisition_channels ?? []),
     affiliation: normalizeOptionalSelect(input.affiliation) ?? normalizeString(input.affiliation),
     program_focus: normalizeStringArray(input.program_focus ?? []),

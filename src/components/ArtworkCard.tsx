@@ -71,7 +71,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
               alt={artwork.title ?? "Artwork"}
               width={400}
               height={400}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
               unoptimized
             />
           ) : (

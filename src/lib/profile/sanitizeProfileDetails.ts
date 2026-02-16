@@ -74,7 +74,7 @@ export type ProfileDetailsInput = {
   styles?: string[] | null;
   keywords?: string[] | null;
   education?: EducationEntry[] | unknown[] | null;
-  price_band?: string | null;
+  price_band?: string | string[] | null;
   acquisition_channels?: string[] | null;
   affiliation?: string | null;
   program_focus?: string[] | null;
@@ -95,7 +95,7 @@ export type SanitizedProfileDetails = {
   styles: string[] | null;
   keywords: string[] | null;
   education: SanitizedEducationEntry[] | null;
-  price_band: string | null;
+  price_band: string[] | null;
   acquisition_channels: string[] | null;
   affiliation: string | null;
   program_focus: string[] | null;
@@ -125,7 +125,13 @@ export function sanitizeProfileDetails(
     keywords: sanitizeStringArray(input.keywords, 10),
     education:
       educationRows.length === 0 ? null : educationRows,
-    price_band: trimToNull(input.price_band),
+    price_band: (() => {
+      const v = input.price_band;
+      if (v == null) return null;
+      if (Array.isArray(v)) return sanitizeStringArray(v, 5);
+      const s = trimToNull(v);
+      return s ? [s] : null;
+    })(),
     acquisition_channels: sanitizeStringArray(
       input.acquisition_channels,
       4

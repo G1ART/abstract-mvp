@@ -137,7 +137,14 @@ export default function UploadPage() {
         return;
       }
 
-      router.push(`/artwork/${artworkId}`);
+      const { getMyProfile } = await import("@/lib/supabase/profiles");
+      const { data: profile } = await getMyProfile();
+      const username = (profile as { username?: string | null } | null)?.username?.trim();
+      if (username) {
+        router.push(`/u/${username}`);
+      } else {
+        router.push(`/artwork/${artworkId}`);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
       setIsSubmitting(false);

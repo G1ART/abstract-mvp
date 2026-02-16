@@ -141,7 +141,7 @@ export function ArtistThreadCard({
                   alt={artwork.title ?? "Artwork"}
                   width={200}
                   height={200}
-                  className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+                  className="h-full w-full object-contain transition-opacity group-hover:opacity-90"
                   unoptimized
                 />
               ) : (
