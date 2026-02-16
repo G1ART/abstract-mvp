@@ -25,6 +25,7 @@ export function Header() {
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -44,13 +45,16 @@ export function Header() {
   useEffect(() => {
     if (!session?.user?.id) {
       setProfileUsername(null);
+      setProfileLoaded(false);
       setAvatarUrl(null);
       return;
     }
+    setProfileLoaded(false);
     getMyProfile().then(({ data }) => {
       const p = data as { username?: string | null; avatar_url?: string | null } | null;
       setProfileUsername(p?.username ?? null);
       setAvatarUrl(p?.avatar_url ?? null);
+      setProfileLoaded(true);
     });
   }, [session?.user?.id]);
 
@@ -104,7 +108,7 @@ export function Header() {
         {ready && loggedIn && (
           <>
             <Link href={profileUsername ? "/my" : "/onboarding"} className={linkClass}>
-              {profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
+              {!profileLoaded ? t("nav.myProfile") : profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
             </Link>
             <span className="flex gap-1 text-xs text-zinc-500">
               <button
@@ -233,7 +237,7 @@ export function Header() {
               className={`${linkClass} py-2 px-1`}
               onClick={closeMobile}
             >
-              {profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
+              {!profileLoaded ? t("nav.myProfile") : profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
             </Link>
             <div className="my-2 border-t border-zinc-100" />
             <Link

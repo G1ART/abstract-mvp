@@ -126,6 +126,12 @@
 - [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
 - [ ] embeddings null 상태에서도 fallback 동작
 
+## 8.3 Profile bootstrap + header (v5.6)
+
+- [ ] 로그인 직후 Header에서 "Complete your profile" flash 없음 — 로딩 중에는 "My Profile" 표시
+- [ ] `ensure_my_profile` RPC가 세션당 1회 호출됨 (Dev: console "[bootstrap] ensured profile row")
+- [ ] Settings: session 없을 때 Save 시도 → "Please try again" 메시지 (저장 차단)
+
 ## 8.4 Nav + Avatar menu (v5.2)
 
 - [ ] Desktop: 탭 순서 Feed → People → Upload; Settings 탭 없음

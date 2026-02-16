@@ -7,6 +7,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
+import { supabase } from "@/lib/supabase/client";
 import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
 import { getMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
@@ -590,6 +591,12 @@ export default function SettingsPage() {
     setSaved(false);
     setLastError(null);
     setShowRetryDetails(false);
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user?.id) {
+      setError(isDev ? "Session not ready, try again" : t("common.tryAgain"));
+      return;
+    }
 
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {

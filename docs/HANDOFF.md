@@ -100,6 +100,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - One-time banner: "Profile updated" (sessionStorage flag)
 - MigrationGuard warnings do not block UI
 
+### v5.6 Profile Stability Gate (bootstrap + header gate)
+- **ProfileBootstrap**: 앱 시작 시 `ensure_my_profile` RPC 1회 호출 — profiles row 보장
+- **ensure_my_profile()**: INSERT ... ON CONFLICT (id) DO UPDATE, auth.uid() 기반
+- **Header gating**: profile 로딩 중에는 "My Profile" 표시 → "Complete your profile" flash 제거
+- **Save gating**: session?.user?.id 없으면 저장 차단, "Please try again" 메시지
+
 ### v5.5 Profile Save Guaranteed (UPSERT RPC)
 - **Base + Details**: 둘 다 INSERT ... ON CONFLICT (id) DO UPDATE로 UPSERT
 - **상황 대응**: (a) profile row 없음, (b) profiles.id 불일치, (c) RLS update 차단 → 모두 저장 성공
