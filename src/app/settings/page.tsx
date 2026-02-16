@@ -9,7 +9,7 @@ import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
-import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
+import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
@@ -56,7 +56,7 @@ function TestRpcButton() {
     setTesting(true);
     setResult(null);
     try {
-      await saveProfileBaseRpc({}, null);
+      await saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness: null });
       setResult("RPC OK");
     } catch (e) {
       setResult(`Throw: ${e instanceof Error ? e.message : String(e)}`);
@@ -490,9 +490,14 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const row = await saveProfileDetailsRpc(detailsPatch, computedScore);
-      if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
-      const pd = row.profile_details;
+      const row = await saveProfileUnified({
+        basePatch: {},
+        detailsPatch,
+        completeness: computedScore,
+      });
+      const rowTyped = row as { profile_completeness?: number | null; profile_details?: Record<string, unknown> | null };
+      if (rowTyped.profile_completeness != null) setDbProfileCompleteness(rowTyped.profile_completeness);
+      const pd = rowTyped.profile_details;
       if (pd && typeof pd === "object") {
         initialDetailsRef.current = {
           career_stage: (pd.career_stage as string) ?? null,
@@ -667,15 +672,16 @@ export default function SettingsPage() {
     }
 
     try {
-      if (Object.keys(basePatch).length > 0) {
-        const row = await saveProfileBaseRpc(basePatch, computedScore);
-        if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
+      const row = await saveProfileUnified({
+        basePatch,
+        detailsPatch,
+        completeness: computedScore,
+      });
+      if (row && typeof row === "object") {
+        const pc = (row as { profile_completeness?: number | null }).profile_completeness;
+        if (pc != null) setDbProfileCompleteness(pc);
         initialBaseRef.current = baseSnap;
-      }
-      if (Object.keys(detailsPatch).length > 0) {
-        const row = await saveProfileDetailsRpc(detailsPatch, computedScore);
-        if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
-        const pd = row.profile_details;
+        const pd = (row as { profile_details?: Record<string, unknown> | null }).profile_details;
         if (pd && typeof pd === "object") {
           initialDetailsRef.current = {
             career_stage: (pd.career_stage as string) ?? null,
@@ -710,14 +716,14 @@ export default function SettingsPage() {
       }
     } catch (saveErr) {
       console.error("settings_save_failed", saveErr);
-      setError(String((saveErr as Error)?.message || "Fail to save changes"));
+      setError("Failed to save changes. Please retry.");
     } finally {
       isSavingRef.current = false;
       setSaving(false);
     }
     } catch (err) {
       console.error("settings_save_failed", err);
-      setError(String((err as Error)?.message || "Fail to save changes"));
+      setError("Failed to save changes. Please retry.");
       isSavingRef.current = false;
       setSaving(false);
     }
@@ -1101,7 +1107,7 @@ export default function SettingsPage() {
                   {lastError.durationMs != null && ` (${lastError.durationMs}ms)`}
                 </p>
                 {lastError.step === "details_rpc" && (
-                  <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_base(p_patch, p_completeness) / update_my_profile_details(p_details, p_completeness)</p>
+                  <p className="mb-1 text-xs text-zinc-600">RPC: upsert_my_profile(p_base, p_details, p_completeness)</p>
                 )}
                 <p className="mb-1 text-xs text-red-700">
                   code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}

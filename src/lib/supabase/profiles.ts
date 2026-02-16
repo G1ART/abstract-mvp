@@ -1,4 +1,5 @@
 import { supabase } from "./client";
+import { saveProfileUnified } from "./profileSaveUnified";
 import { PROFILE_ME_SELECT } from "./selectors";
 
 export type ProfilePublic = {
@@ -176,14 +177,8 @@ export type UpdateProfileBaseParams = {
   profile_updated_at?: string | null;
 };
 
-/** Update only base profile fields. Returns id, username. */
+/** Update only base profile fields via RPC (no direct PATCH). */
 export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id)
-    return { data: null, error: new Error("Not authenticated") };
-
   const updates: Record<string, unknown> = {};
   for (const key of BASE_PROFILE_KEYS) {
     if (key in partial && partial[key] !== undefined) {
@@ -193,30 +188,24 @@ export async function updateMyProfileBase(partial: UpdateProfileBaseParams) {
   if (Object.keys(updates).length === 0) {
     return { data: null, error: null };
   }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .update(updates)
-    .eq("id", session.user.id)
-    .select(PROFILE_ME_SELECT)
-    .single();
-
-  return { data, error };
+  try {
+    const row = await saveProfileUnified({
+      basePatch: updates,
+      detailsPatch: {},
+      completeness: (partial.profile_completeness ?? null) as number | null,
+    });
+    return { data: row as { id: string; username: string | null } & Record<string, unknown>, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
-/** Patch update: only changed fields. Skips if patch empty. */
+/** Patch update via RPC (no direct PATCH). Skips if patch empty. */
 export async function updateMyProfileBasePatch(patch: Partial<UpdateProfileBaseParams>): Promise<{
   data: { id: string; username: string | null; profile_completeness: number | null; profile_details: Record<string, unknown> | null } | null;
   error: unknown;
   skipped?: boolean;
 }> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) {
-    return { data: null, error: new Error("Not authenticated") };
-  }
-
   const allowed = new Set(BASE_PROFILE_KEYS);
   const updates: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(patch)) {
@@ -224,91 +213,69 @@ export async function updateMyProfileBasePatch(patch: Partial<UpdateProfileBaseP
       updates[key] = value;
     }
   }
-
   if (Object.keys(updates).length === 0) {
     return { data: null, error: null, skipped: true };
   }
-
-  updates.profile_updated_at = new Date().toISOString();
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .update(updates)
-    .eq("id", session.user.id)
-    .select("id, username, profile_completeness, profile_details")
-    .single();
-
-  return { data, error };
+  try {
+    const row = await saveProfileUnified({
+      basePatch: updates,
+      detailsPatch: {},
+      completeness: (patch.profile_completeness ?? null) as number | null,
+    });
+    return {
+      data: row as { id: string; username: string | null; profile_completeness: number | null; profile_details: Record<string, unknown> | null },
+      error: null,
+    };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
+/** Update profile via RPC (no direct PATCH). Base fields in basePatch, details in detailsPatch. */
 export async function updateMyProfile(partial: UpdateProfileParams) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id)
-    return { data: null, error: new Error("Not authenticated") };
-
-  const allowed = [
-    "display_name",
-    "bio",
-    "location",
-    "website",
-    "avatar_url",
-    "main_role",
-    "roles",
-    "is_public",
-    "career_stage",
-    "age_band",
-    "city",
-    "region",
-    "country",
-    "themes",
-    "mediums",
-    "styles",
-    "keywords",
-    "education",
-    "price_band",
-    "acquisition_channels",
-    "affiliation",
-    "program_focus",
-    "residencies",
-    "exhibitions",
-    "awards",
-    "profile_completeness",
-    "profile_updated_at",
+  const baseKeys = [
+    "display_name", "bio", "location", "website", "avatar_url", "main_role", "roles", "is_public",
+    "education", "profile_completeness", "profile_updated_at",
   ] as const;
-  const updates: Record<string, unknown> = {};
-  for (const key of allowed) {
-    if (key in partial && partial[key] !== undefined) {
-      updates[key] = partial[key];
-    }
+  const detailKeys = [
+    "career_stage", "age_band", "city", "region", "country", "themes", "mediums", "styles",
+    "keywords", "price_band", "acquisition_channels", "affiliation", "program_focus",
+    "residencies", "exhibitions", "awards",
+  ] as const;
+  const basePatch: Record<string, unknown> = {};
+  const detailsPatch: Record<string, unknown> = {};
+  for (const k of baseKeys) {
+    if (k in partial && partial[k] !== undefined) basePatch[k] = partial[k];
   }
-  if (Object.keys(updates).length === 0) {
+  for (const k of detailKeys) {
+    if (k in partial && partial[k] !== undefined) detailsPatch[k] = partial[k];
+  }
+  if (Object.keys(basePatch).length === 0 && Object.keys(detailsPatch).length === 0) {
     return { data: null, error: null };
   }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .update(updates)
-    .eq("id", session.user.id)
-    .select()
-    .single();
-
-  return { data, error };
+  try {
+    const row = await saveProfileUnified({
+      basePatch,
+      detailsPatch,
+      completeness: (partial.profile_completeness ?? null) as number | null,
+    });
+    return { data: row, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }
 
+/** Onboarding: create/update profile via RPC (no direct upsert). */
 export async function upsertProfile(params: UpsertProfileParams) {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
   const { username, ...rest } = params;
-  return supabase
-    .from("profiles")
-    .upsert(
-      { id: session.user.id, username: username.toLowerCase(), ...rest },
-      { onConflict: "id" }
-    )
-    .select()
-    .single();
+  try {
+    const row = await saveProfileUnified({
+      basePatch: { username: username.toLowerCase(), ...rest },
+      detailsPatch: {},
+      completeness: null,
+    });
+    return { data: row, error: null };
+  } catch (error) {
+    return { data: null, error };
+  }
 }

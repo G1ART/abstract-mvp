@@ -1,6 +1,22 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-15 (America/Los_Angeles)
+Last updated: 2026-02-16 (America/Los_Angeles)
+
+## 2026-02-16 — P0: Profile save SSOT (single RPC) + remove PATCH /profiles + fix header flash/completeness init
+
+- Enforced single write path: `supabase.rpc("upsert_my_profile")` for base+details+completeness (no direct PATCH/UPDATE to `profiles`)
+- Removed legacy writes: no `supabase.from("profiles").update/upsert/insert` remain (read-only selects OK)
+- Fixed UX: eliminated "Complete your profile" flash on refresh by gating Header on profile load
+- Fixed completeness init: avoid defaulting to 0; show loading until profile hydrated
+- DB migrations:
+  - `p0_profile_ssot_single_rpc.sql` (upsert_my_profile security definer + grants)
+  - `p0_profiles_username_autogen.sql` (auto-generate username on insert if missing)  [if applied]
+- Verified:
+  - Local `npm run build` passes
+  - Vercel deploy passes
+  - Supabase logs show no PATCH /profiles on save
+
+---
 
 ## 1) Project identity
 - Product: **Abstract** (art platform MVP)

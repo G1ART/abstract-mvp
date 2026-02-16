@@ -7,7 +7,8 @@ import {
   sendPasswordReset,
 } from "@/lib/supabase/auth";
 import { ensureFreeEntitlement } from "@/lib/entitlements";
-import { checkUsernameExists, getMyProfile, upsertProfile } from "@/lib/supabase/profiles";
+import { checkUsernameExists, getMyProfile } from "@/lib/supabase/profiles";
+import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -79,18 +80,23 @@ export default function OnboardingPage() {
     }
 
     setLoading(true);
-    const { error: err } = await upsertProfile({
-      username: normalizedUsername,
-      display_name: displayName.trim() || undefined,
-      main_role: mainRole || undefined,
-      roles,
-    });
-    setLoading(false);
-
-    if (err) {
+    try {
+      await saveProfileUnified({
+        basePatch: {
+          username: normalizedUsername,
+          display_name: displayName.trim() || undefined,
+          main_role: mainRole || undefined,
+          roles,
+        },
+        detailsPatch: {},
+        completeness: null,
+      });
+    } catch (err) {
+      setLoading(false);
       setError(err instanceof Error ? err.message : "Failed to save");
       return;
     }
+    setLoading(false);
 
     await ensureFreeEntitlement(session.user.id);
     router.replace("/feed?tab=all&sort=latest");
