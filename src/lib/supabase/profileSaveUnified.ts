@@ -25,21 +25,28 @@ const BASE_KEYS = new Set([
   "username",
 ]);
 
-/** Strip null/undefined/"" so we never send username=null to RPC (prevents 23502). */
+/** Strip null/undefined/"" and empty []/{} so we never send education:null (prevents 23502). */
 function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined || v === null) continue;
     if (typeof v === "string" && v.trim() === "") continue;
+    if (Array.isArray(v) && v.length === 0) continue;
+    if (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0) continue;
     out[k] = v;
   }
   return out;
 }
 
+/** Readonly fields that must never be in base patch. */
+const READONLY_BASE = new Set(["id", "profile_updated_at", "profile_completeness", "profile_details"]);
+
 function toBasePatch(raw: Record<string, unknown>): Record<string, unknown> {
   const compact = compactPatch(raw);
+  if (compact.education == null) delete compact.education;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(compact)) {
+    if (READONLY_BASE.has(k)) continue;
     if (BASE_KEYS.has(k)) out[k] = v;
   }
   return out;

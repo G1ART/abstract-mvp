@@ -18,24 +18,29 @@ const BASE_PATCH_WHITELIST = new Set([
   "education",
 ]);
 
-/** Remove null, undefined, and "" so RPC never receives username=null / empty. */
+/** Remove null, undefined, "", and empty []/{} so RPC never receives education:null (prevents 23502). */
 function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value === undefined || value === null) continue;
     if (typeof value === "string" && value.trim() === "") continue;
+    if (Array.isArray(value) && value.length === 0) continue;
+    if (typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0) continue;
     out[key] = value;
   }
   return out;
 }
 
+/** Readonly fields that must never be sent in base patch. */
+const READONLY_BASE = new Set(["id", "username", "profile_updated_at", "profile_completeness", "profile_details"]);
+
 function whitelist(patch: Record<string, unknown>): Record<string, unknown> {
   const compact = compactPatch(patch);
+  if (compact.education == null) delete compact.education;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(compact)) {
-    if (BASE_PATCH_WHITELIST.has(key)) {
-      out[key] = value;
-    }
+    if (READONLY_BASE.has(key)) continue;
+    if (BASE_PATCH_WHITELIST.has(key)) out[key] = value;
   }
   return out;
 }
