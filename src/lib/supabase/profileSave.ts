@@ -1,6 +1,6 @@
 /**
- * Profile save via RPC (auth.uid() 기반).
- * Single path: upsert_my_profile. Legacy update_my_profile_base / update_my_profile_details are not used (PostgREST 42702/42804).
+ * Profile save via RPC only (auth.uid()). No direct PATCH to profiles (prevents username NOT NULL 23502).
+ * Main profile: update_my_profile_base with whitelist payload. Details: update_my_profile_details.
  */
 
 import { supabase } from "./client";
@@ -12,22 +12,60 @@ export type ProfileSaveRpcResult = {
   profile_details: Record<string, unknown> | null;
 };
 
-export type SaveMyProfileUpsertArgs = {
-  basePatch: Record<string, unknown>;
-  detailsPatch: Record<string, unknown>;
-  completeness: number | null;
-};
+/** Keys allowed in base patch. Never send username, id, profile_details, profile_completeness. */
+const BASE_PATCH_WHITELIST = new Set([
+  "display_name",
+  "bio",
+  "location",
+  "website",
+  "avatar_url",
+  "is_public",
+  "main_role",
+  "roles",
+  "education",
+]);
+
+function whitelistBasePatch(patch: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (BASE_PATCH_WHITELIST.has(key) && value !== undefined) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
 
 /**
- * Single RPC to upsert base + details. Returns row or throws.
+ * Main profile save via update_my_profile_base RPC. Payload is whitelisted (no username/id/readonly).
  */
-export async function saveMyProfileUpsertRpc(
-  args: SaveMyProfileUpsertArgs
+export async function saveProfileBaseRpc(
+  basePatch: Record<string, unknown>,
+  completeness: number | null
 ): Promise<ProfileSaveRpcResult> {
-  const { data, error } = await supabase.rpc("upsert_my_profile", {
-    p_base: args.basePatch,
-    p_details: args.detailsPatch,
-    p_completeness: args.completeness,
+  const p_patch = whitelistBasePatch(basePatch);
+  const { data, error } = await supabase.rpc("update_my_profile_base", {
+    p_patch,
+    p_completeness: completeness,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) && data[0] ? (data[0] as ProfileSaveRpcResult) : null;
+  if (!row) throw new Error("RPC returned no rows");
+  return row;
+}
+
+/**
+ * Details save via update_my_profile_details RPC.
+ */
+export async function saveProfileDetailsRpc(
+  detailsPatch: Record<string, unknown>,
+  completeness: number | null
+): Promise<ProfileSaveRpcResult> {
+  if (Object.keys(detailsPatch).length === 0) {
+    throw new Error("details patch empty");
+  }
+  const { data, error } = await supabase.rpc("update_my_profile_details", {
+    p_details: detailsPatch,
+    p_completeness: completeness,
   });
   if (error) throw error;
   const row = Array.isArray(data) && data[0] ? (data[0] as ProfileSaveRpcResult) : null;

@@ -341,6 +341,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 - Unified profile save to single RPC (upsert_my_profile) to avoid PostgREST 42702/42804 from legacy update_my_profile_base / update_my_profile_details.
 
+### 2026-02-16 — P0: Main profile save unblocked (RPC-only; prevent username null overwrite)
+
+- Root cause: Settings main profile save used `PATCH /rest/v1/profiles`, sending `username: null/undefined`, violating NOT NULL (23502).
+- Fix: Removed direct `profiles` PATCH path; main profile save now calls `rpc('update_my_profile_base')` with a whitelist patch payload (no username/id/readonly fields).
+- Result: Main profile saves succeed; details saves remain RPC-based; UI refresh via `getMyProfile()` after save.
+
 ---
 
 ## 17) Immediate next steps (recommended)

@@ -8,7 +8,7 @@ import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
-import { saveMyProfileUpsertRpc } from "@/lib/supabase/profileSave";
+import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
@@ -55,7 +55,7 @@ function TestRpcButton() {
     setTesting(true);
     setResult(null);
     try {
-      await saveMyProfileUpsertRpc({ basePatch: {}, detailsPatch: {}, completeness: null });
+      await saveProfileBaseRpc({}, null);
       setResult("RPC OK");
     } catch (e) {
       setResult(`Throw: ${e instanceof Error ? e.message : String(e)}`);
@@ -475,11 +475,7 @@ export default function SettingsPage() {
       return;
     }
     try {
-      const row = await saveMyProfileUpsertRpc({
-        basePatch: {},
-        detailsPatch,
-        completeness: computedScore,
-      });
+      const row = await saveProfileDetailsRpc(detailsPatch, computedScore);
       if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
       const pd = row.profile_details;
       if (pd && typeof pd === "object") {
@@ -639,32 +635,34 @@ export default function SettingsPage() {
     setSaving(true);
 
     try {
-      const row = await saveMyProfileUpsertRpc({
-        basePatch,
-        detailsPatch,
-        completeness: computedScore,
-      });
-      if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
-      initialBaseRef.current = baseSnap;
-      const pd = row.profile_details;
-      if (pd && typeof pd === "object") {
-        initialDetailsRef.current = {
-          career_stage: (pd.career_stage as string) ?? null,
-          age_band: (pd.age_band as string) ?? null,
-          city: (pd.city as string) ?? null,
-          region: (pd.region as string) ?? null,
-          country: (pd.country as string) ?? null,
-          themes: (pd.themes as string[]) ?? null,
-          mediums: (pd.mediums as string[]) ?? null,
-          styles: (pd.styles as string[]) ?? null,
-          keywords: (pd.keywords as string[]) ?? null,
-          price_band: (pd.price_band as string) ?? null,
-          acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
-          affiliation: (pd.affiliation as string) ?? null,
-          program_focus: (pd.program_focus as string[]) ?? null,
-        } as unknown as Record<string, unknown>;
-      } else {
-        initialDetailsRef.current = detailsSnap as Record<string, unknown>;
+      if (Object.keys(basePatch).length > 0) {
+        const row = await saveProfileBaseRpc(basePatch, computedScore);
+        if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
+        initialBaseRef.current = baseSnap;
+      }
+      if (Object.keys(detailsPatch).length > 0) {
+        const row = await saveProfileDetailsRpc(detailsPatch, computedScore);
+        if (row.profile_completeness != null) setDbProfileCompleteness(row.profile_completeness);
+        const pd = row.profile_details;
+        if (pd && typeof pd === "object") {
+          initialDetailsRef.current = {
+            career_stage: (pd.career_stage as string) ?? null,
+            age_band: (pd.age_band as string) ?? null,
+            city: (pd.city as string) ?? null,
+            region: (pd.region as string) ?? null,
+            country: (pd.country as string) ?? null,
+            themes: (pd.themes as string[]) ?? null,
+            mediums: (pd.mediums as string[]) ?? null,
+            styles: (pd.styles as string[]) ?? null,
+            keywords: (pd.keywords as string[]) ?? null,
+            price_band: (pd.price_band as string) ?? null,
+            acquisition_channels: (pd.acquisition_channels as string[]) ?? null,
+            affiliation: (pd.affiliation as string) ?? null,
+            program_focus: (pd.program_focus as string[]) ?? null,
+          } as unknown as Record<string, unknown>;
+        } else {
+          initialDetailsRef.current = detailsSnap as Record<string, unknown>;
+        }
       }
       const { data: refreshed } = await getMyProfile();
       const pc = (refreshed as { profile_completeness?: number | null } | null)?.profile_completeness;
@@ -1071,7 +1069,7 @@ export default function SettingsPage() {
                   {lastError.durationMs != null && ` (${lastError.durationMs}ms)`}
                 </p>
                 {lastError.step === "details_rpc" && (
-                  <p className="mb-1 text-xs text-zinc-600">RPC: upsert_my_profile(p_base, p_details, p_completeness)</p>
+                  <p className="mb-1 text-xs text-zinc-600">RPC: update_my_profile_base(p_patch, p_completeness) / update_my_profile_details(p_details, p_completeness)</p>
                 )}
                 <p className="mb-1 text-xs text-red-700">
                   code: {lastError.supabaseError.code ?? "—"} | message: {lastError.supabaseError.message ?? "—"}
