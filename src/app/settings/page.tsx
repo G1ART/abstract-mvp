@@ -731,7 +731,7 @@ export default function SettingsPage() {
     if (Object.keys(detailsPatch).length > 0) {
       const detailsStart = performance.now();
       const detailsRes = await withTimeout(async () => {
-        const r = await updateMyProfileDetails(detailsPatch, computedScore);
+        const r = await saveProfileDetailsRpc(detailsPatch, computedScore);
         if (r.skipped) return null;
         if (r.error) throw r.error;
         return r.data;

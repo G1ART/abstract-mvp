@@ -299,6 +299,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 ---
 
+## 2026-02-16 — Hotfix: main build broken in Settings (missing updateMyProfileDetails symbol)
+
+- Fixed TS compile error in src/app/settings/page.tsx by using the correct details-save function (saveProfileDetailsRpc), replacing stale symbol `updateMyProfileDetails`.
+
+---
+
 ## 17) Immediate next steps (recommended)
 P0:
 1) AI Recs v0 skeleton 구현(임베딩 테이블 + taste profile + 3 레인 UI)
