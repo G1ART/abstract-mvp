@@ -325,6 +325,11 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Save flow: treat RPC success as success, then re-fetch profile once to prevent false failure UI.
 - Header: tri-state gating prevents "Complete your profile" flash during profile load.
 
+## 2026-02-16 — P0: main-only hotfix for profile save failures
+
+- Stopped branch/PR workflow due to PR creation suspension.
+- Added explicit auth session guard + real error logging in Settings save handler to diagnose and prevent auth.uid() null RPC failures.
+
 ---
 
 ## 17) Immediate next steps (recommended)

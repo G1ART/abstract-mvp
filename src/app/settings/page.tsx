@@ -590,12 +590,15 @@ export default function SettingsPage() {
     setLastError(null);
     setShowRetryDetails(false);
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user?.id) {
-      setError(isDev ? "Session not ready, try again" : t("common.tryAgain"));
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
+    if (sessionErr || !sessionData.session?.user?.id) {
+      console.error("settings_save_no_session", { sessionErr });
+      setError("Session expired. Please log in again.");
+      router.push("/login");
       return;
     }
 
+    try {
     let finalRoles: string[] = Array.isArray(roles) ? [...roles] : [];
     if (mainRole && mainRole.trim()) {
       if (!finalRoles.includes(mainRole)) finalRoles.push(mainRole);
@@ -873,6 +876,12 @@ export default function SettingsPage() {
 
     isSavingRef.current = false;
     setSaving(false);
+    } catch (err) {
+      console.error("settings_save_failed", err);
+      setError(String((err as Error)?.message || "Fail to save changes"));
+      isSavingRef.current = false;
+      setSaving(false);
+    }
   }
 
   return (
