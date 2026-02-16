@@ -91,7 +91,8 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 
 ## 2026-02-16 — My/Settings UX: completeness compact status + i18n
 
-- **My page**: Moved Profile completeness from large top block to compact status in header (top-right, next to action buttons). Small bar + "X/100" or "—", click → /settings, hover shows hint.
+- **My page**: Moved Profile completeness from large top block to compact status in header (top-right, next to action buttons). Small label "Profile completeness" + icon bar + "X/100" or "—", click → /settings, hover shows hint.
+- **Settings**: Edit profile details button size reduced (inline-block, py-2) to match other action buttons.
 - **Settings i18n**: "Edit profile details" KO → "상세 프로필 수정".
 
 ## 2026-02-16 — Completeness: compute-only on /my, persist only on save

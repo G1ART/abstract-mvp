@@ -884,7 +884,7 @@ export default function SettingsPage() {
                         setTimeout(() => profileDetailsRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
                       }
                     }}
-                    className={`w-full rounded-lg border px-4 py-3 text-sm font-medium transition-colors ${
+                    className={`inline-block rounded border px-4 py-2 text-sm font-medium transition-colors ${
                       hasDetailsContent
                         ? "border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
                         : "border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800"
