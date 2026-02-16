@@ -330,6 +330,13 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Stopped branch/PR workflow due to PR creation suspension.
 - Added explicit auth session guard + real error logging in Settings save handler to diagnose and prevent auth.uid() null RPC failures.
 
+## 2026-02-16 — P0: Profile save unblocked (RLS + SSOT alignment)
+
+- Confirmed Settings reads from legacy `public.profile_details` table; aligned details save path to the same SSOT.
+- Added RLS policies for `profiles` and `profile_details` to allow authenticated users to select/insert/update own rows.
+- Marked key RPCs as SECURITY DEFINER (best-effort) and granted execute/CRUD to authenticated to prevent silent write blocks.
+- Removed confusing "local" badge fallback when NEXT_PUBLIC_BUILD_STAMP is not set.
+
 ---
 
 ## 17) Immediate next steps (recommended)
