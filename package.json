@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "node -e \"console.log('ENV_CHECK', { hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL, hasAnon: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY })\" && next build",
     "start": "next start",
     "lint": "eslint"
   },
