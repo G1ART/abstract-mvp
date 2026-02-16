@@ -347,6 +347,12 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 - Fix: Removed direct `profiles` PATCH path; main profile save now calls `rpc('update_my_profile_base')` with a whitelist patch payload (no username/id/readonly fields).
 - Result: Main profile saves succeed; details saves remain RPC-based; UI refresh via `getMyProfile()` after save.
 
+### 2026-02-16 — P0: Cross-user save bug fixed (uid guard + auth bootstrap; ME-only RPC saves)
+
+- Root cause: After account switch, Settings save used stale profile.id and issued PATCH `/rest/v1/profiles?id=eq.<old-uid>`, causing writes to wrong row and NOT NULL username failures (23502).
+- Fix: Main/details saves are ME-only RPC calls (auth.uid on DB). Added `requireSessionUid()` and uid mismatch guard. Added AuthBootstrap `onAuthStateChange` to clear profile caches and `router.refresh()` on SIGNED_IN/SIGNED_OUT.
+- Result: User A/B switching no longer leaks old uid; both main and details saves succeed.
+
 ---
 
 ## 17) Immediate next steps (recommended)

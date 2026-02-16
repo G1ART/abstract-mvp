@@ -8,6 +8,7 @@ import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
+import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { saveProfileBaseRpc, saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
@@ -428,6 +429,20 @@ export default function SettingsPage() {
     setError(null);
     setWarning(null);
     setLastError(null);
+    let uid: string;
+    try {
+      uid = await requireSessionUid(supabase);
+    } catch {
+      setError("Session expired. Please log in again.");
+      router.push("/login");
+      return;
+    }
+    const { data: currentProfile } = await getMyProfile();
+    if (currentProfile?.id && currentProfile.id !== uid) {
+      setError("Session/profile mismatch. Reloaded; try again.");
+      router.refresh();
+      return;
+    }
     isSavingRef.current = true;
     setSaving(true);
     const normalizedDetails = normalizeProfileDetails({
@@ -549,12 +564,24 @@ export default function SettingsPage() {
     setLastError(null);
     setShowRetryDetails(false);
 
-    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession();
-    if (sessionErr || !sessionData.session?.user?.id) {
-      console.error("settings_save_no_session", { sessionErr });
+    let uid: string;
+    try {
+      uid = await requireSessionUid(supabase);
+    } catch {
       setError("Session expired. Please log in again.");
       router.push("/login");
       return;
+    }
+
+    const { data: currentProfile } = await getMyProfile();
+    if (currentProfile?.id && currentProfile.id !== uid) {
+      const { data: refetched } = await getMyProfile();
+      if (refetched?.id && refetched.id !== uid) {
+        console.error("UID mismatch", { profileId: refetched.id, uid });
+        setError("Session/profile mismatch. Reloaded; try again.");
+        router.refresh();
+        return;
+      }
     }
 
     try {
@@ -633,6 +660,11 @@ export default function SettingsPage() {
 
     isSavingRef.current = true;
     setSaving(true);
+
+    if (process.env.NODE_ENV === "development") {
+      console.info("[save] uid", uid);
+      console.info("[save] patchKeys", { base: Object.keys(basePatch), details: Object.keys(detailsPatch) });
+    }
 
     try {
       if (Object.keys(basePatch).length > 0) {
