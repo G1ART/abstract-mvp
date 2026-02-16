@@ -12,7 +12,6 @@ import { useT } from "@/lib/i18n/useT";
 const NAV_LINKS = [
   { href: "/feed?tab=all&sort=latest", key: "nav.feed" },
   { href: "/people", key: "nav.people" },
-  { href: "/me", key: "nav.me" },
   { href: "/upload", key: "nav.upload" },
   { href: "/settings", key: "nav.settings" },
 ] as const;
@@ -91,6 +90,12 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* My Profile - near auth */}
+        {ready && loggedIn && (
+          <Link href="/my" className={linkClass}>
+            {t("nav.myProfile")}
+          </Link>
+        )}
         {/* Language toggle - always visible */}
         <span className="flex gap-1 text-xs text-zinc-500">
           <button
@@ -165,6 +170,13 @@ export function Header() {
       {mobileOpen && loggedIn && (
         <div className="md:hidden absolute top-full left-0 right-0 z-50 border-b border-zinc-200 bg-white shadow-sm">
           <nav className="flex flex-col p-4 gap-1">
+            <Link
+              href="/my"
+              className={`${linkClass} py-2 px-1`}
+              onClick={closeMobile}
+            >
+              {t("nav.myProfile")}
+            </Link>
             {profileUsername && (
               <Link
                 href={`/u/${profileUsername}`}

@@ -174,21 +174,27 @@ type MyArtworksOptions = {
 };
 
 export async function listMyArtworks(
-  options: MyArtworksOptions = {}
+  options: MyArtworksOptions & { publicOnly?: boolean } = {}
 ): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
-  const { limit = 50 } = options;
+  const { limit = 50, publicOnly = false } = options;
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
     .eq("artist_id", session.user.id)
     .order("created_at", { ascending: false })
     .limit(limit);
+
+  if (publicOnly) {
+    query = query.eq("visibility", "public");
+  }
+
+  const { data, error } = await query;
 
   if (error) return { data: [], error };
   return {
@@ -461,6 +467,28 @@ function runWithLimit<T>(items: T[], fn: (x: T) => Promise<unknown>): Promise<vo
   }
   const workers = Array(Math.min(CONCURRENCY, items.length)).fill(0).map(() => worker());
   return Promise.all(workers).then(() => {});
+}
+
+/** Delete multiple artworks with cascade. Owner-only, concurrency=5. */
+export async function deleteArtworksBatch(
+  ids: string[],
+  options?: { concurrency?: number }
+): Promise<{ okIds: string[]; failed: Array<{ id: string; error: unknown }> }> {
+  const concurrency = options?.concurrency ?? 5;
+  const okIds: string[] = [];
+  const failed: Array<{ id: string; error: unknown }> = [];
+  const items = ids.map((id) => ({ id }));
+
+  await runWithLimit(items, async ({ id }) => {
+    const res = await deleteArtworkCascade(id);
+    if (res.error) {
+      failed.push({ id, error: res.error });
+    } else {
+      okIds.push(id);
+    }
+  });
+
+  return { okIds, failed };
 }
 
 /** Delete multiple drafts with cascade. Owner-only, batches with concurrency limit. */

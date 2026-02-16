@@ -37,16 +37,17 @@
 
 ### 2.1 단일 작품 삭제 (owner)
 - [ ] `/artwork/[id]` (본인 작품) → Delete → 확인 모달 → 삭제
-- [ ] 삭제 후 `/me`로 리다이렉트
+- [ ] 삭제 후 `/my`로 리다이렉트
 - [ ] 피드·프로필·내 작품 목록에서 해당 작품 제거
 - [ ] Storage에서 해당 이미지 파일 제거
 
 ### 2.2 단일 작품 삭제 (visitor)
 - [ ] 다른 사용자 작품 상세 페이지 → Delete 버튼 미노출
 
-### 2.3 /me 카드에서 삭제
-- [ ] `/me` → 내 작품 카드 Delete → 확인 → 삭제
+### 2.3 /my 카드에서 삭제 + bulk delete
+- [ ] `/my` → 내 작품 카드 Delete → 확인 → 삭제
 - [ ] 목록 갱신 + "Artwork deleted" 토스트
+- [ ] Bulk delete: `/my` → Select → 체크박스로 여러 개 선택 → Delete selected → 확인 ("Delete N posts?") → N개 삭제, storage 정리 확인
 
 ---
 
@@ -104,8 +105,8 @@
 ## 7. Profile v0 + Completeness
 
 - [ ] `/settings`에서 Profile details 펼치기 → Core + 역할별 모듈 표시
-- [ ] 저장 후 completeness 진행 바 증가 확인
-- [ ] `/me`에서 "Profile completeness: X/100" 카드 노출
+- [ ] 저장 후 completeness 진행 바 증가 확인 (0이 아님)
+- [ ] `/my`에서 "Profile completeness: X/100" 카드 노출
 - [ ] "Improve profile" 클릭 시 /settings 이동
 - [ ] 동일 city 또는 shared themes 설정 시 `/people` Recommended에서 "Why recommended" 라인에 Same city / Shared themes 표시
 
@@ -114,6 +115,14 @@
 - [ ] 좋아요 클릭 → taste profile 업데이트 (user_taste_profiles debug liked_count 증가)
 - [ ] People에서 3-lane 추천 (follow_graph / likes_based / expand)
 - [ ] embeddings null 상태에서도 fallback 동작
+
+## 8.5 My Profile (/my) + Followers/Following
+
+- [ ] Header에서 "My Profile" 클릭 → `/my` 진입
+- [ ] `/my` KPIs: Following, Followers, Posts 숫자 표시
+- [ ] Following 클릭 → `/my/following` (내가 팔로우한 사람 목록)
+- [ ] Followers 클릭 → `/my/followers` (나를 팔로우한 사람 목록)
+- [ ] 프로필 completeness가 설정 저장 후 0이 아님
 
 ## 9. Profile Viewers (Entitlements skeleton)
 

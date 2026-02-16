@@ -4,8 +4,14 @@ export { getMyProfile } from "./profiles";
 export { listMyArtworks } from "./artworks";
 
 export type MyStats = {
-  artworksCount: number;
+  /** Public posts (visibility='public') */
+  postsCount: number;
+  /** People who follow me */
   followersCount: number;
+  /** People I follow */
+  followingCount: number;
+  /** Total artworks (legacy, includes drafts) */
+  artworksCount: number;
   viewsCount: number;
 };
 
@@ -21,20 +27,31 @@ export async function getMyStats(): Promise<{
 
   const me = session.user.id;
 
-  const [artworksRes, followersRes, artworkIdsRes] = await Promise.all([
+  const [publicPostsRes, followersRes, followingRes, allArtworksRes, artworkIdsRes] = await Promise.all([
     supabase
       .from("artworks")
       .select("id", { count: "exact", head: true })
-      .eq("artist_id", me),
+      .eq("artist_id", me)
+      .eq("visibility", "public"),
     supabase
       .from("follows")
       .select("following_id", { count: "exact", head: true })
       .eq("following_id", me),
+    supabase
+      .from("follows")
+      .select("follower_id", { count: "exact", head: true })
+      .eq("follower_id", me),
+    supabase
+      .from("artworks")
+      .select("id", { count: "exact", head: true })
+      .eq("artist_id", me),
     supabase.from("artworks").select("id").eq("artist_id", me),
   ]);
 
-  const artworksCount = artworksRes.count ?? 0;
+  const postsCount = publicPostsRes.count ?? 0;
   const followersCount = followersRes.count ?? 0;
+  const followingCount = followingRes.count ?? 0;
+  const artworksCount = allArtworksRes.count ?? 0;
 
   const ids = (artworkIdsRes.data ?? []).map((r) => r.id);
   let viewsCount = 0;
@@ -47,7 +64,7 @@ export async function getMyStats(): Promise<{
   }
 
   return {
-    data: { artworksCount, followersCount, viewsCount },
+    data: { postsCount, followersCount, followingCount, artworksCount, viewsCount },
     error: null,
   };
 }

@@ -54,7 +54,7 @@ function ArtworkDetailContent() {
       setError(err instanceof Error ? err.message : "Delete failed");
       return;
     }
-    router.push("/me");
+    router.push("/my");
   }
 
   const recordView = useCallback(async () => {

@@ -1,6 +1,6 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-14 (America/Los_Angeles)
+Last updated: 2026-02-15 (America/Los_Angeles)
 
 ## 1) Project identity
 - Product: **Abstract** (art platform MVP)
@@ -38,7 +38,8 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 
 ### Navigation
 - Header logo routes to `/feed`
-- Logged-in nav includes: Feed / People / Profile(/u/<username>) / Me / Upload / Settings
+- Logged-in nav includes: Feed / People / Profile(/u/<username>) / Upload / Settings / **My Profile** (near language toggle)
+- `/me` → redirect(`/my`) (legacy alias, old links preserved)
 - `/artists` → redirect(`/people`) (legacy alias)
 
 ### Feed (Thread style)
@@ -85,14 +86,9 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 - likes_count normalized in code to avoid postgrest shape issues
 - Popular sorting based on likes_count
 
-### Me dashboard
-- `/me`:
-  - KPIs: artworks, followers, views
-  - list my artworks
-  - entry points:
-    - View public profile → `/u/<username>`
-    - Reorder portfolio → `/u/<username>?mode=reorder`
-    - If username missing → “Complete profile” → `/onboarding`
+### My dashboard (/my)
+- `/my` (primary): Profile header, View public profile / Edit profile. KPI: Following, Followers, Posts. Profile completeness from DB. Bulk delete (multi-select). `listMyArtworks({ publicOnly: true })`.
+- `/me` → redirect `/my` (legacy). `/my/followers`, `/my/following` — lists with Follow button.
 
 ### Settings UX
 - `/settings` save redirects to **/u/<username>**
@@ -120,12 +116,13 @@ Last updated: 2026-02-14 (America/Los_Angeles)
 ---
 
 ## 7) Delete / Cleanup (hard delete)
-- `/artwork/[id]` owner-only delete (confirm → cascade → redirect `/me`)
-- `/me` 카드에서도 delete
+- `/artwork/[id]` owner-only delete (confirm → cascade → redirect `/my`)
+- `/my` bulk delete: multi-select mode → Select → checkboxes → Delete selected → confirm ("Delete N posts?") → `deleteArtworksBatch(ids, { concurrency: 5 })` → refresh
 - Draft delete: bulk page에서 selected/all delete
 - Cascade delete:
   - storage files → artwork_images rows → artworks row
   - storage delete 실패 시 로그(Dev warn/Prod error + payload)
+- Bulk delete: `deleteArtworksBatch(ids, { concurrency: 5 })` — `deleteArtworkCascade` per id with concurrency limit
 
 - Supabase SQL scripts (manual apply):
   - `supabase/migrations/artwork_delete_rls.sql`
