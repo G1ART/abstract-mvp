@@ -303,6 +303,10 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 - Fixed TS compile error in src/app/settings/page.tsx by using the correct details-save function (saveProfileDetailsRpc), replacing stale symbol `updateMyProfileDetails`.
 
+## 2026-02-16 — Hotfix: ProfileBootstrap build fix
+
+- Fixed TS build error in ProfileBootstrap by removing .catch() on PromiseLike and using async IIFE with try/catch (fire-and-forget).
+
 ---
 
 ## 17) Immediate next steps (recommended)

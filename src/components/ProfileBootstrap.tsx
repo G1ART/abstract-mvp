@@ -26,19 +26,19 @@ function doEnsure(session: { user: { id: string } } | null) {
   if (!session?.user?.id) return;
   if (getBootstrapDone()) return;
 
-  supabase
-    .rpc("ensure_my_profile")
-    .then(({ error }) => {
+  void (async () => {
+    try {
+      const { error } = await supabase.rpc("ensure_my_profile");
       if (!error) {
         setBootstrapDone();
         if (process.env.NODE_ENV === "development") {
           console.info("[bootstrap] ensured profile row");
         }
       }
-    })
-    .catch(() => {
-      /* fire-and-forget; safe catch */
-    });
+    } catch {
+      /* fire-and-forget; swallow */
+    }
+  })();
 }
 
 export function ProfileBootstrap() {
