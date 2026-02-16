@@ -38,6 +38,12 @@ export type ArtistProfile = {
   roles?: string[] | null;
 } | null;
 
+export type ArtworkClaim = {
+  claim_type: string;
+  subject_profile_id: string;
+  profiles: { username: string | null; display_name: string | null } | null;
+};
+
 /** Base artwork shape returned from list/get with embedded images and profile. */
 export type Artwork = {
   id: string;
@@ -60,7 +66,15 @@ export type Artwork = {
   created_at: string | null;
   artwork_images: ArtworkImage[] | null;
   profiles: ArtistProfile;
+  claims?: ArtworkClaim[] | null;
 };
+
+/** Pick primary claim for display (CREATED first, else first). */
+export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
+  const claims = artwork.claims ?? [];
+  const created = claims.find((c) => c.claim_type === "CREATED");
+  return created ?? claims[0] ?? null;
+}
 
 export type ArtworkWithLikes = Artwork & { likes_count: number };
 
@@ -90,7 +104,8 @@ const ARTWORK_SELECT = `
   created_at,
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
-  artwork_likes(count)
+  artwork_likes(count),
+  claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))
 `;
 
 export async function listPublicArtworks(
@@ -272,6 +287,8 @@ export type CreateArtworkPayload = {
   is_price_public?: boolean;
   price_input_amount?: number | null;
   price_input_currency?: string | null;
+  /** Override artist (for OWNS/INVENTORY; default = session user) */
+  artist_id?: string | null;
 };
 
 export async function createArtwork(
@@ -307,10 +324,11 @@ export async function createArtwork(
     }
   }
 
+  const artistId = payload.artist_id ?? session.user.id;
   const { data, error } = await supabase
     .from("artworks")
     .insert({
-      artist_id: session.user.id,
+      artist_id: artistId,
       title: payload.title,
       year: payload.year,
       medium: payload.medium,
@@ -360,7 +378,8 @@ export async function getArtworkById(
       created_at,
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
-      artwork_likes(count)
+      artwork_likes(count),
+      claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))
     `
     )
     .eq("id", id)

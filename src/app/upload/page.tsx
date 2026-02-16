@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
@@ -11,8 +11,23 @@ import {
   type CreateArtworkPayload,
 } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
+import { searchPeople } from "@/lib/supabase/artists";
+import {
+  createClaimForExistingArtist,
+  searchWorksForDedup,
+} from "@/lib/provenance/rpc";
+import type { ClaimType } from "@/lib/provenance/types";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+
+type UploadStep = "intent" | "attribution" | "form" | "dedup";
+
+type IntentType = "CREATED" | "OWNS";
+
+const INTENTS: { value: IntentType; label: string }[] = [
+  { value: "CREATED", label: "My work" },
+  { value: "OWNS", label: "Collected work" },
+];
 
 const OWNERSHIP_STATUSES = [
   { value: "available", label: "Available" },
@@ -31,10 +46,22 @@ const PRICE_CURRENCIES = [
   { value: "KRW", label: "KRW" },
 ] as const;
 
+type ArtistOption = { id: string; username: string | null; display_name: string | null };
+
 export default function UploadPage() {
   const router = useRouter();
   const { t } = useT();
   const [userId, setUserId] = useState<string | null>(null);
+  const [step, setStep] = useState<UploadStep>("intent");
+  const [intent, setIntent] = useState<IntentType | null>(null);
+
+  // Attribution (OWNS only)
+  const [artistSearch, setArtistSearch] = useState("");
+  const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
+  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
+  const [searching, setSearching] = useState(false);
+
+  // Form
   const [image, setImage] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
@@ -46,6 +73,11 @@ export default function UploadPage() {
   const [priceCurrency, setPriceCurrency] = useState("USD");
   const [priceAmount, setPriceAmount] = useState("");
   const [isPricePublic, setIsPricePublic] = useState(false);
+
+  // Dedup
+  const [similarWorks, setSimilarWorks] = useState<{ id: string; title: string | null }[]>([]);
+  const [dedupLoading, setDedupLoading] = useState(false);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,17 +87,80 @@ export default function UploadPage() {
     });
   }, []);
 
-  async function handleSubmit(e: FormEvent) {
+  const doSearchArtists = useCallback(async () => {
+    const q = artistSearch.trim();
+    if (!q || q.length < 2) {
+      setArtistResults([]);
+      return;
+    }
+    setSearching(true);
+    const { data } = await searchPeople({ q, roles: ["artist"], limit: 10 });
+    setArtistResults((data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name })));
+    setSearching(false);
+  }, [artistSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(doSearchArtists, 300);
+    return () => clearTimeout(t);
+  }, [artistSearch, doSearchArtists]);
+
+  function handleIntentSelect(value: IntentType) {
+    setIntent(value);
+    setError(null);
+    if (value === "CREATED") {
+      setStep("form");
+    } else {
+      setStep("attribution");
+      setSelectedArtist(null);
+    }
+  }
+
+  function handleAttributionNext() {
+    if (intent === "OWNS" && !selectedArtist) {
+      setError("Please select an artist");
+      return;
+    }
+    setError(null);
+    setStep("form");
+  }
+
+  function handleFormNext(e: FormEvent) {
     e.preventDefault();
+    setError(null);
+    if (!image || !title.trim() || !year || !medium.trim() || !size.trim()) {
+      setError("Please fill required fields");
+      return;
+    }
+    const yearNum = parseInt(year, 10);
+    if (isNaN(yearNum) || yearNum < 1000 || yearNum > 9999) {
+      setError("Please enter a valid year (4 digits)");
+      return;
+    }
+    if (pricingMode === "fixed" && (!priceAmount || parseFloat(priceAmount) <= 0)) {
+      setError("Please enter a valid price");
+      return;
+    }
+    setStep("dedup");
+    fetchSimilarWorks();
+  }
+
+  async function fetchSimilarWorks() {
+    setDedupLoading(true);
+    const { data } = await searchWorksForDedup({
+      artistProfileId: intent === "CREATED" ? userId ?? undefined : selectedArtist?.id,
+      q: title.trim(),
+      limit: 5,
+    });
+    setSimilarWorks((data ?? []).map((w) => ({ id: w.id, title: w.title })));
+    setDedupLoading(false);
+  }
+
+  async function handleSubmit() {
     if (isSubmitting) return;
     setError(null);
 
-    if (!image) {
-      setError("Please select an image");
-      return;
-    }
-    if (!userId) {
-      setError("Not authenticated");
+    if (!image || !userId) {
+      setError(!userId ? "Not authenticated" : "Please select an image");
       return;
     }
 
@@ -84,27 +179,17 @@ export default function UploadPage() {
       ownership_status: ownershipStatus,
       pricing_mode: pricingMode,
       is_price_public: pricingMode === "fixed" ? isPricePublic : false,
-      price_input_amount:
-        pricingMode === "fixed" && priceAmount
-          ? parseFloat(priceAmount)
-          : undefined,
-      price_input_currency:
-        pricingMode === "fixed" ? priceCurrency : undefined,
+      price_input_amount: pricingMode === "fixed" && priceAmount ? parseFloat(priceAmount) : undefined,
+      price_input_currency: pricingMode === "fixed" ? priceCurrency : undefined,
+      artist_id: intent === "OWNS" && selectedArtist ? selectedArtist.id : undefined,
     };
-
-    if (pricingMode === "fixed" && (!priceAmount || parseFloat(priceAmount) <= 0)) {
-      setError("Please enter a valid price");
-      return;
-    }
 
     setIsSubmitting(true);
 
     try {
       const { data: artworkId, error: createErr } = await createArtwork(payload);
       if (createErr) {
-        setError(
-          createErr instanceof Error ? createErr.message : "Failed to create artwork"
-        );
+        setError(createErr instanceof Error ? createErr.message : "Failed to create artwork");
         setIsSubmitting(false);
         return;
       }
@@ -119,9 +204,7 @@ export default function UploadPage() {
         storagePath = await uploadArtworkImage(image, userId);
       } catch (uploadErr) {
         await deleteArtwork(artworkId);
-        setError(
-          uploadErr instanceof Error ? uploadErr.message : "Failed to upload image"
-        );
+        setError(uploadErr instanceof Error ? uploadErr.message : "Failed to upload image");
         setIsSubmitting(false);
         return;
       }
@@ -130,11 +213,21 @@ export default function UploadPage() {
       if (attachErr) {
         await removeStorageFile(storagePath);
         await deleteArtwork(artworkId);
-        setError(
-          attachErr instanceof Error ? attachErr.message : "Failed to attach image"
-        );
+        setError(attachErr instanceof Error ? attachErr.message : "Failed to attach image");
         setIsSubmitting(false);
         return;
+      }
+
+      const claimType: ClaimType = intent === "CREATED" ? "CREATED" : "OWNS";
+      const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
+      const { error: claimErr } = await createClaimForExistingArtist({
+        artistProfileId,
+        claimType,
+        workId: artworkId,
+        visibility: "public",
+      });
+      if (claimErr) {
+        console.warn("Claim creation failed:", claimErr);
       }
 
       const { getMyProfile } = await import("@/lib/supabase/profiles");
@@ -155,225 +248,301 @@ export default function UploadPage() {
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Upload artwork</h1>
-          <Link
-            href="/upload/bulk"
-            className="text-sm text-zinc-600 hover:text-zinc-900"
-          >
+          <h1 className="text-xl font-semibold">{t("upload.title")}</h1>
+          <Link href="/upload/bulk" className="text-sm text-zinc-600 hover:text-zinc-900">
             {t("bulk.linkToBulk")} →
           </Link>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label htmlFor="image" className="mb-1 block text-sm font-medium">
-              Image *
-            </label>
-            <input
-              id="image"
-              type="file"
-              accept="image/*"
-              required
-              disabled={isSubmitting}
-              onChange={(e) => setImage(e.target.files?.[0] ?? null)}
-              className="w-full rounded border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50"
-            />
-          </div>
 
-          <div>
-            <label htmlFor="title" className="mb-1 block text-sm font-medium">
-              Title *
-            </label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              required
-              disabled={isSubmitting}
-              placeholder="Artwork title"
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="year" className="mb-1 block text-sm font-medium">
-              Year *
-            </label>
-            <input
-              id="year"
-              type="number"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              required
-              disabled={isSubmitting}
-              min={1000}
-              max={9999}
-              placeholder="2024"
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="medium" className="mb-1 block text-sm font-medium">
-              Medium *
-            </label>
-            <input
-              id="medium"
-              type="text"
-              value={medium}
-              onChange={(e) => setMedium(e.target.value)}
-              required
-              disabled={isSubmitting}
-              placeholder="e.g. Oil on canvas"
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="size" className="mb-1 block text-sm font-medium">
-              Size *
-            </label>
-            <input
-              id="size"
-              type="text"
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              required
-              disabled={isSubmitting}
-              placeholder="e.g. 100 x 80 cm"
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="story" className="mb-1 block text-sm font-medium">
-              Story
-            </label>
-            <textarea
-              id="story"
-              value={story}
-              onChange={(e) => setStory(e.target.value)}
-              disabled={isSubmitting}
-              placeholder="Optional description"
-              rows={3}
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="ownership" className="mb-1 block text-sm font-medium">
-              Ownership status *
-            </label>
-            <select
-              id="ownership"
-              value={ownershipStatus}
-              onChange={(e) => setOwnershipStatus(e.target.value)}
-              required
-              disabled={isSubmitting}
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            >
-              {OWNERSHIP_STATUSES.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
+        {/* Step: Intent */}
+        {step === "intent" && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-600">What are you uploading?</p>
+            <div className="grid gap-3">
+              {INTENTS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => handleIntentSelect(opt.value)}
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
+                >
+                  {opt.label}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
+        )}
 
-          <div>
-            <label htmlFor="pricing" className="mb-1 block text-sm font-medium">
-              Pricing mode *
-            </label>
-            <select
-              id="pricing"
-              value={pricingMode}
-              onChange={(e) =>
-                setPricingMode(e.target.value as "fixed" | "inquire")
-              }
-              disabled={isSubmitting}
-              className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-            >
-              {PRICING_MODES.map((p) => (
-                <option key={p.value} value={p.value}>
-                  {p.label}
-                </option>
-              ))}
-            </select>
+        {/* Step: Attribution (OWNS only) */}
+        {step === "attribution" && intent === "OWNS" && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-600">Link the artist (who created this work)</p>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Search artist</label>
+              <input
+                type="text"
+                value={artistSearch}
+                onChange={(e) => setArtistSearch(e.target.value)}
+                placeholder="Name or username"
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+            {searching && <p className="text-sm text-zinc-500">Searching...</p>}
+            {artistResults.length > 0 && (
+              <ul className="rounded border border-zinc-200 bg-white">
+                {artistResults.map((a) => (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedArtist(a);
+                        setArtistResults([]);
+                        setArtistSearch("");
+                      }}
+                      className={`w-full px-4 py-2 text-left text-sm hover:bg-zinc-50 ${
+                        selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
+                      }`}
+                    >
+                      {a.display_name || a.username || a.id}
+                      {a.username && (
+                        <span className="ml-2 text-zinc-500">@{a.username}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selectedArtist && (
+              <p className="text-sm text-zinc-600">
+                Selected: {selectedArtist.display_name || selectedArtist.username}
+              </p>
+            )}
+            {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStep("intent")}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleAttributionNext}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800"
+              >
+                Next
+              </button>
+            </div>
           </div>
+        )}
 
-          {pricingMode === "fixed" && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="currency"
-                    className="mb-1 block text-sm font-medium"
-                  >
-                    Currency
-                  </label>
-                  <select
-                    id="currency"
-                    value={priceCurrency}
-                    onChange={(e) => setPriceCurrency(e.target.value)}
-                    disabled={isSubmitting}
-                    className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
-                  >
-                    {PRICE_CURRENCIES.map((c) => (
-                      <option key={c.value} value={c.value}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
+        {/* Step: Form */}
+        {step === "form" && (
+          <form onSubmit={handleFormNext} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Image *</label>
+              <input
+                type="file"
+                accept="image/*"
+                required
+                onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Title *</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                placeholder="Artwork title"
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Year *</label>
+              <input
+                type="number"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                required
+                min={1000}
+                max={9999}
+                placeholder="2024"
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Medium *</label>
+              <input
+                type="text"
+                value={medium}
+                onChange={(e) => setMedium(e.target.value)}
+                required
+                placeholder="e.g. Oil on canvas"
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Size *</label>
+              <input
+                type="text"
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                required
+                placeholder="e.g. 100 x 80 cm"
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Story</label>
+              <textarea
+                value={story}
+                onChange={(e) => setStory(e.target.value)}
+                placeholder="Optional description"
+                rows={3}
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Ownership status *</label>
+              <select
+                value={ownershipStatus}
+                onChange={(e) => setOwnershipStatus(e.target.value)}
+                required
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              >
+                {OWNERSHIP_STATUSES.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Pricing mode *</label>
+              <select
+                value={pricingMode}
+                onChange={(e) => setPricingMode(e.target.value as "fixed" | "inquire")}
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+              >
+                {PRICING_MODES.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {pricingMode === "fixed" && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Currency</label>
+                    <select
+                      value={priceCurrency}
+                      onChange={(e) => setPriceCurrency(e.target.value)}
+                      className="w-full rounded border border-zinc-300 px-3 py-2"
+                    >
+                      {PRICE_CURRENCIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium">Amount *</label>
+                    <input
+                      type="number"
+                      value={priceAmount}
+                      onChange={(e) => setPriceAmount(e.target.value)}
+                      required={pricingMode === "fixed"}
+                      min={0}
+                      step="any"
+                      placeholder="0"
+                      className="w-full rounded border border-zinc-300 px-3 py-2"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label
-                    htmlFor="price"
-                    className="mb-1 block text-sm font-medium"
-                  >
-                    Amount *
-                  </label>
+                <div className="flex items-center gap-2">
                   <input
-                    id="price"
-                    type="number"
-                    value={priceAmount}
-                    onChange={(e) => setPriceAmount(e.target.value)}
-                    required={pricingMode === "fixed"}
-                    disabled={isSubmitting}
-                    min={0}
-                    step="any"
-                    placeholder="0"
-                    className="w-full rounded border border-zinc-300 px-3 py-2 disabled:opacity-50"
+                    type="checkbox"
+                    id="pricePublic"
+                    checked={isPricePublic}
+                    onChange={(e) => setIsPricePublic(e.target.checked)}
+                    className="rounded"
                   />
+                  <label htmlFor="pricePublic" className="text-sm">
+                    Show price publicly
+                  </label>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  id="pricePublic"
-                  type="checkbox"
-                  checked={isPricePublic}
-                  onChange={(e) => setIsPricePublic(e.target.checked)}
-                  disabled={isSubmitting}
-                  className="rounded disabled:opacity-50"
-                />
-                <label htmlFor="pricePublic" className="text-sm">
-                  Show price publicly
-                </label>
-              </div>
-            </>
-          )}
+              </>
+            )}
+            {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => (intent === "OWNS" ? setStep("attribution") : setStep("intent"))}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800"
+              >
+                Next (check duplicates)
+              </button>
+            </div>
+          </form>
+        )}
 
-          {error && (
-            <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
-          >
-            {isSubmitting ? "Uploading..." : "Upload"}
-          </button>
-        </form>
+        {/* Step: Dedup */}
+        {step === "dedup" && (
+          <div className="space-y-4">
+            <p className="text-sm text-zinc-600">Similar works found</p>
+            {dedupLoading && <p className="text-sm text-zinc-500">Searching...</p>}
+            {!dedupLoading && similarWorks.length > 0 && (
+              <ul className="rounded border border-zinc-200 bg-white">
+                {similarWorks.map((w) => (
+                  <li key={w.id} className="border-b border-zinc-100 px-4 py-2 last:border-0">
+                    <Link
+                      href={`/artwork/${w.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-zinc-900 hover:underline"
+                    >
+                      {w.title ?? "Untitled"}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!dedupLoading && similarWorks.length === 0 && (
+              <p className="text-sm text-zinc-500">No similar works found.</p>
+            )}
+            {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setStep("form")}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {isSubmitting ? "Uploading..." : "Upload"}
+              </button>
+            </div>
+          </div>
+        )}
       </main>
     </AuthGate>
   );

@@ -4,7 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
-import { type ArtworkWithLikes, getStorageUrl } from "@/lib/supabase/artworks";
+import {
+  type ArtworkWithLikes,
+  getStorageUrl,
+  getPrimaryClaim,
+} from "@/lib/supabase/artworks";
+import type { ClaimType } from "@/lib/provenance/types";
+import { claimTypeToLabel } from "@/lib/provenance/rpc";
 import { FollowButton } from "./FollowButton";
 import { LikeButton } from "./LikeButton";
 
@@ -46,6 +52,12 @@ export function ArtistThreadCard({
   const displayName = artist.display_name ?? username;
   const avatarUrl = getAvatarUrl(artist.avatar_url);
   const worksToShow = artworks.slice(0, MAX_WORKS_IN_THREAD);
+  const firstClaim = worksToShow[0]
+    ? getPrimaryClaim(worksToShow[0])
+    : null;
+  const claimLabel = firstClaim
+    ? claimTypeToLabel(firstClaim.claim_type as ClaimType)
+    : "Work";
 
   function handleHeaderClick(e: React.MouseEvent) {
     e.stopPropagation();
@@ -168,17 +180,21 @@ export function ArtistThreadCard({
         })}
       </div>
 
-      {/* View profile link */}
-      {username && (
-        <div className="border-t border-zinc-100 px-4 py-2">
+      {/* Attribution + View profile link */}
+      <div className="border-t border-zinc-100 px-4 py-2">
+        <p className="text-xs text-zinc-500">
+          by {displayName}
+          {username && <> · Listed by {displayName} · {claimLabel}</>}
+        </p>
+        {username && (
           <Link
             href={`/u/${username}`}
-            className="text-sm font-medium text-zinc-600 hover:text-zinc-900"
+            className="mt-1 inline-block text-sm font-medium text-zinc-600 hover:text-zinc-900"
           >
             {t("profile.viewProfile")} →
           </Link>
-        </div>
-      )}
+        )}
+      </div>
     </article>
   );
 }

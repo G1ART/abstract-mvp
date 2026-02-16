@@ -89,11 +89,13 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
-## 2026-02-16 — Batch D-4: Provenance v1 (claims/projects/external artists)
+## 2026-02-16 — Batch D-4 follow-up: Upload UX + Rendering (by Artist, Listed by)
 
-- **DB**: Added `external_artists`, `projects`, `claims` tables. RPCs: `create_external_artist_and_claim`, `create_claim_for_existing_artist`, `search_works_for_dedup`. Backfill CREATED claims for existing artworks.
-- **Lib**: `src/lib/provenance/types.ts`, `src/lib/provenance/rpc.ts` with ClaimType, Visibility, RPC wrappers, `claimTypeToLabel()`.
-- **Design**: Upload becomes relationship-driven (Created/Collected/Gallery/Curated). Non-artist uploads require artist attribution (link or invite). Curator flow is project-first. Feed/profile cards display attribution + listing context (by Artist, Listed by X · Label). Full Upload UX + rendering integration pending.
+- **Upload UX**: Multi-step flow — (1) Intent: My work (CREATED) vs Collected work (OWNS); (2) Attribution: for OWNS, search and link existing artist via `searchPeople`; (3) Form: image, title, year, medium, size, story, ownership, pricing; (4) Dedup: `search_works_for_dedup` shows similar works before submit. Submit creates artwork + CREATED/OWNS claim via `createClaimForExistingArtist`.
+- **Rendering**: `artworks` select extended with `claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))`. `ArtworkCard` and `ArtistThreadCard` display "by Artist" and "Listed by X · Label" using `getPrimaryClaim()` and `claimTypeToLabel()`.
+- **Lib**: `createArtwork` accepts optional `artist_id` for OWNS path. `artworks.ts` exports `ArtworkClaim`, `getPrimaryClaim()`.
+- **Verified**: TypeScript passes; rendering shows attribution on feed/profile cards.
+</think>
 
 ## 2026-02-16 — Batch B: Price multi-select, artwork aspect, upload redirect, reorder UX
 

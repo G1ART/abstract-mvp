@@ -3,7 +3,13 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type Artwork, getStorageUrl } from "@/lib/supabase/artworks";
+import {
+  type Artwork,
+  getStorageUrl,
+  getPrimaryClaim,
+} from "@/lib/supabase/artworks";
+import type { ClaimType } from "@/lib/provenance/types";
+import { claimTypeToLabel } from "@/lib/provenance/rpc";
 import { useT } from "@/lib/i18n/useT";
 import { LikeButton } from "./LikeButton";
 
@@ -37,6 +43,16 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
   const imageUrl = firstImage ? getStorageUrl(firstImage.storage_path) : null;
   const artist = artwork.profiles;
   const username = artist?.username ?? "";
+  const artistLabel =
+    artist?.display_name?.trim() || (username ? "@" + username : null) || null;
+  const primaryClaim = getPrimaryClaim(artwork);
+  const listerProf = primaryClaim?.profiles;
+  const listerLabel = listerProf
+    ? (listerProf.display_name?.trim() || (listerProf.username ? "@" + listerProf.username : null))
+    : null;
+  const claimLabel = primaryClaim
+    ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
+    : "Work";
 
   function handleArticleClick() {
     if (disableNavigation) return;
@@ -95,6 +111,15 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
           <p className="mt-1 text-sm text-zinc-600">
             {getPriceDisplay(artwork)}
           </p>
+          {(artistLabel || (listerLabel && claimLabel)) && (
+            <p className="mt-1 text-sm text-zinc-500">
+              {artistLabel && <span>by {artistLabel}</span>}
+              {artistLabel && listerLabel && claimLabel && " · "}
+              {listerLabel && claimLabel && (
+                <span>Listed by {listerLabel} · {claimLabel}</span>
+              )}
+            </p>
+          )}
           <div className="mt-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               {username ? (
