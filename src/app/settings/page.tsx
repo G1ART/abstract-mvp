@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
-import { getMyProfile, type EducationEntry } from "@/lib/supabase/profiles";
+import { getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { saveProfileDetailsRpc } from "@/lib/supabase/profileSave";
@@ -80,33 +80,6 @@ function TestRpcButton() {
     </div>
   );
 }
-
-type Profile = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  bio: string | null;
-  location: string | null;
-  website: string | null;
-  avatar_url: string | null;
-  main_role: string | null;
-  roles: string[] | null;
-  is_public: boolean | null;
-  career_stage?: string | null;
-  age_band?: string | null;
-  city?: string | null;
-  region?: string | null;
-  country?: string | null;
-  themes?: string[] | null;
-  mediums?: string[] | null;
-  styles?: string[] | null;
-  keywords?: string[] | null;
-  education?: unknown[] | null;
-  price_band?: string | null;
-  acquisition_channels?: string[] | null;
-  affiliation?: string | null;
-  program_focus?: string[] | null;
-};
 
 function ChipInput({
   values,
@@ -676,7 +649,7 @@ export default function SettingsPage() {
         await saveProfileDetailsRpc(detailsPatch, computedScore);
       }
       const { data: refreshed } = await getMyProfile();
-      const ref = refreshed as Profile | null;
+      const ref = refreshed;
       const pc = ref?.profile_completeness;
       if (pc != null) setDbProfileCompleteness(pc);
       if (ref) {
@@ -691,21 +664,23 @@ export default function SettingsPage() {
           education: ref.education ?? undefined,
         } as Record<string, unknown>;
         const pd = profileDetailsFromProfile(ref);
-        initialDetailsRef.current = {
-          career_stage: pd.career_stage ?? undefined,
-          age_band: pd.age_band ?? undefined,
-          city: pd.city ?? undefined,
-          region: pd.region ?? undefined,
-          country: pd.country ?? undefined,
-          themes: pd.themes ?? undefined,
-          mediums: pd.mediums ?? undefined,
-          styles: pd.styles ?? undefined,
-          keywords: pd.keywords ?? undefined,
-          price_band: pd.price_band ?? undefined,
-          acquisition_channels: pd.acquisition_channels ?? undefined,
-          affiliation: pd.affiliation ?? undefined,
-          program_focus: pd.program_focus ?? undefined,
-        } as Record<string, unknown>;
+        initialDetailsRef.current = pd
+          ? {
+              career_stage: pd.career_stage ?? undefined,
+              age_band: pd.age_band ?? undefined,
+              city: pd.city ?? undefined,
+              region: pd.region ?? undefined,
+              country: pd.country ?? undefined,
+              themes: pd.themes ?? undefined,
+              mediums: pd.mediums ?? undefined,
+              styles: pd.styles ?? undefined,
+              keywords: pd.keywords ?? undefined,
+              price_band: pd.collector_price_band ?? undefined,
+              acquisition_channels: pd.collector_acquisition_channels ?? undefined,
+              affiliation: pd.affiliation ?? undefined,
+              program_focus: pd.program_focus ?? undefined,
+            }
+          : ({} as Record<string, unknown>);
       }
       const profileUsername = ref?.username?.trim().toLowerCase() ?? "";
       if (profileUsername) {

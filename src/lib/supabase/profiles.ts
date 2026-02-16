@@ -2,6 +2,40 @@ import { supabase } from "./client";
 import { saveProfileUnified } from "./profileSaveUnified";
 import { PROFILE_ME_SELECT } from "./selectors";
 
+/** Canonical profile row shape returned by getMyProfile (matches PROFILE_ME_SELECT). */
+export type Profile = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  location: string | null;
+  website: string | null;
+  main_role: string | null;
+  roles: string[] | null;
+  is_public: boolean | null;
+  profile_details: Record<string, unknown> | null;
+  profile_completeness: number | null;
+  profile_updated_at: string | null;
+  education: unknown[] | null;
+  career_stage?: string | null;
+  age_band?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  themes?: string[] | null;
+  mediums?: string[] | null;
+  styles?: string[] | null;
+  keywords?: string[] | null;
+  price_band?: string | null;
+  acquisition_channels?: string[] | null;
+  affiliation?: string | null;
+  program_focus?: string[] | null;
+  residencies?: unknown;
+  exhibitions?: unknown;
+  awards?: unknown;
+};
+
 export type ProfilePublic = {
   id: string;
   username: string | null;
@@ -68,7 +102,10 @@ export async function checkUsernameExists(
   return { exists, error: null };
 }
 
-export async function getMyProfile() {
+export async function getMyProfile(): Promise<{
+  data: Profile | null;
+  error: unknown;
+}> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -78,7 +115,7 @@ export async function getMyProfile() {
     .select(PROFILE_ME_SELECT)
     .eq("id", session.user.id)
     .single();
-  return { data, error };
+  return { data: data as Profile | null, error };
 }
 
 /** Get own profile as ProfilePublic. Used when viewing own private profile. */
