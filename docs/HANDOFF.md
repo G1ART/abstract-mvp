@@ -89,6 +89,12 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
+## 2026-02-16 — Batch D-4: Provenance v1 (claims/projects/external artists)
+
+- **DB**: Added `external_artists`, `projects`, `claims` tables. RPCs: `create_external_artist_and_claim`, `create_claim_for_existing_artist`, `search_works_for_dedup`. Backfill CREATED claims for existing artworks.
+- **Lib**: `src/lib/provenance/types.ts`, `src/lib/provenance/rpc.ts` with ClaimType, Visibility, RPC wrappers, `claimTypeToLabel()`.
+- **Design**: Upload becomes relationship-driven (Created/Collected/Gallery/Curated). Non-artist uploads require artist attribution (link or invite). Curator flow is project-first. Feed/profile cards display attribution + listing context (by Artist, Listed by X · Label). Full Upload UX + rendering integration pending.
+
 ## 2026-02-16 — Batch B: Price multi-select, artwork aspect, upload redirect, reorder UX
 
 - **Price band**: Multi-select (max 5) via TaxonomyChipSelect. DB stores `price_band` as string[] in profile_details. Backward compat: string→array when reading.
