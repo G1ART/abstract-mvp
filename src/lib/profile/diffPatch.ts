@@ -13,7 +13,7 @@ export function makePatch<T extends Record<string, unknown>>(
     const curr = current[key];
     const prev = init[key];
     if (valueEqual(prev, curr)) continue;
-    (out as Record<string, unknown>)[key] = curr;
+    (out as Record<string, unknown>)[String(key)] = curr;
   }
   return out;
 }

@@ -299,6 +299,30 @@ Last updated: 2026-02-15 (America/Los_Angeles)
 
 ---
 
+## P0 Root Fix — Save truthfulness + single RPC (2026-02-16)
+
+- Root issue: DB save succeeded but frontend showed "Failed to save profile" due to timeout/abort/unmount or partial save (base ok, details failed).
+- Fix:
+  - Single transactional RPC `upsert_my_profile(p_base jsonb, p_details jsonb, p_completeness int)` saves base+details+completeness in one roundtrip.
+  - Frontend "verify-after-error": on RPC error/timeout it refetches profile and treats as success if patch applied, preventing false failure banners.
+- Migration: run `supabase/migrations/my_profile_upsert_one_rpc.sql` manually in Supabase SQL editor.
+- Hotfix: fixed TS build error in ProfileBootstrap by converting fire-and-forget `.catch` chain to async IIFE try/catch.
+
+---
+
+## P0 Root Fix — Profile details SSOT + completeness clobber fix (2026-02-16)
+
+- Root cause: two competing detail stores (`public.profile_details` table and `profiles.profile_details` jsonb) + RPCs coerced NULL completeness to 0, causing UI flicker and false save failures.
+- Fix:
+  - Backfilled legacy `profile_details` table data into `profiles.profile_details` jsonb.
+  - Modified `upsert_profile_details` to write-through into `profiles.profile_details` (prevents future drift if called).
+  - Patched `update_my_profile_base` / `update_my_profile_details` to preserve existing completeness when p_completeness is NULL (no more NULL→0 clobber).
+  - Frontend save path unified to single RPC `upsert_my_profile` (no split base/details saves).
+- Manual: run `supabase/migrations/profile_details_ssot_and_completeness_fix.sql` in Supabase SQL Editor. If `profile_details` table does not exist, skip the backfill block.
+- Hotfix: fixed TS build error in diffPatch (keyof T indexing) by stringifying key before indexing Record<string, unknown>.
+
+---
+
 ## 17) Immediate next steps (recommended)
 P0:
 1) AI Recs v0 skeleton 구현(임베딩 테이블 + taste profile + 3 레인 UI)
