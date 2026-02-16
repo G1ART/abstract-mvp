@@ -89,10 +89,6 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
-## 2026-02-16 — Debug: verify Supabase env injected in Vercel build
-
-- Added safe build-time env presence log (booleans only) to confirm Vercel injects NEXT_PUBLIC_SUPABASE_URL/ANON_KEY.
-
 ---
 
 ## 1) Project identity
@@ -392,12 +388,9 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 
 ---
 
-## 2026-02-16 — Hotfix: restore Vercel build (Settings stale symbol)
+## 2026-02-16 — Hotfix: main build broken in Settings (missing updateMyProfileDetails symbol)
 
-- Fixed Vercel/Next build failure: Settings page referenced removed symbol `updateMyProfileDetails`.
-- Replaced with current details save function (`saveProfileDetailsRpc` / unified RPC save) and corrected imports.
-- Verified `npm run build` passes; unblocks deploy for subsequent UX patches.
-- **Note**: Current main (Batch A) already uses `saveProfileUnified` only in Settings; no `updateMyProfileDetails` reference. If building an older commit (e.g. 9fc258b), change the call at the details-save site from `updateMyProfileDetails(detailsPatch, computedScore)` to `saveProfileDetailsRpc(detailsPatch, computedScore)` (import from `@/lib/supabase/profileSave`).
+- Fixed TS compile error in src/app/settings/page.tsx by using the correct details-save function (saveProfileDetailsRpc), replacing stale symbol `updateMyProfileDetails`.
 
 ## 2026-02-16 — Hotfix: ProfileBootstrap build fix
 
