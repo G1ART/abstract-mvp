@@ -18,7 +18,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
-import { canEditArtwork, getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
+import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
@@ -42,7 +42,7 @@ type Props = {
 function getAvatarUrl(avatarUrl: string | null): string | null {
   if (!avatarUrl) return null;
   if (avatarUrl.startsWith("http")) return avatarUrl;
-  return getStorageUrl(avatarUrl);
+  return getArtworkImageUrl(avatarUrl, "avatar");
 }
 
 export function UserProfileContent({ profile, artworks, initialReorderMode = false }: Props) {
@@ -210,8 +210,9 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
                 alt=""
                 width={80}
                 height={80}
+                sizes="80px"
+                priority
                 className="h-full w-full object-cover"
-                unoptimized
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-2xl font-medium text-zinc-500">

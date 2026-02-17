@@ -8,6 +8,32 @@ export function getStorageUrl(path: string): string {
   return data.publicUrl;
 }
 
+export type ImageVariant = "thumb" | "medium" | "avatar" | "original";
+
+const VARIANT_TRANSFORM: Record<
+  Exclude<ImageVariant, "original">,
+  { width: number; height: number; quality?: number }
+> = {
+  thumb: { width: 400, height: 400, quality: 70 },
+  medium: { width: 1200, height: 1200, quality: 80 },
+  avatar: { width: 96, height: 96, quality: 75 },
+};
+
+/** Get image URL with optional resize. thumb=feed/grid, medium=detail, avatar=profile pics. */
+export function getArtworkImageUrl(
+  path: string,
+  variant: ImageVariant = "original"
+): string {
+  if (variant === "original") {
+    return getStorageUrl(path);
+  }
+  const transform = VARIANT_TRANSFORM[variant];
+  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path, {
+    transform: { ...transform, resize: "contain" },
+  });
+  return data.publicUrl;
+}
+
 export type ArtworkRow = {
   id: string;
   title: string | null;

@@ -1,6 +1,17 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-16 (America/Los_Angeles)
+Last updated: 2026-02-17 (America/Los_Angeles)
+
+## 2026-02-17 — P0: Feed perf hotfix (thumb 폭발 억제 + image optimize)
+
+- Feed 카드/리스트/프로필 그리드에서 `getArtworkImageUrl(..., "thumb")` 사용 (400px, quality 70)
+- 작품 상세(`/artwork/[id]`)에서 `getArtworkImageUrl(..., "medium")` 사용 (1200px, quality 80)
+- 아바타는 `"avatar"` variant (96px)
+- next/image 적용: `unoptimized` 제거, `sizes`, `loading="lazy"`, 상단 2개만 `priority`
+- next.config: `/storage/v1/render/image/public/**` remotePatterns 추가 (Supabase Image Transformations)
+- Feed limit 80→50, discovery blocks 5→4
+- 작품 수정 페이지(`/artwork/[id]/edit`)는 원본 이미지 사용 (변경 없음)
+- Verified: `npm run build` 통과, /feed 네트워크 이미지 요청 수 감소 예상
 
 ## 2026-02-16 — P0: Profile save SSOT (single RPC) + remove PATCH /profiles + fix header flash/completeness init
 

@@ -12,7 +12,7 @@ import {
   type PeopleRec,
   type PeopleRecMode,
 } from "@/lib/supabase/peopleRecs";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { AuthGate } from "@/components/AuthGate";
 import { FollowButton } from "@/components/FollowButton";
 
@@ -398,7 +398,7 @@ export function PeopleClient() {
                           src={
                             profile.avatar_url.startsWith("http")
                               ? profile.avatar_url
-                              : getStorageUrl(profile.avatar_url)
+                              : getArtworkImageUrl(profile.avatar_url, "avatar")
                           }
                           alt=""
                           className="h-full w-full object-cover"

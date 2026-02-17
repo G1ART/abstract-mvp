@@ -11,7 +11,7 @@ import {
   canEditArtwork,
   deleteArtworkCascade,
   getArtworkById,
-  getStorageUrl,
+  getArtworkImageUrl,
   recordArtworkView,
 } from "@/lib/supabase/artworks";
 import { isLiked } from "@/lib/supabase/likes";
@@ -147,12 +147,13 @@ function ArtworkDetailContent() {
           <div className="aspect-square w-full overflow-hidden rounded-lg bg-zinc-100">
             {sortedImages.length > 0 ? (
               <Image
-                src={getStorageUrl(sortedImages[0].storage_path)}
+                src={getArtworkImageUrl(sortedImages[0].storage_path, "medium")}
                 alt={artwork.title ?? "Artwork"}
                 width={600}
                 height={600}
+                sizes="(max-width: 768px) 100vw, 600px"
+                priority
                 className="h-full w-full object-contain"
-                unoptimized
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center text-zinc-400">

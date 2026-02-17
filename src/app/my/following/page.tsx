@@ -7,7 +7,7 @@ import { useT } from "@/lib/i18n/useT";
 import { getMyFollowing, type FollowProfileRow } from "@/lib/supabase/follows";
 import { FollowButton } from "@/components/FollowButton";
 import { isFollowing } from "@/lib/supabase/follows";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 
 export default function MyFollowingPage() {
   const { t } = useT();
@@ -74,7 +74,7 @@ export default function MyFollowingPage() {
                       src={
                         p.avatar_url.startsWith("http")
                           ? p.avatar_url
-                          : getStorageUrl(p.avatar_url)
+                          : getArtworkImageUrl(p.avatar_url, "avatar")
                       }
                       alt=""
                       className="h-12 w-12 shrink-0 rounded-full object-cover"

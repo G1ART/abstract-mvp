@@ -8,7 +8,7 @@ import type { Session } from "@supabase/supabase-js";
 import { signOut } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { useT } from "@/lib/i18n/useT";
 
 const MAIN_NAV = [
@@ -137,7 +137,7 @@ export function Header() {
               >
                 {avatarUrl ? (
                   <img
-                    src={avatarUrl.startsWith("http") ? avatarUrl : getStorageUrl(avatarUrl)}
+                    src={avatarUrl.startsWith("http") ? avatarUrl : getArtworkImageUrl(avatarUrl, "avatar")}
                     alt=""
                     className="h-full w-full object-cover"
                   />

@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   type ArtworkWithLikes,
-  getStorageUrl,
+  getArtworkImageUrl,
   getPrimaryClaim,
   canEditArtwork,
 } from "@/lib/supabase/artworks";
@@ -27,6 +27,7 @@ type Props = {
   likedIds: Set<string>;
   userId?: string | null;
   onLikeUpdate?: (artworkId: string, liked: boolean, count: number) => void;
+  priority?: boolean;
 };
 
 export function FeedArtworkCard({
@@ -34,13 +35,14 @@ export function FeedArtworkCard({
   likedIds,
   userId = null,
   onLikeUpdate,
+  priority = false,
 }: Props) {
   const router = useRouter();
   const { t } = useT();
   const images = artwork.artwork_images ?? [];
   const sorted = [...images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const first = sorted[0];
-  const imageUrl = first ? getStorageUrl(first.storage_path) : null;
+  const imageUrl = first ? getArtworkImageUrl(first.storage_path, "thumb") : null;
   const artist = artwork.profiles;
   const username = artist?.username ?? "";
   const displayName = artist?.display_name?.trim() || username || "Artist";
@@ -76,8 +78,10 @@ export function FeedArtworkCard({
             alt={artwork.title ?? "Artwork"}
             width={400}
             height={400}
+            sizes="(max-width: 768px) 50vw, 33vw"
+            loading={priority ? "eager" : "lazy"}
+            priority={priority}
             className="h-full w-full object-contain transition-transform group-hover:scale-[1.02]"
-            unoptimized
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-zinc-400">No image</div>

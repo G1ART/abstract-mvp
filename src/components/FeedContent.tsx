@@ -19,7 +19,7 @@ import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
 const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
 const INTERLEAVE_EVERY = 5; // 5 artworks : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
-const DISCOVERY_BLOCKS_MAX = 5;
+const DISCOVERY_BLOCKS_MAX = 4;
 
 type FeedItem =
   | { type: "artwork"; artwork: ArtworkWithLikes }
@@ -117,8 +117,8 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     setError(null);
     const [artworksRes, followingRes] = await Promise.all([
       tab === "following"
-        ? listFollowingArtworks({ limit: 80 })
-        : listPublicArtworks({ limit: 80, sort }),
+        ? listFollowingArtworks({ limit: 50 })
+        : listPublicArtworks({ limit: 50, sort }),
       getFollowingIds(),
     ]);
     const { data: listRaw, error: err } = artworksRes;
@@ -265,6 +265,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
           {feedItems.map((item, idx) => {
             if (item.type === "artwork") {
+              const isPriority = idx < 2;
               return (
                 <div key={`art-${item.artwork.id}`} className="min-w-0">
                   <FeedArtworkCard
@@ -272,6 +273,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
                     likedIds={likedIds}
                     userId={userId}
                     onLikeUpdate={handleLikeUpdate}
+                    priority={isPriority}
                   />
                 </div>
               );

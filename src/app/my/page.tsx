@@ -23,7 +23,7 @@ import {
   type ArtworkWithLikes,
   canEditArtwork,
   deleteArtworksBatch,
-  getStorageUrl,
+  getArtworkImageUrl,
 } from "@/lib/supabase/artworks";
 import {
   filterArtworksByPersona,
@@ -217,7 +217,7 @@ export default function MyPage() {
                 src={
                   profile.avatar_url.startsWith("http")
                     ? profile.avatar_url
-                    : getStorageUrl(profile.avatar_url)
+                    : getArtworkImageUrl(profile.avatar_url, "avatar")
                 }
                 alt=""
                 className="h-16 w-16 rounded-full object-cover"
@@ -347,7 +347,7 @@ export default function MyPage() {
                                 src={
                                   row.viewer_profile.avatar_url.startsWith("http")
                                     ? row.viewer_profile.avatar_url
-                                    : getStorageUrl(row.viewer_profile.avatar_url)
+                                    : getArtworkImageUrl(row.viewer_profile.avatar_url, "avatar")
                                 }
                                 alt=""
                                 className="h-8 w-8 rounded-full object-cover"

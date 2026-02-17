@@ -17,7 +17,7 @@ import {
 } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { searchPeople } from "@/lib/supabase/artists";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
@@ -635,7 +635,7 @@ export default function BulkUploadPage() {
                 {drafts.map((d) => {
                   const val = validatePublish(d);
                   const img = (d.artwork_images ?? [])[0];
-                  const thumb = img ? getStorageUrl(img.storage_path) : null;
+                  const thumb = img ? getArtworkImageUrl(img.storage_path, "thumb") : null;
                   return (
                     <tr key={d.id} className="border-b border-zinc-100">
                       <td className="p-2">
@@ -648,7 +648,7 @@ export default function BulkUploadPage() {
                       <td className="p-2">
                         <div className="h-12 w-12 overflow-hidden rounded bg-zinc-200">
                           {thumb ? (
-                            <Image src={thumb} alt="" width={48} height={48} className="h-full w-full object-cover" unoptimized />
+                            <Image src={thumb} alt="" width={48} height={48} sizes="48px" loading="lazy" className="h-full w-full object-cover" />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center text-zinc-400 text-xs">—</div>
                           )}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   type Artwork,
-  getStorageUrl,
+  getArtworkImageUrl,
   getPrimaryClaim,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
@@ -41,7 +41,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
   const firstImage = sortedImages[0];
-  const imageUrl = firstImage ? getStorageUrl(firstImage.storage_path) : null;
+  const imageUrl = firstImage ? getArtworkImageUrl(firstImage.storage_path, "thumb") : null;
   const artist = artwork.profiles;
   const username = artist?.username ?? "";
   const artistLabel =
@@ -88,8 +88,9 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
               alt={artwork.title ?? "Artwork"}
               width={400}
               height={400}
+              sizes="(max-width: 768px) 100vw, 400px"
+              loading="lazy"
               className="h-full w-full object-contain"
-              unoptimized
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-zinc-400">

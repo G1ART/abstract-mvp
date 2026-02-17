@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import type { PeopleRec } from "@/lib/supabase/peopleRecs";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
-import { getStorageUrl } from "@/lib/supabase/artworks";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { FollowButton } from "./FollowButton";
 import { FeedArtworkCard } from "./FeedArtworkCard";
 
@@ -21,7 +21,7 @@ type Props = {
 function getAvatarUrl(avatarUrl: string | null): string | null {
   if (!avatarUrl) return null;
   if (avatarUrl.startsWith("http")) return avatarUrl;
-  return getStorageUrl(avatarUrl);
+  return getArtworkImageUrl(avatarUrl, "avatar");
 }
 
 export function FeedDiscoveryBlock({
@@ -69,8 +69,9 @@ export function FeedDiscoveryBlock({
               alt=""
               width={48}
               height={48}
+              sizes="48px"
+              loading="lazy"
               className="h-full w-full object-cover"
-              unoptimized
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-500">
