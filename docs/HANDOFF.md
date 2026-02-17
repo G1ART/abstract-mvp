@@ -1,6 +1,15 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-17 (America/Los_Angeles)
+Last updated: 2026-02-12
+
+## 2026-02-12 — 온보딩: 이메일·비밀번호 회원가입 (매직링크 대안)
+
+- `/onboarding` 비로그인 시: 이메일, 비밀번호, username, display name, main role, roles 한 번에 입력 → `signUpWithPassword`로 계정 생성
+- 매직링크는 유지; Supabase 정책 제한으로 초대 작가 온보딩 지연 시 하드 라우트로 바로 가입 가능
+- 로그인 후 프로필 없을 때: `user_metadata`(username, display_name, main_role, roles)로 폼 프리필
+- `/login`: "계정이 없으신가요? 이메일·비밀번호로 회원가입" → `/onboarding` 링크 추가
+- Supabase SQL: 없음 (앱/코드만 변경)
+- Verified: `npm run build` 통과
 
 ## 2026-02-17 — P0: Feed perf hotfix (thumb 폭발 억제 + image optimize)
 

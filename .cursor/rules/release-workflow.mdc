@@ -1,0 +1,33 @@
+---
+description: 기본 릴리즈 워크플로우 — 매 패치마다 Supabase SQL 점검, git push, HANDOFF.md 업데이트
+alwaysApply: true
+---
+
+# Abstract MVP — 기본 릴리즈 워크플로우
+
+코드 패치/릴리즈가 완료되면 **매번** 다음 세 가지를 수행한다.
+
+## 1. Supabase SQL 점검
+
+- `supabase/migrations/`에 **새로 추가·수정된 `.sql` 파일**이 있으면 → Supabase SQL Editor에서 수동 실행 필요
+- 이번 패치에서 SQL을 건드리지 않았으면 → "Supabase SQL 돌려야 할 것은 없음"으로 확인 후 통과
+
+## 2. Git push 풀 명령어
+
+```bash
+git status && git add -A && git commit -m "<릴리즈 메시지>" && git push origin main
+```
+
+- `<릴리즈 메시지>`는 의미 있는 한 줄로 (예: `release: 온보딩 이메일·비밀번호 회원가입 추가`)
+
+## 3. HANDOFF.md 업데이트
+
+- `docs/HANDOFF.md` 상단에 새 섹션 추가:
+  - 날짜 (예: `2026-02-17`)
+  - 변경 요약 (bullet list)
+  - Supabase SQL 적용 필요 시 해당 마이그레이션 파일명 명시
+  - `Verified:` 항목 (빌드 통과 등)
+
+---
+
+패치 마무리 시 이 세 단계를 놓치지 않고 수행한다.

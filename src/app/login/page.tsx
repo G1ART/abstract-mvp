@@ -2,13 +2,13 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import {
   getSession,
   HAS_PASSWORD_KEY,
   sendMagicLink,
   signInWithPassword,
-  signUpWithPassword,
 } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 
@@ -92,26 +92,6 @@ export default function LoginPage() {
     router.replace("/");
   }
 
-  async function handlePasswordSignUp(e: FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    const { data, error: err } = await signUpWithPassword(email, password);
-    setLoading(false);
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    if (data?.user && !data?.session) {
-      setSent(true);
-      return;
-    }
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
-    }
-    router.replace("/");
-  }
-
   return (
     <div className="flex min-h-screen flex-col items-center justify-center px-4">
       <h1 className="mb-6 text-xl font-semibold">{t("login.title")}</h1>
@@ -148,23 +128,21 @@ export default function LoginPage() {
             {error && (
               <p className="text-sm text-red-600">{error}</p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={handlePasswordSignIn}
                 disabled={loading}
-                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 {t("login.signIn")}
               </button>
-              <button
-                type="button"
-                onClick={handlePasswordSignUp}
-                disabled={loading}
-                className="flex-1 rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50 disabled:opacity-50"
-              >
-                {t("login.createAccount")}
-              </button>
+              <p className="text-center text-sm text-zinc-500">
+                {t("login.noAccount")}{" "}
+                <Link href="/onboarding" className="font-medium text-zinc-700 hover:text-zinc-900">
+                  {t("login.signUpWithEmail")}
+                </Link>
+              </p>
             </div>
           </form>
 

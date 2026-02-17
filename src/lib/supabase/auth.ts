@@ -7,8 +7,32 @@ export async function signInWithPassword(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-export async function signUpWithPassword(email: string, password: string) {
-  return supabase.auth.signUp({ email, password });
+export type SignUpMetadata = {
+  username?: string;
+  display_name?: string;
+  main_role?: string;
+  roles?: string[];
+};
+
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+  metadata?: SignUpMetadata
+) {
+  return supabase.auth.signUp({
+    email,
+    password,
+    options: metadata
+      ? {
+          data: {
+            username: metadata.username?.trim().toLowerCase(),
+            display_name: metadata.display_name?.trim() || null,
+            main_role: metadata.main_role || null,
+            roles: Array.isArray(metadata.roles) ? metadata.roles : null,
+          },
+        }
+      : undefined,
+  });
 }
 
 export async function sendMagicLink(email: string) {
