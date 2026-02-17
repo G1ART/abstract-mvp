@@ -10,6 +10,7 @@ import {
   deleteDraftArtworks,
   listMyDraftArtworks,
   publishArtworks,
+  publishArtworksWithProvenance,
   updateArtwork,
   validatePublish,
   type ArtworkWithLikes,
@@ -17,8 +18,20 @@ import {
 import { getSession } from "@/lib/supabase/auth";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
 import { getStorageUrl } from "@/lib/supabase/artworks";
+import { searchPeople } from "@/lib/supabase/artists";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+
+type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
+
+const INTENTS: { value: IntentType; label: string }[] = [
+  { value: "CREATED", label: "My work" },
+  { value: "OWNS", label: "Collected work" },
+  { value: "INVENTORY", label: "Gallery (inc. inventory)" },
+  { value: "CURATED", label: "Curated/Exhibited" },
+];
+
+type ArtistOption = { id: string; username: string | null; display_name: string | null };
 
 const OWNERSHIP_OPTIONS = [
   { value: "available", label: "Available" },
@@ -46,6 +59,35 @@ export default function BulkUploadPage() {
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Persona / intent
+  const [intent, setIntent] = useState<IntentType | null>(null);
+  const [artistSearch, setArtistSearch] = useState("");
+  const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
+  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [useExternalArtist, setUseExternalArtist] = useState(false);
+  const [externalArtistName, setExternalArtistName] = useState("");
+  const [externalArtistEmail, setExternalArtistEmail] = useState("");
+
+  const needsAttribution = intent !== null && intent !== "CREATED";
+
+  const doSearchArtists = useCallback(async () => {
+    const q = artistSearch.trim();
+    if (!q || q.length < 2) {
+      setArtistResults([]);
+      return;
+    }
+    setSearching(true);
+    const { data } = await searchPeople({ q, roles: ["artist"], limit: 10 });
+    setArtistResults((data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name })));
+    setSearching(false);
+  }, [artistSearch]);
+
+  useEffect(() => {
+    const t = setTimeout(doSearchArtists, 300);
+    return () => clearTimeout(t);
+  }, [artistSearch, doSearchArtists]);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -191,11 +233,46 @@ export default function BulkUploadPage() {
     const toPublish = drafts.filter((d) => ids.includes(d.id));
     const invalid = toPublish.filter((d) => !validatePublish(d).ok);
     if (invalid.length > 0) return;
+    if (needsAttribution) {
+      if (useExternalArtist) {
+        if (!externalArtistName.trim()) {
+          setToast(t("upload.externalArtistNamePlaceholder") || "Artist name required");
+          setTimeout(() => setToast(null), 2000);
+          return;
+        }
+      } else if (!selectedArtist) {
+        setToast(t("upload.linkArtist") || "Please select an artist");
+        setTimeout(() => setToast(null), 2000);
+        return;
+      }
+    }
     setPublishing(true);
-    await publishArtworks(ids);
-    setPublishing(false);
-    setSelected(new Set());
-    await fetchDrafts();
+    try {
+      if (intent && needsAttribution) {
+        const { error } = await publishArtworksWithProvenance(ids, {
+          intent,
+          artistProfileId: selectedArtist?.id ?? null,
+          externalArtistDisplayName: useExternalArtist ? externalArtistName.trim() : null,
+          externalArtistEmail: useExternalArtist ? externalArtistEmail.trim() || null : null,
+        });
+        if (error) {
+          setToast(error instanceof Error ? error.message : "Publish failed");
+          setTimeout(() => setToast(null), 3000);
+          return;
+        }
+      } else {
+        const { error } = await publishArtworks(ids);
+        if (error) {
+          setToast(error instanceof Error ? error.message : "Publish failed");
+          setTimeout(() => setToast(null), 3000);
+          return;
+        }
+      }
+      setSelected(new Set());
+      await fetchDrafts();
+    } finally {
+      setPublishing(false);
+    }
   }
 
   async function updateDraftField(id: string, field: string, value: unknown) {
@@ -214,6 +291,10 @@ export default function BulkUploadPage() {
   const selectedReady = drafts.filter((d) => selectedIds.includes(d.id) && validatePublish(d).ok).length;
   const canPublishSelected = selectedIds.length > 0 && selectedReady === selectedIds.length;
 
+  const showIntent = intent === null;
+  const showAttribution = intent !== null && needsAttribution && !selectedArtist && !(useExternalArtist && externalArtistName.trim());
+  const showMain = intent !== null && (!needsAttribution || selectedArtist !== null || (useExternalArtist && externalArtistName.trim()));
+
   return (
     <AuthGate>
       <main className="mx-auto max-w-5xl px-4 py-8">
@@ -224,6 +305,122 @@ export default function BulkUploadPage() {
           </Link>
         </div>
 
+        {/* Step: Intent */}
+        {showIntent && (
+          <div className="mb-8 space-y-4">
+            <p className="text-sm text-zinc-600">{t("bulk.intentHint")}</p>
+            <div className="grid gap-3">
+              {INTENTS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setIntent(opt.value)}
+                  className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step: Attribution (OWNS, INVENTORY, CURATED) */}
+        {showAttribution && (
+          <div className="mb-8 space-y-4">
+            <p className="text-sm text-zinc-600">{t("upload.linkArtist")}</p>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium">{t("upload.searchArtist")}</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setUseExternalArtist(!useExternalArtist);
+                  if (!useExternalArtist) {
+                    setSelectedArtist(null);
+                    setArtistSearch("");
+                    setArtistResults([]);
+                  } else {
+                    setExternalArtistName("");
+                    setExternalArtistEmail("");
+                  }
+                }}
+                className="text-sm text-zinc-600 underline hover:text-zinc-900"
+              >
+                {useExternalArtist ? t("upload.searchArtist") : t("upload.inviteByEmail")}
+              </button>
+            </div>
+            {useExternalArtist ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={externalArtistName}
+                  onChange={(e) => setExternalArtistName(e.target.value)}
+                  placeholder={t("upload.externalArtistNamePlaceholder")}
+                  className="w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="email"
+                  value={externalArtistEmail}
+                  onChange={(e) => setExternalArtistEmail(e.target.value)}
+                  placeholder={t("upload.externalArtistEmailPlaceholder")}
+                  className="w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-zinc-500">{t("upload.externalArtistEmailHint")}</p>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={artistSearch}
+                  onChange={(e) => setArtistSearch(e.target.value)}
+                  placeholder={t("upload.artistSearchPlaceholder")}
+                  className="w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {searching && <p className="text-sm text-zinc-500">{t("artists.loading")}</p>}
+                {artistResults.length > 0 && (
+                  <ul className="max-w-md rounded border border-zinc-200 bg-white">
+                    {artistResults.map((a) => (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedArtist(a);
+                            setArtistResults([]);
+                            setArtistSearch("");
+                          }}
+                          className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
+                        >
+                          {a.display_name || a.username || a.id}
+                          {a.username && <span className="ml-2 text-zinc-500">@{a.username}</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIntent(null);
+                  setSelectedArtist(null);
+                  setUseExternalArtist(false);
+                  setExternalArtistName("");
+                  setExternalArtistEmail("");
+                  setArtistSearch("");
+                  setArtistResults([]);
+                }}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+              >
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Main bulk UI */}
+        {showMain && (
+          <>
         {/* Tips accordion */}
         <div className="mb-6 rounded-lg border border-zinc-200">
           <button
@@ -521,6 +718,8 @@ export default function BulkUploadPage() {
               </tbody>
             </table>
           </div>
+        )}
+          </>
         )}
       </main>
     </AuthGate>

@@ -716,6 +716,68 @@ export async function publishArtworks(
   return { error };
 }
 
+export type PublishWithProvenanceOptions = {
+  intent: "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
+  artistProfileId?: string | null;
+  externalArtistDisplayName?: string | null;
+  externalArtistEmail?: string | null;
+};
+
+export async function publishArtworksWithProvenance(
+  ids: string[],
+  opts: PublishWithProvenanceOptions
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id)
+    return { error: new Error("Not authenticated") };
+  if (ids.length === 0) return { error: null };
+
+  const { createClaimForExistingArtist, createExternalArtistAndClaim } = await import("@/lib/provenance/rpc");
+
+  for (const id of ids) {
+    if (opts.intent === "CREATED") {
+      const { error: claimErr } = await createClaimForExistingArtist({
+        artistProfileId: session.user.id,
+        claimType: "CREATED",
+        workId: id,
+        visibility: "public",
+      });
+      if (claimErr) return { error: claimErr };
+    } else if (opts.externalArtistDisplayName) {
+      const { error: claimErr } = await createExternalArtistAndClaim({
+        displayName: opts.externalArtistDisplayName,
+        inviteEmail: opts.externalArtistEmail ?? null,
+        claimType: opts.intent,
+        workId: id,
+        visibility: "public",
+      });
+      if (claimErr) return { error: claimErr };
+    } else if (opts.artistProfileId) {
+      const { error: claimErr } = await createClaimForExistingArtist({
+        artistProfileId: opts.artistProfileId,
+        claimType: opts.intent,
+        workId: id,
+        visibility: "public",
+      });
+      if (claimErr) return { error: claimErr };
+      const { error: upErr } = await supabase
+        .from("artworks")
+        .update({ artist_id: opts.artistProfileId })
+        .eq("id", id);
+      if (upErr) return { error: upErr };
+    }
+    const { error } = await supabase
+      .from("artworks")
+      .update({ visibility: "public" })
+      .eq("id", id)
+      .eq("visibility", "draft");
+    if (error) return { error };
+  }
+  return { error: null };
+}
+
 export async function recordArtworkView(artworkId: string) {
   const {
     data: { session },

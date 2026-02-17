@@ -14,6 +14,7 @@ import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
 import { searchPeople } from "@/lib/supabase/artists";
 import {
   createClaimForExistingArtist,
+  createExternalArtistAndClaim,
   searchWorksForDedup,
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
@@ -62,6 +63,9 @@ export default function UploadPage() {
   const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
   const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
   const [searching, setSearching] = useState(false);
+  const [useExternalArtist, setUseExternalArtist] = useState(false);
+  const [externalArtistName, setExternalArtistName] = useState("");
+  const [externalArtistEmail, setExternalArtistEmail] = useState("");
 
   // Form
   const [image, setImage] = useState<File | null>(null);
@@ -120,9 +124,16 @@ export default function UploadPage() {
   }
 
   function handleAttributionNext() {
-    if (needsAttribution(intent) && !selectedArtist) {
-      setError("Please select an artist");
-      return;
+    if (needsAttribution(intent)) {
+      if (useExternalArtist) {
+        if (!externalArtistName.trim()) {
+          setError("Please enter the artist name");
+          return;
+        }
+      } else if (!selectedArtist) {
+        setError("Please select an artist");
+        return;
+      }
     }
     setError(null);
     setStep("form");
@@ -151,7 +162,7 @@ export default function UploadPage() {
   async function fetchSimilarWorks() {
     setDedupLoading(true);
     const { data } = await searchWorksForDedup({
-      artistProfileId: needsAttribution(intent) ? selectedArtist?.id : userId ?? undefined,
+      artistProfileId: needsAttribution(intent) && selectedArtist ? selectedArtist.id : userId ?? undefined,
       q: title.trim(),
       limit: 5,
     });
@@ -174,6 +185,7 @@ export default function UploadPage() {
       return;
     }
 
+    const isExternal = needsAttribution(intent) && useExternalArtist;
     const payload: CreateArtworkPayload = {
       title: title.trim(),
       year: yearNum,
@@ -185,7 +197,7 @@ export default function UploadPage() {
       is_price_public: pricingMode === "fixed" ? isPricePublic : false,
       price_input_amount: pricingMode === "fixed" && priceAmount ? parseFloat(priceAmount) : undefined,
       price_input_currency: pricingMode === "fixed" ? priceCurrency : undefined,
-      artist_id: needsAttribution(intent) && selectedArtist ? selectedArtist.id : undefined,
+      artist_id: needsAttribution(intent) && selectedArtist && !isExternal ? selectedArtist.id : undefined,
     };
 
     setIsSubmitting(true);
@@ -207,19 +219,36 @@ export default function UploadPage() {
 
       // Create claim BEFORE attaching image (RLS: artwork_images INSERT needs claim for lister)
       const claimType: ClaimType = intent === "CREATED" ? "CREATED" : (intent ?? "OWNS");
-      const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
-      const { error: claimErr } = await createClaimForExistingArtist({
-        artistProfileId,
-        claimType,
-        workId: artworkId,
-        visibility: "public",
-      });
-      if (claimErr) {
-        await deleteArtwork(artworkId);
-        const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
-        setError(`Claim failed: ${msg}`);
-        setIsSubmitting(false);
-        return;
+      if (isExternal) {
+        const { error: claimErr } = await createExternalArtistAndClaim({
+          displayName: externalArtistName.trim(),
+          inviteEmail: externalArtistEmail.trim() || null,
+          claimType,
+          workId: artworkId,
+          visibility: "public",
+        });
+        if (claimErr) {
+          await deleteArtwork(artworkId);
+          const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
+          setError(`Claim failed: ${msg}`);
+          setIsSubmitting(false);
+          return;
+        }
+      } else {
+        const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
+        const { error: claimErr } = await createClaimForExistingArtist({
+          artistProfileId,
+          claimType,
+          workId: artworkId,
+          visibility: "public",
+        });
+        if (claimErr) {
+          await deleteArtwork(artworkId);
+          const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
+          setError(`Claim failed: ${msg}`);
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       let storagePath: string | null = null;
@@ -287,46 +316,85 @@ export default function UploadPage() {
         {/* Step: Attribution (OWNS, INVENTORY, CURATED) */}
         {step === "attribution" && needsAttribution(intent) && (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-600">Link the artist (who created this work)</p>
-            <div>
-              <label className="mb-1 block text-sm font-medium">Search artist</label>
-              <input
-                type="text"
-                value={artistSearch}
-                onChange={(e) => setArtistSearch(e.target.value)}
-                placeholder="Name or username"
-                className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-              />
+            <p className="text-sm text-zinc-600">{t("upload.linkArtist")}</p>
+            <div className="flex items-center justify-between">
+              <label className="block text-sm font-medium">{t("upload.searchArtist")}</label>
+              <button
+                type="button"
+                onClick={() => {
+                  setUseExternalArtist(!useExternalArtist);
+                  if (!useExternalArtist) {
+                    setSelectedArtist(null);
+                    setArtistSearch("");
+                    setArtistResults([]);
+                  } else {
+                    setExternalArtistName("");
+                    setExternalArtistEmail("");
+                  }
+                }}
+                className="text-sm text-zinc-600 underline hover:text-zinc-900"
+              >
+                {useExternalArtist ? t("upload.searchArtist") : t("upload.inviteByEmail")}
+              </button>
             </div>
-            {searching && <p className="text-sm text-zinc-500">Searching...</p>}
-            {artistResults.length > 0 && (
-              <ul className="rounded border border-zinc-200 bg-white">
-                {artistResults.map((a) => (
-                  <li key={a.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedArtist(a);
-                        setArtistResults([]);
-                        setArtistSearch("");
-                      }}
-                      className={`w-full px-4 py-2 text-left text-sm hover:bg-zinc-50 ${
-                        selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
-                      }`}
-                    >
-                      {a.display_name || a.username || a.id}
-                      {a.username && (
-                        <span className="ml-2 text-zinc-500">@{a.username}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {selectedArtist && (
-              <p className="text-sm text-zinc-600">
-                Selected: {selectedArtist.display_name || selectedArtist.username}
-              </p>
+            {useExternalArtist ? (
+              <div className="space-y-3">
+                <input
+                  type="text"
+                  value={externalArtistName}
+                  onChange={(e) => setExternalArtistName(e.target.value)}
+                  placeholder={t("upload.externalArtistNamePlaceholder")}
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <input
+                  type="email"
+                  value={externalArtistEmail}
+                  onChange={(e) => setExternalArtistEmail(e.target.value)}
+                  placeholder={t("upload.externalArtistEmailPlaceholder")}
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-zinc-500">{t("upload.externalArtistEmailHint")}</p>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  value={artistSearch}
+                  onChange={(e) => setArtistSearch(e.target.value)}
+                  placeholder={t("upload.artistSearchPlaceholder")}
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {searching && <p className="text-sm text-zinc-500">{t("artists.loading")}</p>}
+                {artistResults.length > 0 && (
+                  <ul className="rounded border border-zinc-200 bg-white">
+                    {artistResults.map((a) => (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedArtist(a);
+                            setArtistResults([]);
+                            setArtistSearch("");
+                          }}
+                          className={`w-full px-4 py-2 text-left text-sm hover:bg-zinc-50 ${
+                            selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
+                          }`}
+                        >
+                          {a.display_name || a.username || a.id}
+                          {a.username && (
+                            <span className="ml-2 text-zinc-500">@{a.username}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {selectedArtist && (
+                  <p className="text-sm text-zinc-600">
+                    {t("upload.selectedArtist")}: {selectedArtist.display_name || selectedArtist.username}
+                  </p>
+                )}
+              </>
             )}
             {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             <div className="flex gap-3">
