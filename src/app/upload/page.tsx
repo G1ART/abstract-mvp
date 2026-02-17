@@ -27,7 +27,7 @@ type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 const INTENTS: { value: IntentType; label: string }[] = [
   { value: "CREATED", label: "My work" },
   { value: "OWNS", label: "Collected work" },
-  { value: "INVENTORY", label: "Gallery inc. inventory" },
+  { value: "INVENTORY", label: "Gallery (inc. inventory)" },
   { value: "CURATED", label: "Curated/Exhibited" },
 ];
 

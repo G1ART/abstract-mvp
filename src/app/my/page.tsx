@@ -1,7 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { ArtworkCard } from "@/components/ArtworkCard";
@@ -11,6 +11,7 @@ import {
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
+import { listPublicArtworksListedByProfileId } from "@/lib/supabase/artworks";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   getProfileViewsCount,
@@ -23,6 +24,11 @@ import {
   deleteArtworksBatch,
   getStorageUrl,
 } from "@/lib/supabase/artworks";
+import {
+  filterArtworksByPersona,
+  getPersonaCounts,
+  type PersonaTab,
+} from "@/lib/provenance/personaTabs";
 
 type Profile = {
   id: string;
@@ -50,6 +56,7 @@ export default function MyPage() {
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
+  const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -78,7 +85,26 @@ export default function MyPage() {
       const profileData = profileRes.data as Profile | null;
       setProfile(profileData);
       setStats(statsRes.data ?? null);
-      setArtworks(artworksRes.data ?? []);
+
+      let mergedArtworks = artworksRes.data ?? [];
+      if (profileData?.id) {
+        const listedRes = await listPublicArtworksListedByProfileId(profileData.id, {
+          limit: 50,
+        });
+        const listed = listedRes.data ?? [];
+        const seen = new Set(mergedArtworks.map((a) => a.id));
+        for (const a of listed) {
+          if (!seen.has(a.id)) {
+            seen.add(a.id);
+            mergedArtworks.push(a);
+          }
+        }
+        mergedArtworks.sort(
+          (a, b) =>
+            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
+      }
+      setArtworks(mergedArtworks);
       const canView = hasFeature(entRes.plan as Plan, "VIEW_PROFILE_VIEWERS_LIST");
       setCanViewViewers(canView);
 
@@ -140,10 +166,10 @@ export default function MyPage() {
   }
 
   function selectAll() {
-    if (selectedIds.size >= artworks.length) {
+    if (selectedIds.size >= displayedArtworks.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(artworks.map((a) => a.id)));
+      setSelectedIds(new Set(displayedArtworks.map((a) => a.id)));
     }
   }
 
@@ -171,6 +197,13 @@ export default function MyPage() {
   }
 
   const roles = (profile?.roles ?? []) as string[];
+  const displayedArtworks = useMemo(
+    () =>
+      profile?.id
+        ? filterArtworksByPersona(artworks, profile.id, personaTab)
+        : artworks,
+    [artworks, profile?.id, personaTab]
+  );
 
   return (
     <AuthGate>
@@ -379,10 +412,47 @@ export default function MyPage() {
           </Link>
         </div>
 
+        {/* Persona tabs */}
+        {artworks.length > 0 && profile?.id && (
+          <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
+            {(() => {
+              const counts = getPersonaCounts(artworks, profile.id);
+              return [
+                { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: counts.all },
+                ...(counts.created > 0
+                  ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: counts.created }]
+                  : []),
+                ...(counts.owns > 0
+                  ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: counts.owns }]
+                  : []),
+                ...(counts.inventory > 0
+                  ? [{ tab: "INVENTORY" as PersonaTab, label: t("profile.personaGallery"), count: counts.inventory }]
+                  : []),
+                ...(counts.curated > 0
+                  ? [{ tab: "CURATED" as PersonaTab, label: t("profile.personaCurated"), count: counts.curated }]
+                  : []),
+              ].map(({ tab, label, count }) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setPersonaTab(tab)}
+                  className={`rounded px-3 py-1.5 text-sm font-medium ${
+                    personaTab === tab
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              ));
+            })()}
+          </div>
+        )}
+
         {/* My posts - bulk select delete */}
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-zinc-900">{t("me.myArtworks")}</h2>
-          {artworks.length > 0 && (
+          {artworks.length > 0 && profile?.id && (
             <div className="flex items-center gap-2">
               {selectMode ? (
                 <>
@@ -391,7 +461,7 @@ export default function MyPage() {
                     onClick={selectAll}
                     className="text-sm text-zinc-600 hover:text-zinc-900"
                   >
-                    {selectedIds.size >= artworks.length ? t("my.bulkSelect.clear") : t("my.bulkSelect.selectAll")}
+                    {selectedIds.size >= displayedArtworks.length ? t("my.bulkSelect.clear") : t("my.bulkSelect.selectAll")}
                   </button>
                   <button
                     type="button"
@@ -432,7 +502,7 @@ export default function MyPage() {
           )}
         </div>
 
-        {artworks.length === 0 ? (
+        {displayedArtworks.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
             <p className="text-zinc-600">{t("me.noWorks")}</p>
             <Link
@@ -445,7 +515,7 @@ export default function MyPage() {
         ) : (
           <>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {artworks.map((artwork) => (
+              {displayedArtworks.map((artwork) => (
                 <div key={artwork.id} className="relative">
                   {selectMode && (
                     <div className="absolute left-2 top-2 z-10">

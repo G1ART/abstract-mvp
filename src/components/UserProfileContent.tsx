@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -27,6 +27,12 @@ import { SortableArtworkCard } from "./SortableArtworkCard";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
 
+import {
+  filterArtworksByPersona,
+  getPersonaCounts,
+  type PersonaTab,
+} from "@/lib/provenance/personaTabs";
+
 type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
@@ -46,6 +52,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
   const [reorderMode, setReorderMode] = useState(false);
+  const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
   const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
@@ -108,25 +115,32 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
     useSensor(KeyboardSensor)
   );
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setLocalArtworks((prev) => {
-      const ids = prev.map((a) => a.id);
-      const oldIndex = ids.indexOf(active.id as string);
-      const newIndex = ids.indexOf(over.id as string);
-      if (oldIndex === -1 || newIndex === -1) return prev;
-      const next = [...prev];
-      const [removed] = next.splice(oldIndex, 1);
-      next.splice(newIndex, 0, removed);
-      return next;
-    });
-  }, []);
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+      setLocalArtworks((prev) => {
+        const createdIds = prev.filter((a) => a.artist_id === profile.id).map((a) => a.id);
+        const oldIndex = createdIds.indexOf(active.id as string);
+        const newIndex = createdIds.indexOf(over.id as string);
+        if (oldIndex === -1 || newIndex === -1) return prev;
+        const created = prev.filter((a) => a.artist_id === profile.id);
+        const others = prev.filter((a) => a.artist_id !== profile.id);
+        const nextCreated = [...created];
+        const [removed] = nextCreated.splice(oldIndex, 1);
+        nextCreated.splice(newIndex, 0, removed);
+        return [...nextCreated, ...others];
+      });
+    },
+    [profile.id]
+  );
 
   const handleSaveReorder = useCallback(async () => {
     setSaveError(null);
     setSaving(true);
-    const orderedIds = localArtworks.map((a) => a.id);
+    const orderedIds = localArtworks
+      .filter((a) => a.artist_id === profile.id)
+      .map((a) => a.id);
     const { error } = await updateMyArtworkOrder(orderedIds);
     setSaving(false);
     if (error) {
@@ -138,7 +152,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2000);
     router.refresh();
-  }, [localArtworks, router]);
+  }, [localArtworks, profile.id, router]);
 
   const handleCancelReorder = useCallback(() => {
     setReorderMode(false);
@@ -161,6 +175,19 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
   const avatarUrl = getAvatarUrl(profile.avatar_url);
   const roles = (profile.roles ?? []).filter(Boolean);
   const mainRole = profile.main_role;
+
+  const personaCounts = useMemo(
+    () => getPersonaCounts(artworks, profile.id),
+    [artworks, profile.id]
+  );
+  const displayedArtworks = useMemo(
+    () => filterArtworksByPersona(artworks, profile.id, personaTab),
+    [artworks, profile.id, personaTab]
+  );
+  const reorderableArtworks = useMemo(
+    () => filterArtworksByPersona(localArtworks, profile.id, "CREATED"),
+    [localArtworks, profile.id]
+  );
 
   return (
     <>
@@ -229,9 +256,43 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
         )}
       </div>
 
+      {/* Persona tabs */}
+      {personaCounts.all > 0 && (
+        <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
+          {[
+            { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all },
+            ...(personaCounts.created > 0
+              ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: personaCounts.created }]
+              : []),
+            ...(personaCounts.owns > 0
+              ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: personaCounts.owns }]
+              : []),
+            ...(personaCounts.inventory > 0
+              ? [{ tab: "INVENTORY" as PersonaTab, label: t("profile.personaGallery"), count: personaCounts.inventory }]
+              : []),
+            ...(personaCounts.curated > 0
+              ? [{ tab: "CURATED" as PersonaTab, label: t("profile.personaCurated"), count: personaCounts.curated }]
+              : []),
+          ].map(({ tab, label, count }) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setPersonaTab(tab)}
+              className={`rounded px-3 py-1.5 text-sm font-medium ${
+                personaTab === tab
+                  ? "bg-zinc-900 text-white"
+                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+              }`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
-        {isOwner && artworks.length > 0 && !reorderMode && (
+        {isOwner && personaCounts.created > 0 && !reorderMode && (
           <button
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
@@ -240,7 +301,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
             {t("profile.reorder")}
           </button>
         )}
-        {reorderMode && isOwner && artworks.length > 0 && (
+        {reorderMode && isOwner && personaCounts.created > 0 && (
           <div className="flex gap-2">
             <button
               type="button"
@@ -267,9 +328,9 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
       {reorderMode && isOwner && artworks.length > 0 ? (
         <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-            <SortableContext items={localArtworks.map((a) => a.id)} strategy={rectSortingStrategy}>
+            <SortableContext items={reorderableArtworks.map((a) => a.id)} strategy={rectSortingStrategy}>
               <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {localArtworks.map((artwork) => (
+                {reorderableArtworks.map((artwork) => (
                   <SortableArtworkCard
                     key={artwork.id}
                     artwork={artwork}
@@ -302,11 +363,11 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
             </div>
           )}
         </>
-      ) : artworks.length === 0 ? (
+      ) : displayedArtworks.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-500">{t("profile.noWorks")}</p>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {artworks.map((artwork) => (
+          {displayedArtworks.map((artwork) => (
             <ArtworkCard
               key={artwork.id}
               artwork={artwork}
