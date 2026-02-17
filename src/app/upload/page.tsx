@@ -86,6 +86,7 @@ export default function UploadPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inviteSentToast, setInviteSentToast] = useState(false);
 
   useEffect(() => {
     getSession().then(({ data: { session } }) => {
@@ -202,6 +203,7 @@ export default function UploadPage() {
 
     setIsSubmitting(true);
 
+    let inviteSent = false;
     try {
       const { data: artworkId, error: createErr } = await createArtwork(payload);
       if (createErr) {
@@ -235,9 +237,8 @@ export default function UploadPage() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
-            console.warn("[invite] sendMagicLink failed:", e)
-          );
+          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          inviteSent = !inviteErr;
         }
       } else {
         const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
@@ -278,10 +279,15 @@ export default function UploadPage() {
       const { getMyProfile } = await import("@/lib/supabase/profiles");
       const { data: profile } = await getMyProfile();
       const username = (profile as { username?: string | null } | null)?.username?.trim();
-      if (username) {
-        router.push(`/u/${username}`);
+      if (inviteSent) {
+        setInviteSentToast(true);
+        setTimeout(() => {
+          if (username) router.push(`/u/${username}`);
+          else router.push(`/artwork/${artworkId}`);
+        }, 2000);
       } else {
-        router.push(`/artwork/${artworkId}`);
+        if (username) router.push(`/u/${username}`);
+        else router.push(`/artwork/${artworkId}`);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -292,6 +298,11 @@ export default function UploadPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
+        {inviteSentToast && (
+          <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+            {t("upload.inviteSent")}
+          </div>
+        )}
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-semibold">{t("upload.title")}</h1>
           <Link href="/upload/bulk" className="text-sm text-zinc-600 hover:text-zinc-900">

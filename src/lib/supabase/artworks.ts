@@ -778,7 +778,7 @@ export type PublishWithProvenanceOptions = {
 export async function publishArtworksWithProvenance(
   ids: string[],
   opts: PublishWithProvenanceOptions
-): Promise<{ error: unknown }> {
+): Promise<{ error: unknown; inviteSent?: boolean }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -828,13 +828,13 @@ export async function publishArtworksWithProvenance(
     if (error) return { error };
   }
 
+  let inviteSent = false;
   if (opts.externalArtistEmail?.trim() && opts.externalArtistDisplayName) {
     const { sendMagicLink } = await import("@/lib/supabase/auth");
-    sendMagicLink(opts.externalArtistEmail.trim()).catch((e) =>
-      console.warn("[invite] sendMagicLink failed:", e)
-    );
+    const { error: inviteErr } = await sendMagicLink(opts.externalArtistEmail.trim());
+    inviteSent = !inviteErr;
   }
-  return { error: null };
+  return { error: null, inviteSent };
 }
 
 export async function recordArtworkView(artworkId: string) {

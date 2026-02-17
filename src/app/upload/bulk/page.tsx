@@ -249,7 +249,7 @@ export default function BulkUploadPage() {
     setPublishing(true);
     try {
       if (intent && needsAttribution) {
-        const { error } = await publishArtworksWithProvenance(ids, {
+        const { error, inviteSent } = await publishArtworksWithProvenance(ids, {
           intent,
           artistProfileId: selectedArtist?.id ?? null,
           externalArtistDisplayName: useExternalArtist ? externalArtistName.trim() : null,
@@ -259,6 +259,10 @@ export default function BulkUploadPage() {
           setToast(error instanceof Error ? error.message : "Publish failed");
           setTimeout(() => setToast(null), 3000);
           return;
+        }
+        if (inviteSent) {
+          setToast(t("upload.inviteSent"));
+          setTimeout(() => setToast(null), 3000);
         }
       } else {
         const { error } = await publishArtworks(ids);

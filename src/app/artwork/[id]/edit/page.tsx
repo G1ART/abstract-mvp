@@ -62,6 +62,7 @@ function EditArtworkContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [inviteSentToast, setInviteSentToast] = useState(false);
 
   // Base form
   const [title, setTitle] = useState("");
@@ -204,6 +205,7 @@ function EditArtworkContent() {
 
     setSaving(true);
 
+    let inviteSent = false;
     const payload: UpdateArtworkPayload = {
       title: title.trim() || null,
       year: yearNum,
@@ -285,9 +287,8 @@ function EditArtworkContent() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
-            console.warn("[invite] sendMagicLink failed:", e)
-          );
+          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          inviteSent = !inviteErr;
         }
       } else {
         const { error: claimErr } = await createExternalArtistAndClaim({
@@ -305,9 +306,8 @@ function EditArtworkContent() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
-            console.warn("[invite] sendMagicLink failed:", e)
-          );
+          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          inviteSent = !inviteErr;
         }
       }
     } else {
@@ -342,7 +342,12 @@ function EditArtworkContent() {
       }
     }
 
-    router.push(`/artwork/${id}`);
+    if (inviteSent) {
+      setInviteSentToast(true);
+      setTimeout(() => router.push(`/artwork/${id}`), 2000);
+    } else {
+      router.push(`/artwork/${id}`);
+    }
   }
 
   if (loading) {
@@ -370,6 +375,11 @@ function EditArtworkContent() {
 
   return (
     <main className="mx-auto max-w-xl px-4 py-8">
+      {inviteSentToast && (
+        <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+          {t("upload.inviteSent")}
+        </div>
+      )}
       <Link
         href={`/artwork/${id}`}
         className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
