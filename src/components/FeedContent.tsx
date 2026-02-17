@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import {
@@ -86,6 +86,7 @@ type Props = {
 
 export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useT();
   const [threads, setThreads] = useState<ThreadGroup[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -183,6 +184,13 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   useEffect(() => {
     fetchArtworks();
   }, [fetchArtworks]);
+
+  // Refetch when navigating to feed so new uploads appear immediately
+  useEffect(() => {
+    if (pathname?.startsWith("/feed")) {
+      fetchArtworks();
+    }
+  }, [pathname, fetchArtworks]);
 
   useEffect(() => {
     function refresh() {

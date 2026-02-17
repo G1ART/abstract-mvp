@@ -17,7 +17,9 @@ function createGuardedFetch(impl: typeof fetch): typeof fetch {
       console.error("[SSOT] profiles write blocked", { url: reqUrl, method, stack: err.stack });
       throw err;
     }
-    return impl(input, init);
+    // Disable cache for data freshness (feed, artworks, etc.)
+    const opts: RequestInit = { ...init, cache: "no-store" as RequestCache };
+    return impl(input, opts);
   };
 }
 
