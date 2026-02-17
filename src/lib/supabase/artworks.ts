@@ -242,6 +242,38 @@ export async function listPublicArtworksByArtistId(
   };
 }
 
+/** Artworks listed by profile (collector/curator/gallerist: subject in claims). */
+export async function listPublicArtworksListedByProfileId(
+  profileId: string,
+  options: ByArtistOptions = {}
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
+  const { limit = 50 } = options;
+
+  const { data: claimRows } = await supabase
+    .from("claims")
+    .select("work_id")
+    .eq("subject_profile_id", profileId)
+    .not("work_id", "is", null)
+    .eq("visibility", "public");
+
+  const workIds = [...new Set((claimRows ?? []).map((r) => r.work_id).filter(Boolean))] as string[];
+  if (workIds.length === 0) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("artworks")
+    .select(ARTWORK_SELECT)
+    .in("id", workIds)
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) return { data: [], error };
+  return {
+    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    error: null,
+  };
+}
+
 /** Batch update artwork sort order for current user's artworks. */
 export async function updateMyArtworkOrder(
   orderedIds: string[]

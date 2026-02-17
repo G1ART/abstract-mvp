@@ -116,7 +116,21 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
               {artistLabel && <span>by {artistLabel}</span>}
               {artistLabel && listerLabel && claimLabel && " · "}
               {listerLabel && claimLabel && (
-                <span>Listed by {listerLabel} · {claimLabel}</span>
+                <span>
+                  Listed by{" "}
+                  {listerProf?.username ? (
+                    <Link
+                      href={`/u/${listerProf.username}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="hover:text-zinc-900"
+                    >
+                      {listerLabel}
+                    </Link>
+                  ) : (
+                    listerLabel
+                  )}{" "}
+                  · {claimLabel}
+                </span>
               )}
             </p>
           )}

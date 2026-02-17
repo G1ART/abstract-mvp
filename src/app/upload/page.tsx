@@ -22,14 +22,13 @@ import { useT } from "@/lib/i18n/useT";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
-type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "EXHIBITED" | "CURATED";
+type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
 const INTENTS: { value: IntentType; label: string }[] = [
   { value: "CREATED", label: "My work" },
   { value: "OWNS", label: "Collected work" },
-  { value: "INVENTORY", label: "Inventory / Gallery" },
-  { value: "EXHIBITED", label: "Exhibited / Represented" },
-  { value: "CURATED", label: "Curated work" },
+  { value: "INVENTORY", label: "Gallery inc. inventory" },
+  { value: "CURATED", label: "Curated/Exhibited" },
 ];
 
 const OWNERSHIP_STATUSES = [
@@ -285,8 +284,8 @@ export default function UploadPage() {
           </div>
         )}
 
-        {/* Step: Attribution (OWNS only) */}
-        {step === "attribution" && intent === "OWNS" && (
+        {/* Step: Attribution (OWNS, INVENTORY, CURATED) */}
+        {step === "attribution" && needsAttribution(intent) && (
           <div className="space-y-4">
             <p className="text-sm text-zinc-600">Link the artist (who created this work)</p>
             <div>

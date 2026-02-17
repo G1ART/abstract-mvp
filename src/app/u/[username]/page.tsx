@@ -4,7 +4,10 @@ import {
   lookupPublicProfileByUsername,
   type ProfilePublic,
 } from "@/lib/supabase/profiles";
-import { listPublicArtworksByArtistId } from "@/lib/supabase/artworks";
+import {
+  listPublicArtworksByArtistId,
+  listPublicArtworksListedByProfileId,
+} from "@/lib/supabase/artworks";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
@@ -54,9 +57,32 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     p = profile as ProfilePublic;
   }
 
-  const { data: artworks } = await listPublicArtworksByArtistId(p.id, {
-    limit: 50,
-  });
+  const [
+    { data: artworksAsArtist },
+    { data: artworksAsLister },
+  ] = await Promise.all([
+    listPublicArtworksByArtistId(p.id, { limit: 50 }),
+    listPublicArtworksListedByProfileId(p.id, { limit: 50 }),
+  ]);
+
+  const seen = new Set<string>();
+  const artworks: Awaited<ReturnType<typeof listPublicArtworksByArtistId>>["data"] = [];
+  for (const a of artworksAsArtist ?? []) {
+    if (!seen.has(a.id)) {
+      seen.add(a.id);
+      artworks.push(a);
+    }
+  }
+  for (const a of artworksAsLister ?? []) {
+    if (!seen.has(a.id)) {
+      seen.add(a.id);
+      artworks.push(a);
+    }
+  }
+  artworks.sort(
+    (a, b) =>
+      new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
 
   return (
     <UserProfileContent
