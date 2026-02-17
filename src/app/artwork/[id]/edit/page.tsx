@@ -62,7 +62,7 @@ function EditArtworkContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [inviteSentToast, setInviteSentToast] = useState(false);
+  const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
 
   // Base form
   const [title, setTitle] = useState("");
@@ -206,6 +206,7 @@ function EditArtworkContent() {
     setSaving(true);
 
     let inviteSent = false;
+    let inviteSendFailed = false;
     const payload: UpdateArtworkPayload = {
       title: title.trim() || null,
       year: yearNum,
@@ -289,6 +290,7 @@ function EditArtworkContent() {
         if (externalArtistEmail?.trim()) {
           const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
           inviteSent = !inviteErr;
+          if (inviteErr) inviteSendFailed = true;
         }
       } else {
         const { error: claimErr } = await createExternalArtistAndClaim({
@@ -308,6 +310,7 @@ function EditArtworkContent() {
         if (externalArtistEmail?.trim()) {
           const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
           inviteSent = !inviteErr;
+          if (inviteErr) inviteSendFailed = true;
         }
       }
     } else {
@@ -342,8 +345,8 @@ function EditArtworkContent() {
       }
     }
 
-    if (inviteSent) {
-      setInviteSentToast(true);
+    if (inviteSent || inviteSendFailed) {
+      setInviteToast(inviteSent ? "sent" : "failed");
       setTimeout(() => router.push(`/artwork/${id}`), 2000);
     } else {
       router.push(`/artwork/${id}`);
@@ -375,9 +378,13 @@ function EditArtworkContent() {
 
   return (
     <main className="mx-auto max-w-xl px-4 py-8">
-      {inviteSentToast && (
-        <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-          {t("upload.inviteSent")}
+      {inviteToast && (
+        <div
+          className={`fixed bottom-4 right-4 rounded-lg px-4 py-2 text-sm text-white shadow-lg ${
+            inviteToast === "sent" ? "bg-zinc-900" : "bg-amber-600"
+          }`}
+        >
+          {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
         </div>
       )}
       <Link

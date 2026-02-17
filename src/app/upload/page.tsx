@@ -86,7 +86,7 @@ export default function UploadPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [inviteSentToast, setInviteSentToast] = useState(false);
+  const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
 
   useEffect(() => {
     getSession().then(({ data: { session } }) => {
@@ -204,6 +204,7 @@ export default function UploadPage() {
     setIsSubmitting(true);
 
     let inviteSent = false;
+    let inviteSendFailed = false;
     try {
       const { data: artworkId, error: createErr } = await createArtwork(payload);
       if (createErr) {
@@ -239,6 +240,7 @@ export default function UploadPage() {
         if (externalArtistEmail?.trim()) {
           const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
           inviteSent = !inviteErr;
+          if (inviteErr) inviteSendFailed = true;
         }
       } else {
         const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
@@ -279,8 +281,8 @@ export default function UploadPage() {
       const { getMyProfile } = await import("@/lib/supabase/profiles");
       const { data: profile } = await getMyProfile();
       const username = (profile as { username?: string | null } | null)?.username?.trim();
-      if (inviteSent) {
-        setInviteSentToast(true);
+      if (inviteSent || inviteSendFailed) {
+        setInviteToast(inviteSent ? "sent" : "failed");
         setTimeout(() => {
           if (username) router.push(`/u/${username}`);
           else router.push(`/artwork/${artworkId}`);
@@ -298,9 +300,13 @@ export default function UploadPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
-        {inviteSentToast && (
-          <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-            {t("upload.inviteSent")}
+        {inviteToast && (
+          <div
+            className={`fixed bottom-4 right-4 rounded-lg px-4 py-2 text-sm text-white shadow-lg ${
+              inviteToast === "sent" ? "bg-zinc-900" : "bg-amber-600"
+            }`}
+          >
+            {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
           </div>
         )}
         <div className="mb-6 flex items-center justify-between">
