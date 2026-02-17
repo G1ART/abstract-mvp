@@ -1,80 +1,58 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import {
   type ArtworkWithLikes,
   listFollowingArtworks,
   listPublicArtworks,
-  getStorageUrl,
+  listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
-import {
-  ArtistThreadCard,
-  type ArtistThreadArtist,
-} from "./ArtistThreadCard";
-import { FollowButton } from "./FollowButton";
+import { FeedArtworkCard } from "./FeedArtworkCard";
+import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
 
-const WORKS_PER_THREAD = 6;
 const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
-const INTERLEAVE_EVERY = 5;
+const INTERLEAVE_EVERY = 5; // 5 artworks : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
-
-type ThreadGroup = {
-  artist: ArtistThreadArtist;
-  artworks: ArtworkWithLikes[];
-};
+const DISCOVERY_BLOCKS_MAX = 5;
 
 type FeedItem =
-  | { type: "thread"; thread: ThreadGroup }
-  | { type: "rec"; profile: PeopleRec };
+  | { type: "artwork"; artwork: ArtworkWithLikes }
+  | { type: "discovery"; profile: PeopleRec; artworks: ArtworkWithLikes[] };
 
-function listToThreads(list: ArtworkWithLikes[]): ThreadGroup[] {
-  const byArtist = new Map<string, ArtworkWithLikes[]>();
-  for (const a of list) {
-    const key = a.artist_id;
-    if (!byArtist.has(key)) byArtist.set(key, []);
-    byArtist.get(key)!.push(a);
-  }
-  const out: ThreadGroup[] = [];
-  for (const [artistId, arts] of byArtist) {
-    const first = arts[0];
-    const profile = first?.profiles;
-    out.push({
-      artist: {
-        id: artistId,
-        username: profile?.username ?? null,
-        display_name: profile?.display_name ?? null,
-        avatar_url: profile?.avatar_url ?? null,
-        bio: profile?.bio ?? null,
-        roles: profile?.roles ?? null,
-      },
-      artworks: arts.slice(0, WORKS_PER_THREAD),
-    });
-  }
-  return out;
-}
-
-function interleaveRecs(
-  threads: ThreadGroup[],
-  recCandidates: PeopleRec[]
+function buildFeedItems(
+  artworks: ArtworkWithLikes[],
+  discoveryData: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
 ): FeedItem[] {
-  if (recCandidates.length === 0) {
-    return threads.map((t) => ({ type: "thread" as const, thread: t }));
-  }
   const items: FeedItem[] = [];
+  let artIdx = 0;
   let recIdx = 0;
-  for (let i = 0; i < threads.length; i++) {
-    items.push({ type: "thread", thread: threads[i] });
-    if ((i + 1) % INTERLEAVE_EVERY === 0 && recIdx < recCandidates.length) {
-      items.push({ type: "rec", profile: recCandidates[recIdx] });
+  let sinceLastRec = 0;
+
+  while (artIdx < artworks.length || recIdx < discoveryData.length) {
+    // Insert artwork(s) until we've added 5 since last discovery
+    while (artIdx < artworks.length && sinceLastRec < INTERLEAVE_EVERY) {
+      items.push({ type: "artwork", artwork: artworks[artIdx] });
+      artIdx++;
+      sinceLastRec++;
+    }
+    sinceLastRec = 0;
+
+    // Insert discovery block
+    if (recIdx < discoveryData.length) {
+      const d = discoveryData[recIdx];
+      if (d.artworks.length > 0) {
+        items.push({ type: "discovery", profile: d.profile, artworks: d.artworks });
+      }
       recIdx++;
     }
   }
+
   return items;
 }
 
@@ -85,27 +63,28 @@ type Props = {
 };
 
 export function FeedContent({ tab, sort = "latest", userId }: Props) {
-  const router = useRouter();
   const pathname = usePathname();
   const { t } = useT();
-  const [threads, setThreads] = useState<ThreadGroup[]>([]);
+  const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [discoveryData, setDiscoveryData] = useState<
+    { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
+  >([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
-  const [recCandidates, setRecCandidates] = useState<PeopleRec[]>([]);
   const recCacheRef = useRef<{
-    data: PeopleRec[];
+    profiles: PeopleRec[];
     fetchedAt: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRecCandidates = useCallback(async () => {
+  const fetchRecProfiles = useCallback(async (): Promise<PeopleRec[]> => {
     const now = Date.now();
     if (
       recCacheRef.current &&
       now - recCacheRef.current.fetchedAt < REC_CACHE_TTL_MS
     ) {
-      return recCacheRef.current.data;
+      return recCacheRef.current.profiles;
     }
     if (!userId) return [];
     const [likesRes, followRes] = await Promise.all([
@@ -129,7 +108,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     };
     (likesRes.data ?? []).forEach(add);
     (followRes.data ?? []).forEach(add);
-    recCacheRef.current = { data: strong, fetchedAt: now };
+    recCacheRef.current = { profiles: strong, fetchedAt: now };
     return strong;
   }, [userId]);
 
@@ -138,21 +117,22 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     setError(null);
     const [artworksRes, followingRes] = await Promise.all([
       tab === "following"
-        ? listFollowingArtworks({ limit: 50 })
-        : listPublicArtworks({ limit: 50, sort }),
+        ? listFollowingArtworks({ limit: 80 })
+        : listPublicArtworks({ limit: 80, sort }),
       getFollowingIds(),
     ]);
     const { data: listRaw, error: err } = artworksRes;
-    setLoading(false);
+    setFollowingIds(followingRes.data ?? new Set());
+
     if (err) {
       const msg =
         (err as { message?: string })?.message ??
         (err as { error?: { message?: string } })?.error?.message ??
         (typeof err === "string" ? err : JSON.stringify(err));
       setError(msg);
+      setLoading(false);
       return;
     }
-    setFollowingIds(followingRes.data ?? new Set());
 
     let list = listRaw ?? [];
     if (sort === "popular") {
@@ -166,26 +146,31 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       });
     }
 
-    const groups = listToThreads(list);
-    setThreads(groups);
+    setArtworks(list);
 
     const allIds = list.map((a) => a.id);
     const liked = await getLikedArtworkIds(allIds);
     setLikedIds(liked);
 
-    if (tab === "following" && userId) {
-      const recs = await fetchRecCandidates();
-      setRecCandidates(recs);
-    } else {
-      setRecCandidates([]);
+    // Fetch discovery: rec profiles + their artworks
+    const recProfiles = await fetchRecProfiles();
+    const discoveryWithArtworks: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[] = [];
+    for (const p of recProfiles.slice(0, DISCOVERY_BLOCKS_MAX)) {
+      const { data: arts } = await listPublicArtworksForProfile(p.id, {
+        limit: 3,
+      });
+      if ((arts ?? []).length > 0) {
+        discoveryWithArtworks.push({ profile: p, artworks: arts ?? [] });
+      }
     }
-  }, [tab, sort, userId, fetchRecCandidates]);
+    setDiscoveryData(discoveryWithArtworks);
+    setLoading(false);
+  }, [tab, sort, userId, fetchRecProfiles]);
 
   useEffect(() => {
     fetchArtworks();
   }, [fetchArtworks]);
 
-  // Refetch when navigating to feed so new uploads appear immediately
   useEffect(() => {
     if (pathname?.startsWith("/feed")) {
       fetchArtworks();
@@ -215,10 +200,15 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         else next.delete(artworkId);
         return next;
       });
-      setThreads((prev) =>
-        prev.map((t) => ({
-          ...t,
-          artworks: t.artworks.map((a) =>
+      setArtworks((prev) =>
+        prev.map((a) =>
+          a.id === artworkId ? { ...a, likes_count: count } : a
+        )
+      );
+      setDiscoveryData((prev) =>
+        prev.map((d) => ({
+          ...d,
+          artworks: d.artworks.map((a) =>
             a.id === artworkId ? { ...a, likes_count: count } : a
           ),
         }))
@@ -243,13 +233,10 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     );
   }
 
-  const isEmpty = threads.length === 0;
+  const isEmpty = artworks.length === 0 && discoveryData.length === 0;
   const isFollowingEmpty = tab === "following" && isEmpty;
 
-  const feedItems: FeedItem[] =
-    tab === "following" && recCandidates.length > 0
-      ? interleaveRecs(threads, recCandidates)
-      : threads.map((t) => ({ type: "thread", thread: t }));
+  const feedItems = buildFeedItems(artworks, discoveryData);
 
   return (
     <div>
@@ -275,88 +262,30 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       ) : isEmpty ? (
         <p className="py-12 text-center text-zinc-600">{t("feed.noArtworks")}</p>
       ) : (
-        <div className="space-y-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
           {feedItems.map((item, idx) => {
-            if (item.type === "thread") {
+            if (item.type === "artwork") {
               return (
-                <ArtistThreadCard
-                  key={`thread-${item.thread.artist.id}`}
-                  artist={item.thread.artist}
-                  artworks={item.thread.artworks}
-                  likedIds={likedIds}
-                  initialFollowing={followingIds.has(item.thread.artist.id)}
-                  userId={userId}
-                  onLikeUpdate={handleLikeUpdate}
-                />
+                <div key={`art-${item.artwork.id}`} className="min-w-0">
+                  <FeedArtworkCard
+                    artwork={item.artwork}
+                    likedIds={likedIds}
+                    userId={userId}
+                    onLikeUpdate={handleLikeUpdate}
+                  />
+                </div>
               );
             }
-            const p = item.profile;
-            const username = p.username ?? "";
-            if (!username) return null;
-            const tags = p.reason_tags ?? [];
-            const whyKey = tags.includes("follow_graph")
-              ? "feed.recommendedWhyNetwork"
-              : "feed.recommendedWhyLikes";
             return (
-              <article
-                key={`rec-${p.id}-${idx}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => router.push(`/u/${username}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/u/${username}`);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-4 rounded-lg border border-zinc-200 border-dashed bg-zinc-50 p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400"
-              >
-                <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-zinc-200">
-                  {p.avatar_url ? (
-                    <img
-                      src={
-                        p.avatar_url.startsWith("http")
-                          ? p.avatar_url
-                          : getStorageUrl(p.avatar_url)
-                      }
-                      alt=""
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-500">
-                      {(p.display_name ?? username).charAt(0).toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-                    {t("feed.recommendedLabel")}
-                  </p>
-                  <p className="font-medium text-zinc-900">
-                    {p.display_name ?? username}
-                  </p>
-                  <p className="text-sm text-zinc-500">@{username}</p>
-                  {p.bio && (
-                    <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
-                      {p.bio}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-zinc-500">{t(whyKey)}</p>
-                </div>
-                {userId !== p.id && (
-                  <div
-                    className="shrink-0"
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <FollowButton
-                      targetProfileId={p.id}
-                      initialFollowing={followingIds.has(p.id)}
-                      size="sm"
-                    />
-                  </div>
-                )}
-              </article>
+              <FeedDiscoveryBlock
+                key={`discovery-${item.profile.id}-${idx}`}
+                profile={item.profile}
+                artworks={item.artworks}
+                likedIds={likedIds}
+                initialFollowing={followingIds.has(item.profile.id)}
+                userId={userId}
+                onLikeUpdate={handleLikeUpdate}
+              />
             );
           })}
         </div>

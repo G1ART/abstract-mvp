@@ -324,6 +324,32 @@ export async function listPublicArtworksListedByProfileId(
   };
 }
 
+/** Artworks for a profile: as artist + as lister. Used for discovery feed. */
+export async function listPublicArtworksForProfile(
+  profileId: string,
+  options: ByArtistOptions = {}
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
+  const { limit = 6 } = options;
+  const [asArtist, asLister] = await Promise.all([
+    listPublicArtworksByArtistId(profileId, { limit }),
+    listPublicArtworksListedByProfileId(profileId, { limit }),
+  ]);
+  const seen = new Set<string>();
+  const merged: ArtworkWithLikes[] = [];
+  const add = (a: ArtworkWithLikes) => {
+    if (seen.has(a.id)) return;
+    seen.add(a.id);
+    merged.push(a);
+  };
+  (asArtist.data ?? []).forEach(add);
+  (asLister.data ?? []).forEach(add);
+  merged.sort(
+    (a, b) =>
+      new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
+  return { data: merged.slice(0, limit), error: null };
+}
+
 /** Batch update artwork sort order for current user's artworks. */
 export async function updateMyArtworkOrder(
   orderedIds: string[]

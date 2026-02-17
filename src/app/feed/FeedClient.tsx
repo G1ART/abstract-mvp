@@ -31,7 +31,7 @@ export function FeedClient() {
   const sortValue = (sort === "popular" ? "popular" : "latest") as "latest" | "popular";
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6">
+    <main className="mx-auto max-w-6xl px-4 py-6">
       <div className="mb-4 flex gap-4 border-b border-zinc-200 pb-2">
         <button
           type="button"
