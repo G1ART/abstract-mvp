@@ -51,9 +51,34 @@ export async function createClaimForExistingArtist(
   return { data: data as CreateClaimForExistingArtistResult, error: null };
 }
 
+export async function createExternalArtist(
+  args: { displayName: string; inviteEmail?: string | null }
+): Promise<{ data: string | null; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
+  const { data, error } = await supabase
+    .from("external_artists")
+    .insert({
+      display_name: args.displayName.trim(),
+      invite_email: args.inviteEmail?.trim() || null,
+      invited_by: session.user.id,
+    })
+    .select("id")
+    .single();
+  if (error) return { data: null, error };
+  return { data: (data as { id: string } | null)?.id ?? null, error: null };
+}
+
 export async function updateClaim(
   claimId: string,
-  payload: { claim_type?: string; artist_profile_id?: string | null; visibility?: string }
+  payload: {
+    claim_type?: string;
+    artist_profile_id?: string | null;
+    external_artist_id?: string | null;
+    visibility?: string;
+  }
 ): Promise<{ error: unknown }> {
   const { error } = await supabase.from("claims").update(payload).eq("id", claimId);
   return { error };

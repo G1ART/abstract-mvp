@@ -43,7 +43,9 @@ export type ArtworkClaim = {
   claim_type: string;
   subject_profile_id: string;
   artist_profile_id?: string | null;
+  external_artist_id?: string | null;
   profiles: { username: string | null; display_name: string | null } | null;
+  external_artists?: { display_name: string; invite_email?: string | null } | null;
 };
 
 /** Base artwork shape returned from list/get with embedded images and profile. */
@@ -122,7 +124,7 @@ const ARTWORK_SELECT = `
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count),
-  claims(id, claim_type, subject_profile_id, artist_profile_id, profiles!subject_profile_id(username, display_name))
+  claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
 `;
 
 export async function listPublicArtworks(
@@ -178,27 +180,58 @@ export async function listFollowingArtworks(
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
-  const { data: rows } = await supabase
-    .from("follows")
-    .select("following_id")
-    .eq("follower_id", session.user.id);
+  const [followRes, claimRes] = await Promise.all([
+    supabase.from("follows").select("following_id").eq("follower_id", session.user.id),
+    supabase.from("claims").select("work_id").eq("subject_profile_id", session.user.id).not("work_id", "is", null),
+  ]);
 
-  const ids = (rows ?? []).map((r) => r.following_id);
-  if (ids.length === 0) return { data: [], error: null };
+  const followingIds = new Set((followRes.data ?? []).map((r) => r.following_id));
+  const myWorkIds = new Set((claimRes.data ?? []).map((r) => r.work_id).filter(Boolean));
 
-  const { data, error } = await supabase
-    .from("artworks")
-    .select(ARTWORK_SELECT)
-    .eq("visibility", "public")
-    .in("artist_id", ids)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const artistIds = [...followingIds];
+  const hasFollowing = artistIds.length > 0;
 
-  if (error) return { data: [], error };
-  return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
-    error: null,
-  };
+  let list: ArtworkWithLikes[] = [];
+
+  if (hasFollowing) {
+    const { data, error } = await supabase
+      .from("artworks")
+      .select(ARTWORK_SELECT)
+      .eq("visibility", "public")
+      .in("artist_id", artistIds)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) return { data: [], error };
+    list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>) as ArtworkWithLikes);
+  }
+
+  if (myWorkIds.size > 0) {
+    const idsToFetch = [...myWorkIds].filter((id) => !list.some((a) => a.id === id)).slice(0, limit);
+    if (idsToFetch.length > 0) {
+      const { data, error } = await supabase
+        .from("artworks")
+        .select(ARTWORK_SELECT)
+        .eq("visibility", "public")
+        .in("id", idsToFetch);
+      if (!error && data?.length) {
+        const mine = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>) as ArtworkWithLikes);
+        const seen = new Set(list.map((a) => a.id));
+        for (const a of mine) {
+          if (!seen.has(a.id)) {
+            seen.add(a.id);
+            list.push(a);
+          }
+        }
+        list.sort(
+          (a, b) =>
+            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
+        list = list.slice(0, limit);
+      }
+    }
+  }
+
+  return { data: list, error: null };
 }
 
 type MyArtworksOptions = {
@@ -428,7 +461,7 @@ export async function getArtworkById(
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
-      claims(id, claim_type, subject_profile_id, artist_profile_id, profiles!subject_profile_id(username, display_name))
+      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
     `
     )
     .eq("id", id)

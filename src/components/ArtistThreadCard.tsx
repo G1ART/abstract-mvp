@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import {
   type ArtworkWithLikes,
+  canEditArtwork,
   getStorageUrl,
   getPrimaryClaim,
 } from "@/lib/supabase/artworks";
@@ -28,6 +29,7 @@ type Props = {
   artworks: ArtworkWithLikes[];
   likedIds: Set<string>;
   initialFollowing?: boolean;
+  userId?: string | null;
   onLikeUpdate: (artworkId: string, liked: boolean, count: number) => void;
 };
 
@@ -44,6 +46,7 @@ export function ArtistThreadCard({
   artworks,
   likedIds,
   initialFollowing = false,
+  userId = null,
   onLikeUpdate,
 }: Props) {
   const router = useRouter();
@@ -162,9 +165,18 @@ export function ArtistThreadCard({
                 </div>
               )}
               <div
-                className="absolute bottom-1 right-1"
+                className="absolute bottom-1 right-1 flex items-center gap-1"
                 onClick={(e) => e.stopPropagation()}
               >
+                {userId && canEditArtwork(artwork, userId) && (
+                  <Link
+                    href={`/artwork/${artwork.id}/edit`}
+                    className="rounded bg-white/90 px-1.5 py-0.5 text-xs font-medium text-zinc-700 shadow hover:bg-white hover:text-zinc-900"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {t("common.edit")}
+                  </Link>
+                )}
                 <LikeButton
                   artworkId={artwork.id}
                   likesCount={artwork.likes_count ?? 0}

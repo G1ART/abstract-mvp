@@ -185,11 +185,18 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [fetchArtworks]);
 
   useEffect(() => {
-    function onFocus() {
+    function refresh() {
       fetchArtworks();
     }
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") refresh();
+    }
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchArtworks]);
 
   const handleLikeUpdate = useCallback(
@@ -270,6 +277,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
                   artworks={item.thread.artworks}
                   likedIds={likedIds}
                   initialFollowing={followingIds.has(item.thread.artist.id)}
+                  userId={userId}
                   onLikeUpdate={handleLikeUpdate}
                 />
               );

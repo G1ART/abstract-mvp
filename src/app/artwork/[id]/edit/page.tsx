@@ -15,6 +15,8 @@ import {
 import { searchPeople } from "@/lib/supabase/artists";
 import {
   createClaimForExistingArtist,
+  createExternalArtist,
+  createExternalArtistAndClaim,
   updateClaim,
 } from "@/lib/provenance/rpc";
 import { AuthGate } from "@/components/AuthGate";
@@ -78,6 +80,9 @@ function EditArtworkContent() {
   const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
   const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
   const [searching, setSearching] = useState(false);
+  const [useExternalArtist, setUseExternalArtist] = useState(false);
+  const [externalArtistName, setExternalArtistName] = useState("");
+  const [externalArtistEmail, setExternalArtistEmail] = useState("");
 
   const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
   const needsArtistLink = claimType !== "CREATED";
@@ -139,11 +144,16 @@ function EditArtworkContent() {
     const claim = getMyClaim(artwork, userId);
     if (claim) {
       setClaimType(claim.claim_type as IntentType);
+      if (claim.external_artist_id && claim.external_artists) {
+        setUseExternalArtist(true);
+        setExternalArtistName(claim.external_artists.display_name ?? "");
+        setExternalArtistEmail(claim.external_artists.invite_email ?? "");
+      }
     } else if (artwork.artist_id === userId) {
       setClaimType("CREATED");
     }
     const needsArtist = claim?.claim_type !== "CREATED" || artwork.artist_id !== userId;
-    if (artwork.profiles && needsArtist) {
+    if (artwork.profiles && needsArtist && !claim?.external_artist_id) {
       setSelectedArtist({
         id: artwork.artist_id,
         username: artwork.profiles.username ?? null,
@@ -175,9 +185,16 @@ function EditArtworkContent() {
       setError("Please enter a valid year (4 digits)");
       return;
     }
-    if (needsArtistLink && !selectedArtist) {
-      setError("Please select the artist who created this work");
-      return;
+    if (needsArtistLink) {
+      if (useExternalArtist) {
+        if (!externalArtistName.trim()) {
+          setError("Please enter the artist name");
+          return;
+        }
+      } else if (!selectedArtist) {
+        setError("Please select the artist who created this work");
+        return;
+      }
     }
     if (pricingMode === "fixed" && (!priceAmount || parseFloat(priceAmount) <= 0)) {
       setError("Please enter a valid price");
@@ -211,34 +228,106 @@ function EditArtworkContent() {
       return;
     }
 
-    const artistProfileId =
-      claimType === "CREATED" ? userId : selectedArtist!.id;
-
-    if (myClaim?.id) {
-      const { error: claimErr } = await updateClaim(myClaim.id, {
-        claim_type: claimType,
-        artist_profile_id: artistProfileId,
-      });
-      if (claimErr) {
-        setError(
-          (claimErr as { message?: string })?.message ?? "Failed to update provenance"
-        );
-        setSaving(false);
-        return;
+    if (claimType === "CREATED") {
+      const artistProfileId = userId;
+      if (myClaim?.id) {
+        const { error: claimErr } = await updateClaim(myClaim.id, {
+          claim_type: claimType,
+          artist_profile_id: artistProfileId,
+          external_artist_id: null,
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
+          );
+          setSaving(false);
+          return;
+        }
+      } else {
+        const { error: claimErr } = await createClaimForExistingArtist({
+          artistProfileId,
+          claimType,
+          workId: id,
+          visibility: "public",
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
+          );
+          setSaving(false);
+          return;
+        }
+      }
+    } else if (useExternalArtist) {
+      if (myClaim?.id) {
+        const { data: extId, error: extErr } = await createExternalArtist({
+          displayName: externalArtistName.trim(),
+          inviteEmail: externalArtistEmail.trim() || null,
+        });
+        if (extErr || !extId) {
+          setError(
+            (extErr as { message?: string })?.message ?? "Failed to add artist"
+          );
+          setSaving(false);
+          return;
+        }
+        const { error: claimErr } = await updateClaim(myClaim.id, {
+          claim_type: claimType,
+          artist_profile_id: null,
+          external_artist_id: extId,
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
+          );
+          setSaving(false);
+          return;
+        }
+      } else {
+        const { error: claimErr } = await createExternalArtistAndClaim({
+          displayName: externalArtistName.trim(),
+          inviteEmail: externalArtistEmail.trim() || null,
+          claimType,
+          workId: id,
+          visibility: "public",
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
+          );
+          setSaving(false);
+          return;
+        }
       }
     } else {
-      const { error: claimErr } = await createClaimForExistingArtist({
-        artistProfileId,
-        claimType,
-        workId: id,
-        visibility: "public",
-      });
-      if (claimErr) {
-        setError(
-          (claimErr as { message?: string })?.message ?? "Failed to add provenance"
-        );
-        setSaving(false);
-        return;
+      const artistProfileId = selectedArtist!.id;
+      if (myClaim?.id) {
+        const { error: claimErr } = await updateClaim(myClaim.id, {
+          claim_type: claimType,
+          artist_profile_id: artistProfileId,
+          external_artist_id: null,
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
+          );
+          setSaving(false);
+          return;
+        }
+      } else {
+        const { error: claimErr } = await createClaimForExistingArtist({
+          artistProfileId,
+          claimType,
+          workId: id,
+          visibility: "public",
+        });
+        if (claimErr) {
+          setError(
+            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
+          );
+          setSaving(false);
+          return;
+        }
       }
     }
 
@@ -437,43 +526,88 @@ function EditArtworkContent() {
             </div>
             {needsArtistLink && (
               <div>
-                <label className="mb-1 block text-sm font-medium">{t("artwork.linkArtist")}</label>
-                <input
-                  type="text"
-                  value={artistSearch}
-                  onChange={(e) => setArtistSearch(e.target.value)}
-                  placeholder="Name or username"
-                  className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-                />
-                {searching && <p className="text-sm text-zinc-500">Searching...</p>}
-                {artistResults.length > 0 && (
-                  <ul className="rounded border border-zinc-200 bg-white">
-                    {artistResults.map((a) => (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedArtist(a);
-                            setArtistResults([]);
-                            setArtistSearch("");
-                          }}
-                          className={`w-full px-4 py-2 text-left text-sm hover:bg-zinc-50 ${
-                            selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
-                          }`}
-                        >
-                          {a.display_name || a.username || a.id}
-                          {a.username && (
-                            <span className="ml-2 text-zinc-500">@{a.username}</span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {selectedArtist && (
-                  <p className="mt-2 text-sm text-zinc-600">
-                    Selected: {selectedArtist.display_name || selectedArtist.username}
-                  </p>
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-sm font-medium">{t("artwork.linkArtist")}</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUseExternalArtist(!useExternalArtist);
+                      if (!useExternalArtist) {
+                        setSelectedArtist(null);
+                        setArtistSearch("");
+                        setArtistResults([]);
+                      } else {
+                        setExternalArtistName("");
+                        setExternalArtistEmail("");
+                      }
+                    }}
+                    className="text-sm text-zinc-600 underline hover:text-zinc-900"
+                  >
+                    {useExternalArtist
+                      ? t("artwork.searchArtist")
+                      : t("artwork.artistNotOnPlatform")}
+                  </button>
+                </div>
+                {useExternalArtist ? (
+                  <div className="space-y-3">
+                    <input
+                      type="text"
+                      value={externalArtistName}
+                      onChange={(e) => setExternalArtistName(e.target.value)}
+                      placeholder={t("artwork.externalArtistNamePlaceholder")}
+                      className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                    />
+                    <input
+                      type="email"
+                      value={externalArtistEmail}
+                      onChange={(e) => setExternalArtistEmail(e.target.value)}
+                      placeholder={t("artwork.externalArtistEmailPlaceholder")}
+                      className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                    />
+                    <p className="text-xs text-zinc-500">
+                      {t("artwork.externalArtistEmailHint")}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={artistSearch}
+                      onChange={(e) => setArtistSearch(e.target.value)}
+                      placeholder="Name or username"
+                      className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                    />
+                    {searching && <p className="text-sm text-zinc-500">Searching...</p>}
+                    {artistResults.length > 0 && (
+                      <ul className="rounded border border-zinc-200 bg-white">
+                        {artistResults.map((a) => (
+                          <li key={a.id}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedArtist(a);
+                                setArtistResults([]);
+                                setArtistSearch("");
+                              }}
+                              className={`w-full px-4 py-2 text-left text-sm hover:bg-zinc-50 ${
+                                selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
+                              }`}
+                            >
+                              {a.display_name || a.username || a.id}
+                              {a.username && (
+                                <span className="ml-2 text-zinc-500">@{a.username}</span>
+                              )}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {selectedArtist && (
+                      <p className="mt-2 text-sm text-zinc-600">
+                        Selected: {selectedArtist.display_name || selectedArtist.username}
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             )}
