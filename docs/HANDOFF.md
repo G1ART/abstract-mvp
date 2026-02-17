@@ -2,6 +2,15 @@
 
 Last updated: 2026-02-12
 
+## 2026-02-12 — P1: 온보딩/로그인 UX + 프로비넌스 표기 변경
+
+- **로그인**: "Don't have an account?" 뒤 줄바꿈 → 회원가입 링크 다음 줄로 표시
+- **프로비넌스 표기**: "Listed by X · Curated" → "curated by X" / "collected by X" / "secured by X" (INVENTORY=갤러리 인벤토리·컨사인먼트)
+- `claimTypeToByPhrase()` 추가 (OWNS→collected, CURATED→curated, INVENTORY→secured)
+- ArtworkCard, ArtistThreadCard 반영
+- Supabase SQL: 없음 (앱/코드만 변경)
+- Verified: `npm run build` 통과
+
 ## 2026-02-12 — 온보딩: 이메일·비밀번호 회원가입 (매직링크 대안)
 
 - `/onboarding` 비로그인 시: 이메일, 비밀번호, username, display name, main role, roles 한 번에 입력 → `signUpWithPassword`로 계정 생성

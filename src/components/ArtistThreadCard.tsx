@@ -11,7 +11,7 @@ import {
   getPrimaryClaim,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
-import { claimTypeToLabel } from "@/lib/provenance/rpc";
+import { claimTypeToByPhrase } from "@/lib/provenance/rpc";
 import { FollowButton } from "./FollowButton";
 import { LikeButton } from "./LikeButton";
 
@@ -58,9 +58,9 @@ export function ArtistThreadCard({
   const firstClaim = worksToShow[0]
     ? getPrimaryClaim(worksToShow[0])
     : null;
-  const claimLabel = firstClaim
-    ? claimTypeToLabel(firstClaim.claim_type as ClaimType)
-    : "Work";
+  const byPhrase = firstClaim
+    ? claimTypeToByPhrase(firstClaim.claim_type as ClaimType)
+    : null;
 
   function handleHeaderClick(e: React.MouseEvent) {
     e.stopPropagation();
@@ -196,7 +196,7 @@ export function ArtistThreadCard({
       <div className="border-t border-zinc-100 px-4 py-2">
         <p className="text-xs text-zinc-500">
           by {displayName}
-          {username && <> · Listed by {displayName} · {claimLabel}</>}
+          {username && byPhrase && <> · {byPhrase} {displayName}</>}
         </p>
         {username && (
           <Link

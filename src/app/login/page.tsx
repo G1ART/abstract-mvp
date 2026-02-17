@@ -138,7 +138,8 @@ export default function LoginPage() {
                 {t("login.signIn")}
               </button>
               <p className="text-center text-sm text-zinc-500">
-                {t("login.noAccount")}{" "}
+                {t("login.noAccount")}
+                <br />
                 <Link href="/onboarding" className="font-medium text-zinc-700 hover:text-zinc-900">
                   {t("login.signUpWithEmail")}
                 </Link>

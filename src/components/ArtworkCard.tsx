@@ -9,7 +9,7 @@ import {
   getPrimaryClaim,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
-import { claimTypeToLabel } from "@/lib/provenance/rpc";
+import { claimTypeToLabel, claimTypeToByPhrase } from "@/lib/provenance/rpc";
 import { useT } from "@/lib/i18n/useT";
 import { LikeButton } from "./LikeButton";
 
@@ -54,6 +54,9 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
   const claimLabel = primaryClaim
     ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
     : "Work";
+  const byPhrase = primaryClaim
+    ? claimTypeToByPhrase(primaryClaim.claim_type as ClaimType)
+    : null;
 
   function handleArticleClick() {
     if (disableNavigation) return;
@@ -113,13 +116,13 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
           <p className="mt-1 text-sm text-zinc-600">
             {getPriceDisplay(artwork)}
           </p>
-          {(artistLabel || (listerLabel && claimLabel)) && (
+          {(artistLabel || (listerLabel && byPhrase)) && (
             <p className="mt-1 text-sm text-zinc-500">
               {artistLabel && <span>by {artistLabel}</span>}
-              {artistLabel && listerLabel && claimLabel && " · "}
-              {listerLabel && claimLabel && (
+              {artistLabel && listerLabel && byPhrase && " · "}
+              {listerLabel && byPhrase && (
                 <span>
-                  Listed by{" "}
+                  {byPhrase}{" "}
                   {listerProf?.username ? (
                     <Link
                       href={`/u/${listerProf.username}`}
@@ -130,8 +133,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
                     </Link>
                   ) : (
                     listerLabel
-                  )}{" "}
-                  · {claimLabel}
+                  )}
                 </span>
               )}
             </p>

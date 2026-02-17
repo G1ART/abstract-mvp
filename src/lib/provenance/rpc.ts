@@ -117,3 +117,25 @@ export function claimTypeToLabel(claimType: ClaimType, projectTitle?: string | n
       return "Work";
   }
 }
+
+/** "X by {user}" phrase for display (curated by, collected by, secured by, etc.) */
+export function claimTypeToByPhrase(claimType: ClaimType): string | null {
+  switch (claimType) {
+    case "CREATED":
+      return null; // artist is shown as "by {artist}" separately
+    case "OWNS":
+      return "collected by";
+    case "INVENTORY":
+      return "secured by";
+    case "EXHIBITED":
+      return "exhibited by";
+    case "CURATED":
+      return "curated by";
+    case "INCLUDES_WORK":
+      return "included by";
+    case "HOSTS_PROJECT":
+      return "hosted by";
+    default:
+      return null;
+  }
+}
