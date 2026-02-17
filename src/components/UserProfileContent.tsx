@@ -18,7 +18,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
-import { getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
+import { canEditArtwork, getStorageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
@@ -373,6 +373,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
               artwork={artwork}
               likesCount={artwork.likes_count ?? 0}
               isLiked={likedIds.has(artwork.id)}
+              showEdit={isOwner && !!profile?.id && canEditArtwork(artwork, profile.id)}
               onLikeUpdate={(id, liked, count) => {
                 setLikedIds((prev) => {
                   const next = new Set(prev);

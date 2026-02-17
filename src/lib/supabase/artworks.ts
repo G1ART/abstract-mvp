@@ -39,8 +39,10 @@ export type ArtistProfile = {
 } | null;
 
 export type ArtworkClaim = {
+  id?: string;
   claim_type: string;
   subject_profile_id: string;
+  artist_profile_id?: string | null;
   profiles: { username: string | null; display_name: string | null } | null;
 };
 
@@ -68,6 +70,21 @@ export type Artwork = {
   profiles: ArtistProfile;
   claims?: ArtworkClaim[] | null;
 };
+
+/** User can edit artwork if they are artist or lister (has claim). */
+export function canEditArtwork(artwork: Artwork, userId: string | null): boolean {
+  if (!userId) return false;
+  if (artwork.artist_id === userId) return true;
+  const claims = artwork.claims ?? [];
+  return claims.some((c) => c.subject_profile_id === userId);
+}
+
+/** Get the current user's claim (for editing provenance). */
+export function getMyClaim(artwork: Artwork, userId: string | null): ArtworkClaim | null {
+  if (!userId) return null;
+  const claims = artwork.claims ?? [];
+  return claims.find((c) => c.subject_profile_id === userId) ?? null;
+}
 
 /** Pick primary claim for display (CREATED first, else first). */
 export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
@@ -105,7 +122,7 @@ const ARTWORK_SELECT = `
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count),
-  claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))
+  claims(id, claim_type, subject_profile_id, artist_profile_id, profiles!subject_profile_id(username, display_name))
 `;
 
 export async function listPublicArtworks(
@@ -411,7 +428,7 @@ export async function getArtworkById(
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
-      claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))
+      claims(id, claim_type, subject_profile_id, artist_profile_id, profiles!subject_profile_id(username, display_name))
     `
     )
     .eq("id", id)
@@ -606,12 +623,8 @@ export async function updateArtwork(
   if (!session?.user?.id)
     return { error: new Error("Not authenticated") };
 
-  const { error } = await supabase
-    .from("artworks")
-    .update(partial)
-    .eq("id", id)
-    .eq("artist_id", session.user.id);
-
+  // RLS allows update when artist or lister (has claim)
+  const { error } = await supabase.from("artworks").update(partial).eq("id", id);
   return { error };
 }
 

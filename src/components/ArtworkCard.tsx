@@ -20,6 +20,7 @@ type Props = {
   onLikeUpdate?: (artworkId: string, liked: boolean, count: number) => void;
   showDelete?: boolean;
   onDelete?: (artworkId: string) => void;
+  showEdit?: boolean;
   disableNavigation?: boolean;
   dragHandle?: React.ReactNode;
 };
@@ -32,7 +33,7 @@ function getPriceDisplay(artwork: Artwork): string {
   return "Price hidden";
 }
 
-export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, disableNavigation = false, dragHandle }: Props) {
+export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, showEdit = false, disableNavigation = false, dragHandle }: Props) {
   const router = useRouter();
   const { t } = useT();
   const images = artwork.artwork_images ?? [];
@@ -146,6 +147,15 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
                 </Link>
               ) : (
                 <span />
+              )}
+              {showEdit && (
+                <Link
+                  href={`/artwork/${artwork.id}/edit`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-sm text-zinc-600 hover:text-zinc-900"
+                >
+                  {t("common.edit")}
+                </Link>
               )}
               {showDelete && onDelete && (
                 <button

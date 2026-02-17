@@ -51,6 +51,14 @@ export async function createClaimForExistingArtist(
   return { data: data as CreateClaimForExistingArtistResult, error: null };
 }
 
+export async function updateClaim(
+  claimId: string,
+  payload: { claim_type?: string; artist_profile_id?: string | null; visibility?: string }
+): Promise<{ error: unknown }> {
+  const { error } = await supabase.from("claims").update(payload).eq("id", claimId);
+  return { error };
+}
+
 export async function searchWorksForDedup(
   args: SearchWorksForDedupArgs
 ): Promise<{ data: { id: string; title: string | null; [key: string]: unknown }[]; error: unknown }> {

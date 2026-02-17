@@ -8,6 +8,7 @@ import { useParams } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
+  canEditArtwork,
   deleteArtworkCascade,
   getArtworkById,
   getStorageUrl,
@@ -43,6 +44,7 @@ function ArtworkDetailContent() {
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
   const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
+  const canEdit = Boolean(artwork && userId && canEditArtwork(artwork, userId));
 
   async function handleDelete() {
     if (!id || !isOwner) return;
@@ -205,16 +207,24 @@ function ArtworkDetailContent() {
                 )}
               </div>
             )}
-            {isOwner && (
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(true)}
-                  disabled={deleting}
-                  className="text-sm text-red-600 hover:text-red-800"
+            {canEdit && (
+              <div className="mt-4 flex items-center gap-4">
+                <Link
+                  href={`/artwork/${id}/edit`}
+                  className="text-sm font-medium text-zinc-700 hover:text-zinc-900"
                 >
-                  {t("common.delete")}
-                </button>
+                  {t("common.edit")}
+                </Link>
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deleting}
+                    className="text-sm text-red-600 hover:text-red-800"
+                  >
+                    {t("common.delete")}
+                  </button>
+                )}
               </div>
             )}
           </div>

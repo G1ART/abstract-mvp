@@ -21,6 +21,7 @@ import {
 import { getMyEntitlements, hasFeature, type Plan } from "@/lib/entitlements";
 import {
   type ArtworkWithLikes,
+  canEditArtwork,
   deleteArtworksBatch,
   getStorageUrl,
 } from "@/lib/supabase/artworks";
@@ -531,6 +532,7 @@ export default function MyPage() {
                   <ArtworkCard
                     artwork={artwork}
                     likesCount={artwork.likes_count ?? 0}
+                    showEdit={!selectMode && !!profile && canEditArtwork(artwork, profile.id)}
                     showDelete={!selectMode}
                     onDelete={async (id) => {
                       const { okIds, failed } = await deleteArtworksBatch([id]);
