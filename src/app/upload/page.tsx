@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { getSession } from "@/lib/supabase/auth";
+import { getSession, sendMagicLink } from "@/lib/supabase/auth";
 import {
   attachArtworkImage,
   createArtwork,
@@ -233,6 +233,11 @@ export default function UploadPage() {
           setError(`Claim failed: ${msg}`);
           setIsSubmitting(false);
           return;
+        }
+        if (externalArtistEmail?.trim()) {
+          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
+            console.warn("[invite] sendMagicLink failed:", e)
+          );
         }
       } else {
         const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;

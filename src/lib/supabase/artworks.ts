@@ -827,6 +827,13 @@ export async function publishArtworksWithProvenance(
       .eq("visibility", "draft");
     if (error) return { error };
   }
+
+  if (opts.externalArtistEmail?.trim() && opts.externalArtistDisplayName) {
+    const { sendMagicLink } = await import("@/lib/supabase/auth");
+    sendMagicLink(opts.externalArtistEmail.trim()).catch((e) =>
+      console.warn("[invite] sendMagicLink failed:", e)
+    );
+  }
   return { error: null };
 }
 

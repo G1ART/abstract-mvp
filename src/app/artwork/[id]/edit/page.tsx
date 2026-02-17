@@ -19,6 +19,7 @@ import {
   createExternalArtistAndClaim,
   updateClaim,
 } from "@/lib/provenance/rpc";
+import { sendMagicLink } from "@/lib/supabase/auth";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 
@@ -283,6 +284,11 @@ function EditArtworkContent() {
           setSaving(false);
           return;
         }
+        if (externalArtistEmail?.trim()) {
+          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
+            console.warn("[invite] sendMagicLink failed:", e)
+          );
+        }
       } else {
         const { error: claimErr } = await createExternalArtistAndClaim({
           displayName: externalArtistName.trim(),
@@ -297,6 +303,11 @@ function EditArtworkContent() {
           );
           setSaving(false);
           return;
+        }
+        if (externalArtistEmail?.trim()) {
+          sendMagicLink(externalArtistEmail.trim()).catch((e) =>
+            console.warn("[invite] sendMagicLink failed:", e)
+          );
         }
       }
     } else {
