@@ -89,12 +89,13 @@ Last updated: 2026-02-16 (America/Los_Angeles)
 - **persistCompletenessOnly**: Added to profileSaveUnified; calls `saveProfileUnified({ basePatch: {}, detailsPatch: {}, completeness })`.
 - **Verified**: No 0-flash on first login; saves remain RPC-only; no PostgREST writes to `/profiles`.
 
-## 2026-02-16 — Batch D-4 follow-up: Upload UX + Rendering (by Artist, Listed by)
+## 2026-02-16 — P0: Upload provenance hotfix (Collector/Curator/Gallerist) + 페르소나 확장
 
-- **Upload UX**: Multi-step flow — (1) Intent: My work (CREATED) vs Collected work (OWNS); (2) Attribution: for OWNS, search and link existing artist via `searchPeople`; (3) Form: image, title, year, medium, size, story, ownership, pricing; (4) Dedup: `search_works_for_dedup` shows similar works before submit. Submit creates artwork + CREATED/OWNS claim via `createClaimForExistingArtist`.
-- **Rendering**: `artworks` select extended with `claims(claim_type, subject_profile_id, profiles!subject_profile_id(username, display_name))`. `ArtworkCard` and `ArtistThreadCard` display "by Artist" and "Listed by X · Label" using `getPrimaryClaim()` and `claimTypeToLabel()`.
-- **Lib**: `createArtwork` accepts optional `artist_id` for OWNS path. `artworks.ts` exports `ArtworkClaim`, `getPrimaryClaim()`.
-- **Verified**: TypeScript passes; rendering shows attribution on feed/profile cards.
+- **Hotfix (DB)**: `p0_upload_provenance_hotfix.sql` — (1) `ensure_my_profile`: return empty instead of raise when `auth.uid()` null (prevents 400); (2) artworks: SELECT public/own/claim, INSERT authenticated, DELETE artist-or-lister; (3) artwork_images: INSERT when artist OR has claim (collector/curator can attach).
+- **Upload flow fix**: Claim 생성 순서를 이미지 첨부 **이전**으로 변경 — RLS가 claim 기반으로 artwork_images INSERT를 허용하므로, claim을 먼저 만들어야 함. 실패 시 에러에 code 포함 표시.
+- **deleteArtwork**: artist_id 필터 제거, RLS로 삭제 권한 판단 (artist 또는 lister).
+- **Upload UX 확장**: Intent에 Inventory / Exhibited / Curated 추가. CREATED 외에는 모두 Attribution(작가 연결) 필수.
+- **Pending**: External artist 초대, 프로젝트 연결(Curated), 벌크 업로드 페르소나 UI.
 </think>
 
 ## 2026-02-16 — Batch B: Price multi-select, artwork aspect, upload redirect, reorder UX

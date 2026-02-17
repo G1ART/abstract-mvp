@@ -22,11 +22,14 @@ import { useT } from "@/lib/i18n/useT";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
-type IntentType = "CREATED" | "OWNS";
+type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "EXHIBITED" | "CURATED";
 
 const INTENTS: { value: IntentType; label: string }[] = [
   { value: "CREATED", label: "My work" },
   { value: "OWNS", label: "Collected work" },
+  { value: "INVENTORY", label: "Inventory / Gallery" },
+  { value: "EXHIBITED", label: "Exhibited / Represented" },
+  { value: "CURATED", label: "Curated work" },
 ];
 
 const OWNERSHIP_STATUSES = [
@@ -104,6 +107,8 @@ export default function UploadPage() {
     return () => clearTimeout(t);
   }, [artistSearch, doSearchArtists]);
 
+  const needsAttribution = (v: IntentType | null) => v !== "CREATED";
+
   function handleIntentSelect(value: IntentType) {
     setIntent(value);
     setError(null);
@@ -116,7 +121,7 @@ export default function UploadPage() {
   }
 
   function handleAttributionNext() {
-    if (intent === "OWNS" && !selectedArtist) {
+    if (needsAttribution(intent) && !selectedArtist) {
       setError("Please select an artist");
       return;
     }
@@ -147,7 +152,7 @@ export default function UploadPage() {
   async function fetchSimilarWorks() {
     setDedupLoading(true);
     const { data } = await searchWorksForDedup({
-      artistProfileId: intent === "CREATED" ? userId ?? undefined : selectedArtist?.id,
+      artistProfileId: needsAttribution(intent) ? selectedArtist?.id : userId ?? undefined,
       q: title.trim(),
       limit: 5,
     });
@@ -181,7 +186,7 @@ export default function UploadPage() {
       is_price_public: pricingMode === "fixed" ? isPricePublic : false,
       price_input_amount: pricingMode === "fixed" && priceAmount ? parseFloat(priceAmount) : undefined,
       price_input_currency: pricingMode === "fixed" ? priceCurrency : undefined,
-      artist_id: intent === "OWNS" && selectedArtist ? selectedArtist.id : undefined,
+      artist_id: needsAttribution(intent) && selectedArtist ? selectedArtist.id : undefined,
     };
 
     setIsSubmitting(true);
@@ -189,12 +194,31 @@ export default function UploadPage() {
     try {
       const { data: artworkId, error: createErr } = await createArtwork(payload);
       if (createErr) {
-        setError(createErr instanceof Error ? createErr.message : "Failed to create artwork");
+        const msg = (createErr as { message?: string; code?: string })?.message ?? String(createErr);
+        const code = (createErr as { code?: string })?.code;
+        setError(code ? `[${code}] ${msg}` : msg || "Failed to create artwork");
         setIsSubmitting(false);
         return;
       }
       if (!artworkId) {
         setError("Failed to create artwork");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Create claim BEFORE attaching image (RLS: artwork_images INSERT needs claim for lister)
+      const claimType: ClaimType = intent === "CREATED" ? "CREATED" : (intent ?? "OWNS");
+      const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
+      const { error: claimErr } = await createClaimForExistingArtist({
+        artistProfileId,
+        claimType,
+        workId: artworkId,
+        visibility: "public",
+      });
+      if (claimErr) {
+        await deleteArtwork(artworkId);
+        const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
+        setError(`Claim failed: ${msg}`);
         setIsSubmitting(false);
         return;
       }
@@ -216,18 +240,6 @@ export default function UploadPage() {
         setError(attachErr instanceof Error ? attachErr.message : "Failed to attach image");
         setIsSubmitting(false);
         return;
-      }
-
-      const claimType: ClaimType = intent === "CREATED" ? "CREATED" : "OWNS";
-      const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
-      const { error: claimErr } = await createClaimForExistingArtist({
-        artistProfileId,
-        claimType,
-        workId: artworkId,
-        visibility: "public",
-      });
-      if (claimErr) {
-        console.warn("Claim creation failed:", claimErr);
       }
 
       const { getMyProfile } = await import("@/lib/supabase/profiles");
@@ -484,7 +496,7 @@ export default function UploadPage() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => (intent === "OWNS" ? setStep("attribution") : setStep("intent"))}
+                onClick={() => (needsAttribution(intent) ? setStep("attribution") : setStep("intent"))}
                 className="rounded border border-zinc-300 px-4 py-2 text-sm"
               >
                 Back

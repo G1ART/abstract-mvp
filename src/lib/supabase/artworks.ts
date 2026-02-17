@@ -408,11 +408,8 @@ export async function deleteArtwork(artworkId: string) {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { error: new Error("Not authenticated") };
-  const { error } = await supabase
-    .from("artworks")
-    .delete()
-    .eq("id", artworkId)
-    .eq("artist_id", session.user.id);
+  // RLS allows delete when artist_id = auth.uid() or user has claim (lister)
+  const { error } = await supabase.from("artworks").delete().eq("id", artworkId);
   return { error };
 }
 
