@@ -116,6 +116,14 @@ export function canEditArtwork(artwork: Artwork, userId: string | null): boolean
   );
 }
 
+/** Can delete: artist or anyone who has a claim (uploader/lister). Prevents orphan works when artist never onboards. */
+export function canDeleteArtwork(artwork: Artwork, userId: string | null): boolean {
+  if (!userId) return false;
+  if (artwork.artist_id === userId) return true;
+  const claims = artwork.claims ?? [];
+  return claims.some((c) => c.subject_profile_id === userId);
+}
+
 /** Get the current user's claim (any status; for edit flow or pending check). */
 export function getMyClaim(artwork: Artwork, userId: string | null): ArtworkClaim | null {
   if (!userId) return null;

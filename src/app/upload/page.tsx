@@ -18,6 +18,7 @@ import {
   searchWorksForDedup,
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
+import { setArtworkBack } from "@/lib/artworkBack";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 
@@ -285,11 +286,17 @@ export default function UploadPage() {
         setInviteToast(inviteSent ? "sent" : "failed");
         setTimeout(() => {
           if (username) router.push(`/u/${username}`);
-          else router.push(`/artwork/${artworkId}`);
+          else {
+            setArtworkBack("/upload");
+            router.push(`/artwork/${artworkId}`);
+          }
         }, 2000);
       } else {
         if (username) router.push(`/u/${username}`);
-        else router.push(`/artwork/${artworkId}`);
+        else {
+          setArtworkBack("/upload");
+          router.push(`/artwork/${artworkId}`);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");

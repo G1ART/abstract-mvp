@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { setArtworkBack } from "@/lib/artworkBack";
 import { useT } from "@/lib/i18n/useT";
 import {
   type ArtworkWithLikes,
@@ -50,6 +51,7 @@ export function ArtistThreadCard({
   onLikeUpdate,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useT();
   const username = artist.username ?? "";
   const displayName = artist.display_name ?? username;
@@ -140,11 +142,13 @@ export function ArtistThreadCard({
                 tabIndex={0}
                 onClick={(e) => {
                   e.stopPropagation();
+                  setArtworkBack(pathname ?? "/feed");
                   router.push(`/artwork/${artwork.id}`);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
+                    setArtworkBack(pathname ?? "/feed");
                     router.push(`/artwork/${artwork.id}`);
                   }
                 }}

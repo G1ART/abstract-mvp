@@ -9,6 +9,7 @@ import { signOut } from "@/lib/supabase/auth";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { getUnreadCount } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
 
 const MAIN_NAV = [
@@ -29,6 +30,7 @@ export function Header() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const avatarRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export function Header() {
       setProfileUsername(null);
       setProfileLoaded(false);
       setAvatarUrl(null);
+      setUnreadCount(0);
       return;
     }
     setProfileLoaded(false);
@@ -57,6 +60,27 @@ export function Header() {
       setProfileLoaded(true);
     });
   }, [session?.user?.id]);
+
+  function fetchUnread() {
+    if (!session?.user?.id) return;
+    getUnreadCount().then(({ data }) => setUnreadCount(data ?? 0));
+  }
+
+  useEffect(() => {
+    fetchUnread();
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    function onRead() {
+      setUnreadCount(0);
+    }
+    window.addEventListener("notifications-read", onRead);
+    return () => window.removeEventListener("notifications-read", onRead);
+  }, []);
+
+  useEffect(() => {
+    if (avatarOpen) fetchUnread();
+  }, [avatarOpen]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -108,7 +132,7 @@ export function Header() {
         {ready && loggedIn && (
           <>
             <Link href={profileUsername ? "/my" : "/onboarding"} className={linkClass}>
-              {!profileLoaded ? t("nav.myProfile") : profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
+              {t("nav.myProfile")}
             </Link>
             <span className="flex gap-1 text-xs text-zinc-500">
               <button
@@ -131,9 +155,10 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => setAvatarOpen((o) => !o)}
-                className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100 hover:bg-zinc-200"
+                className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100 hover:bg-zinc-200"
                 aria-expanded={avatarOpen}
                 aria-haspopup="true"
+                aria-label={unreadCount > 0 ? t("notifications.link") + ` (${unreadCount})` : undefined}
               >
                 {avatarUrl ? (
                   <img
@@ -146,9 +171,27 @@ export function Header() {
                     {(profileUsername ?? "?").charAt(0).toUpperCase()}
                   </span>
                 )}
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </button>
               {avatarOpen && (
                 <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                  <Link
+                    href="/notifications"
+                    className="flex items-center justify-between px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => setAvatarOpen(false)}
+                  >
+                    {t("notifications.link")}
+                    {unreadCount > 0 && (
+                      <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    )}
+                  </Link>
+                  <div className="my-1 border-t border-zinc-100" />
                   <div className="px-4 py-2 text-[10px] text-zinc-400">
                     <BuildStamp />
                   </div>
@@ -237,7 +280,15 @@ export function Header() {
               className={`${linkClass} py-2 px-1`}
               onClick={closeMobile}
             >
-              {!profileLoaded ? t("nav.myProfile") : profileUsername ? t("nav.myProfile") : t("people.completeProfile")}
+              {t("nav.myProfile")}
+            </Link>
+            <Link
+              href="/notifications"
+              className={`${linkClass} py-2 px-1`}
+              onClick={closeMobile}
+            >
+              {t("notifications.link")}
+              {unreadCount > 0 && ` (${unreadCount > 99 ? "99+" : unreadCount})`}
             </Link>
             <div className="my-2 border-t border-zinc-100" />
             <Link

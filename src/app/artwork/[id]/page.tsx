@@ -5,9 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useParams } from "next/navigation";
+import { getArtworkBack } from "@/lib/artworkBack";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
+  canDeleteArtwork,
   canEditArtwork,
   canViewProvenance,
   deleteArtworkCascade,
@@ -59,11 +61,31 @@ function ArtworkDetailContent() {
   const [pendingClaims, setPendingClaims] = useState<PendingClaimRow[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [claimDropdownOpen, setClaimDropdownOpen] = useState(false);
+  const [fullSizeOpen, setFullSizeOpen] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    setIsDesktop(mq.matches);
+    const fn = () => setIsDesktop(mq.matches);
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, []);
+
+  useEffect(() => {
+    if (!fullSizeOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setFullSizeOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [fullSizeOpen]);
+
   const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
   const canEdit = Boolean(artwork && userId && canEditArtwork(artwork, userId));
+  const canDelete = Boolean(artwork && userId && canDeleteArtwork(artwork, userId));
   const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
   const myClaimsByType = artwork?.claims?.filter((c) => c.subject_profile_id === userId) ?? [];
   const hasPendingRequest = myClaim?.status === "pending";
@@ -74,7 +96,7 @@ function ArtworkDetailContent() {
   const showProvenance = artwork && canViewProvenance(artwork, userId);
 
   async function handleDelete() {
-    if (!id || !isOwner) return;
+    if (!id || !canDelete) return;
     setDeleting(true);
     const { error: err } = await deleteArtworkCascade(id);
     setDeleting(false);
@@ -221,17 +243,25 @@ function ArtworkDetailContent() {
   const artist = artwork.profiles;
   const username = artist?.username ?? "";
 
+  const { path: backPath, labelKey: backLabelKey } = getArtworkBack();
+
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
       <Link
-        href="/feed?tab=all&sort=latest"
+        href={backPath}
         className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
       >
-        ← Back to feed
+        ← {t("common.backTo")} {t(backLabelKey)}
       </Link>
       <div className="space-y-6">
         <div className="grid gap-6 sm:grid-cols-2">
-          <div className="aspect-square w-full overflow-hidden rounded-lg bg-zinc-100">
+          <div
+            className={`aspect-square w-full overflow-hidden rounded-lg bg-zinc-100 ${isDesktop && sortedImages.length > 0 ? "cursor-zoom-in" : ""}`}
+            role={isDesktop && sortedImages.length > 0 ? "button" : undefined}
+            tabIndex={isDesktop && sortedImages.length > 0 ? 0 : undefined}
+            onClick={() => isDesktop && sortedImages.length > 0 && setFullSizeOpen(true)}
+            onKeyDown={(e) => isDesktop && sortedImages.length > 0 && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setFullSizeOpen(true))}
+          >
             {sortedImages.length > 0 ? (
               <Image
                 src={getArtworkImageUrl(sortedImages[0].storage_path, "medium")}
@@ -248,6 +278,22 @@ function ArtworkDetailContent() {
               </div>
             )}
           </div>
+          {fullSizeOpen && sortedImages.length > 0 && (
+            <div
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-label={artwork.title ?? "Artwork"}
+              onClick={() => setFullSizeOpen(false)}
+            >
+              <img
+                src={getArtworkImageUrl(sortedImages[0].storage_path, "original")}
+                alt={artwork.title ?? "Artwork"}
+                className="max-h-full max-w-full object-contain"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          )}
           <div>
             <h1 className="text-xl font-semibold text-zinc-900">
               {artwork.title ?? "Untitled"}
@@ -417,15 +463,17 @@ function ArtworkDetailContent() {
                 </ul>
               </div>
             )}
-            {canEdit && (
+            {(canEdit || canDelete) && (
               <div className="mt-4 flex items-center gap-4">
-                <Link
-                  href={`/artwork/${id}/edit`}
-                  className="text-sm font-medium text-zinc-700 hover:text-zinc-900"
-                >
-                  {t("common.edit")}
-                </Link>
-                {isOwner && (
+                {canEdit && (
+                  <Link
+                    href={`/artwork/${id}/edit`}
+                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900"
+                  >
+                    {t("common.edit")}
+                  </Link>
+                )}
+                {canDelete && (
                   <button
                     type="button"
                     onClick={() => setShowDeleteConfirm(true)}

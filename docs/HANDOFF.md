@@ -51,6 +51,19 @@ Last updated: 2026-02-18
   - `p0_claims_rls_break_recursion.sql`: `artwork_artist_id(work_id)` SECURITY DEFINER 함수 추가. claims 정책에서 `exists (select 1 from artworks ...)` 제거 후 `public.artwork_artist_id(work_id) = auth.uid()` 사용 → artworks 테이블을 정책 안에서 직접 읽지 않아 재귀 제거.
   - `p0_ensure_my_profile_return_type.sql`: `ensure_my_profile`에서 `profile_completeness::int` 캐스팅 및 null-uid 시 빈 결과 반환 유지.
 
+### G. 픽스 배치 (삭제 권한 · Back 링크 · 원본 보기 · 모바일 헤더)
+- **삭제 권한**: 아티스트가 아닌 업로더(리스터)도 해당 작품 삭제 가능. `canDeleteArtwork(artwork, userId)` 추가(artist 또는 claim subject). RLS는 기존에 이미 허용; UI만 `canDelete` 기준으로 삭제 버튼 노출.
+- **Back 링크**: 작품 상세/수정에서 "Back to feed" 대신 **진입 전 페이지**로 복귀. `setArtworkBack(pathname)` / `getArtworkBack()` (sessionStorage). ArtworkCard, FeedArtworkCard, ArtistThreadCard, 업로드 성공 시 path 저장 → 상세에서 "← Back to My profile / Feed / People / …" 표시.
+- **원본 크기 보기**: 작품 상세에서 **데스크톱(768px 이상)**만 이미지 클릭 시 원본 크기 라이트박스. Escape/배경 클릭으로 닫기.
+- **모바일 헤더**: 우상단·모바일 메뉴 모두 **"My Profile"** 고정 표시 (기존 "Complete your profile" 제거). 링크는 그대로 `/my` 또는 `/onboarding`.
+
+### H. 알림 (옵션 A: 아바타 배지 + 알림 페이지)
+- **UI**: 헤더 아바타에 **읽지 않은 알림 개수 배지**(빨간 원). 아바타 클릭 시 드롭다운 상단에 "알림" 링크 → `/notifications`. 모바일 메뉴에도 "알림 (N)" 링크.
+- **알림 종류**: 좋아요(내 작품), 신규 팔로우, 클레임 요청(작가에게), 클레임 승인/거절(요청자에게). DB 트리거로 자동 생성.
+- **페이지**: `/notifications` — 목록 진입 시 전체 읽음 처리, `notifications-read` 이벤트로 헤더 배지 갱신.
+- **DB**: `p0_notifications.sql` — `notifications` 테이블, RLS, 트리거(artwork_likes, follows, claims). 기존 테이블에 `read_at` 없을 수 있으므로 `add column if not exists read_at` 포함.
+- **앱**: `src/lib/supabase/notifications.ts` (getUnreadCount, listNotifications, markAllAsRead), `src/app/notifications/page.tsx`, i18n `notifications.*`.
+
 ### 이번 릴리즈 Supabase SQL (수동 실행)
 Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 1. `supabase/migrations/p0_claims_sync_artwork_artist.sql`
@@ -58,19 +71,17 @@ Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 3. `supabase/migrations/p0_claims_status_request_confirm.sql`
 4. `supabase/migrations/p0_claims_rls_break_recursion.sql`  ← **페이지 마비 해결**
 5. `supabase/migrations/p0_ensure_my_profile_return_type.sql`  ← **400 ensure_my_profile 해결**
+6. `supabase/migrations/p0_notifications.sql`  ← **알림(옵션 A)**
 
 ### 검증
 - `npm run build` 통과 후 배포
 
 ### 이번 변경 반영 후 Git 명령어 (로컬에서 실행)
 ```bash
-# 원격 최신 반영
 git pull origin main
-
-# 변경 사항 스테이징·커밋·푸시 (HANDOFF + 이번 세션 변경이 이미 커밋되어 있다면 푸시만)
+git add -A
 git status
-git add docs/HANDOFF.md
-git commit -m "docs: HANDOFF 업데이트 — 요청·확정 클레임 + 이 작품은… 드롭다운 UI"
+git commit -m "feat: 픽스 배치(삭제 권한·Back 링크·원본 보기·모바일 헤더) + 알림 옵션 A"
 git push origin main
 ```
 

@@ -1,7 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { setArtworkBack } from "@/lib/artworkBack";
 import {
   type ArtworkWithLikes,
   getArtworkImageUrl,
@@ -38,6 +39,7 @@ export function FeedArtworkCard({
   priority = false,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
   const { t } = useT();
   const images = artwork.artwork_images ?? [];
   const sorted = [...images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
@@ -53,6 +55,7 @@ export function FeedArtworkCard({
   const priceDisplay = getPriceDisplay(artwork);
 
   function handleClick() {
+    setArtworkBack(pathname ?? "/feed");
     router.push(`/artwork/${artwork.id}`);
   }
 
