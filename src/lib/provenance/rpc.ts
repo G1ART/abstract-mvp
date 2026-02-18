@@ -144,7 +144,25 @@ export async function listPendingClaimsForWork(
     .eq("work_id", workId)
     .eq("status", "pending");
   if (error) return { data: [], error };
-  return { data: (data ?? []) as PendingClaimRow[], error: null };
+  const rows: PendingClaimRow[] = (data ?? []).map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    const profiles = r.profiles;
+    const profileObj =
+      Array.isArray(profiles) && profiles.length > 0
+        ? (profiles[0] as { username: string | null; display_name: string | null })
+        : profiles && typeof profiles === "object" && !Array.isArray(profiles)
+          ? (profiles as { username: string | null; display_name: string | null })
+          : null;
+    return {
+      id: r.id,
+      claim_type: r.claim_type,
+      subject_profile_id: r.subject_profile_id,
+      work_id: r.work_id ?? null,
+      created_at: r.created_at ?? null,
+      profiles: profileObj,
+    } as PendingClaimRow;
+  });
+  return { data: rows, error: null };
 }
 
 export async function searchWorksForDedup(
