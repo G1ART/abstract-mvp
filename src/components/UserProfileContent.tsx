@@ -51,6 +51,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const [isOwner, setIsOwner] = useState(false);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
   const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
@@ -93,13 +94,16 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
 
     getSession().then(({ data: { session } }) => {
       const uid = session?.user?.id;
+      setViewerId(uid ?? null);
       if (uid) {
         resolveOwner(uid);
         return;
       }
       setTimeout(() => {
         getSession().then(({ data: { session: retrySession } }) => {
-          resolveOwner(retrySession?.user?.id);
+          const retryUid = retrySession?.user?.id;
+          setViewerId(retryUid ?? null);
+          resolveOwner(retryUid);
         });
       }, 400);
     });
@@ -337,6 +341,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
                     artwork={artwork}
                     likesCount={artwork.likes_count ?? 0}
                     isLiked={likedIds.has(artwork.id)}
+                    viewerId={viewerId}
                     onLikeUpdate={(id, liked, count) => {
                       setLikedIds((prev) => {
                         const next = new Set(prev);
@@ -375,6 +380,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
               likesCount={artwork.likes_count ?? 0}
               isLiked={likedIds.has(artwork.id)}
               showEdit={isOwner && !!profile?.id && canEditArtwork(artwork, profile.id)}
+              viewerId={viewerId}
               onLikeUpdate={(id, liked, count) => {
                 setLikedIds((prev) => {
                   const next = new Set(prev);

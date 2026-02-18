@@ -122,6 +122,14 @@ export function FeedArtworkCard({
           ) : null}
           <span className="text-zinc-400">·</span>
           <span className="text-zinc-500">{claimLabel}</span>
+          {(artwork.claims?.length ?? 0) > 1 && (
+            <>
+              <span className="text-zinc-400">·</span>
+              <span className="text-zinc-400" title={t("artwork.viewHistory")}>
+                +{(artwork.claims?.length ?? 1) - 1} {t("artwork.moreInHistory")}
+              </span>
+            </>
+          )}
           {priceDisplay && (
             <>
               <span className="text-zinc-400">·</span>

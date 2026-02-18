@@ -51,6 +51,7 @@ export type ArtworkRow = {
   artist_id: string;
   visibility: string | null;
   created_at: string | null;
+  provenance_visible?: boolean | null;
 };
 
 export type ArtworkImage = { storage_path: string; sort_order?: number };
@@ -70,6 +71,7 @@ export type ArtworkClaim = {
   subject_profile_id: string;
   artist_profile_id?: string | null;
   external_artist_id?: string | null;
+  created_at?: string | null;
   profiles: { username: string | null; display_name: string | null } | null;
   external_artists?: { display_name: string; invite_email?: string | null } | null;
 };
@@ -97,6 +99,7 @@ export type Artwork = {
   artwork_images: ArtworkImage[] | null;
   profiles: ArtistProfile;
   claims?: ArtworkClaim[] | null;
+  provenance_visible?: boolean | null;
 };
 
 /** User can edit artwork if they are artist or lister (has claim). */
@@ -119,6 +122,28 @@ export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
   const claims = artwork.claims ?? [];
   const created = claims.find((c) => c.claim_type === "CREATED");
   return created ?? claims[0] ?? null;
+}
+
+/** Whether the viewer can see full provenance (curator, collector, etc.). */
+export function canViewProvenance(artwork: Artwork, userId: string | null): boolean {
+  if (artwork.provenance_visible !== false) return true;
+  if (!userId) return false;
+  if (artwork.artist_id === userId) return true;
+  const claims = artwork.claims ?? [];
+  return claims.some((c) => c.subject_profile_id === userId);
+}
+
+/** Claims sorted for display: CREATED first, then by created_at (newest first). */
+export function getProvenanceClaims(artwork: Artwork): ArtworkClaim[] {
+  const claims = [...(artwork.claims ?? [])];
+  const created = claims.find((c) => c.claim_type === "CREATED");
+  const rest = claims.filter((c) => c.claim_type !== "CREATED");
+  rest.sort((a, b) => {
+    const at = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bt = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return bt - at;
+  });
+  return created ? [created, ...rest] : rest;
 }
 
 export type ArtworkWithLikes = Artwork & { likes_count: number };
@@ -147,10 +172,11 @@ const ARTWORK_SELECT = `
   artist_id,
   artist_sort_order,
   created_at,
+  provenance_visible,
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count),
-  claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
+  claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
 `;
 
 export async function listPublicArtworks(
@@ -510,10 +536,11 @@ export async function getArtworkById(
       artist_id,
       artist_sort_order,
       created_at,
+      provenance_visible,
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
-      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
+      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
     `
     )
     .eq("id", id)
@@ -697,6 +724,7 @@ export type UpdateArtworkPayload = Partial<{
   price_input_currency: string | null;
   visibility: "draft" | "public";
   artist_id: string | null;
+  provenance_visible?: boolean | null;
 }>;
 
 export async function updateArtwork(

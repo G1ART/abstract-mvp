@@ -12,6 +12,7 @@ import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel, claimTypeToByPhrase } from "@/lib/provenance/rpc";
 import { useT } from "@/lib/i18n/useT";
 import { LikeButton } from "./LikeButton";
+import { ArtworkProvenanceBlock } from "./ArtworkProvenanceBlock";
 
 type Props = {
   artwork: Artwork;
@@ -23,6 +24,8 @@ type Props = {
   showEdit?: boolean;
   disableNavigation?: boolean;
   dragHandle?: React.ReactNode;
+  /** When set, show full provenance (curator, collector) if visible to viewer */
+  viewerId?: string | null;
 };
 
 function getPriceDisplay(artwork: Artwork): string {
@@ -33,7 +36,7 @@ function getPriceDisplay(artwork: Artwork): string {
   return "Price hidden";
 }
 
-export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, showEdit = false, disableNavigation = false, dragHandle }: Props) {
+export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, showEdit = false, disableNavigation = false, dragHandle, viewerId = null }: Props) {
   const router = useRouter();
   const { t } = useT();
   const images = artwork.artwork_images ?? [];
@@ -137,6 +140,14 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
                 </span>
               )}
             </p>
+          )}
+          {viewerId != null && (
+            <ArtworkProvenanceBlock
+              artwork={artwork}
+              viewerId={viewerId}
+              variant="compact"
+              stopPropagation
+            />
           )}
           <div className="mt-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">

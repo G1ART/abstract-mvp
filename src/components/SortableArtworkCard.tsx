@@ -22,10 +22,11 @@ type Props = {
   artwork: ArtworkWithLikes;
   likesCount: number;
   isLiked: boolean;
+  viewerId?: string | null;
   onLikeUpdate: (artworkId: string, liked: boolean, count: number) => void;
 };
 
-export function SortableArtworkCard({ artwork, likesCount, isLiked, onLikeUpdate }: Props) {
+export function SortableArtworkCard({ artwork, likesCount, isLiked, viewerId = null, onLikeUpdate }: Props) {
   const {
     attributes,
     listeners,
@@ -48,6 +49,7 @@ export function SortableArtworkCard({ artwork, likesCount, isLiked, onLikeUpdate
     >
       <ArtworkCard
         artwork={artwork}
+        viewerId={viewerId}
         likesCount={likesCount}
         isLiked={isLiked}
         onLikeUpdate={onLikeUpdate}

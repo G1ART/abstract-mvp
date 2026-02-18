@@ -9,15 +9,21 @@ import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
   canEditArtwork,
+  canViewProvenance,
   deleteArtworkCascade,
   getArtworkById,
   getArtworkImageUrl,
+  getProvenanceClaims,
+  getMyClaim,
   recordArtworkView,
 } from "@/lib/supabase/artworks";
 import { isLiked } from "@/lib/supabase/likes";
 import { isFollowing } from "@/lib/supabase/follows";
 import { FollowButton } from "@/components/FollowButton";
 import { LikeButton } from "@/components/LikeButton";
+import { ArtworkProvenanceBlock } from "@/components/ArtworkProvenanceBlock";
+import { createClaimForExistingArtist, claimTypeToByPhrase } from "@/lib/provenance/rpc";
+import type { ClaimType } from "@/lib/provenance/types";
 import { useT } from "@/lib/i18n/useT";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
@@ -41,10 +47,18 @@ function ArtworkDetailContent() {
   const [liked, setLiked] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [claimingOwn, setClaimingOwn] = useState(false);
+  const [showProvenanceHistory, setShowProvenanceHistory] = useState(false);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
   const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
   const canEdit = Boolean(artwork && userId && canEditArtwork(artwork, userId));
+  const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
+  const isInNetwork = Boolean(artwork && userId && (artwork.artist_id === userId || myClaim));
+  const canShowClaimIOwn = Boolean(userId && artwork && isInNetwork && myClaim?.claim_type !== "OWNS");
+  const provenanceClaims = artwork ? getProvenanceClaims(artwork) : [];
+  const hasProvenanceHistory = provenanceClaims.length > 1;
+  const showProvenance = artwork && canViewProvenance(artwork, userId);
 
   async function handleDelete() {
     if (!id || !isOwner) return;
@@ -57,6 +71,25 @@ function ArtworkDetailContent() {
       return;
     }
     router.push("/my");
+  }
+
+  async function handleClaimIOwn() {
+    if (!id || !userId || !artwork) return;
+    setClaimingOwn(true);
+    setError(null);
+    const { error: err } = await createClaimForExistingArtist({
+      artistProfileId: artwork.artist_id,
+      claimType: "OWNS",
+      workId: id,
+      visibility: "public",
+    });
+    setClaimingOwn(false);
+    if (err) {
+      setError((err as { message?: string })?.message ?? "Failed to add claim");
+      return;
+    }
+    const { data } = await getArtworkById(id);
+    setArtwork(data as ArtworkWithLikes | null);
   }
 
   const recordView = useCallback(async () => {
@@ -206,6 +239,51 @@ function ArtworkDetailContent() {
                     size="sm"
                   />
                 )}
+              </div>
+            )}
+            {showProvenance && (
+              <div className="mt-4">
+                <ArtworkProvenanceBlock artwork={artwork} viewerId={userId} variant="full" />
+                {hasProvenanceHistory && (
+                  <button
+                    type="button"
+                    onClick={() => setShowProvenanceHistory((v) => !v)}
+                    className="mt-2 text-xs text-zinc-500 underline hover:text-zinc-700"
+                  >
+                    {showProvenanceHistory ? t("artwork.hideHistory") : t("artwork.viewHistory")}
+                  </button>
+                )}
+                {showProvenanceHistory && provenanceClaims.length > 0 && (
+                  <ul className="mt-2 space-y-1 border-t border-zinc-200 pt-2 text-sm text-zinc-600">
+                    {provenanceClaims.map((c, i) => {
+                      const byPhrase = claimTypeToByPhrase(c.claim_type as ClaimType);
+                      const label = byPhrase
+                        ? `${byPhrase} ${c.profiles?.display_name?.trim() || c.profiles?.username || "—"}`
+                        : (c.claim_type === "CREATED" && artwork?.profiles?.display_name) || "—";
+                      const date = c.created_at
+                        ? new Date(c.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
+                        : "";
+                      return (
+                        <li key={c.id ?? i} className="flex justify-between gap-2">
+                          <span>{c.claim_type === "CREATED" ? `by ${artwork?.profiles?.display_name ?? artwork?.profiles?.username ?? "Artist"}` : label}</span>
+                          {date && <span className="text-zinc-400">{date}</span>}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+            {canShowClaimIOwn && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={handleClaimIOwn}
+                  disabled={claimingOwn}
+                  className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                >
+                  {claimingOwn ? t("common.loading") : t("artwork.claimIOwn")}
+                </button>
               </div>
             )}
             {canEdit && (

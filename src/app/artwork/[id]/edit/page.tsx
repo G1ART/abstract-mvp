@@ -75,6 +75,7 @@ function EditArtworkContent() {
   const [priceCurrency, setPriceCurrency] = useState("USD");
   const [priceAmount, setPriceAmount] = useState("");
   const [isPricePublic, setIsPricePublic] = useState(false);
+  const [provenanceVisible, setProvenanceVisible] = useState(true);
 
   // Provenance
   const [claimType, setClaimType] = useState<IntentType>("CREATED");
@@ -137,6 +138,7 @@ function EditArtworkContent() {
           a.price_input_amount != null ? String(a.price_input_amount) : ""
         );
         setIsPricePublic(a.is_price_public ?? false);
+        setProvenanceVisible((a as { provenance_visible?: boolean | null }).provenance_visible !== false);
       }
     });
   }, [id]);
@@ -224,12 +226,12 @@ function EditArtworkContent() {
     };
 
     // When switching to onboarded artist, also update artworks.artist_id
-    // (claim update triggers DB sync, but explicit update ensures consistency)
     if (!useExternalArtist && selectedArtist && needsArtistLink) {
       payload.artist_id = selectedArtist.id;
     } else if (claimType === "CREATED") {
       payload.artist_id = userId;
     }
+    payload.provenance_visible = provenanceVisible;
 
     const { error: updateErr } = await updateArtwork(id, payload);
     if (updateErr) {
@@ -540,6 +542,18 @@ function EditArtworkContent() {
         <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
           <h2 className="mb-2 font-medium text-zinc-900">{t("artwork.provenanceTitle")}</h2>
           <p className="mb-4 text-sm text-zinc-600">{t("artwork.provenanceHint")}</p>
+          <div className="mb-4 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="provenanceVisible"
+              checked={provenanceVisible}
+              onChange={(e) => setProvenanceVisible(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="provenanceVisible" className="text-sm text-zinc-700">
+              {t("artwork.provenanceVisibleLabel")}
+            </label>
+          </div>
           <div className="space-y-4">
             <div>
               <label className="mb-2 block text-sm font-medium">{t("artwork.claimType")}</label>
