@@ -2,6 +2,18 @@
 
 Last updated: 2026-02-12
 
+## 2026-02-18 — Bugfix: 외부 작가 → 온보딩 작가 전환 시 artist_id 미반영
+
+- **Bug 1**: 외부 작가로 업로드된 작품이 온보딩 작가 피드에 자동 표시되지 않음
+- **Bug 2**: 편집에서 외부 작가 → 온보딩 작가로 변경 후 저장해도 artist_id가 lister로 되돌아감
+- **원인**: claim 업데이트 시 artworks.artist_id를 갱신하지 않음
+- **수정**:
+  - `p0_claims_sync_artwork_artist.sql`: claims INSERT/UPDATE 시 artist_profile_id → artworks.artist_id 자동 반영 트리거
+  - `UpdateArtworkPayload`에 `artist_id` 추가
+  - 편집 페이지: 외부→온보딩 전환 시 payload에 artist_id 포함
+- **Supabase SQL**: Supabase SQL Editor에서 `p0_claims_sync_artwork_artist.sql` 수동 실행 필요
+- Verified: `npm run build` 통과
+
 ## 2026-02-12 — P1: 온보딩/로그인 UX + 프로비넌스 표기 변경
 
 - **로그인**: "Don't have an account?" 뒤 줄바꿈 → 회원가입 링크 다음 줄로 표시

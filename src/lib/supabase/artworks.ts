@@ -696,6 +696,7 @@ export type UpdateArtworkPayload = Partial<{
   price_input_amount: number | null;
   price_input_currency: string | null;
   visibility: "draft" | "public";
+  artist_id: string | null;
 }>;
 
 export async function updateArtwork(

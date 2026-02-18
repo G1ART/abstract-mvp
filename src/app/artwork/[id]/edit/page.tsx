@@ -223,6 +223,14 @@ function EditArtworkContent() {
       price_input_currency: pricingMode === "fixed" ? priceCurrency : null,
     };
 
+    // When switching to onboarded artist, also update artworks.artist_id
+    // (claim update triggers DB sync, but explicit update ensures consistency)
+    if (!useExternalArtist && selectedArtist && needsArtistLink) {
+      payload.artist_id = selectedArtist.id;
+    } else if (claimType === "CREATED") {
+      payload.artist_id = userId;
+    }
+
     const { error: updateErr } = await updateArtwork(id, payload);
     if (updateErr) {
       setError(
