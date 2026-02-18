@@ -42,11 +42,22 @@ Last updated: 2026-02-18
 - **피드**: 최신 primary claim만 표기, 클레임 2개 이상이면 "+N more" 표시 (`FeedArtworkCard`)
 - **데이터**: claims select에 `created_at`, `status` 포함; `ArtworkClaim` 타입에 `status` 추가
 
+### F. Hotfix: RLS 무한 재귀 + ensure_my_profile 42804 (페이지 마비 해결)
+- **증상**: 피드/전체 페이지 마비, "infinite recursion detected in policy for relation artworks", 500 (artworks), 400 (ensure_my_profile).
+- **원인**:
+  - **500 / 42P17 / 무한 재귀**: artworks SELECT 정책이 claims를 참조하고, claims SELECT 정책이 artworks를 참조 → RLS 평가 시 순환.
+  - **400 / 42804**: `ensure_my_profile` 반환 타입과 `profiles.profile_completeness`(smallint) 불일치.
+- **수정**:
+  - `p0_claims_rls_break_recursion.sql`: `artwork_artist_id(work_id)` SECURITY DEFINER 함수 추가. claims 정책에서 `exists (select 1 from artworks ...)` 제거 후 `public.artwork_artist_id(work_id) = auth.uid()` 사용 → artworks 테이블을 정책 안에서 직접 읽지 않아 재귀 제거.
+  - `p0_ensure_my_profile_return_type.sql`: `ensure_my_profile`에서 `profile_completeness::int` 캐스팅 및 null-uid 시 빈 결과 반환 유지.
+
 ### 이번 릴리즈 Supabase SQL (수동 실행)
 Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 1. `supabase/migrations/p0_claims_sync_artwork_artist.sql`
 2. `supabase/migrations/p0_artworks_provenance_visible.sql`
 3. `supabase/migrations/p0_claims_status_request_confirm.sql`
+4. `supabase/migrations/p0_claims_rls_break_recursion.sql`  ← **페이지 마비 해결**
+5. `supabase/migrations/p0_ensure_my_profile_return_type.sql`  ← **400 ensure_my_profile 해결**
 
 ### 검증
 - `npm run build` 통과 후 배포
