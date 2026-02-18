@@ -2,7 +2,7 @@
 
 Last updated: 2026-02-18
 
-## 2026-02-18 — 이번 업데이트 전체 (Bugfix + 프로비넌스 네트워크/Claim I own/히스토리)
+## 2026-02-18 — 이번 업데이트 전체 (Bugfix + 프로비넌스 네트워크 + 요청·확정 클레임 + 단일 드롭다운 UI)
 
 ### A. Bugfix: 외부 작가 → 온보딩 작가 전환 시 artist_id 미반영
 - **현상**: (1) 외부 작가로 업로드된 작품이 온보딩 작가 피드에 자동으로 안 뜸 (2) 편집에서 온보딩 작가로 바꾼 뒤 저장해도 artist가 lister로 되돌아감
@@ -18,20 +18,50 @@ Last updated: 2026-02-18
 - **비공개**: `provenance_visible = false`이면 작가 또는 해당 작품 claim 당사자만 프로비넌스 노출 (`canViewProvenance`)
 - **구현**: `ArtworkProvenanceBlock`, `canViewProvenance`, `getProvenanceClaims`; ArtworkCard에 `viewerId` 전달 시 프로비넌스 표시
 
-### C. Claim I own + 프로비넌스 히스토리 (2)
-- **작품 상세**
-  - 작가 또는 기존 네트워크(claim 보유자)에게만 "Claim I own" 버튼 노출 → 클릭 시 OWNS 클레임 추가 후 작품 재로드
-  - 프로비넌스 블록(전체 리스트) + "View provenance history" 버튼으로 클레임 목록(날짜 포함) 토글
+### C. 클레임 요청·확정 모델 (Request → Artist Confirm/Reject)
+- **플로우**: 콜렉터/큐레이터/갤러리가 "확정 요청" 생성 → 작가가 승인(confirmed) 또는 거절(삭제). 프로비넌스에는 **confirmed** 클레임만 노출.
+- **DB**: `claims.status` — `'pending' | 'confirmed'`, default `'confirmed'`. 마이그레이션: `p0_claims_status_request_confirm.sql`
+  - RLS: 요청자(subject)만 insert/update/delete 본인 claim; 작가만 해당 작품의 pending claim 승인/거절.
+  - SELECT: 공개는 `visibility = 'public'` 이고 `status = 'confirmed'`(또는 null)인 경우만; 요청자·작가는 pending 포함 조회 가능.
+- **앱**: `createClaimRequest`, `confirmClaim`, `rejectClaim`, `listPendingClaimsForWork` (src/lib/provenance/rpc.ts). 프로비넌스/편집 권한은 `getConfirmedClaims` 기반(confirmed만).
+
+### D. 작품 상세 클레임 UI — 단일 트리거 + 드롭다운 (심플 인터페이스)
+- **트리거**: 버튼 하나 — "This artwork is…" / "이 작품은…". 클릭 시 드롭다운 열림, 바깥 클릭 시 닫힘.
+- **드롭다운 옵션** (선택 시 해당 타입으로 확정 요청 생성):
+  1. **owned by me** / 내가 소장 중입니다 (OWNS)
+  2. **curated by me** / 내가 큐레이팅 했습니다 (CURATED)
+  3. **exhibited by me** / 내 전시에 참여했습니다 (EXHIBITED)
+- **노출 규칙**:
+  - **소장(OWNS)**: 현재 로그인한 유저가 이미 이 작품에 OWNS 클레임을 보유한 경우에만 "owned by me" 옵션 **숨김**. 다른 계정이 볼 때는 "owned by me"가 보이므로 2·3차 소장자도 요청 가능.
+  - **큐레이팅/전시**: CURATED·EXHIBITED는 동일 유저가 여러 번 요청 가능(여러 전시·여러 큐레이션 기록). 옵션은 항상 표시.
+- **작가 전용**: 이 작품에 대한 "대기 중인 요청" 목록 + 각 요청에 **승인** / **거절** 버튼.
+- **프로비넌스 히스토리**: confirmed 클레임만 목록에 표시; 동일 큐레이터의 여러 CURATED/EXHIBITED는 각각 별도 행으로 표시(날짜로 구분).
+- **i18n**: `artwork.thisArtworkIs`, `artwork.ownedByMe`, `artwork.curatedByMe`, `artwork.exhibitedByMe` (en/ko).
+
+### E. 피드·데이터
 - **피드**: 최신 primary claim만 표기, 클레임 2개 이상이면 "+N more" 표시 (`FeedArtworkCard`)
-- **데이터**: claims select에 `created_at` 포함, `ArtworkClaim` 타입에 `created_at` 추가
+- **데이터**: claims select에 `created_at`, `status` 포함; `ArtworkClaim` 타입에 `status` 추가
 
 ### 이번 릴리즈 Supabase SQL (수동 실행)
-Supabase SQL Editor에서 아래 두 파일 순서대로 실행:
+Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 1. `supabase/migrations/p0_claims_sync_artwork_artist.sql`
 2. `supabase/migrations/p0_artworks_provenance_visible.sql`
+3. `supabase/migrations/p0_claims_status_request_confirm.sql`
 
 ### 검증
 - `npm run build` 통과 후 배포
+
+### 이번 변경 반영 후 Git 명령어 (로컬에서 실행)
+```bash
+# 원격 최신 반영
+git pull origin main
+
+# 변경 사항 스테이징·커밋·푸시 (HANDOFF + 이번 세션 변경이 이미 커밋되어 있다면 푸시만)
+git status
+git add docs/HANDOFF.md
+git commit -m "docs: HANDOFF 업데이트 — 요청·확정 클레임 + 이 작품은… 드롭다운 UI"
+git push origin main
+```
 
 ## 2026-02-12 — P1: 온보딩/로그인 UX + 프로비넌스 표기 변경
 

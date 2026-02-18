@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
@@ -58,6 +58,8 @@ function ArtworkDetailContent() {
   const [requestingClaim, setRequestingClaim] = useState<ClaimType | null>(null);
   const [pendingClaims, setPendingClaims] = useState<PendingClaimRow[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [claimDropdownOpen, setClaimDropdownOpen] = useState(false);
+  const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
   const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
@@ -141,6 +143,17 @@ function ArtworkDetailContent() {
     listPendingClaimsForWork(id).then(({ data }) => setPendingClaims(data ?? []));
   }, [id, isOwner]);
 
+  useEffect(() => {
+    if (!claimDropdownOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (claimDropdownRef.current && !claimDropdownRef.current.contains(e.target as Node)) {
+        setClaimDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [claimDropdownOpen]);
+
   async function handleRequestClaim(claimType: ClaimType) {
     if (!id || !artwork?.artist_id || !userId) return;
     setRequestingClaim(claimType);
@@ -150,6 +163,7 @@ function ArtworkDetailContent() {
       artistProfileId: artwork.artist_id,
     });
     setRequestingClaim(null);
+    setClaimDropdownOpen(false);
     if (error) {
       setError(error instanceof Error ? error.message : "Request failed");
       return;
@@ -315,32 +329,47 @@ function ArtworkDetailContent() {
               </div>
             )}
             {canRequestClaim && (
-              <div className="mt-4">
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="mt-4" ref={claimDropdownRef}>
+                <div className="relative inline-block">
                   <button
                     type="button"
-                    onClick={() => handleRequestClaim("OWNS")}
-                    disabled={requestingClaim !== null || hasOwnsClaim}
-                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                  >
-                    {requestingClaim === "OWNS" ? "..." : t("artwork.requestConfirmOwn")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRequestClaim("CURATED")}
+                    onClick={() => setClaimDropdownOpen((open) => !open)}
                     disabled={requestingClaim !== null}
-                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 inline-flex items-center gap-1"
                   >
-                    {requestingClaim === "CURATED" ? "..." : t("artwork.requestConfirmCurated")}
+                    {requestingClaim ? "..." : t("artwork.thisArtworkIs")}
+                    <span className="text-zinc-400" aria-hidden>{claimDropdownOpen ? " ▲" : " ▼"}</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleRequestClaim("EXHIBITED")}
-                    disabled={requestingClaim !== null}
-                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                  >
-                    {requestingClaim === "EXHIBITED" ? "..." : t("artwork.requestConfirmExhibited")}
-                  </button>
+                  {claimDropdownOpen && (
+                    <div className="absolute left-0 top-full z-10 mt-1 min-w-[12rem] rounded-md border border-zinc-200 bg-white py-1 shadow-lg">
+                      {!hasOwnsClaim && (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestClaim("OWNS")}
+                          disabled={requestingClaim !== null}
+                          className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                        >
+                          {t("artwork.ownedByMe")}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleRequestClaim("CURATED")}
+                        disabled={requestingClaim !== null}
+                        className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                      >
+                        {t("artwork.curatedByMe")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRequestClaim("EXHIBITED")}
+                        disabled={requestingClaim !== null}
+                        className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                      >
+                        {t("artwork.exhibitedByMe")}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 {hasPendingRequest && (
                   <p className="mt-2 text-sm text-zinc-500">{t("artwork.requestPending")}</p>
@@ -355,11 +384,11 @@ function ArtworkDetailContent() {
                     const name = row.profiles?.display_name?.trim() || row.profiles?.username || "—";
                     const typeLabel =
                       row.claim_type === "OWNS"
-                        ? t("artwork.requestConfirmOwn")
+                        ? t("artwork.ownedByMe")
                         : row.claim_type === "CURATED"
-                          ? t("artwork.requestConfirmCurated")
+                          ? t("artwork.curatedByMe")
                           : row.claim_type === "EXHIBITED"
-                            ? t("artwork.requestConfirmExhibited")
+                            ? t("artwork.exhibitedByMe")
                             : row.claim_type;
                     return (
                       <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
