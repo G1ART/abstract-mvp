@@ -13,8 +13,8 @@ import {
   deleteArtworkCascade,
   getArtworkById,
   getArtworkImageUrl,
-  getProvenanceClaims,
   getMyClaim,
+  getProvenanceClaims,
   recordArtworkView,
 } from "@/lib/supabase/artworks";
 import { isLiked } from "@/lib/supabase/likes";
@@ -22,7 +22,14 @@ import { isFollowing } from "@/lib/supabase/follows";
 import { FollowButton } from "@/components/FollowButton";
 import { LikeButton } from "@/components/LikeButton";
 import { ArtworkProvenanceBlock } from "@/components/ArtworkProvenanceBlock";
-import { createClaimForExistingArtist, claimTypeToByPhrase } from "@/lib/provenance/rpc";
+import {
+  claimTypeToByPhrase,
+  createClaimRequest,
+  confirmClaim,
+  rejectClaim,
+  listPendingClaimsForWork,
+  type PendingClaimRow,
+} from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
 import { useT } from "@/lib/i18n/useT";
 
@@ -47,15 +54,19 @@ function ArtworkDetailContent() {
   const [liked, setLiked] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [claimingOwn, setClaimingOwn] = useState(false);
   const [showProvenanceHistory, setShowProvenanceHistory] = useState(false);
+  const [requestingClaim, setRequestingClaim] = useState<ClaimType | null>(null);
+  const [pendingClaims, setPendingClaims] = useState<PendingClaimRow[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
   const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
   const canEdit = Boolean(artwork && userId && canEditArtwork(artwork, userId));
   const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
-  const isInNetwork = Boolean(artwork && userId && (artwork.artist_id === userId || myClaim));
-  const canShowClaimIOwn = Boolean(userId && artwork && isInNetwork && myClaim?.claim_type !== "OWNS");
+  const myClaimsByType = artwork?.claims?.filter((c) => c.subject_profile_id === userId) ?? [];
+  const hasPendingRequest = myClaim?.status === "pending";
+  const hasOwnsClaim = myClaimsByType.some((c) => c.claim_type === "OWNS");
+  const canRequestClaim = Boolean(userId && artwork && !isOwner);
   const provenanceClaims = artwork ? getProvenanceClaims(artwork) : [];
   const hasProvenanceHistory = provenanceClaims.length > 1;
   const showProvenance = artwork && canViewProvenance(artwork, userId);
@@ -71,25 +82,6 @@ function ArtworkDetailContent() {
       return;
     }
     router.push("/my");
-  }
-
-  async function handleClaimIOwn() {
-    if (!id || !userId || !artwork) return;
-    setClaimingOwn(true);
-    setError(null);
-    const { error: err } = await createClaimForExistingArtist({
-      artistProfileId: artwork.artist_id,
-      claimType: "OWNS",
-      workId: id,
-      visibility: "public",
-    });
-    setClaimingOwn(false);
-    if (err) {
-      setError((err as { message?: string })?.message ?? "Failed to add claim");
-      return;
-    }
-    const { data } = await getArtworkById(id);
-    setArtwork(data as ArtworkWithLikes | null);
   }
 
   const recordView = useCallback(async () => {
@@ -143,6 +135,54 @@ function ArtworkDetailContent() {
       recordView();
     }
   }, [artwork, userId, recordView]);
+
+  useEffect(() => {
+    if (!id || !isOwner) return;
+    listPendingClaimsForWork(id).then(({ data }) => setPendingClaims(data ?? []));
+  }, [id, isOwner]);
+
+  async function handleRequestClaim(claimType: ClaimType) {
+    if (!id || !artwork?.artist_id || !userId) return;
+    setRequestingClaim(claimType);
+    const { data, error } = await createClaimRequest({
+      workId: id,
+      claimType,
+      artistProfileId: artwork.artist_id,
+    });
+    setRequestingClaim(null);
+    if (error) {
+      setError(error instanceof Error ? error.message : "Request failed");
+      return;
+    }
+    const { data: refreshed } = await getArtworkById(id);
+    setArtwork(refreshed as ArtworkWithLikes | null);
+  }
+
+  async function handleConfirm(claimId: string) {
+    setConfirmingId(claimId);
+    const { error } = await confirmClaim(claimId);
+    setConfirmingId(null);
+    if (error) {
+      setError(error instanceof Error ? error.message : "Confirm failed");
+      return;
+    }
+    setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));
+    if (id) {
+      const { data } = await getArtworkById(id);
+      setArtwork(data as ArtworkWithLikes | null);
+    }
+  }
+
+  async function handleReject(claimId: string) {
+    setConfirmingId(claimId);
+    const { error } = await rejectClaim(claimId);
+    setConfirmingId(null);
+    if (error) {
+      setError(error instanceof Error ? error.message : "Reject failed");
+      return;
+    }
+    setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));
+  }
 
   if (loading) {
     return (
@@ -274,16 +314,78 @@ function ArtworkDetailContent() {
                 )}
               </div>
             )}
-            {canShowClaimIOwn && (
+            {canRequestClaim && (
               <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={handleClaimIOwn}
-                  disabled={claimingOwn}
-                  className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  {claimingOwn ? t("common.loading") : t("artwork.claimIOwn")}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRequestClaim("OWNS")}
+                    disabled={requestingClaim !== null || hasOwnsClaim}
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {requestingClaim === "OWNS" ? "..." : t("artwork.requestConfirmOwn")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestClaim("CURATED")}
+                    disabled={requestingClaim !== null}
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {requestingClaim === "CURATED" ? "..." : t("artwork.requestConfirmCurated")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRequestClaim("EXHIBITED")}
+                    disabled={requestingClaim !== null}
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {requestingClaim === "EXHIBITED" ? "..." : t("artwork.requestConfirmExhibited")}
+                  </button>
+                </div>
+                {hasPendingRequest && (
+                  <p className="mt-2 text-sm text-zinc-500">{t("artwork.requestPending")}</p>
+                )}
+              </div>
+            )}
+            {isOwner && pendingClaims.length > 0 && (
+              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                <p className="mb-2 text-sm font-medium text-zinc-700">{t("artwork.pendingRequests")}</p>
+                <ul className="space-y-2">
+                  {pendingClaims.map((row) => {
+                    const name = row.profiles?.display_name?.trim() || row.profiles?.username || "—";
+                    const typeLabel =
+                      row.claim_type === "OWNS"
+                        ? t("artwork.requestConfirmOwn")
+                        : row.claim_type === "CURATED"
+                          ? t("artwork.requestConfirmCurated")
+                          : row.claim_type === "EXHIBITED"
+                            ? t("artwork.requestConfirmExhibited")
+                            : row.claim_type;
+                    return (
+                      <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
+                        <span>{name} — {typeLabel}</span>
+                        <span className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleConfirm(row.id)}
+                            disabled={confirmingId !== null}
+                            className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                          >
+                            {t("artwork.approve")}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleReject(row.id)}
+                            disabled={confirmingId !== null}
+                            className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50"
+                          >
+                            {t("artwork.reject")}
+                          </button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
             {canEdit && (

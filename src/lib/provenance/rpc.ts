@@ -78,10 +78,73 @@ export async function updateClaim(
     artist_profile_id?: string | null;
     external_artist_id?: string | null;
     visibility?: string;
+    status?: string;
   }
 ): Promise<{ error: unknown }> {
   const { error } = await supabase.from("claims").update(payload).eq("id", claimId);
   return { error };
+}
+
+/** Request to confirm a relationship (e.g. "I own this" / "I curated this"). Creates pending claim; artist must confirm. */
+export async function createClaimRequest(args: {
+  workId: string;
+  claimType: ClaimType;
+  artistProfileId: string;
+}): Promise<{ data: { id: string } | null; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
+  const { data, error } = await supabase
+    .from("claims")
+    .insert({
+      subject_profile_id: session.user.id,
+      claim_type: args.claimType,
+      work_id: args.workId,
+      artist_profile_id: args.artistProfileId,
+      visibility: "public",
+      status: "pending",
+    })
+    .select("id")
+    .single();
+  if (error) return { data: null, error };
+  return { data: data as { id: string } | null, error: null };
+}
+
+/** Artist confirms a pending claim on their work. */
+export async function confirmClaim(claimId: string): Promise<{ error: unknown }> {
+  const { error } = await supabase.from("claims").update({ status: "confirmed" }).eq("id", claimId);
+  return { error };
+}
+
+/** Artist rejects (deletes) a pending claim on their work. */
+export async function rejectClaim(claimId: string): Promise<{ error: unknown }> {
+  const { error } = await supabase.from("claims").delete().eq("id", claimId);
+  return { error };
+}
+
+export type PendingClaimRow = {
+  id: string;
+  claim_type: string;
+  subject_profile_id: string;
+  work_id: string | null;
+  created_at: string | null;
+  profiles: { username: string | null; display_name: string | null } | null;
+};
+
+/** List pending claims for a work (artist only sees these). */
+export async function listPendingClaimsForWork(
+  workId: string
+): Promise<{ data: PendingClaimRow[]; error: unknown }> {
+  const { data, error } = await supabase
+    .from("claims")
+    .select(
+      "id, claim_type, subject_profile_id, work_id, created_at, profiles!subject_profile_id(username, display_name)"
+    )
+    .eq("work_id", workId)
+    .eq("status", "pending");
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as PendingClaimRow[], error: null };
 }
 
 export async function searchWorksForDedup(

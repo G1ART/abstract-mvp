@@ -72,9 +72,13 @@ export type ArtworkClaim = {
   artist_profile_id?: string | null;
   external_artist_id?: string | null;
   created_at?: string | null;
+  /** pending = request awaiting artist confirmation; confirmed = visible in provenance */
+  status?: string | null;
   profiles: { username: string | null; display_name: string | null } | null;
   external_artists?: { display_name: string; invite_email?: string | null } | null;
 };
+
+const CLAIM_STATUS_CONFIRMED = "confirmed";
 
 /** Base artwork shape returned from list/get with embedded images and profile. */
 export type Artwork = {
@@ -102,24 +106,32 @@ export type Artwork = {
   provenance_visible?: boolean | null;
 };
 
-/** User can edit artwork if they are artist or lister (has claim). */
+/** User can edit artwork if they are artist or have a confirmed claim. */
 export function canEditArtwork(artwork: Artwork, userId: string | null): boolean {
   if (!userId) return false;
   if (artwork.artist_id === userId) return true;
   const claims = artwork.claims ?? [];
-  return claims.some((c) => c.subject_profile_id === userId);
+  return claims.some(
+    (c) => c.subject_profile_id === userId && (c.status == null || c.status === CLAIM_STATUS_CONFIRMED)
+  );
 }
 
-/** Get the current user's claim (for editing provenance). */
+/** Get the current user's claim (any status; for edit flow or pending check). */
 export function getMyClaim(artwork: Artwork, userId: string | null): ArtworkClaim | null {
   if (!userId) return null;
   const claims = artwork.claims ?? [];
   return claims.find((c) => c.subject_profile_id === userId) ?? null;
 }
 
-/** Pick primary claim for display (CREATED first, else first). */
-export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
+/** Confirmed claims only (for provenance display). */
+function getConfirmedClaims(artwork: Artwork): ArtworkClaim[] {
   const claims = artwork.claims ?? [];
+  return claims.filter((c) => c.status == null || c.status === CLAIM_STATUS_CONFIRMED);
+}
+
+/** Pick primary claim for display (CREATED first, else first; confirmed only). */
+export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
+  const claims = getConfirmedClaims(artwork);
   const created = claims.find((c) => c.claim_type === "CREATED");
   return created ?? claims[0] ?? null;
 }
@@ -133,9 +145,9 @@ export function canViewProvenance(artwork: Artwork, userId: string | null): bool
   return claims.some((c) => c.subject_profile_id === userId);
 }
 
-/** Claims sorted for display: CREATED first, then by created_at (newest first). */
+/** Claims sorted for display: CREATED first, then by created_at (newest first); confirmed only. */
 export function getProvenanceClaims(artwork: Artwork): ArtworkClaim[] {
-  const claims = [...(artwork.claims ?? [])];
+  const claims = [...getConfirmedClaims(artwork)];
   const created = claims.find((c) => c.claim_type === "CREATED");
   const rest = claims.filter((c) => c.claim_type !== "CREATED");
   rest.sort((a, b) => {
@@ -176,7 +188,7 @@ const ARTWORK_SELECT = `
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count),
-  claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
+  claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
 `;
 
 export async function listPublicArtworks(
@@ -540,7 +552,7 @@ export async function getArtworkById(
       artwork_images(storage_path, sort_order),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
-      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
+      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
     `
     )
     .eq("id", id)
