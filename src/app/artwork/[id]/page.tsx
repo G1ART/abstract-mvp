@@ -38,6 +38,7 @@ import {
   getMyInquiryForArtwork,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
+import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
@@ -112,7 +113,8 @@ function ArtworkDetailContent() {
     setDeleting(false);
     setShowDeleteConfirm(false);
     if (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      logSupabaseError("deleteArtwork", err);
+      setError(formatSupabaseError(err, "Delete failed"));
       return;
     }
     router.push("/my");
@@ -207,7 +209,8 @@ function ArtworkDetailContent() {
     setShowInquiryForm(false);
     setPriceInquiryMessage("");
     if (error) {
-      setError(error instanceof Error ? error.message : "Failed to send inquiry");
+      logSupabaseError("createPriceInquiry", error);
+      setError(formatSupabaseError(error, "Failed to send inquiry"));
       return;
     }
     const { data: inquiry } = await getMyInquiryForArtwork(id);
@@ -225,7 +228,8 @@ function ArtworkDetailContent() {
     setRequestingClaim(null);
     setClaimDropdownOpen(false);
     if (error) {
-      setError(error instanceof Error ? error.message : "Request failed");
+      logSupabaseError("createClaimRequest", error);
+      setError(formatSupabaseError(error, "Request failed"));
       return;
     }
     const { data: refreshed } = await getArtworkById(id);
@@ -237,7 +241,8 @@ function ArtworkDetailContent() {
     const { error } = await confirmClaim(claimId);
     setConfirmingId(null);
     if (error) {
-      setError(error instanceof Error ? error.message : "Confirm failed");
+      logSupabaseError("confirmClaim", error);
+      setError(formatSupabaseError(error, "Confirm failed"));
       return;
     }
     setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));
@@ -252,7 +257,8 @@ function ArtworkDetailContent() {
     const { error } = await rejectClaim(claimId);
     setConfirmingId(null);
     if (error) {
-      setError(error instanceof Error ? error.message : "Reject failed");
+      logSupabaseError("rejectClaim", error);
+      setError(formatSupabaseError(error, "Reject failed"));
       return;
     }
     setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));
