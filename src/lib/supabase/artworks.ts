@@ -594,7 +594,7 @@ export async function deleteArtwork(artworkId: string) {
   return { error };
 }
 
-/** Delete artwork with cascade: storage files → artwork_images → artworks. Owner-only. */
+/** Delete artwork with cascade: storage files → artwork_images → artworks. Artist or lister (has claim). */
 export async function deleteArtworkCascade(
   artworkId: string
 ): Promise<{ error: unknown }> {
@@ -604,14 +604,26 @@ export async function deleteArtworkCascade(
   if (!session?.user?.id)
     return { error: new Error("Not authenticated") };
 
+  // Fetch artwork with claims to check delete permission (same logic as canDeleteArtwork)
+  // Use left join (claims, not claims!inner) so artworks without claims are still returned
   const { data: artwork } = await supabase
     .from("artworks")
-    .select("id, artist_id")
+    .select("id, artist_id, claims(id, subject_profile_id)")
     .eq("id", artworkId)
     .single();
 
-  if (!artwork || (artwork as { artist_id: string }).artist_id !== session.user.id)
+  if (!artwork) {
+    return { error: new Error("Artwork not found") };
+  }
+
+  const artworkRow = artwork as { id: string; artist_id: string | null; claims: Array<{ id: string; subject_profile_id: string }> | null };
+  const isArtist = artworkRow.artist_id === session.user.id;
+  const claims = artworkRow.claims ?? [];
+  const hasClaim = claims.some((c) => c.subject_profile_id === session.user.id);
+
+  if (!isArtist && !hasClaim) {
     return { error: new Error("Artwork not found or not owned by you") };
+  }
 
   const { data: images } = await supabase
     .from("artwork_images")
@@ -645,11 +657,11 @@ export async function deleteArtworkCascade(
     .eq("artwork_id", artworkId);
   if (imgErr) return { error: imgErr };
 
+  // Delete artwork (RLS allows if artist or has claim; no need to filter by artist_id here)
   const { error } = await supabase
     .from("artworks")
     .delete()
-    .eq("id", artworkId)
-    .eq("artist_id", session.user.id);
+    .eq("id", artworkId);
   return { error };
 }
 
