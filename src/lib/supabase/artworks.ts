@@ -960,7 +960,7 @@ export async function publishArtworksWithProvenance(
   const { createClaimForExistingArtist, createExternalArtistAndClaim } = await import("@/lib/provenance/rpc");
 
   const claimPayload: { period_status?: "past" | "current" | "future" } = {};
-  if (opts.intent === "INVENTORY" || opts.intent === "CURATED" || opts.intent === "EXHIBITED") {
+  if (opts.intent === "INVENTORY" || opts.intent === "CURATED") {
     if (opts.period_status != null) claimPayload.period_status = opts.period_status;
   }
   for (const id of ids) {

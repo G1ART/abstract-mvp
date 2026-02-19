@@ -225,7 +225,7 @@ export default function UploadPage() {
       // Create claim BEFORE attaching image (RLS: artwork_images INSERT needs claim for lister)
       const claimType: ClaimType = intent === "CREATED" ? "CREATED" : (intent ?? "OWNS");
       const claimPayload: { period_status?: "past" | "current" | "future" } = {};
-      if (claimType === "INVENTORY" || claimType === "CURATED" || claimType === "EXHIBITED") {
+      if (claimType === "INVENTORY" || claimType === "CURATED") {
         claimPayload.period_status = periodStatus;
       }
       if (isExternal) {
