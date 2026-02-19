@@ -1,6 +1,66 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-18
+Last updated: 2026-02-19
+
+## 2026-02-19 — 가격 문의·클레임 안정화 + 작품 삭제 CASCADE
+
+오늘 작업: 가격 문의·"이 작품은…" 클레임 기능이 400 에러를 내던 원인을 정리하고, DB·앱을 수정해 두 기능이 안정 동작하도록 반영함. 작품 삭제 시 클레임 때문에 실패하던 문제 해결.
+
+### A. 42703(undefined_column) 대응
+- **증상**: 가격 문의 POST·클레임 요청 POST 시 400, Supabase 로그에 `PostgREST; error=42703`. 화면에는 "Failed to send inquiry" / "Request failed"만 표시.
+- **원인**: 실제 DB에 일부 테이블/컬럼이 없거나 마이그레이션 적용 순서 차이로, 트리거·RLS가 참조하는 컬럼이 없을 때 42703 발생.
+- **수정**:
+  - **가격 문의용 artist 조회**: `price_inquiry_artist_id(artwork_id)`를 **claims만** 사용하도록 변경 (CREATED 클레임의 subject_profile_id). `artworks.artist_id`, `claims.status` 참조 제거 → 해당 컬럼이 없어도 42703 없음.
+  - **notifications 컬럼 보강**: `p0_notifications.sql`·`p0_repair_42703.sql`에서 `artwork_id`, `claim_id`, `payload`를 `add column if not exists`로 보장.
+  - **artworks.artist_id / claims.status**: `p0_claims_status_request_confirm.sql` 상단·repair에서 `add column if not exists`로 보장.
+  - **복구 스크립트**: `p0_repair_42703.sql` — 컬럼 보강 + `price_inquiry_artist_id`·`artwork_artist_id` 함수 재정의. 42703 발생 시 Supabase SQL Editor에서 한 번 실행.
+
+### B. RLS 무한 재귀 재발 방지
+- **증상**: 피드/작품 목록에서 "infinite recursion detected in policy for relation 'artworks'", GET /artworks 500.
+- **원인**: `p0_claims_status_request_confirm.sql`에서 claims 정책을 다시 만들 때 `exists (select 1 from artworks ...)`를 사용해, artworks SELECT → claims RLS → artworks 참조 → 재귀 발생.
+- **수정**: `p0_claims_status_request_confirm.sql`에서 claims 정책 전부 **`artwork_artist_id(work_id) = auth.uid()`**만 사용하도록 변경. 동일 파일 상단에 `artwork_artist_id` 함수 정의 포함. 정책이 artworks를 직접 읽지 않아 재귀 제거.
+
+### C. 에러 메시지 UI·콘솔 노출
+- **증상**: Supabase가 준 실제 에러 메시지가 아니라 "Failed to send inquiry" / "Request failed"만 보임.
+- **원인**: Supabase/PostgREST 에러가 `Error` 인스턴스가 아닌 `{ message, code }` 객체로 오는데, `error instanceof Error`만 체크해 fallback만 표시됨.
+- **수정**:
+  - `src/lib/supabase/errors.ts`: `formatSupabaseError(error, fallback)` — 객체·문자열·Error 모두에서 메시지 추출. `logSupabaseError(context, error)` — 브라우저 콘솔에 원본 에러 출력.
+  - 작품 상세 페이지: 가격 문의·클레임 요청/승인/거절/삭제 실패 시 위 유틸 사용 + 콘솔 로그. 서버가 준 메시지가 화면에 표시되도록 함.
+
+### D. 마이그레이션 idempotency(재실행 안전)
+- **정책**: `p0_price_inquiries.sql` — price_inquiries 정책 생성 전 `drop policy if exists` 4개 추가. `p0_claims_status_request_confirm.sql` — claims_artist_confirm, claims_artist_reject 생성 전 `drop policy if exists` 추가. 동일 스크립트 재실행 시 정책 중복 오류 방지.
+
+### E. 오늘 수정/추가된 파일 요약
+| 구분 | 파일 | 내용 |
+|------|------|------|
+| DB | `p0_price_inquiries.sql` | price_inquiry_artist_id를 claims만 사용, 정책 drop 후 생성 |
+| DB | `p0_claims_status_request_confirm.sql` | artwork_artist_id 정의, 정책에서 함수 사용, artist_id·정책 drop 보강 |
+| DB | `p0_notifications.sql` | notifications에 artwork_id, claim_id, payload add column if not exists |
+| DB | `p0_repair_42703.sql` | **신규** — 컬럼 보강 + artist resolver 함수 일괄 정리 (42703 시 1회 실행) |
+| DB | `p0_claims_work_id_cascade.sql` | **신규** — claims.work_id foreign key를 ON DELETE CASCADE로 변경 |
+| 앱 | `src/lib/supabase/errors.ts` | **신규** — formatSupabaseError, logSupabaseError |
+| 앱 | `src/app/artwork/[id]/page.tsx` | 에러 시 위 유틸 사용 및 콘솔 로그 |
+
+### F. Supabase SQL 실행 순서 (기존 + 보강)
+기존 순서대로 실행한 뒤, 필요 시 추가 마이그레이션 실행.
+
+1. ~ 7. (기존과 동일: p0_claims_sync_artwork_artist … p0_price_inquiries)
+8. **(선택)** `p0_repair_42703.sql` — 42703 또는 "column … does not exist" 발생 시 실행
+9. **`p0_claims_work_id_cascade.sql`** — 작품 삭제 시 클레임 때문에 실패할 때 실행 (한 번만)
+
+### G. 작품 삭제 CASCADE 수정
+- **증상**: 작품 삭제 시 "update or delete on table 'artworks' violates foreign key constraint 'claims_work_id_fkey' on table 'claims'" 에러. 사진은 삭제되지만 작품 정보(metadata)는 남아 "껍데기"처럼 피드에 표시됨.
+- **원인**: `claims.work_id`가 `artworks(id)`를 참조하는데 `ON DELETE CASCADE`가 없어, 작품 삭제 시 관련 클레임이 있으면 foreign key constraint 위반으로 삭제 실패.
+- **수정**: `p0_claims_work_id_cascade.sql` — `claims.work_id` foreign key를 `ON DELETE CASCADE`로 변경. 작품 삭제 시 관련 클레임도 함께 삭제됨.
+- **참고**: `price_inquiries.artwork_id`, `artwork_likes.artwork_id`는 이미 `ON DELETE CASCADE`. `notifications.artwork_id`는 `ON DELETE SET NULL` (알림은 남아도 됨).
+
+### H. 검증
+- 가격 문의: 가격 비공개 작품에서 "가격 문의하기" → 전송 성공, "작가가 여기에 답변할 예정입니다" 표시. 문의한 사용자만 해당 문의 상태 조회.
+- "이 작품은…" 클레임: 옵션 선택 시 확정 요청 생성 성공, 작가 쪽 대기 목록·승인/거절 동작.
+- 피드/작품 목록: infinite recursion·500 없이 로드.
+- 작품 삭제: 클레임이 있는 작품도 삭제 성공, 작품 정보와 관련 클레임 모두 제거됨.
+
+---
 
 ## 2026-02-18 — 이번 업데이트 전체 (Bugfix + 프로비넌스 네트워크 + 요청·확정 클레임 + 단일 드롭다운 UI)
 
