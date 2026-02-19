@@ -69,6 +69,7 @@ export default function BulkUploadPage() {
   const [useExternalArtist, setUseExternalArtist] = useState(false);
   const [externalArtistName, setExternalArtistName] = useState("");
   const [externalArtistEmail, setExternalArtistEmail] = useState("");
+  const [periodStatus, setPeriodStatus] = useState<"past" | "current" | "future">("current");
 
   const needsAttribution = intent !== null && intent !== "CREATED";
 
@@ -249,12 +250,16 @@ export default function BulkUploadPage() {
     setPublishing(true);
     try {
       if (intent && needsAttribution) {
-        const { error, inviteSent, inviteFailed } = await publishArtworksWithProvenance(ids, {
+        const opts: Parameters<typeof publishArtworksWithProvenance>[1] = {
           intent,
           artistProfileId: selectedArtist?.id ?? null,
           externalArtistDisplayName: useExternalArtist ? externalArtistName.trim() : null,
           externalArtistEmail: useExternalArtist ? externalArtistEmail.trim() || null : null,
-        });
+        };
+        if (intent === "INVENTORY" || intent === "CURATED") {
+          opts.period_status = periodStatus;
+        }
+        const { error, inviteSent, inviteFailed } = await publishArtworksWithProvenance(ids, opts);
         if (error) {
           setToast(error instanceof Error ? error.message : "Publish failed");
           setTimeout(() => setToast(null), 3000);
@@ -404,6 +409,21 @@ export default function BulkUploadPage() {
                   </ul>
                 )}
               </>
+            )}
+            {(intent === "INVENTORY" || intent === "CURATED") && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t("artwork.periodLabel")} *</label>
+                <select
+                  value={periodStatus}
+                  onChange={(e) => setPeriodStatus(e.target.value as "past" | "current" | "future")}
+                  required
+                  className="w-full max-w-md rounded border border-zinc-300 px-3 py-2 text-sm"
+                >
+                  <option value="past">{t("artwork.periodPast")}</option>
+                  <option value="current">{t("artwork.periodCurrent")}</option>
+                  <option value="future">{t("artwork.periodFuture")}</option>
+                </select>
+              </div>
             )}
             <div className="flex gap-3">
               <button

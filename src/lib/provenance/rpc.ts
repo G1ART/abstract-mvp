@@ -19,7 +19,7 @@ export type CreateExternalArtistAndClaimResult = {
 export async function createExternalArtistAndClaim(
   args: CreateExternalArtistAndClaimArgs
 ): Promise<{ data: CreateExternalArtistAndClaimResult | null; error: unknown }> {
-  const { data, error } = await supabase.rpc("create_external_artist_and_claim", {
+  const payload: Record<string, unknown> = {
     p_display_name: args.displayName,
     p_website: args.website ?? null,
     p_instagram: args.instagram ?? null,
@@ -28,7 +28,9 @@ export async function createExternalArtistAndClaim(
     p_work_id: args.workId ?? null,
     p_project_id: args.projectId ?? null,
     p_visibility: (args.visibility ?? "public") as Visibility,
-  });
+  };
+  if (args.period_status != null) payload.p_period_status = args.period_status;
+  const { data, error } = await supabase.rpc("create_external_artist_and_claim", payload);
   if (error) return { data: null, error };
   return { data: data as CreateExternalArtistAndClaimResult, error: null };
 }
@@ -40,13 +42,15 @@ export type CreateClaimForExistingArtistResult = {
 export async function createClaimForExistingArtist(
   args: CreateClaimForExistingArtistArgs
 ): Promise<{ data: CreateClaimForExistingArtistResult | null; error: unknown }> {
-  const { data, error } = await supabase.rpc("create_claim_for_existing_artist", {
+  const payload: Record<string, unknown> = {
     p_artist_profile_id: args.artistProfileId,
     p_claim_type: args.claimType,
     p_work_id: args.workId ?? null,
     p_project_id: args.projectId ?? null,
     p_visibility: (args.visibility ?? "public") as Visibility,
-  });
+  };
+  if (args.period_status != null) payload.p_period_status = args.period_status;
+  const { data, error } = await supabase.rpc("create_claim_for_existing_artist", payload);
   if (error) return { data: null, error };
   return { data: data as CreateClaimForExistingArtistResult, error: null };
 }

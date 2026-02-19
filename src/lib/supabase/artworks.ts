@@ -942,6 +942,8 @@ export type PublishWithProvenanceOptions = {
   artistProfileId?: string | null;
   externalArtistDisplayName?: string | null;
   externalArtistEmail?: string | null;
+  /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
+  period_status?: "past" | "current" | "future" | null;
 };
 
 export async function publishArtworksWithProvenance(
@@ -957,6 +959,10 @@ export async function publishArtworksWithProvenance(
 
   const { createClaimForExistingArtist, createExternalArtistAndClaim } = await import("@/lib/provenance/rpc");
 
+  const claimPayload: { period_status?: "past" | "current" | "future" } = {};
+  if (opts.intent === "INVENTORY" || opts.intent === "CURATED" || opts.intent === "EXHIBITED") {
+    if (opts.period_status != null) claimPayload.period_status = opts.period_status;
+  }
   for (const id of ids) {
     if (opts.intent === "CREATED") {
       const { error: claimErr } = await createClaimForExistingArtist({
@@ -973,6 +979,7 @@ export async function publishArtworksWithProvenance(
         claimType: opts.intent,
         workId: id,
         visibility: "public",
+        ...claimPayload,
       });
       if (claimErr) return { error: claimErr };
     } else if (opts.artistProfileId) {
@@ -981,6 +988,7 @@ export async function publishArtworksWithProvenance(
         claimType: opts.intent,
         workId: id,
         visibility: "public",
+        ...claimPayload,
       });
       if (claimErr) return { error: claimErr };
       const { error: upErr } = await supabase

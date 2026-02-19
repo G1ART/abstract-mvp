@@ -80,6 +80,7 @@ export default function UploadPage() {
   const [priceCurrency, setPriceCurrency] = useState("USD");
   const [priceAmount, setPriceAmount] = useState("");
   const [isPricePublic, setIsPricePublic] = useState(false);
+  const [periodStatus, setPeriodStatus] = useState<"past" | "current" | "future">("current");
 
   // Dedup
   const [similarWorks, setSimilarWorks] = useState<{ id: string; title: string | null }[]>([]);
@@ -223,6 +224,10 @@ export default function UploadPage() {
 
       // Create claim BEFORE attaching image (RLS: artwork_images INSERT needs claim for lister)
       const claimType: ClaimType = intent === "CREATED" ? "CREATED" : (intent ?? "OWNS");
+      const claimPayload: { period_status?: "past" | "current" | "future" } = {};
+      if (claimType === "INVENTORY" || claimType === "CURATED" || claimType === "EXHIBITED") {
+        claimPayload.period_status = periodStatus;
+      }
       if (isExternal) {
         const { error: claimErr } = await createExternalArtistAndClaim({
           displayName: externalArtistName.trim(),
@@ -230,6 +235,7 @@ export default function UploadPage() {
           claimType,
           workId: artworkId,
           visibility: "public",
+          ...claimPayload,
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
@@ -250,6 +256,7 @@ export default function UploadPage() {
           claimType,
           workId: artworkId,
           visibility: "public",
+          ...claimPayload,
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
@@ -529,6 +536,21 @@ export default function UploadPage() {
                 ))}
               </select>
             </div>
+            {(intent === "INVENTORY" || intent === "CURATED") && (
+              <div>
+                <label className="mb-1 block text-sm font-medium">{t("artwork.periodLabel")} *</label>
+                <select
+                  value={periodStatus}
+                  onChange={(e) => setPeriodStatus(e.target.value as "past" | "current" | "future")}
+                  required
+                  className="w-full rounded border border-zinc-300 px-3 py-2"
+                >
+                  <option value="past">{t("artwork.periodPast")}</option>
+                  <option value="current">{t("artwork.periodCurrent")}</option>
+                  <option value="future">{t("artwork.periodFuture")}</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-sm font-medium">Pricing mode *</label>
               <select

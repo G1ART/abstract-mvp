@@ -73,6 +73,8 @@ export type CreateExternalArtistAndClaimArgs = {
   workId?: string | null;
   projectId?: string | null;
   visibility?: Visibility;
+  /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
+  period_status?: "past" | "current" | "future" | null;
 };
 
 export type CreateClaimForExistingArtistArgs = {
@@ -81,6 +83,8 @@ export type CreateClaimForExistingArtistArgs = {
   workId?: string | null;
   projectId?: string | null;
   visibility?: Visibility;
+  /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
+  period_status?: "past" | "current" | "future" | null;
 };
 
 export type SearchWorksForDedupArgs = {
