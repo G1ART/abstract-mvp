@@ -25,6 +25,10 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
       return t("notifications.claimConfirmedText").replace("{name}", name).replace("{title}", title);
     case "claim_rejected":
       return t("notifications.claimRejectedText").replace("{name}", name).replace("{title}", title);
+    case "price_inquiry":
+      return t("notifications.priceInquiryText").replace("{name}", name).replace("{title}", title);
+    case "price_inquiry_reply":
+      return t("notifications.priceInquiryReplyText").replace("{name}", name).replace("{title}", title);
     default:
       return "";
   }

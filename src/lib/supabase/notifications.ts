@@ -5,7 +5,9 @@ export type NotificationType =
   | "follow"
   | "claim_request"
   | "claim_confirmed"
-  | "claim_rejected";
+  | "claim_rejected"
+  | "price_inquiry"
+  | "price_inquiry_reply";
 
 export type NotificationRow = {
   id: string;

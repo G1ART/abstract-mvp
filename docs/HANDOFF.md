@@ -64,6 +64,11 @@ Last updated: 2026-02-18
 - **DB**: `p0_notifications.sql` — `notifications` 테이블, RLS, 트리거(artwork_likes, follows, claims). 기존 테이블에 `read_at` 없을 수 있으므로 `add column if not exists read_at` 포함.
 - **앱**: `src/lib/supabase/notifications.ts` (getUnreadCount, listNotifications, markAllAsRead), `src/app/notifications/page.tsx`, i18n `notifications.*`.
 
+### I. 가격 문의 (Price inquiries)
+- **플로우**: "Price upon request" / 가격 비공개 작품에 대해 방문자가 **가격 문의** 가능 → 작가가 `/my/inquiries`에서 답변. 문의자·작가 모두 알림 수신.
+- **DB**: `p0_price_inquiries.sql` — `price_inquiries` 테이블(artwork_id, inquirer_id, message, artist_reply, replied_at), RLS(문의자 insert/본인 조회, 작가 해당 작품 조회·답변), `notifications` type check에 `price_inquiry` / `price_inquiry_reply` 추가, 트리거(문의 생성 → 작가 알림, 답변 → 문의자 알림).
+- **앱**: `src/lib/supabase/priceInquiries.ts` (create, listForArtist, getMyInquiryForArtwork, reply). 작품 상세: 가격 비공개 시 "Ask for price" 버튼·폼. `/my/inquiries`: 작가용 문의 목록·답변 UI. `/my`: "가격 문의" 카드 링크. 알림 페이지에 가격 문의/답변 문구·링크. i18n `priceInquiry.*`, `notifications.priceInquiryText` / `priceInquiryReplyText`.
+
 ### 이번 릴리즈 Supabase SQL (수동 실행)
 Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 1. `supabase/migrations/p0_claims_sync_artwork_artist.sql`
@@ -72,6 +77,7 @@ Supabase SQL Editor에서 아래 파일들을 **순서대로** 실행:
 4. `supabase/migrations/p0_claims_rls_break_recursion.sql`  ← **페이지 마비 해결**
 5. `supabase/migrations/p0_ensure_my_profile_return_type.sql`  ← **400 ensure_my_profile 해결**
 6. `supabase/migrations/p0_notifications.sql`  ← **알림(옵션 A)**
+7. `supabase/migrations/p0_price_inquiries.sql`  ← **가격 문의**
 
 ### 검증
 - `npm run build` 통과 후 배포

@@ -33,6 +33,11 @@ import {
   type PendingClaimRow,
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
+import {
+  createPriceInquiry,
+  getMyInquiryForArtwork,
+  type PriceInquiryRow,
+} from "@/lib/supabase/priceInquiries";
 import { useT } from "@/lib/i18n/useT";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
@@ -63,6 +68,11 @@ function ArtworkDetailContent() {
   const [claimDropdownOpen, setClaimDropdownOpen] = useState(false);
   const [fullSizeOpen, setFullSizeOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [myPriceInquiry, setMyPriceInquiry] = useState<PriceInquiryRow | null>(null);
+  const [priceInquiryLoading, setPriceInquiryLoading] = useState(false);
+  const [priceInquirySubmitting, setPriceInquirySubmitting] = useState(false);
+  const [priceInquiryMessage, setPriceInquiryMessage] = useState("");
+  const [showInquiryForm, setShowInquiryForm] = useState(false);
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -175,6 +185,34 @@ function ArtworkDetailContent() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [claimDropdownOpen]);
+
+  const showPriceInquiryBlock =
+    Boolean(userId && artwork && userId !== artwork.artist_id) &&
+    (artwork?.pricing_mode === "inquire" || artwork?.is_price_public === false);
+
+  useEffect(() => {
+    if (!id || !showPriceInquiryBlock) return;
+    setPriceInquiryLoading(true);
+    getMyInquiryForArtwork(id).then(({ data }) => {
+      setMyPriceInquiry(data ?? null);
+      setPriceInquiryLoading(false);
+    });
+  }, [id, showPriceInquiryBlock]);
+
+  async function handleAskPrice() {
+    if (!id || !artwork || priceInquirySubmitting) return;
+    setPriceInquirySubmitting(true);
+    const { data, error } = await createPriceInquiry(id, priceInquiryMessage || undefined);
+    setPriceInquirySubmitting(false);
+    setShowInquiryForm(false);
+    setPriceInquiryMessage("");
+    if (error) {
+      setError(error instanceof Error ? error.message : "Failed to send inquiry");
+      return;
+    }
+    const { data: inquiry } = await getMyInquiryForArtwork(id);
+    setMyPriceInquiry(inquiry ?? null);
+  }
 
   async function handleRequestClaim(claimType: ClaimType) {
     if (!id || !artwork?.artist_id || !userId) return;
@@ -309,6 +347,59 @@ function ArtworkDetailContent() {
             <p className="mt-2 text-sm text-zinc-600">
               {getPriceDisplay(artwork)}
             </p>
+            {showPriceInquiryBlock && (
+              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                {priceInquiryLoading ? (
+                  <p className="text-sm text-zinc-500">{t("common.loading")}</p>
+                ) : myPriceInquiry ? (
+                  <div className="text-sm text-zinc-700">
+                    {myPriceInquiry.artist_reply ? (
+                      <>
+                        <p className="font-medium text-zinc-800">{t("priceInquiry.replyFromArtist")}</p>
+                        <p className="mt-1 whitespace-pre-wrap">{myPriceInquiry.artist_reply}</p>
+                      </>
+                    ) : (
+                      <p className="text-zinc-600">{t("priceInquiry.sent")}</p>
+                    )}
+                  </div>
+                ) : showInquiryForm ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={priceInquiryMessage}
+                      onChange={(e) => setPriceInquiryMessage(e.target.value)}
+                      placeholder={t("priceInquiry.messagePlaceholder")}
+                      rows={2}
+                      className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAskPrice}
+                        disabled={priceInquirySubmitting}
+                        className="rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                      >
+                        {priceInquirySubmitting ? "..." : t("priceInquiry.submit")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowInquiryForm(false); setPriceInquiryMessage(""); }}
+                        className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-100"
+                      >
+                        {t("common.cancel")}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowInquiryForm(true)}
+                    className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                  >
+                    {t("priceInquiry.ask")}
+                  </button>
+                )}
+              </div>
+            )}
             <div className="mt-2">
               <LikeButton
                 artworkId={artwork.id}

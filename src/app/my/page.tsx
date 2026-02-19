@@ -289,8 +289,8 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* KPI row - Following / Followers / Posts */}
-        <div className="mb-8 grid grid-cols-3 gap-4">
+        {/* KPI row - Following / Followers / Posts / Price inquiries */}
+        <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
           <Link
             href="/my/following"
             className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
@@ -315,6 +315,13 @@ export default function MyPage() {
             </p>
             <p className="text-sm text-zinc-500">{t("my.kpi.posts")}</p>
           </div>
+          <Link
+            href="/my/inquiries"
+            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+          >
+            <p className="text-sm font-medium text-zinc-900">{t("priceInquiry.title")}</p>
+            <p className="text-xs text-zinc-500">{t("my.kpi.priceInquiries")}</p>
+          </Link>
         </div>
 
         {/* Profile views insights */}
