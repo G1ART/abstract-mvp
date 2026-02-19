@@ -422,9 +422,10 @@ export async function listPublicArtworksForProfile(
   return { data: merged.slice(0, limit), error: null };
 }
 
-/** Batch update artwork sort order for current user's artworks. */
+/** Batch update artwork sort order for current user's profile (profile-specific ordering). */
 export async function updateMyArtworkOrder(
-  orderedIds: string[]
+  orderedIds: string[],
+  profileId?: string
 ): Promise<{ error: unknown }> {
   const {
     data: { session },
@@ -433,21 +434,134 @@ export async function updateMyArtworkOrder(
     return { error: new Error("Not authenticated") };
   if (orderedIds.length === 0) return { error: null };
 
-  const items = orderedIds.map((id, idx) => ({ id, idx }));
-  const errors: unknown[] = [];
-  await runWithLimit(items, async ({ id, idx }) => {
-    const { error } = await supabase
-      .from("artworks")
-      .update({
-        artist_sort_order: idx,
-        artist_sort_updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
-      .eq("artist_id", session.user.id);
-    if (error) errors.push(error);
+  const targetProfileId = profileId ?? session.user.id;
+
+  // Verify user has permission for all artworks (either artist or has claim)
+  // Fetch artworks with claims to check permissions
+  const { data: artworks, error: fetchError } = await supabase
+    .from("artworks")
+    .select(`
+      id,
+      artist_id,
+      claims(id, subject_profile_id)
+    `)
+    .in("id", orderedIds);
+  
+  if (fetchError) return { error: fetchError };
+  if (!artworks || artworks.length !== orderedIds.length) {
+    return { error: new Error("Some artworks not found or access denied") };
+  }
+
+  // Check permissions: user must be artist or have a claim for each artwork
+  for (const artwork of artworks) {
+    const isArtist = artwork.artist_id === targetProfileId;
+    const claims = (artwork.claims ?? []) as Array<{ subject_profile_id: string }>;
+    const hasClaim = claims.some((c) => c.subject_profile_id === targetProfileId);
+    if (!isArtist && !hasClaim) {
+      return { error: new Error("Permission denied for some artworks") };
+    }
+  }
+
+  // Delete existing profile orders for these artworks
+  const { error: deleteError } = await supabase
+    .from("profile_artwork_orders")
+    .delete()
+    .eq("profile_id", targetProfileId)
+    .in("artwork_id", orderedIds);
+  if (deleteError) return { error: deleteError };
+
+  // Insert new profile-specific orders
+  const orders = orderedIds.map((id, idx) => ({
+    profile_id: targetProfileId,
+    artwork_id: id,
+    sort_order: idx,
+    updated_at: new Date().toISOString(),
+  }));
+
+  const { error: insertError } = await supabase
+    .from("profile_artwork_orders")
+    .insert(orders);
+
+  if (insertError) return { error: insertError };
+
+  // Also update artist_sort_order if user is the artist (for backward compatibility)
+  const artistArtworks = artworks.filter((a) => a.artist_id === targetProfileId);
+  if (artistArtworks.length > 0) {
+    const artistOrderedIds = orderedIds.filter((id) =>
+      artistArtworks.some((a) => a.id === id)
+    );
+    const artistItems = artistOrderedIds.map((id, idx) => ({ id, idx }));
+    const errors: unknown[] = [];
+    await runWithLimit(artistItems, async ({ id, idx }) => {
+      const { error } = await supabase
+        .from("artworks")
+        .update({
+          artist_sort_order: idx,
+          artist_sort_updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+        .eq("artist_id", targetProfileId);
+      if (error) errors.push(error);
+    });
+    if (errors.length > 0) return { error: errors[0] };
+  }
+
+  return { error: null };
+}
+
+/** Get profile-specific sort orders for artworks. Returns a map of artwork_id -> sort_order. */
+export async function getProfileArtworkOrders(
+  profileId: string,
+  artworkIds: string[]
+): Promise<{ data: Map<string, number>; error: unknown }> {
+  if (artworkIds.length === 0) return { data: new Map(), error: null };
+
+  const { data, error } = await supabase
+    .from("profile_artwork_orders")
+    .select("artwork_id, sort_order")
+    .eq("profile_id", profileId)
+    .in("artwork_id", artworkIds);
+
+  if (error) return { data: new Map(), error };
+
+  const orderMap = new Map<string, number>();
+  (data ?? []).forEach((row) => {
+    orderMap.set(row.artwork_id, row.sort_order);
   });
 
-  return { error: errors.length > 0 ? errors[0] : null };
+  return { data: orderMap, error: null };
+}
+
+/** Apply profile-specific ordering to artworks. Falls back to artist_sort_order if no profile order exists. */
+export function applyProfileOrdering(
+  artworks: ArtworkWithLikes[],
+  profileOrderMap: Map<string, number>
+): ArtworkWithLikes[] {
+  return [...artworks].sort((a, b) => {
+    const aProfileOrder = profileOrderMap.get(a.id);
+    const bProfileOrder = profileOrderMap.get(b.id);
+
+    // If both have profile orders, use them
+    if (aProfileOrder != null && bProfileOrder != null) {
+      return aProfileOrder - bProfileOrder;
+    }
+
+    // If only one has profile order, it comes first
+    if (aProfileOrder != null) return -1;
+    if (bProfileOrder != null) return 1;
+
+    // Fallback to artist_sort_order
+    const aArtistOrder = a.artist_sort_order ?? Infinity;
+    const bArtistOrder = b.artist_sort_order ?? Infinity;
+    if (aArtistOrder !== bArtistOrder) {
+      return aArtistOrder - bArtistOrder;
+    }
+
+    // Final fallback: created_at (newest first)
+    const aTime = new Date(a.created_at ?? 0).getTime();
+    const bTime = new Date(b.created_at ?? 0).getTime();
+    return bTime - aTime;
+  });
 }
 
 // MVP: KRW to USD rate - replace with real rate service later

@@ -7,6 +7,8 @@ import {
 import {
   listPublicArtworksByArtistId,
   listPublicArtworksListedByProfileId,
+  getProfileArtworkOrders,
+  applyProfileOrdering,
 } from "@/lib/supabase/artworks";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
@@ -79,15 +81,16 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       artworks.push(a);
     }
   }
-  artworks.sort(
-    (a, b) =>
-      new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-  );
+
+  // Apply profile-specific ordering
+  const artworkIds = artworks.map((a) => a.id);
+  const { data: profileOrderMap } = await getProfileArtworkOrders(p.id, artworkIds);
+  const orderedArtworks = applyProfileOrdering(artworks, profileOrderMap ?? new Map());
 
   return (
     <UserProfileContent
       profile={p}
-      artworks={artworks ?? []}
+      artworks={orderedArtworks ?? []}
       initialReorderMode={mode === "reorder"}
     />
   );

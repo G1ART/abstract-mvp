@@ -14,6 +14,8 @@ type Props = {
   className?: string;
   /** Prevent navigation (e.g. inside card click) */
   stopPropagation?: boolean;
+  /** Exclude this claim ID from display (e.g. if already shown as primary claim) */
+  excludeClaimId?: string | null;
 };
 
 function ClaimLine({ claim, stopPropagation }: { claim: ArtworkClaim; stopPropagation?: boolean }) {
@@ -46,10 +48,13 @@ export function ArtworkProvenanceBlock({
   variant = "compact",
   className = "",
   stopPropagation = false,
+  excludeClaimId = null,
 }: Props) {
   if (!canViewProvenance(artwork, viewerId)) return null;
   const claims = getProvenanceClaims(artwork);
-  const nonCreated = claims.filter((c) => c.claim_type !== "CREATED");
+  const nonCreated = claims.filter(
+    (c) => c.claim_type !== "CREATED" && c.id !== excludeClaimId
+  );
   if (nonCreated.length === 0) return null;
 
   if (variant === "compact") {

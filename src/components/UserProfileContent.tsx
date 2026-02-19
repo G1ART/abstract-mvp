@@ -18,7 +18,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
-import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder } from "@/lib/supabase/artworks";
+import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder, getProfileArtworkOrders, applyProfileOrdering } from "@/lib/supabase/artworks";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
@@ -124,16 +124,29 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
       const { active, over } = event;
       if (!over || active.id === over.id) return;
       setLocalArtworks((prev) => {
-        const createdIds = prev.filter((a) => a.artist_id === profile.id).map((a) => a.id);
-        const oldIndex = createdIds.indexOf(active.id as string);
-        const newIndex = createdIds.indexOf(over.id as string);
+        // Include artworks where user is artist OR has a claim
+        const reorderableIds = prev.filter((a) => {
+          const isArtist = a.artist_id === profile.id;
+          const hasClaim = (a.claims ?? []).some((c) => c.subject_profile_id === profile.id);
+          return isArtist || hasClaim;
+        }).map((a) => a.id);
+        const oldIndex = reorderableIds.indexOf(active.id as string);
+        const newIndex = reorderableIds.indexOf(over.id as string);
         if (oldIndex === -1 || newIndex === -1) return prev;
-        const created = prev.filter((a) => a.artist_id === profile.id);
-        const others = prev.filter((a) => a.artist_id !== profile.id);
-        const nextCreated = [...created];
-        const [removed] = nextCreated.splice(oldIndex, 1);
-        nextCreated.splice(newIndex, 0, removed);
-        return [...nextCreated, ...others];
+        const reorderable = prev.filter((a) => {
+          const isArtist = a.artist_id === profile.id;
+          const hasClaim = (a.claims ?? []).some((c) => c.subject_profile_id === profile.id);
+          return isArtist || hasClaim;
+        });
+        const others = prev.filter((a) => {
+          const isArtist = a.artist_id === profile.id;
+          const hasClaim = (a.claims ?? []).some((c) => c.subject_profile_id === profile.id);
+          return !isArtist && !hasClaim;
+        });
+        const nextReorderable = [...reorderable];
+        const [removed] = nextReorderable.splice(oldIndex, 1);
+        nextReorderable.splice(newIndex, 0, removed);
+        return [...nextReorderable, ...others];
       });
     },
     [profile.id]
@@ -143,9 +156,13 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
     setSaveError(null);
     setSaving(true);
     const orderedIds = localArtworks
-      .filter((a) => a.artist_id === profile.id)
+      .filter((a) => {
+        const isArtist = a.artist_id === profile.id;
+        const hasClaim = (a.claims ?? []).some((c) => c.subject_profile_id === profile.id);
+        return isArtist || hasClaim;
+      })
       .map((a) => a.id);
-    const { error } = await updateMyArtworkOrder(orderedIds);
+    const { error } = await updateMyArtworkOrder(orderedIds, profile.id);
     setSaving(false);
     if (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -188,8 +205,13 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
     () => filterArtworksByPersona(artworks, profile.id, personaTab),
     [artworks, profile.id, personaTab]
   );
+  // Reorderable artworks: user is artist OR has any claim (not just CREATED)
   const reorderableArtworks = useMemo(
-    () => filterArtworksByPersona(localArtworks, profile.id, "CREATED"),
+    () => localArtworks.filter((a) => {
+      const isArtist = a.artist_id === profile.id;
+      const hasClaim = (a.claims ?? []).some((c) => c.subject_profile_id === profile.id);
+      return isArtist || hasClaim;
+    }),
     [localArtworks, profile.id]
   );
 
@@ -297,7 +319,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
-        {isOwner && personaCounts.created > 0 && !reorderMode && (
+        {isOwner && reorderableArtworks.length > 0 && !reorderMode && (
           <button
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
@@ -306,7 +328,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
             {t("profile.reorder")}
           </button>
         )}
-        {reorderMode && isOwner && personaCounts.created > 0 && (
+        {reorderMode && isOwner && reorderableArtworks.length > 0 && (
           <div className="flex gap-2">
             <button
               type="button"

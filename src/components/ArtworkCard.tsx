@@ -150,6 +150,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
               viewerId={viewerId}
               variant="compact"
               stopPropagation
+              excludeClaimId={primaryClaim?.id ?? null}
             />
           )}
           <div className="mt-2 flex items-center justify-between gap-2">
