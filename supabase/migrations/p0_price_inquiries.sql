@@ -3,6 +3,25 @@
 alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
 alter table public.notifications add column if not exists payload jsonb default '{}';
 
+-- Safe resolver for artwork artist: avoids 42703 if artworks.artist_id is missing (e.g. old schema).
+create or replace function public.price_inquiry_artist_id(p_artwork_id uuid)
+returns uuid
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v uuid;
+begin
+  select a.artist_id into v from public.artworks a where a.id = p_artwork_id limit 1;
+  return v;
+exception
+  when sqlstate '42703' then  -- undefined_column
+    return null;
+end;
+$$;
+
 create table if not exists public.price_inquiries (
   id uuid primary key default gen_random_uuid(),
   artwork_id uuid not null references public.artworks(id) on delete cascade,
@@ -34,29 +53,15 @@ create policy price_inquiries_select_own on public.price_inquiries
   using (inquirer_id = auth.uid());
 
 -- Artist (artwork owner): select inquiries for own artworks; update (reply) for own artworks
+-- Use price_inquiry_artist_id() to avoid 42703 when artworks.artist_id is missing.
 create policy price_inquiries_select_artist on public.price_inquiries
   for select to authenticated
-  using (
-    exists (
-      select 1 from public.artworks a
-      where a.id = price_inquiries.artwork_id and a.artist_id = auth.uid()
-    )
-  );
+  using (public.price_inquiry_artist_id(artwork_id) = auth.uid());
 
 create policy price_inquiries_update_artist on public.price_inquiries
   for update to authenticated
-  using (
-    exists (
-      select 1 from public.artworks a
-      where a.id = price_inquiries.artwork_id and a.artist_id = auth.uid()
-    )
-  )
-  with check (
-    exists (
-      select 1 from public.artworks a
-      where a.id = price_inquiries.artwork_id and a.artist_id = auth.uid()
-    )
-  );
+  using (public.price_inquiry_artist_id(artwork_id) = auth.uid())
+  with check (public.price_inquiry_artist_id(artwork_id) = auth.uid());
 
 grant select, insert on public.price_inquiries to authenticated;
 grant update on public.price_inquiries to authenticated;
@@ -75,7 +80,7 @@ alter table public.notifications add constraint notifications_type_check check (
   )
 );
 
--- Notify artist when someone sends a price inquiry
+-- Notify artist when someone sends a price inquiry (uses safe artist resolver)
 create or replace function public.notify_on_price_inquiry()
 returns trigger
 language plpgsql
@@ -85,7 +90,7 @@ as $$
 declare
   v_artist_id uuid;
 begin
-  select artist_id into v_artist_id from public.artworks where id = new.artwork_id;
+  v_artist_id := public.price_inquiry_artist_id(new.artwork_id);
   if v_artist_id is null or v_artist_id = new.inquirer_id then
     return new;
   end if;
@@ -100,7 +105,7 @@ create trigger on_price_inquiry_notify
   after insert on public.price_inquiries
   for each row execute function public.notify_on_price_inquiry();
 
--- Notify inquirer when artist replies
+-- Notify inquirer when artist replies (uses safe artist resolver)
 create or replace function public.notify_on_price_inquiry_reply()
 returns trigger
 language plpgsql
@@ -112,9 +117,7 @@ begin
     return new;
   end if;
   insert into public.notifications (user_id, type, actor_id, artwork_id, payload)
-  values (new.inquirer_id, 'price_inquiry_reply', (
-    select artist_id from public.artworks where id = new.artwork_id limit 1
-  ), new.artwork_id, jsonb_build_object('inquiry_id', new.id));
+  values (new.inquirer_id, 'price_inquiry_reply', public.price_inquiry_artist_id(new.artwork_id), new.artwork_id, jsonb_build_object('inquiry_id', new.id));
   return new;
 end;
 $$;
