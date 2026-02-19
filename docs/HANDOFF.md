@@ -2,6 +2,63 @@
 
 Last updated: 2026-02-19
 
+## 2026-02-19 — 클레임 기간(period) 기능 + 가격 문의 알림 수정 + 업로드 period 입력
+
+오늘 작업: 클레임에 과거/현재/미래 기간 구분 추가, 작가가 클레임 확인 시 기간 수정 가능하도록 UI 반영. 가격 문의 알림이 일부 작가에게 가지 않던 문제 수정. 업로드 시 갤러리/큐레이터가 period_status 입력 가능하도록 추가.
+
+### A. 클레임 기간(period_status) 기능 완성
+- **DB**: `claims` 테이블에 `period_status` (past/current/future), `start_date`, `end_date` 컬럼 추가. `p0_claims_period_and_price_inquiry_delegates.sql`에서 기존 confirmed INVENTORY/CURATED/EXHIBITED는 `period_status = 'current'`로 backfill.
+- **클레임 요청 UI**: 작품 상세에서 "curated by me" / "exhibited by me" 선택 시 **기간 선택**(과거 종료 / 현재 진행 / 미래 예정) 필드 표시. 요청 시 `createClaimRequest`에 `period_status` 전달.
+- **클레임 확인 UI**: 작가가 pending 클레임 승인 시, CURATED/EXHIBITED는 **기간 수정 폼** 표시(기본값: 요청자가 제안한 period 또는 current). "기간 확정" 클릭 시 `confirmClaim(claimId, { period_status })` 호출. OWNS는 기간 없이 바로 승인.
+- **RPC**: `createClaimRequest`, `confirmClaim`에 `period_status` 옵션 파라미터 추가. `PendingClaimRow` 타입에 `period_status`, `start_date`, `end_date` 필드 추가.
+- **i18n**: `artwork.periodPast`, `artwork.periodCurrent`, `artwork.periodFuture`, `artwork.periodLabel`, `artwork.sendRequest`, `artwork.confirmWithPeriod` 추가(영/한).
+
+### B. 가격 문의 알림 미수신 문제 수정
+- **증상**: 일부 아티스트가 작품에 대한 가격 문의 알림을 전혀 받지 못함.
+- **원인**: `price_inquiry_artist_id(artwork_id)`가 **CREATED 클레임의 subject_profile_id만** 반환. CREATED 클레임이 없는 작품(비공개/초안, 백필 누락, 레거시 데이터)은 `NULL` 반환 → 수신자 목록에서 제외되어 알림이 생성되지 않음.
+- **수정**: `p0_price_inquiry_artist_id_fallback.sql` — `price_inquiry_artist_id` 함수를 **CREATED 클레임 우선, 없으면 `artworks.artist_id`로 fallback**하도록 변경. CREATED가 없어도 `artist_id`가 있으면 알림 수신 가능.
+- **영향**: `can_reply_to_price_inquiry`, `can_select_price_inquiry`, `get_price_inquiry_recipient_ids` 모두 `price_inquiry_artist_id`를 사용하므로, fallback 적용 시 자동으로 `artist_id` 사용자도 답변·문의 조회·알림 수신 가능. CREATED와 `artist_id` 불일치 시 CREATED 우선(coalesce).
+
+### C. 업로드 시 period_status 입력 기능 추가
+- **업로드 플로우**: 갤러리/큐레이터가 작품 업로드 시 INVENTORY/CURATED 선택하면 **기간 선택 필드** 표시(과거/현재/미래). 기본값은 "현재 진행".
+- **벌크 업로드**: 동일하게 period_status 선택 UI 추가. `publishArtworksWithProvenance` 호출 시 period_status 전달.
+- **RPC 수정**: `create_external_artist_and_claim`, `create_claim_for_existing_artist`에 `p_period_status` 파라미터 추가. `p0_upload_claim_period_status.sql` 마이그레이션.
+- **타입**: `CreateExternalArtistAndClaimArgs`, `CreateClaimForExistingArtistArgs`에 `period_status?: "past" | "current" | "future" | null` 추가.
+
+### D. 타입 에러 픽스
+- **증상**: 배포 빌드 실패 — `claimType === "EXHIBITED"` 비교에서 타입 오류(업로드 IntentType에 EXHIBITED 없음).
+- **수정**: 업로드/벌크 업로드 페이지에서 `claimType === "INVENTORY" || claimType === "CURATED"`만 체크하도록 변경. EXHIBITED는 작품 상세에서만 사용(요청 플로우).
+
+### E. 오늘 수정/추가된 파일 요약
+| 구분 | 파일 | 내용 |
+|------|------|------|
+| DB | `p0_claims_period_and_price_inquiry_delegates.sql` | period_status 컬럼 추가, delegate 알림 로직, RLS 업데이트 |
+| DB | `p0_price_inquiry_artist_id_fallback.sql` | **신규** — price_inquiry_artist_id에 artworks.artist_id fallback |
+| DB | `p0_upload_claim_period_status.sql` | **신규** — 업로드 RPC에 period_status 파라미터 추가 |
+| 앱 | `src/lib/provenance/rpc.ts` | createClaimRequest/confirmClaim에 period_status 옵션, PendingClaimRow에 period 필드 |
+| 앱 | `src/app/artwork/[id]/page.tsx` | 클레임 요청/확인 UI에 period_status 선택 폼 추가 |
+| 앱 | `src/app/upload/page.tsx` | 업로드 시 INVENTORY/CURATED 선택하면 period_status 입력 필드 |
+| 앱 | `src/app/upload/bulk/page.tsx` | 벌크 업로드에도 period_status 선택 UI 추가 |
+| 앱 | `src/lib/supabase/artworks.ts` | publishArtworksWithProvenance에 period_status 옵션 추가 |
+| 앱 | `src/lib/provenance/types.ts` | CreateExternalArtistAndClaimArgs, CreateClaimForExistingArtistArgs에 period_status 추가 |
+| 앱 | `src/lib/i18n/messages.ts` | period 관련 i18n 메시지 추가 |
+| 문서 | `docs/PRICE_INQUIRY_NOTIFICATION_ANALYSIS.md` | **신규** — 가격 문의 알림 미수신 원인 분석 문서 |
+
+### F. Supabase SQL 실행 순서 (기존 + 추가)
+기존 순서대로 실행한 뒤, 필요 시 추가 마이그레이션 실행.
+
+1. ~ 9. (기존과 동일)
+10. **`p0_price_inquiry_artist_id_fallback.sql`** — 가격 문의 알림이 일부 작가에게 가지 않을 때 실행
+11. **`p0_upload_claim_period_status.sql`** — 업로드 시 period_status 입력 기능 활성화
+
+### G. 검증
+- 클레임 요청: CURATED/EXHIBITED 선택 시 기간 선택 필드 표시, 요청 생성 성공.
+- 클레임 확인: 작가가 pending CURATED/EXHIBITED 승인 시 기간 수정 폼 표시, period_status 저장 확인.
+- 가격 문의 알림: CREATED 클레임 없는 작품도 `artist_id` 기반으로 알림 수신 확인.
+- 업로드: 갤러리/큐레이터가 작품 업로드 시 period_status 입력 및 클레임 생성 확인.
+
+---
+
 ## 2026-02-19 — 가격 문의·클레임 안정화 + 작품 삭제 CASCADE
 
 오늘 작업: 가격 문의·"이 작품은…" 클레임 기능이 400 에러를 내던 원인을 정리하고, DB·앱을 수정해 두 기능이 안정 동작하도록 반영함. 작품 삭제 시 클레임 때문에 실패하던 문제 해결.

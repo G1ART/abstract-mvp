@@ -143,6 +143,20 @@ export async function getMyInquiryForArtwork(artworkId: string): Promise<{ data:
   return { data: data ? normalizeInquiry(data as Record<string, unknown>) : null, error: null };
 }
 
+/** Resend price_inquiry notification to artist/delegates for own unanswered inquiry (e.g. pre-patch inquiry that never notified). */
+export async function resendPriceInquiryNotification(inquiryId: string): Promise<{ data: number; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: 0, error: new Error("Not authenticated") };
+
+  const { data, error } = await supabase.rpc("resend_price_inquiry_notification", {
+    p_inquiry_id: inquiryId,
+  });
+  if (error) return { data: 0, error };
+  return { data: typeof data === "number" ? data : 0, error: null };
+}
+
 /** Artist or delegate replies to an inquiry (first reply wins). */
 export async function replyToPriceInquiry(inquiryId: string, reply: string): Promise<{ error: unknown }> {
   const {

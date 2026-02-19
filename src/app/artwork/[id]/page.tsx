@@ -38,6 +38,7 @@ import {
   getMyInquiryForArtwork,
   listPriceInquiriesForArtwork,
   replyToPriceInquiry,
+  resendPriceInquiryNotification,
   canReplyToPriceInquiry,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
@@ -60,6 +61,7 @@ function ArtworkDetailContent() {
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [following, setFollowing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [liked, setLiked] = useState(false);
@@ -87,6 +89,7 @@ function ArtworkDetailContent() {
   const [artistInquiriesLoading, setArtistInquiriesLoading] = useState(false);
   const [canReplyToInquiriesFromBackend, setCanReplyToInquiriesFromBackend] = useState<boolean | null>(null);
   const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
+  const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -254,6 +257,22 @@ function ArtworkDetailContent() {
     }
     const { data: inquiry } = await getMyInquiryForArtwork(id);
     setMyPriceInquiry(inquiry ?? null);
+  }
+
+  async function handleResendNotification(inquiryId: string) {
+    setResendingNotificationInquiryId(inquiryId);
+    const { data, error } = await resendPriceInquiryNotification(inquiryId);
+    setResendingNotificationInquiryId(null);
+    if (error) {
+      logSupabaseError("resendPriceInquiryNotification", error);
+      setError(formatSupabaseError(error, t("priceInquiry.resendFailed")));
+      return;
+    }
+    if (data > 0) {
+      setError(null);
+      setSuccessMessage(t("priceInquiry.resendSuccess"));
+      setTimeout(() => setSuccessMessage(null), 4000);
+    }
   }
 
   async function handleArtistReply(inquiryId: string) {
@@ -458,7 +477,18 @@ function ArtworkDetailContent() {
                         <p className="mt-1 whitespace-pre-wrap">{myPriceInquiry.artist_reply}</p>
                       </>
                     ) : (
-                      <p className="text-zinc-600">{t("priceInquiry.sent")}</p>
+                      <>
+                        <p className="text-zinc-600">{t("priceInquiry.sent")}</p>
+                        <button
+                          type="button"
+                          onClick={() => handleResendNotification(myPriceInquiry.id)}
+                          disabled={resendingNotificationInquiryId === myPriceInquiry.id}
+                          className="mt-2 text-sm font-medium text-zinc-600 underline hover:text-zinc-800 disabled:opacity-50"
+                        >
+                          {resendingNotificationInquiryId === myPriceInquiry.id ? "..." : t("priceInquiry.resendNotification")}
+                        </button>
+                        {successMessage && <p className="mt-1 text-sm text-green-600">{successMessage}</p>}
+                      </>
                     )}
                   </div>
                 ) : showInquiryForm ? (
