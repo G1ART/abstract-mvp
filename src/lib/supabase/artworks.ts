@@ -604,24 +604,14 @@ export async function deleteArtworkCascade(
   if (!session?.user?.id)
     return { error: new Error("Not authenticated") };
 
-  // Fetch artwork with claims to check delete permission (same logic as canDeleteArtwork)
-  // Use left join (claims, not claims!inner) so artworks without claims are still returned
-  const { data: artwork } = await supabase
-    .from("artworks")
-    .select("id, artist_id, claims(id, subject_profile_id)")
-    .eq("id", artworkId)
-    .single();
-
-  if (!artwork) {
+  // Use getArtworkById to get full artwork with claims (respects RLS properly)
+  // Then use canDeleteArtwork to check permission (same logic used in UI)
+  const { data: artwork, error: fetchError } = await getArtworkById(artworkId);
+  if (fetchError || !artwork) {
     return { error: new Error("Artwork not found") };
   }
 
-  const artworkRow = artwork as { id: string; artist_id: string | null; claims: Array<{ id: string; subject_profile_id: string }> | null };
-  const isArtist = artworkRow.artist_id === session.user.id;
-  const claims = artworkRow.claims ?? [];
-  const hasClaim = claims.some((c) => c.subject_profile_id === session.user.id);
-
-  if (!isArtist && !hasClaim) {
+  if (!canDeleteArtwork(artwork, session.user.id)) {
     return { error: new Error("Artwork not found or not owned by you") };
   }
 
