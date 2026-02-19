@@ -143,7 +143,7 @@ export async function getMyInquiryForArtwork(artworkId: string): Promise<{ data:
   return { data: data ? normalizeInquiry(data as Record<string, unknown>) : null, error: null };
 }
 
-/** Artist replies to an inquiry. */
+/** Artist or delegate replies to an inquiry (first reply wins). */
 export async function replyToPriceInquiry(inquiryId: string, reply: string): Promise<{ error: unknown }> {
   const {
     data: { session },
@@ -155,6 +155,7 @@ export async function replyToPriceInquiry(inquiryId: string, reply: string): Pro
     .update({
       artist_reply: reply.trim() || null,
       replied_at: new Date().toISOString(),
+      replied_by_id: session.user.id,
     })
     .eq("id", inquiryId);
 

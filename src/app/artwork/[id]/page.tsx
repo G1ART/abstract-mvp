@@ -67,8 +67,14 @@ function ArtworkDetailContent() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showProvenanceHistory, setShowProvenanceHistory] = useState(false);
   const [requestingClaim, setRequestingClaim] = useState<ClaimType | null>(null);
+  /** When set, user is choosing period before sending CURATED/EXHIBITED request. */
+  const [claimTypeToRequest, setClaimTypeToRequest] = useState<ClaimType | null>(null);
+  const [requestPeriodStatus, setRequestPeriodStatus] = useState<"past" | "current" | "future">("current");
   const [pendingClaims, setPendingClaims] = useState<PendingClaimRow[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  /** When set, artist is editing period before confirming a CURATED/EXHIBITED claim. */
+  const [confirmingClaimId, setConfirmingClaimId] = useState<string | null>(null);
+  const [confirmPeriodStatus, setConfirmPeriodStatus] = useState<"past" | "current" | "future">("current");
   const [claimDropdownOpen, setClaimDropdownOpen] = useState(false);
   const [fullSizeOpen, setFullSizeOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -270,15 +276,33 @@ function ArtworkDetailContent() {
     setArtistInquiries(data ?? []);
   }
 
-  async function handleRequestClaim(claimType: ClaimType) {
+  /** One-click for OWNS; for CURATED/EXHIBITED we show period picker (claimTypeToRequest) first. */
+  function handleRequestClaimClick(claimType: ClaimType) {
+    if (claimType === "OWNS") {
+      handleRequestClaim(claimType);
+      return;
+    }
+    if (claimType === "CURATED" || claimType === "EXHIBITED") {
+      setClaimTypeToRequest(claimType);
+      setRequestPeriodStatus("current");
+      setClaimDropdownOpen(false);
+    }
+  }
+
+  async function handleRequestClaim(claimType: ClaimType, periodStatus?: "past" | "current" | "future") {
     if (!id || !artwork?.artist_id || !userId) return;
     setRequestingClaim(claimType);
-    const { data, error } = await createClaimRequest({
+    const payload: Parameters<typeof createClaimRequest>[0] = {
       workId: id,
       claimType,
       artistProfileId: artwork.artist_id,
-    });
+    };
+    if (claimType === "CURATED" || claimType === "EXHIBITED") {
+      payload.period_status = periodStatus ?? "current";
+    }
+    const { data, error } = await createClaimRequest(payload);
     setRequestingClaim(null);
+    setClaimTypeToRequest(null);
     setClaimDropdownOpen(false);
     if (error) {
       logSupabaseError("createClaimRequest", error);
@@ -289,10 +313,14 @@ function ArtworkDetailContent() {
     setArtwork(refreshed as ArtworkWithLikes | null);
   }
 
-  async function handleConfirm(claimId: string) {
+  async function handleConfirm(
+    claimId: string,
+    payload?: { period_status?: "past" | "current" | "future"; start_date?: string | null; end_date?: string | null }
+  ) {
     setConfirmingId(claimId);
-    const { error } = await confirmClaim(claimId);
+    const { error } = await confirmClaim(claimId, payload);
     setConfirmingId(null);
+    setConfirmingClaimId(null);
     if (error) {
       logSupabaseError("confirmClaim", error);
       setError(formatSupabaseError(error, "Confirm failed"));
@@ -302,6 +330,18 @@ function ArtworkDetailContent() {
     if (id) {
       const { data } = await getArtworkById(id);
       setArtwork(data as ArtworkWithLikes | null);
+    }
+  }
+
+  /** Open period form for CURATED/EXHIBITED; for OWNS confirm immediately. */
+  function handleApproveClick(row: PendingClaimRow) {
+    if (row.claim_type === "OWNS") {
+      handleConfirm(row.id);
+      return;
+    }
+    if (row.claim_type === "CURATED" || row.claim_type === "EXHIBITED") {
+      setConfirmingClaimId(row.id);
+      setConfirmPeriodStatus((row.period_status ?? "current") as "past" | "current" | "future");
     }
   }
 
@@ -598,7 +638,7 @@ function ArtworkDetailContent() {
                       {!hasOwnsClaim && (
                         <button
                           type="button"
-                          onClick={() => handleRequestClaim("OWNS")}
+                          onClick={() => handleRequestClaimClick("OWNS")}
                           disabled={requestingClaim !== null}
                           className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                         >
@@ -607,7 +647,7 @@ function ArtworkDetailContent() {
                       )}
                       <button
                         type="button"
-                        onClick={() => handleRequestClaim("CURATED")}
+                        onClick={() => handleRequestClaimClick("CURATED")}
                         disabled={requestingClaim !== null}
                         className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                       >
@@ -615,7 +655,7 @@ function ArtworkDetailContent() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleRequestClaim("EXHIBITED")}
+                        onClick={() => handleRequestClaimClick("EXHIBITED")}
                         disabled={requestingClaim !== null}
                         className="w-full px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
                       >
@@ -624,6 +664,37 @@ function ArtworkDetailContent() {
                     </div>
                   )}
                 </div>
+                {claimTypeToRequest && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50/50 px-3 py-2">
+                    <label className="text-sm text-zinc-600">
+                      {t("artwork.periodLabel")}:
+                      <select
+                        value={requestPeriodStatus}
+                        onChange={(e) => setRequestPeriodStatus(e.target.value as "past" | "current" | "future")}
+                        className="ml-1 rounded border border-zinc-300 bg-white px-2 py-1 text-sm"
+                      >
+                        <option value="past">{t("artwork.periodPast")}</option>
+                        <option value="current">{t("artwork.periodCurrent")}</option>
+                        <option value="future">{t("artwork.periodFuture")}</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleRequestClaim(claimTypeToRequest, requestPeriodStatus)}
+                      disabled={requestingClaim !== null}
+                      className="rounded bg-zinc-800 px-2 py-1 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                    >
+                      {t("artwork.sendRequest")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setClaimTypeToRequest(null)}
+                      className="rounded border border-zinc-300 px-2 py-1 text-sm hover:bg-zinc-100"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </div>
+                )}
                 {hasPendingRequest && (
                   <p className="mt-2 text-sm text-zinc-500">{t("artwork.requestPending")}</p>
                 )}
@@ -643,27 +714,67 @@ function ArtworkDetailContent() {
                           : row.claim_type === "EXHIBITED"
                             ? t("artwork.exhibitedByMe")
                             : row.claim_type;
+                    const showConfirmForm =
+                      confirmingClaimId === row.id &&
+                      (row.claim_type === "CURATED" || row.claim_type === "EXHIBITED");
                     return (
-                      <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-600">
-                        <span>{name} — {typeLabel}</span>
-                        <span className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleConfirm(row.id)}
-                            disabled={confirmingId !== null}
-                            className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
-                          >
-                            {t("artwork.approve")}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleReject(row.id)}
-                            disabled={confirmingId !== null}
-                            className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50"
-                          >
-                            {t("artwork.reject")}
-                          </button>
-                        </span>
+                      <li key={row.id} className="flex flex-col gap-2 text-sm text-zinc-600">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>{name} — {typeLabel}</span>
+                          {!showConfirmForm && (
+                            <span className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleApproveClick(row)}
+                                disabled={confirmingId !== null}
+                                className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                              >
+                                {t("artwork.approve")}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleReject(row.id)}
+                                disabled={confirmingId !== null}
+                                className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100 disabled:opacity-50"
+                              >
+                                {t("artwork.reject")}
+                              </button>
+                            </span>
+                          )}
+                        </div>
+                        {showConfirmForm && (
+                          <div className="flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-white p-2">
+                            <label className="text-zinc-600">
+                              {t("artwork.periodLabel")}:
+                              <select
+                                value={confirmPeriodStatus}
+                                onChange={(e) =>
+                                  setConfirmPeriodStatus(e.target.value as "past" | "current" | "future")
+                                }
+                                className="ml-1 rounded border border-zinc-300 px-2 py-1 text-sm"
+                              >
+                                <option value="past">{t("artwork.periodPast")}</option>
+                                <option value="current">{t("artwork.periodCurrent")}</option>
+                                <option value="future">{t("artwork.periodFuture")}</option>
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => handleConfirm(row.id, { period_status: confirmPeriodStatus })}
+                              disabled={confirmingId !== null}
+                              className="rounded bg-zinc-800 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                            >
+                              {t("artwork.confirmWithPeriod")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmingClaimId(null)}
+                              className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-100"
+                            >
+                              {t("common.cancel")}
+                            </button>
+                          </div>
+                        )}
                       </li>
                     );
                   })}

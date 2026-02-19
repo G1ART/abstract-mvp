@@ -90,30 +90,37 @@ export async function createClaimRequest(args: {
   workId: string;
   claimType: ClaimType;
   artistProfileId: string;
+  /** Requester can suggest period (artist may change on confirm). For INVENTORY/CURATED/EXHIBITED. */
+  period_status?: "past" | "current" | "future" | null;
 }): Promise<{ data: { id: string } | null; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
-  const { data, error } = await supabase
-    .from("claims")
-    .insert({
-      subject_profile_id: session.user.id,
-      claim_type: args.claimType,
-      work_id: args.workId,
-      artist_profile_id: args.artistProfileId,
-      visibility: "public",
-      status: "pending",
-    })
-    .select("id")
-    .single();
+  const row: Record<string, unknown> = {
+    subject_profile_id: session.user.id,
+    claim_type: args.claimType,
+    work_id: args.workId,
+    artist_profile_id: args.artistProfileId,
+    visibility: "public",
+    status: "pending",
+  };
+  if (args.period_status != null) row.period_status = args.period_status;
+  const { data, error } = await supabase.from("claims").insert(row).select("id").single();
   if (error) return { data: null, error };
   return { data: data as { id: string } | null, error: null };
 }
 
-/** Artist confirms a pending claim on their work. */
-export async function confirmClaim(claimId: string): Promise<{ error: unknown }> {
-  const { error } = await supabase.from("claims").update({ status: "confirmed" }).eq("id", claimId);
+/** Artist confirms a pending claim on their work. Can set or correct period_status and optional dates. */
+export async function confirmClaim(
+  claimId: string,
+  payload?: { period_status?: "past" | "current" | "future" | null; start_date?: string | null; end_date?: string | null }
+): Promise<{ error: unknown }> {
+  const update: Record<string, unknown> = { status: "confirmed" };
+  if (payload?.period_status != null) update.period_status = payload.period_status;
+  if (payload?.start_date !== undefined) update.start_date = payload.start_date || null;
+  if (payload?.end_date !== undefined) update.end_date = payload.end_date || null;
+  const { error } = await supabase.from("claims").update(update).eq("id", claimId);
   return { error };
 }
 
@@ -129,6 +136,9 @@ export type PendingClaimRow = {
   subject_profile_id: string;
   work_id: string | null;
   created_at: string | null;
+  period_status: "past" | "current" | "future" | null;
+  start_date: string | null;
+  end_date: string | null;
   profiles: { username: string | null; display_name: string | null } | null;
 };
 
@@ -139,7 +149,7 @@ export async function listPendingClaimsForWork(
   const { data, error } = await supabase
     .from("claims")
     .select(
-      "id, claim_type, subject_profile_id, work_id, created_at, profiles!subject_profile_id(username, display_name)"
+      "id, claim_type, subject_profile_id, work_id, created_at, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name)"
     )
     .eq("work_id", workId)
     .eq("status", "pending");
@@ -159,6 +169,9 @@ export async function listPendingClaimsForWork(
       subject_profile_id: r.subject_profile_id,
       work_id: r.work_id ?? null,
       created_at: r.created_at ?? null,
+      period_status: (r.period_status as "past" | "current" | "future") ?? null,
+      start_date: (r.start_date as string) ?? null,
+      end_date: (r.end_date as string) ?? null,
       profiles: profileObj,
     } as PendingClaimRow;
   });
