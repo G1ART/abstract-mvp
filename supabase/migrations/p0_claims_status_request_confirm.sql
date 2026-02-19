@@ -2,8 +2,19 @@
 -- Requester (collector/curator) creates claim with status='pending'.
 -- Artist (work owner) can set status='confirmed'. Provenance only shows confirmed.
 
--- Ensure artworks.artist_id exists so policies below do not raise 42703.
+-- Ensure artworks.artist_id exists so artwork_artist_id() and policies work.
 alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
+
+-- Use SECURITY DEFINER helper so claims policies do not SELECT from artworks (avoids infinite RLS recursion).
+create or replace function public.artwork_artist_id(p_work_id uuid)
+returns uuid
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select artist_id from public.artworks where id = p_work_id limit 1;
+$$;
 
 alter table public.claims
   add column if not exists status text not null default 'confirmed';
@@ -33,23 +44,18 @@ create policy claims_insert_update_delete_owner on public.claims
   with check (subject_profile_id = auth.uid());
 
 -- Artist can update status of pending claims on their artworks (confirm)
+-- Use artwork_artist_id() to avoid RLS recursion (no direct SELECT from artworks in policy).
 create policy claims_artist_confirm on public.claims
   for update
   to authenticated
   using (
     status = 'pending'
     and work_id is not null
-    and exists (
-      select 1 from public.artworks a
-      where a.id = claims.work_id and a.artist_id = auth.uid()
-    )
+    and public.artwork_artist_id(work_id) = auth.uid()
   )
   with check (
     work_id is not null
-    and exists (
-      select 1 from public.artworks a
-      where a.id = claims.work_id and a.artist_id = auth.uid()
-    )
+    and public.artwork_artist_id(work_id) = auth.uid()
   );
 
 -- Artist can delete pending claims on their artworks (reject)
@@ -59,10 +65,7 @@ create policy claims_artist_reject on public.claims
   using (
     status = 'pending'
     and work_id is not null
-    and exists (
-      select 1 from public.artworks a
-      where a.id = claims.work_id and a.artist_id = auth.uid()
-    )
+    and public.artwork_artist_id(work_id) = auth.uid()
   );
 
 -- Pending claims: only requester and work artist can see. Public = confirmed only.
@@ -75,9 +78,6 @@ create policy claims_select_visibility_or_owner on public.claims
     or subject_profile_id = auth.uid()
     or (
       work_id is not null
-      and exists (
-        select 1 from public.artworks a
-        where a.id = claims.work_id and a.artist_id = auth.uid()
-      )
+      and public.artwork_artist_id(work_id) = auth.uid()
     )
   );
