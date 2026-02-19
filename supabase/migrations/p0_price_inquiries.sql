@@ -3,7 +3,7 @@
 alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
 alter table public.notifications add column if not exists payload jsonb default '{}';
 
--- Resolve artwork artist from CREATED claim only (no reference to artworks.artist_id → avoids 42703).
+-- Resolve artwork artist from CREATED claim (no artworks.artist_id, no claims.status → avoids 42703).
 create or replace function public.price_inquiry_artist_id(p_artwork_id uuid)
 returns uuid
 language sql
@@ -13,9 +13,7 @@ set search_path = public
 as $$
   select c.subject_profile_id
   from public.claims c
-  where c.work_id = p_artwork_id
-    and c.claim_type = 'CREATED'
-    and (c.status is null or c.status = 'confirmed')
+  where c.work_id = p_artwork_id and c.claim_type = 'CREATED'
   limit 1;
 $$;
 
