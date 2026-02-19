@@ -1,4 +1,7 @@
 -- Price inquiries: inquirer asks for price on "Price upon request" or price-hidden works; artist can reply.
+-- Ensure columns used by triggers/RLS exist (avoids PostgREST 42703 undefined_column).
+alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
+alter table public.notifications add column if not exists payload jsonb default '{}';
 
 create table if not exists public.price_inquiries (
   id uuid primary key default gen_random_uuid(),
@@ -15,6 +18,11 @@ create index if not exists idx_price_inquiries_inquirer on public.price_inquirie
 create index if not exists idx_price_inquiries_created on public.price_inquiries(created_at desc);
 
 alter table public.price_inquiries enable row level security;
+
+drop policy if exists price_inquiries_insert_own on public.price_inquiries;
+drop policy if exists price_inquiries_select_own on public.price_inquiries;
+drop policy if exists price_inquiries_select_artist on public.price_inquiries;
+drop policy if exists price_inquiries_update_artist on public.price_inquiries;
 
 -- Inquirer: insert own; select own
 create policy price_inquiries_insert_own on public.price_inquiries
