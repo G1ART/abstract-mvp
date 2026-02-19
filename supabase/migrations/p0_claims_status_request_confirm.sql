@@ -2,6 +2,9 @@
 -- Requester (collector/curator) creates claim with status='pending'.
 -- Artist (work owner) can set status='confirmed'. Provenance only shows confirmed.
 
+-- Ensure artworks.artist_id exists so policies below do not raise 42703.
+alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
+
 alter table public.claims
   add column if not exists status text not null default 'confirmed';
 
@@ -20,6 +23,8 @@ create index if not exists idx_claims_work_status on public.claims(work_id, stat
 -- Artist can confirm pending claims on their works (update status only)
 drop policy if exists claims_update_owner on public.claims;
 drop policy if exists claims_insert_update_delete_owner on public.claims;
+drop policy if exists claims_artist_confirm on public.claims;
+drop policy if exists claims_artist_reject on public.claims;
 
 create policy claims_insert_update_delete_owner on public.claims
   for all

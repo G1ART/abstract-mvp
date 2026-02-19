@@ -3,23 +3,20 @@
 alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
 alter table public.notifications add column if not exists payload jsonb default '{}';
 
--- Safe resolver for artwork artist: avoids 42703 if artworks.artist_id is missing (e.g. old schema).
+-- Resolve artwork artist from CREATED claim only (no reference to artworks.artist_id → avoids 42703).
 create or replace function public.price_inquiry_artist_id(p_artwork_id uuid)
 returns uuid
-language plpgsql
+language sql
 security definer
 stable
 set search_path = public
 as $$
-declare
-  v uuid;
-begin
-  select a.artist_id into v from public.artworks a where a.id = p_artwork_id limit 1;
-  return v;
-exception
-  when sqlstate '42703' then  -- undefined_column
-    return null;
-end;
+  select c.subject_profile_id
+  from public.claims c
+  where c.work_id = p_artwork_id
+    and c.claim_type = 'CREATED'
+    and (c.status is null or c.status = 'confirmed')
+  limit 1;
 $$;
 
 create table if not exists public.price_inquiries (
