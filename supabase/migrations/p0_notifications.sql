@@ -16,6 +16,7 @@ create table if not exists public.notifications (
 -- If table already existed without these columns (e.g. from partial run), add them
 alter table public.notifications add column if not exists read_at timestamptz;
 alter table public.notifications add column if not exists artwork_id uuid references public.artworks(id) on delete set null;
+alter table public.notifications add column if not exists claim_id uuid references public.claims(id) on delete set null;
 alter table public.notifications add column if not exists payload jsonb default '{}';
 
 create index if not exists idx_notifications_user_id on public.notifications(user_id);

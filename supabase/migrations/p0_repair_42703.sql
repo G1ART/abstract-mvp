@@ -5,6 +5,7 @@
 alter table public.artworks add column if not exists artist_id uuid references public.profiles(id) on delete set null;
 alter table public.claims add column if not exists status text not null default 'confirmed';
 alter table public.notifications add column if not exists artwork_id uuid references public.artworks(id) on delete set null;
+alter table public.notifications add column if not exists claim_id uuid references public.claims(id) on delete set null;
 alter table public.notifications add column if not exists payload jsonb default '{}';
 
 -- 2) Artist resolver for price_inquiries: only CREATED claim, no status column reference
