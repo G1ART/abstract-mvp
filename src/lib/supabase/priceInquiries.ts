@@ -91,6 +91,38 @@ export async function listPriceInquiriesForArtist(): Promise<{ data: PriceInquir
   return { data: forArtist, error: null };
 }
 
+/** Whether the current user can reply to price inquiries for this artwork (backend: CREATED claim = artist). */
+export async function canReplyToPriceInquiry(artworkId: string): Promise<{ data: boolean; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: false, error: null };
+
+  const { data, error } = await supabase.rpc("can_reply_to_price_inquiry", {
+    p_artwork_id: artworkId,
+  });
+  if (error) return { data: false, error };
+  return { data: Boolean(data), error: null };
+}
+
+/** List price inquiries for one artwork (for artist; RLS restricts to artist). */
+export async function listPriceInquiriesForArtwork(artworkId: string): Promise<{ data: PriceInquiryRow[]; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+
+  const { data, error } = await supabase
+    .from("price_inquiries")
+    .select(INQUIRY_SELECT)
+    .eq("artwork_id", artworkId)
+    .order("created_at", { ascending: false });
+
+  if (error) return { data: [], error };
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return { data: rows.map((r) => normalizeInquiry(r)), error: null };
+}
+
 /** My inquiry for a single artwork (to show "Already inquired" or reply state). */
 export async function getMyInquiryForArtwork(artworkId: string): Promise<{ data: PriceInquiryRow | null; error: unknown }> {
   const {

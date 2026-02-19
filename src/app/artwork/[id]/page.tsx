@@ -36,6 +36,9 @@ import type { ClaimType } from "@/lib/provenance/types";
 import {
   createPriceInquiry,
   getMyInquiryForArtwork,
+  listPriceInquiriesForArtwork,
+  replyToPriceInquiry,
+  canReplyToPriceInquiry,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
@@ -74,6 +77,11 @@ function ArtworkDetailContent() {
   const [priceInquirySubmitting, setPriceInquirySubmitting] = useState(false);
   const [priceInquiryMessage, setPriceInquiryMessage] = useState("");
   const [showInquiryForm, setShowInquiryForm] = useState(false);
+  const [artistInquiries, setArtistInquiries] = useState<PriceInquiryRow[]>([]);
+  const [artistInquiriesLoading, setArtistInquiriesLoading] = useState(false);
+  const [canReplyToInquiriesFromBackend, setCanReplyToInquiriesFromBackend] = useState<boolean | null>(null);
+  const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
+  const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -192,6 +200,10 @@ function ArtworkDetailContent() {
     Boolean(userId && artwork && userId !== artwork.artist_id) &&
     (artwork?.pricing_mode === "inquire" || artwork?.is_price_public === false);
 
+  const showArtistInquiryBlock =
+    Boolean(userId && artwork && (artwork.pricing_mode === "inquire" || artwork.is_price_public === false)) &&
+    canReplyToInquiriesFromBackend === true;
+
   useEffect(() => {
     if (!id || !showPriceInquiryBlock) return;
     setPriceInquiryLoading(true);
@@ -200,6 +212,27 @@ function ArtworkDetailContent() {
       setPriceInquiryLoading(false);
     });
   }, [id, showPriceInquiryBlock]);
+
+  useEffect(() => {
+    if (!id || !userId || !artwork) return;
+    if (artwork.pricing_mode !== "inquire" && artwork.is_price_public !== false) {
+      setCanReplyToInquiriesFromBackend(false);
+      return;
+    }
+    canReplyToPriceInquiry(id).then(({ data, error }) => {
+      if (error) setCanReplyToInquiriesFromBackend(false);
+      else setCanReplyToInquiriesFromBackend(!!data);
+    });
+  }, [id, userId, artwork?.id, artwork?.pricing_mode, artwork?.is_price_public]);
+
+  useEffect(() => {
+    if (!id || !showArtistInquiryBlock) return;
+    setArtistInquiriesLoading(true);
+    listPriceInquiriesForArtwork(id).then(({ data }) => {
+      setArtistInquiries(data ?? []);
+      setArtistInquiriesLoading(false);
+    });
+  }, [id, showArtistInquiryBlock]);
 
   async function handleAskPrice() {
     if (!id || !artwork || priceInquirySubmitting) return;
@@ -215,6 +248,26 @@ function ArtworkDetailContent() {
     }
     const { data: inquiry } = await getMyInquiryForArtwork(id);
     setMyPriceInquiry(inquiry ?? null);
+  }
+
+  async function handleArtistReply(inquiryId: string) {
+    const text = artistReplyText[inquiryId]?.trim();
+    if (!text) return;
+    setReplyingInquiryId(inquiryId);
+    const { error: err } = await replyToPriceInquiry(inquiryId, text);
+    setReplyingInquiryId(null);
+    if (err) {
+      logSupabaseError("replyToPriceInquiry", err);
+      setError(formatSupabaseError(err, "Failed to send reply"));
+      return;
+    }
+    setArtistReplyText((prev) => {
+      const next = { ...prev };
+      delete next[inquiryId];
+      return next;
+    });
+    const { data } = await listPriceInquiriesForArtwork(id);
+    setArtistInquiries(data ?? []);
   }
 
   async function handleRequestClaim(claimType: ClaimType) {
@@ -403,6 +456,63 @@ function ArtworkDetailContent() {
                   >
                     {t("priceInquiry.ask")}
                   </button>
+                )}
+              </div>
+            )}
+            {showArtistInquiryBlock && (
+              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                <p className="mb-2 text-sm font-medium text-zinc-800">{t("priceInquiry.title")}</p>
+                {artistInquiriesLoading ? (
+                  <p className="text-sm text-zinc-500">{t("common.loading")}</p>
+                ) : artistInquiries.length === 0 ? (
+                  <p className="text-sm text-zinc-500">{t("priceInquiry.empty")}</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {artistInquiries.map((row) => (
+                      <li key={row.id} className="rounded border border-zinc-200 bg-white p-3">
+                        <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
+                          <span className="font-medium text-zinc-700">
+                            {row.inquirer?.display_name?.trim() || row.inquirer?.username || "Someone"}
+                            {row.inquirer?.username && (
+                              <span className="font-normal text-zinc-500"> @{row.inquirer.username}</span>
+                            )}
+                          </span>
+                          <span className="text-xs text-zinc-400">
+                            {new Date(row.created_at).toLocaleString()}
+                          </span>
+                        </div>
+                        {row.message && (
+                          <p className="mb-2 text-sm text-zinc-600">{row.message}</p>
+                        )}
+                        {row.artist_reply ? (
+                          <div className="rounded bg-zinc-100 p-2 text-sm text-zinc-800">
+                            <span className="font-medium text-zinc-600">{t("priceInquiry.replyFromArtist")}:</span>{" "}
+                            <span className="whitespace-pre-wrap">{row.artist_reply}</span>
+                          </div>
+                        ) : (
+                          <div>
+                            <textarea
+                              placeholder={t("priceInquiry.replyPlaceholder")}
+                              value={artistReplyText[row.id] ?? ""}
+                              onChange={(e) =>
+                                setArtistReplyText((prev) => ({ ...prev, [row.id]: e.target.value }))
+                              }
+                              rows={2}
+                              className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
+                            />
+                            <button
+                              type="button"
+                              disabled={!artistReplyText[row.id]?.trim() || replyingInquiryId === row.id}
+                              onClick={() => handleArtistReply(row.id)}
+                              className="mt-2 rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                            >
+                              {replyingInquiryId === row.id ? t("common.loading") : t("priceInquiry.reply")}
+                            </button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
             )}
