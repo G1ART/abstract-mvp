@@ -322,6 +322,13 @@ export default function MyPage() {
             <p className="text-sm font-medium text-zinc-900">{t("priceInquiry.title")}</p>
             <p className="text-xs text-zinc-500">{t("my.kpi.priceInquiries")}</p>
           </Link>
+          <Link
+            href="/my/exhibitions"
+            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+          >
+            <p className="text-sm font-medium text-zinc-900">{t("exhibition.myExhibitions")}</p>
+            <p className="text-xs text-zinc-500">{t("exhibition.myExhibitionsHint")}</p>
+          </Link>
         </div>
 
         {/* Profile views insights */}

@@ -691,6 +691,50 @@ export async function getArtworkById(
   };
 }
 
+/** Fetch multiple artworks by id (e.g. for exhibition works list). Returns in arbitrary order. */
+export async function getArtworksByIds(
+  ids: string[]
+): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
+  if (ids.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("artworks")
+    .select(
+      `
+      id,
+      title,
+      year,
+      medium,
+      size,
+      story,
+      visibility,
+      pricing_mode,
+      is_price_public,
+      price_usd,
+      price_input_amount,
+      price_input_currency,
+      fx_rate_to_usd,
+      fx_date,
+      ownership_status,
+      artist_id,
+      artist_sort_order,
+      created_at,
+      provenance_visible,
+      artwork_images(storage_path, sort_order),
+      profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
+      artwork_likes(count),
+      claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
+    `
+    )
+    .in("id", ids);
+
+  if (error) return { data: [], error };
+  const rows = (data ?? []) as Record<string, unknown>[];
+  return {
+    data: rows.map((r) => normalizeArtworkRow(r) as ArtworkWithLikes),
+    error: null,
+  };
+}
+
 export async function attachArtworkImage(
   artworkId: string,
   storagePath: string
