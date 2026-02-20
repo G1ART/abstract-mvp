@@ -5,10 +5,15 @@ Last updated: 2026-02-19
 ## 2026-02-19 — 피드 전시 노출 + 공개 전시 페이지 + 전시 미디어 자유 버킷 + 탭 재정렬
 
 - **피드**: 팔로우 중인 프로필이 큐레이터/호스트인 전시를 피드에 노출. `listExhibitionsForFeed(profileIds)`로 조회 후 작품과 `created_at` 기준으로 병합, 5개마다 discovery 블록 끼워 넣기. `FeedExhibitionCard`로 전시 카드 표시.
+- **피드(수정)**: 전체 탭은 `listPublicExhibitionsForFeed()`로 퍼블릭 전시 전체를 노출하도록 변경(팔로우 기반 제한 해제). 따라서 본인 전시도 전체 피드에서 노출됨.
 - **공개 전시 페이지**: `/e/[id]` — 읽기 전용. 작가별 작품 버킷, 전시전경/부대행사(및 자유 제목 버킷) 섹션. 소유자(큐레이터/호스트)는 "전시 관리" 링크로 `/my/exhibitions/[id]` 이동.
 - **전시 미디어 자유 제목 버킷**: `exhibition_media`에 `bucket_title` 컬럼 추가, `type`에 `custom` 허용. 전시 상세·공개 페이지에서 버킷별 그룹 표시(제목 = bucket_title ?? 기본 라벨). 내 전시 상세에서 "사진 추가" per 버킷, "버킷 추가"(제목 + 첫 사진)로 커스텀 섹션 생성. **Supabase SQL**: `p1_exhibition_media_bucket_title.sql` 실행 필요.
 - **전시 DnD 확장**: 내 전시 상세에서 (1) 아티스트 버킷 순서 DnD, (2) 아티스트 버킷 내부 작품 순서 DnD, (3) 미디어 버킷 순서 DnD, (4) 미디어 버킷 내부 이미지 순서 DnD, (5) 미디어 삭제, (6) 미디어 벌크 업로드 + 업로드 전 순서 DnD를 지원.
 - **빈 버킷 순서 영구 저장**: `exhibition_media_buckets` 메타 테이블 추가로 이미지가 0장인 버킷도 순서를 유지. **Supabase SQL**: `p2_exhibition_media_buckets.sql` 실행 필요.
+- **전시 삭제 옵션**: `/my/exhibitions/[id]/edit`에 전시 전체 삭제 추가.  
+  - 옵션 A: 전시 이력만 삭제(작품/프로비넌스 유지)  
+  - 옵션 B: 전시 연동 작품까지 삭제(작품+프로비넌스 히스토리 포함)
+- **전시 대표 썸네일 스택**: `projects.cover_image_paths`(text[]) 추가 후, 전시 상세에서 대표 썸네일 선택/순서 저장(최대 3개). 피드/내 전시 목록/내 프로필 전시 탭 카드에서 스택 썸네일 표시. **Supabase SQL**: `p3_exhibition_cover_image_paths.sql` 실행 필요.
 - **탭 재정렬**: My 페이지 탭 옆 "↕" 클릭 시 순서 변경 모드. 위/아래 화살표로 순서 변경 후 "저장" 시 `profile_details.tab_order`에 저장. `getOrderedPersonaTabs(..., savedOrder)`로 저장된 순서 적용.
 
 **Verified:** `npm run build` 통과.

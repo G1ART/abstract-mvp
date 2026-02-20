@@ -20,10 +20,12 @@ comment on column public.exhibition_media_buckets.key is 'Stable bucket key used
 
 alter table public.exhibition_media_buckets enable row level security;
 
+drop policy if exists exhibition_media_buckets_select on public.exhibition_media_buckets;
 create policy exhibition_media_buckets_select on public.exhibition_media_buckets
   for select to public
   using (true);
 
+drop policy if exists exhibition_media_buckets_insert on public.exhibition_media_buckets;
 create policy exhibition_media_buckets_insert on public.exhibition_media_buckets
   for insert to authenticated
   with check (
@@ -34,6 +36,7 @@ create policy exhibition_media_buckets_insert on public.exhibition_media_buckets
     )
   );
 
+drop policy if exists exhibition_media_buckets_update on public.exhibition_media_buckets;
 create policy exhibition_media_buckets_update on public.exhibition_media_buckets
   for update to authenticated
   using (
@@ -44,6 +47,7 @@ create policy exhibition_media_buckets_update on public.exhibition_media_buckets
     )
   );
 
+drop policy if exists exhibition_media_buckets_delete on public.exhibition_media_buckets;
 create policy exhibition_media_buckets_delete on public.exhibition_media_buckets
   for delete to authenticated
   using (

@@ -15,6 +15,7 @@ export type ExhibitionRow = {
   curator_id: string;
   host_name: string | null;
   host_profile_id: string | null;
+  cover_image_paths: string[] | null;
   created_at: string | null;
 };
 
@@ -59,7 +60,7 @@ export async function listMyExhibitions(): Promise<{
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
     .eq("project_type", "exhibition")
     .or(`curator_id.eq.${session.user.id},host_profile_id.eq.${session.user.id}`)
     .order("created_at", { ascending: false });
@@ -93,6 +94,7 @@ export async function createExhibition(args: {
       curator_id: session.user.id,
       host_name: args.host_name?.trim() || null,
       host_profile_id: args.host_profile_id ?? null,
+      cover_image_paths: [],
     })
     .select("id")
     .single();
@@ -104,7 +106,7 @@ export async function createExhibition(args: {
 /** Update exhibition (title, dates, status, host). */
 export async function updateExhibition(
   id: string,
-  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "host_name" | "host_profile_id">>
+  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "host_name" | "host_profile_id" | "cover_image_paths">>
 ): Promise<{ error: unknown }> {
   const payload: Record<string, unknown> = {};
   if (patch.title !== undefined) payload.title = patch.title.trim();
@@ -113,6 +115,7 @@ export async function updateExhibition(
   if (patch.status !== undefined) payload.status = patch.status;
   if (patch.host_name !== undefined) payload.host_name = patch.host_name?.trim() || null;
   if (patch.host_profile_id !== undefined) payload.host_profile_id = patch.host_profile_id;
+  if (patch.cover_image_paths !== undefined) payload.cover_image_paths = patch.cover_image_paths ?? [];
 
   const { error } = await supabase.from("projects").update(payload).eq("id", id);
   return { error };
@@ -172,6 +175,38 @@ export async function removeWorkFromExhibition(
   return { error };
 }
 
+/** Delete exhibition only: removes exhibition post/media/links, keeps artworks & provenance intact. */
+export async function deleteExhibitionKeepWorks(exhibitionId: string): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from("projects")
+    .delete()
+    .eq("id", exhibitionId)
+    .eq("project_type", "exhibition");
+  return { error };
+}
+
+/** Delete exhibition and all linked artworks (including provenance history via artwork cascade). */
+export async function deleteExhibitionWithArtworks(exhibitionId: string): Promise<{
+  error: unknown;
+  failedArtworkIds?: string[];
+}> {
+  const { data: rows, error: listErr } = await supabase
+    .from("exhibition_works")
+    .select("work_id")
+    .eq("exhibition_id", exhibitionId);
+  if (listErr) return { error: listErr };
+  const workIds = [...new Set((rows ?? []).map((r: { work_id: string }) => r.work_id))];
+  if (workIds.length > 0) {
+    const { deleteArtworksBatch } = await import("./artworks");
+    const { failed } = await deleteArtworksBatch(workIds, { concurrency: 3 });
+    if (failed.length > 0) {
+      return { error: new Error("Some artworks failed to delete"), failedArtworkIds: failed.map((f) => f.id) };
+    }
+  }
+  const { error } = await deleteExhibitionKeepWorks(exhibitionId);
+  return { error, failedArtworkIds: [] };
+}
+
 /** List exhibitions for feed: curated or hosted by any of the given profile IDs (e.g. people I follow). */
 export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   data: ExhibitionRow[];
@@ -182,14 +217,14 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   const [curatedRes, hostRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
       .eq("project_type", "exhibition")
       .in("curator_id", ids)
       .order("created_at", { ascending: false })
       .limit(20),
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
       .eq("project_type", "exhibition")
       .in("host_profile_id", ids)
       .order("created_at", { ascending: false })
@@ -208,6 +243,21 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   return { data: merged.slice(0, 30), error: curatedRes.error ?? hostRes.error };
 }
 
+/** List recent public exhibitions for global feed (not follow-limited). */
+export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
+  data: ExhibitionRow[];
+  error: unknown;
+}> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .eq("project_type", "exhibition")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as ExhibitionRow[], error: null };
+}
+
 /** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
 export async function listExhibitionsForProfile(profileId: string): Promise<{
   data: ExhibitionRow[];
@@ -216,7 +266,7 @@ export async function listExhibitionsForProfile(profileId: string): Promise<{
   const [curatedRes, worksRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
       .eq("project_type", "exhibition")
       .or(`curator_id.eq.${profileId},host_profile_id.eq.${profileId}`)
       .order("created_at", { ascending: false }),
@@ -236,7 +286,7 @@ export async function listExhibitionsForProfile(profileId: string): Promise<{
   if (needFetch.length === 0) return { data: curated, error: curatedRes.error };
   const { data: participantProjects } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
     .in("id", needFetch)
     .eq("project_type", "exhibition");
   const participant = (participantProjects ?? []) as ExhibitionRow[];
@@ -258,7 +308,7 @@ export async function getExhibitionById(id: string): Promise<{
 }> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
     .eq("id", id)
     .eq("project_type", "exhibition")
     .maybeSingle();
@@ -495,7 +545,7 @@ export async function listExhibitionsForWork(workId: string): Promise<{
   const ids = [...new Set(ewRows.map((r: { exhibition_id: string }) => r.exhibition_id))];
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
     .in("id", ids)
     .eq("project_type", "exhibition")
     .order("created_at", { ascending: false });

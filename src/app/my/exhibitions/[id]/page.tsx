@@ -17,6 +17,7 @@ import {
   listWorksInExhibition,
   removeWorkFromExhibition,
   upsertExhibitionMediaBucket,
+  updateExhibition,
   updateExhibitionMediaBucketOrder,
   updateExhibitionMediaOrder,
   updateExhibitionWorksOrder,
@@ -29,6 +30,7 @@ import {
 import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -70,6 +72,8 @@ export default function ExhibitionDetailPage() {
   const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [newBucketTitle, setNewBucketTitle] = useState("");
+  const [coverDraft, setCoverDraft] = useState<string[]>([]);
+  const [savingCover, setSavingCover] = useState(false);
   const [uploadQueue, setUploadQueue] = useState<UploadQueue | null>(null);
   const [dragQueueItemId, setDragQueueItemId] = useState<string | null>(null);
   const [dragArtistBucketId, setDragArtistBucketId] = useState<string | null>(null);
@@ -98,6 +102,7 @@ export default function ExhibitionDetailPage() {
       return;
     }
     setExhibition(exRes.data);
+    setCoverDraft((exRes.data.cover_image_paths ?? []).slice(0, 3));
     setWorks(worksRes.data ?? []);
     setMedia(mediaRes.data ?? []);
     setMediaBucketRows(bucketRes.data ?? []);
@@ -193,6 +198,11 @@ export default function ExhibitionDetailPage() {
   }, [mediaBucketOrder, mediaItemOrder, mediaBucketsBase]);
 
   const mediaById = useMemo(() => new Map(media.map((m) => [m.id, m])), [media]);
+  const coverCandidates = useMemo(() => {
+    const fromWorks = orderedArtworks.map((a) => a.artwork_images?.[0]?.storage_path).filter(Boolean) as string[];
+    const fromMedia = media.map((m) => m.storage_path);
+    return [...new Set([...fromWorks, ...fromMedia])];
+  }, [orderedArtworks, media]);
 
   async function persistArtistOrder(nextBucketOrder: string[], nextItemOrder: Record<string, string[]>) {
     if (!id) return;
@@ -241,6 +251,30 @@ export default function ExhibitionDetailPage() {
     const { error: err } = await updateExhibitionMediaBucketOrder(id, nextBucketOrder);
     if (err) {
       setError(formatSupabaseError(err, "Failed to save bucket order"));
+      return;
+    }
+    await fetchData();
+  }
+
+  function toggleCoverPath(path: string) {
+    setCoverDraft((prev) => {
+      if (prev.includes(path)) return prev.filter((p) => p !== path);
+      if (prev.length >= 3) return prev;
+      return [...prev, path];
+    });
+  }
+
+  function moveCover(from: number, to: number) {
+    setCoverDraft((prev) => moveInArray(prev, from, to));
+  }
+
+  async function saveCoverDraft() {
+    if (!id) return;
+    setSavingCover(true);
+    const { error: err } = await updateExhibition(id, { cover_image_paths: coverDraft });
+    setSavingCover(false);
+    if (err) {
+      setError(formatSupabaseError(err, "Failed to save cover thumbnails"));
       return;
     }
     await fetchData();
@@ -384,6 +418,72 @@ export default function ExhibitionDetailPage() {
             </header>
 
             {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+
+            <section className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
+              <h2 className="mb-2 text-sm font-medium text-zinc-700">대표 썸네일 (최대 3개)</h2>
+              <ExhibitionThumbStack paths={coverDraft} className="mb-3" />
+              {coverDraft.length > 0 ? (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {coverDraft.map((p, idx) => (
+                    <div key={`${p}-${idx}`} className="flex items-center gap-1 rounded border border-zinc-300 px-2 py-1">
+                      <span className="text-xs text-zinc-600">#{idx + 1}</span>
+                      <button
+                        type="button"
+                        disabled={idx === 0}
+                        onClick={() => moveCover(idx, idx - 1)}
+                        className="rounded border border-zinc-300 px-1 text-xs text-zinc-600 disabled:opacity-40"
+                      >
+                        ←
+                      </button>
+                      <button
+                        type="button"
+                        disabled={idx === coverDraft.length - 1}
+                        onClick={() => moveCover(idx, idx + 1)}
+                        className="rounded border border-zinc-300 px-1 text-xs text-zinc-600 disabled:opacity-40"
+                      >
+                        →
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleCoverPath(p)}
+                        className="rounded border border-red-300 px-1 text-xs text-red-600"
+                      >
+                        x
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mb-3 text-xs text-zinc-500">전시 대표작/포스터/전경 중에서 선택하세요.</p>
+              )}
+              <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+                {coverCandidates.map((p) => {
+                  const selected = coverDraft.includes(p);
+                  return (
+                    <button
+                      type="button"
+                      key={p}
+                      onClick={() => toggleCoverPath(p)}
+                      className={`relative aspect-square overflow-hidden rounded border ${
+                        selected ? "border-zinc-900 ring-2 ring-zinc-300" : "border-zinc-200"
+                      }`}
+                    >
+                      <Image src={getArtworkImageUrl(p, "thumb")} alt="" fill className="object-cover" sizes="120px" />
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3">
+                <button
+                  type="button"
+                  disabled={savingCover}
+                  onClick={saveCoverDraft}
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {savingCover ? t("common.loading") : "대표 썸네일 저장"}
+                </button>
+              </div>
+            </section>
 
             {uploadQueue && (
               <section className="mb-8 rounded-lg border border-zinc-300 bg-white p-4">

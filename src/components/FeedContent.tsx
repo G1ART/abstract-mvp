@@ -11,7 +11,7 @@ import {
   listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
-import { listExhibitionsForFeed, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { listExhibitionsForFeed, listPublicExhibitionsForFeed, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FeedArtworkCard } from "./FeedArtworkCard";
@@ -128,9 +128,11 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         ? listFollowingArtworks({ limit: 50 })
         : listPublicArtworks({ limit: 50, sort }),
       getFollowingIds(),
-      getFollowingIds().then((r) =>
-        r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionRow[], error: null }
-      ),
+      tab === "following"
+        ? getFollowingIds().then((r) =>
+            r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionRow[], error: null }
+          )
+        : listPublicExhibitionsForFeed(30),
     ]);
     const { data: listRaw, error: err } = artworksRes;
     const followingSet = followingRes.data ?? new Set<string>();

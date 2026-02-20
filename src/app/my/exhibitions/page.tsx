@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { listMyExhibitions, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 
 export default function MyExhibitionsPage() {
   const { t } = useT();
@@ -71,6 +72,7 @@ export default function MyExhibitionsPage() {
                   href={`/my/exhibitions/${ex.id}`}
                   className="block rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
                 >
+                  <ExhibitionThumbStack paths={ex.cover_image_paths} className="mb-3" />
                   <p className="font-medium text-zinc-900">{ex.title}</p>
                   <p className="mt-1 text-sm text-zinc-500">
                     {ex.start_date && ex.end_date

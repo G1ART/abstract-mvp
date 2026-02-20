@@ -5,7 +5,13 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
-import { getExhibitionById, updateExhibition, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import {
+  deleteExhibitionKeepWorks,
+  deleteExhibitionWithArtworks,
+  getExhibitionById,
+  updateExhibition,
+  type ExhibitionRow,
+} from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 
 const STATUS_OPTIONS = [
@@ -27,6 +33,9 @@ export default function EditExhibitionPage() {
   const [hostName, setHostName] = useState("");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMode, setDeleteMode] = useState<"keep_works" | "delete_all">("keep_works");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -65,6 +74,24 @@ export default function EditExhibitionPage() {
       return;
     }
     router.push(`/my/exhibitions/${id}`);
+  }
+
+  async function handleDeleteExhibition() {
+    if (!id || deleteConfirm !== "DELETE") return;
+    setDeleting(true);
+    setError(null);
+    const result =
+      deleteMode === "delete_all"
+        ? await deleteExhibitionWithArtworks(id)
+        : await deleteExhibitionKeepWorks(id);
+    setDeleting(false);
+    if (result.error) {
+      const failed = (result as { failedArtworkIds?: string[] }).failedArtworkIds;
+      const suffix = failed && failed.length > 0 ? ` (${failed.length}개 작품 삭제 실패)` : "";
+      setError(formatSupabaseError(result.error, `Failed to delete exhibition${suffix}`));
+      return;
+    }
+    router.push("/my/exhibitions");
   }
 
   if (!id) {
@@ -180,6 +207,48 @@ export default function EditExhibitionPage() {
               >
                 {t("common.cancel")}
               </Link>
+            </div>
+
+            <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="mb-2 text-sm font-semibold text-red-700">전시 전체 삭제</p>
+              <div className="space-y-2 text-xs text-red-700">
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="delete_mode"
+                    checked={deleteMode === "keep_works"}
+                    onChange={() => setDeleteMode("keep_works")}
+                  />
+                  <span>전시 이력만 삭제 (작품/프로비넌스는 유지)</span>
+                </label>
+                <label className="flex items-start gap-2">
+                  <input
+                    type="radio"
+                    name="delete_mode"
+                    checked={deleteMode === "delete_all"}
+                    onChange={() => setDeleteMode("delete_all")}
+                  />
+                  <span>업로드된 작품 모두 + 프로비넌스 히스토리 삭제</span>
+                </label>
+              </div>
+              <p className="mt-3 text-xs text-red-600">확인을 위해 아래에 DELETE를 입력하세요.</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={deleteConfirm}
+                  onChange={(e) => setDeleteConfirm(e.target.value)}
+                  className="rounded border border-red-300 bg-white px-2 py-1.5 text-sm"
+                  placeholder="DELETE"
+                />
+                <button
+                  type="button"
+                  onClick={handleDeleteExhibition}
+                  disabled={deleting || deleteConfirm !== "DELETE"}
+                  className="rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deleting ? "..." : "전시 전체 삭제"}
+                </button>
+              </div>
             </div>
           </form>
         )}

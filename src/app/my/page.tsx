@@ -38,6 +38,7 @@ import {
 } from "@/lib/provenance/personaTabs";
 import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
+import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 
 type Profile = {
   id: string;
@@ -669,6 +670,7 @@ export default function MyPage() {
                   href={`/my/exhibitions/${ex.id}`}
                   className="block rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
                 >
+                  <ExhibitionThumbStack paths={ex.cover_image_paths} className="mb-3" />
                   <p className="text-lg font-semibold text-zinc-900">{ex.title}</p>
                   <p className="mt-1 text-sm text-zinc-500">
                     {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
