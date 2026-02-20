@@ -1,6 +1,17 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-19
+Last updated: 2026-02-20
+
+## 2026-02-20 — 가격문의 답변 시 RLS 오류 수정
+
+- **증상**: 패치 이전에 올라온 가격문의에 작가가 답변을 저장할 때 `new row violates row-level security policy for table "price_inquiries"` 발생.
+- **원인**: `p0_claims_period_and_price_inquiry_delegates.sql`의 UPDATE 정책 `price_inquiries_update_reply`가 **WITH CHECK**에서 `replied_at is null`을 요구함. 답변 저장 시 `replied_at`을 설정하므로 갱신된 행이 이 조건을 만족하지 않아 RLS에 걸림.
+- **수정**: WITH CHECK에서는 “수정 후 행”에 대해 `replied_at is null`을 요구하지 않고, 응답 권한(작가/대리인)만 검사하도록 변경. **USING**은 그대로 두어 “아직 답 없는 문의만 수정 가능” 유지.
+- **Supabase SQL**: `supabase/migrations/p0_price_inquiry_update_rls_fix.sql` 실행 필요.
+
+**Verified:** (배포 후 기존 가격문의 답변 저장 동작 확인 권장.)
+
+---
 
 ## 2026-02-19 — 피드 전시 노출 + 공개 전시 페이지 + 전시 미디어 자유 버킷 + 탭 재정렬
 
