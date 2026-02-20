@@ -25,10 +25,10 @@ export default function MyClaimsPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, err } = await listMyPendingClaims();
+    const { data, error: listError } = await listMyPendingClaims();
     setLoading(false);
-    if (err) {
-      setError(formatSupabaseError(err, "Failed to load"));
+    if (listError) {
+      setError(formatSupabaseError(listError, "Failed to load"));
       return;
     }
     setList(data ?? []);
