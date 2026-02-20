@@ -85,13 +85,35 @@ export type PersonaTabItem = { tab: PersonaTab; count: number };
 type Counts = { all: number; created: number; owns: number; inventory: number; curated: number; exhibited: number };
 type RoleOptions = { main_role: string | null; roles: string[] };
 
+const VALID_PERSONA_TABS: PersonaTab[] = ["all", "exhibitions", "CREATED", "OWNS", "INVENTORY", "CURATED"];
+
+function isValidPersonaTab(x: unknown): x is PersonaTab {
+  return typeof x === "string" && VALID_PERSONA_TABS.includes(x as PersonaTab);
+}
+
 /**
- * Returns persona tabs in role-based default order.
- * INVENTORY and CURATED are not shown as tabs; they surface as buckets inside "전체" (all).
- * Non-artist: "전체" (all) is always last (rightmost).
- * Tab order can later be made user-reorderable (persisted in profile/settings).
+ * Returns persona tabs in role-based default order, optionally reordered by savedOrder.
+ * savedOrder: optional array from profile_details.tab_order; only tabs present in default order are reordered.
  */
 export function getOrderedPersonaTabs(
+  counts: Counts,
+  exhibitionsCount: number,
+  options: RoleOptions,
+  savedOrder?: PersonaTab[] | null
+): PersonaTabItem[] {
+  const defaultOrder = getOrderedPersonaTabsDefault(counts, exhibitionsCount, options);
+  if (!savedOrder || !Array.isArray(savedOrder) || savedOrder.length === 0) {
+    return defaultOrder;
+  }
+  const validSaved = savedOrder.filter(isValidPersonaTab);
+  const defaultTabs = new Set(defaultOrder.map((o) => o.tab));
+  const byTab = new Map(defaultOrder.map((o) => [o.tab, o]));
+  const orderFromSaved = validSaved.filter((t) => defaultTabs.has(t));
+  const rest = defaultOrder.filter((o) => !orderFromSaved.includes(o.tab));
+  return orderFromSaved.map((tab) => byTab.get(tab)!).filter(Boolean).concat(rest);
+}
+
+function getOrderedPersonaTabsDefault(
   counts: Counts,
   exhibitionsCount: number,
   options: RoleOptions

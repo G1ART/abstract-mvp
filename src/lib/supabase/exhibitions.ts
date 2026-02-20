@@ -30,7 +30,8 @@ export type ExhibitionWorkRow = {
 export type ExhibitionMediaRow = {
   id: string;
   exhibition_id: string;
-  type: "installation" | "side_event";
+  type: "installation" | "side_event" | "custom";
+  bucket_title: string | null;
   storage_path: string;
   sort_order: number | null;
   created_at: string;
@@ -161,6 +162,42 @@ export async function removeWorkFromExhibition(
   return { error };
 }
 
+/** List exhibitions for feed: curated or hosted by any of the given profile IDs (e.g. people I follow). */
+export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
+  data: ExhibitionRow[];
+  error: unknown;
+}> {
+  if (profileIds.length === 0) return { data: [], error: null };
+  const ids = profileIds.slice(0, 50);
+  const [curatedRes, hostRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .eq("project_type", "exhibition")
+      .in("curator_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(20),
+    supabase
+      .from("projects")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .eq("project_type", "exhibition")
+      .in("host_profile_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+  const byId = new Map<string, ExhibitionRow>();
+  for (const row of (curatedRes.data ?? []) as ExhibitionRow[]) {
+    byId.set(row.id, row);
+  }
+  for (const row of (hostRes.data ?? []) as ExhibitionRow[]) {
+    if (!byId.has(row.id)) byId.set(row.id, row);
+  }
+  const merged = Array.from(byId.values()).sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
+  return { data: merged.slice(0, 30), error: curatedRes.error ?? hostRes.error };
+}
+
 /** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
 export async function listExhibitionsForProfile(profileId: string): Promise<{
   data: ExhibitionRow[];
@@ -220,19 +257,109 @@ export async function getExhibitionById(id: string): Promise<{
   return { data: data as ExhibitionRow | null, error: null };
 }
 
-/** List exhibition-level media (전시전경, 부대행사). */
+/** List exhibition-level media (전시전경, 부대행사, or custom buckets via bucket_title). */
 export async function listExhibitionMedia(exhibitionId: string): Promise<{
   data: ExhibitionMediaRow[];
   error: unknown;
 }> {
   const { data, error } = await supabase
     .from("exhibition_media")
-    .select("id, exhibition_id, type, storage_path, sort_order, created_at")
+    .select("id, exhibition_id, type, bucket_title, storage_path, sort_order, created_at")
     .eq("exhibition_id", exhibitionId)
     .order("sort_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
   if (error) return { data: [], error };
   return { data: (data ?? []) as ExhibitionMediaRow[], error: null };
+}
+
+export type ExhibitionMediaBucket = {
+  key: string;
+  title: string;
+  items: ExhibitionMediaRow[];
+  /** For inserting new photo into this bucket. */
+  insertType: "installation" | "side_event" | "custom";
+  insertBucketTitle: string | null;
+};
+
+/** Group media by display bucket: key = bucket_title ?? type (for section title). */
+export function groupExhibitionMediaByBucket(
+  media: ExhibitionMediaRow[],
+  t: (key: string) => string
+): ExhibitionMediaBucket[] {
+  const byKey = new Map<string, ExhibitionMediaRow[]>();
+  const defaultTitles: Record<string, string> = {
+    installation: "exhibition.installationViews",
+    side_event: "exhibition.sideEvents",
+  };
+  for (const m of media) {
+    const key = m.bucket_title?.trim() || m.type;
+    if (!byKey.has(key)) byKey.set(key, []);
+    byKey.get(key)!.push(m);
+  }
+  const buckets = Array.from(byKey.entries()).map(([key, items]) => {
+    const first = items[0];
+    const insertType: "installation" | "side_event" | "custom" =
+      key === "installation" ? "installation" : key === "side_event" ? "side_event" : "custom";
+    return {
+      key,
+      title: defaultTitles[key] ? t(defaultTitles[key]) : key,
+      items,
+      insertType,
+      insertBucketTitle: insertType === "custom" ? (first?.bucket_title?.trim() || key) : null,
+    };
+  });
+  // Ensure installation and side_event exist (for "add photo" UI even when empty)
+  for (const k of ["installation", "side_event"]) {
+    if (!byKey.has(k)) {
+      buckets.push({
+        key: k,
+        title: defaultTitles[k] ? t(defaultTitles[k]) : k,
+        items: [],
+        insertType: k as "installation" | "side_event",
+        insertBucketTitle: null,
+      });
+    }
+  }
+  // Fixed order: installation, side_event, then custom
+  const order = ["installation", "side_event"];
+  buckets.sort((a, b) => {
+    const ai = order.indexOf(a.key);
+    const bi = order.indexOf(b.key);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.key.localeCompare(b.key);
+  });
+  return buckets;
+}
+
+/** Insert one exhibition media row (curator/host only via RLS). Use type 'custom' + bucket_title for user-named buckets. */
+export async function insertExhibitionMedia(args: {
+  exhibition_id: string;
+  type: "installation" | "side_event" | "custom";
+  bucket_title?: string | null;
+  storage_path: string;
+  sort_order?: number | null;
+}): Promise<{ data: { id: string } | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from("exhibition_media")
+    .insert({
+      exhibition_id: args.exhibition_id,
+      type: args.type,
+      bucket_title: args.bucket_title?.trim() || null,
+      storage_path: args.storage_path,
+      sort_order: args.sort_order ?? 0,
+    })
+    .select("id")
+    .single();
+  if (error) return { data: null, error };
+  return { data: data as { id: string }, error: null };
+}
+
+/** Delete exhibition media (curator/host only via RLS). */
+export async function deleteExhibitionMedia(id: string): Promise<{ error: unknown }> {
+  const { error } = await supabase.from("exhibition_media").delete().eq("id", id);
+  return { error };
 }
 
 /** List exhibitions that include this work (for artwork detail "Part of exhibitions"). */

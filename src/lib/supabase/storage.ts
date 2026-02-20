@@ -26,6 +26,20 @@ export async function uploadArtworkImage(
   return path;
 }
 
+/** Upload exhibition media image. Path: exhibition-media/{exhibitionId}/{uuid}-{name}. Uses same bucket as artworks. */
+export async function uploadExhibitionMedia(
+  file: File,
+  exhibitionId: string
+): Promise<string> {
+  const safeName = sanitizeFilename(file.name);
+  const path = `exhibition-media/${exhibitionId}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
 export async function removeStorageFile(path: string): Promise<void> {
   await supabase.storage.from(BUCKET).remove([path]);
 }

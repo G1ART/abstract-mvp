@@ -11,39 +11,46 @@ import {
   listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
+import { listExhibitionsForFeed, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FeedArtworkCard } from "./FeedArtworkCard";
 import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
+import { FeedExhibitionCard } from "./FeedExhibitionCard";
 
 const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
-const INTERLEAVE_EVERY = 5; // 5 artworks : 1 discovery block
+const INTERLEAVE_EVERY = 5; // 5 items (artwork/exhibition) : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
 const DISCOVERY_BLOCKS_MAX = 4;
 
+type FeedEntry =
+  | { type: "artwork"; created_at: string | null; artwork: ArtworkWithLikes }
+  | { type: "exhibition"; created_at: string | null; exhibition: ExhibitionRow };
+
 type FeedItem =
   | { type: "artwork"; artwork: ArtworkWithLikes }
+  | { type: "exhibition"; exhibition: ExhibitionRow }
   | { type: "discovery"; profile: PeopleRec; artworks: ArtworkWithLikes[] };
 
 function buildFeedItems(
-  artworks: ArtworkWithLikes[],
+  entries: FeedEntry[],
   discoveryData: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
 ): FeedItem[] {
   const items: FeedItem[] = [];
-  let artIdx = 0;
+  let entryIdx = 0;
   let recIdx = 0;
   let sinceLastRec = 0;
 
-  while (artIdx < artworks.length || recIdx < discoveryData.length) {
-    // Insert artwork(s) until we've added 5 since last discovery
-    while (artIdx < artworks.length && sinceLastRec < INTERLEAVE_EVERY) {
-      items.push({ type: "artwork", artwork: artworks[artIdx] });
-      artIdx++;
+  while (entryIdx < entries.length || recIdx < discoveryData.length) {
+    while (entryIdx < entries.length && sinceLastRec < INTERLEAVE_EVERY) {
+      const e = entries[entryIdx];
+      if (e.type === "artwork") items.push({ type: "artwork", artwork: e.artwork });
+      else items.push({ type: "exhibition", exhibition: e.exhibition });
+      entryIdx++;
       sinceLastRec++;
     }
     sinceLastRec = 0;
 
-    // Insert discovery block
     if (recIdx < discoveryData.length) {
       const d = discoveryData[recIdx];
       if (d.artworks.length > 0) {
@@ -66,6 +73,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const pathname = usePathname();
   const { t } = useT();
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([]);
   const [discoveryData, setDiscoveryData] = useState<
     { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
   >([]);
@@ -115,14 +123,18 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const fetchArtworks = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const [artworksRes, followingRes] = await Promise.all([
+    const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
       tab === "following"
         ? listFollowingArtworks({ limit: 50 })
         : listPublicArtworks({ limit: 50, sort }),
       getFollowingIds(),
+      getFollowingIds().then((r) =>
+        r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionRow[], error: null }
+      ),
     ]);
     const { data: listRaw, error: err } = artworksRes;
-    setFollowingIds(followingRes.data ?? new Set());
+    const followingSet = followingRes.data ?? new Set<string>();
+    setFollowingIds(followingSet);
 
     if (err) {
       const msg =
@@ -148,11 +160,21 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
 
     setArtworks(list);
 
+    const exhibitions = exhibitionsRes.data ?? [];
+    const entries: FeedEntry[] = [
+      ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+      ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
+    ].sort((a, b) => {
+      const ta = new Date(a.created_at ?? 0).getTime();
+      const tb = new Date(b.created_at ?? 0).getTime();
+      return tb - ta;
+    });
+    setFeedEntries(entries);
+
     const allIds = list.map((a) => a.id);
     const liked = await getLikedArtworkIds(allIds);
     setLikedIds(liked);
 
-    // Fetch discovery: rec profiles + their artworks
     const recProfiles = await fetchRecProfiles();
     const discoveryWithArtworks: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[] = [];
     for (const p of recProfiles.slice(0, DISCOVERY_BLOCKS_MAX)) {
@@ -233,10 +255,10 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     );
   }
 
-  const isEmpty = artworks.length === 0 && discoveryData.length === 0;
+  const isEmpty = feedEntries.length === 0 && discoveryData.length === 0;
   const isFollowingEmpty = tab === "following" && isEmpty;
 
-  const feedItems = buildFeedItems(artworks, discoveryData);
+  const feedItems = buildFeedItems(feedEntries, discoveryData);
 
   return (
     <div>
@@ -275,6 +297,13 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
                     onLikeUpdate={handleLikeUpdate}
                     priority={isPriority}
                   />
+                </div>
+              );
+            }
+            if (item.type === "exhibition") {
+              return (
+                <div key={`exhibition-${item.exhibition.id}`} className="min-w-0">
+                  <FeedExhibitionCard exhibition={item.exhibition} />
                 </div>
               );
             }

@@ -11,11 +11,15 @@ import {
   listExhibitionMedia,
   listWorksInExhibition,
   removeWorkFromExhibition,
+  groupExhibitionMediaByBucket,
+  insertExhibitionMedia,
+  type ExhibitionMediaBucket,
   type ExhibitionMediaRow,
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
 import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import { uploadExhibitionMedia } from "@/lib/supabase/storage";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -35,6 +39,9 @@ export default function ExhibitionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const [uploadingBucketKey, setUploadingBucketKey] = useState<string | null>(null);
+  const [newBucketTitle, setNewBucketTitle] = useState("");
+  const [newBucketUploading, setNewBucketUploading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -63,6 +70,11 @@ export default function ExhibitionDetailPage() {
     setLoading(false);
   }, [id]);
 
+  const mediaBuckets = useMemo(
+    () => groupExhibitionMediaByBucket(media, (k) => t(k)),
+    [media, t]
+  );
+
   const byArtist = useMemo(() => {
     const map = new Map<string, ArtworkWithLikes[]>();
     for (const a of artworks) {
@@ -81,6 +93,55 @@ export default function ExhibitionDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  async function handleAddPhoto(bucket: ExhibitionMediaBucket, file: File) {
+    if (!id) return;
+    setUploadingBucketKey(bucket.key);
+    setError(null);
+    try {
+      const storagePath = await uploadExhibitionMedia(file, id);
+      const { error: err } = await insertExhibitionMedia({
+        exhibition_id: id,
+        type: bucket.insertType,
+        bucket_title: bucket.insertBucketTitle,
+        storage_path: storagePath,
+      });
+      if (err) {
+        setError(formatSupabaseError(err, "Failed to add photo"));
+        return;
+      }
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingBucketKey(null);
+    }
+  }
+
+  async function handleAddCustomBucket(title: string, file: File) {
+    if (!id || !title.trim()) return;
+    setNewBucketUploading(true);
+    setError(null);
+    try {
+      const storagePath = await uploadExhibitionMedia(file, id);
+      const { error: err } = await insertExhibitionMedia({
+        exhibition_id: id,
+        type: "custom",
+        bucket_title: title.trim(),
+        storage_path: storagePath,
+      });
+      if (err) {
+        setError(formatSupabaseError(err, "Failed to add bucket"));
+        return;
+      }
+      setNewBucketTitle("");
+      await fetchData();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setNewBucketUploading(false);
+    }
+  }
 
   async function handleRemove(workId: string) {
     if (!id) return;
@@ -215,17 +276,16 @@ export default function ExhibitionDetailPage() {
               </div>
             )}
 
-            <section className="mb-8">
-              <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.installationViews")}</h2>
-              {media.filter((m) => m.type === "installation").length === 0 ? (
-                <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
-                  {t("exhibition.noMediaYet")}
-                </p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {media
-                    .filter((m) => m.type === "installation")
-                    .map((m) => (
+            {mediaBuckets.map((bucket) => (
+              <section key={bucket.key} className="mb-8">
+                <h2 className="mb-3 text-sm font-medium text-zinc-700">{bucket.title}</h2>
+                {bucket.items.length === 0 ? (
+                  <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
+                    {t("exhibition.noMediaYet")}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {bucket.items.map((m) => (
                       <div key={m.id} className="relative aspect-square overflow-hidden rounded border border-zinc-200 bg-zinc-100">
                         <Image
                           src={getArtworkImageUrl(m.storage_path, "thumb")}
@@ -236,33 +296,56 @@ export default function ExhibitionDetailPage() {
                         />
                       </div>
                     ))}
-                </div>
-              )}
-            </section>
+                  </div>
+                )}
+                <label className="mt-2 inline-block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    disabled={uploadingBucketKey !== null}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleAddPhoto(bucket, file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <span className="inline-block rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50 cursor-pointer">
+                    {uploadingBucketKey === bucket.key ? t("common.loading") : t("exhibition.addPhoto")}
+                  </span>
+                </label>
+              </section>
+            ))}
 
-            <section>
-              <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.sideEvents")}</h2>
-              {media.filter((m) => m.type === "side_event").length === 0 ? (
-                <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
-                  {t("exhibition.noMediaYet")}
-                </p>
-              ) : (
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {media
-                    .filter((m) => m.type === "side_event")
-                    .map((m) => (
-                      <div key={m.id} className="relative aspect-square overflow-hidden rounded border border-zinc-200 bg-zinc-100">
-                        <Image
-                          src={getArtworkImageUrl(m.storage_path, "thumb")}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          sizes="150px"
-                        />
-                      </div>
-                    ))}
-                </div>
-              )}
+            <section className="mb-8 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 p-4">
+              <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("exhibition.addCustomBucket")}</h2>
+              <p className="mb-3 text-xs text-zinc-500">{t("exhibition.addCustomBucketHint")}</p>
+              <div className="flex flex-wrap items-end gap-2">
+                <input
+                  type="text"
+                  value={newBucketTitle}
+                  onChange={(e) => setNewBucketTitle(e.target.value)}
+                  placeholder={t("exhibition.bucketTitlePlaceholder")}
+                  className="rounded border border-zinc-300 px-2 py-1.5 text-sm"
+                />
+                <label className="inline-block">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="sr-only"
+                    id="new-bucket-file"
+                    disabled={newBucketUploading}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file && newBucketTitle.trim()) handleAddCustomBucket(newBucketTitle.trim(), file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <span className="inline-block rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700 cursor-pointer">
+                    {newBucketUploading ? t("common.loading") : t("exhibition.addPhoto")}
+                  </span>
+                </label>
+              </div>
             </section>
           </>
         )}

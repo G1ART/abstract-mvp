@@ -34,8 +34,10 @@ import {
   getOrderedPersonaTabs,
   getPersonaCounts,
   type PersonaTab,
+  type PersonaTabItem,
 } from "@/lib/provenance/personaTabs";
 import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 
 type Profile = {
   id: string;
@@ -45,6 +47,7 @@ type Profile = {
   main_role: string | null;
   roles: string[] | null;
   profile_completeness?: number | null;
+  profile_details?: Record<string, unknown> | null;
 };
 
 export default function MyPage() {
@@ -68,6 +71,9 @@ export default function MyPage() {
   const [priceInquiryCount, setPriceInquiryCount] = useState<number>(0);
   const [pendingClaimsCount, setPendingClaimsCount] = useState<number>(0);
   const [exhibitions, setExhibitions] = useState<ExhibitionRow[]>([]);
+  const [tabReorderMode, setTabReorderMode] = useState(false);
+  const [tabOrderDraft, setTabOrderDraft] = useState<PersonaTabItem[]>([]);
+  const [tabOrderSaving, setTabOrderSaving] = useState(false);
 
   const tabFromUrl = searchParams.get("tab");
   useEffect(() => {
@@ -476,15 +482,19 @@ export default function MyPage() {
           )}
         </div>
 
-        {/* Persona tabs: role-based order (artist / collector / curator / gallery); order is reorderable later */}
+        {/* Persona tabs: role-based order; user can reorder and save */}
         {((artworks.length > 0) || showExhibitionsTab) && profile?.id && (
-          <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
+          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-2">
             {(() => {
               const counts = getPersonaCounts(artworks, profile.id);
+              const rawSaved = profile?.profile_details?.tab_order;
+              const savedOrder = Array.isArray(rawSaved)
+                ? (rawSaved.filter((x): x is PersonaTab => typeof x === "string" && ["all", "exhibitions", "CREATED", "OWNS", "INVENTORY", "CURATED"].includes(x)) as PersonaTab[])
+                : undefined;
               const ordered = getOrderedPersonaTabs(counts, exhibitions.length, {
                 main_role: profile.main_role ?? null,
                 roles: roles,
-              });
+              }, savedOrder);
               const tabLabels: Record<PersonaTab, string> = {
                 all: t("profile.personaAll"),
                 exhibitions: t("exhibition.myExhibitions"),
@@ -493,18 +503,105 @@ export default function MyPage() {
                 INVENTORY: t("profile.personaGallery"),
                 CURATED: t("profile.personaCurated"),
               };
-              return ordered.map(({ tab, count }) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setPersonaTab(tab)}
-                  className={`rounded px-3 py-1.5 text-sm font-medium ${
-                    personaTab === tab ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  }`}
-                >
-                  {tabLabels[tab]} ({count})
-                </button>
-              ));
+              if (tabReorderMode) {
+                const list = tabOrderDraft.length > 0 ? tabOrderDraft : ordered;
+                return (
+                  <>
+                    {list.map(({ tab, count }, idx) => (
+                      <span key={tab} className="flex items-center gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (idx <= 0) return;
+                            const next = [...list];
+                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                            setTabOrderDraft(next);
+                          }}
+                          className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
+                          disabled={idx === 0}
+                          aria-label={t("my.moveTabUp")}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (idx >= list.length - 1) return;
+                            const next = [...list];
+                            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                            setTabOrderDraft(next);
+                          }}
+                          className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
+                          disabled={idx === list.length - 1}
+                          aria-label={t("my.moveTabDown")}
+                        >
+                          ↓
+                        </button>
+                        <span className="rounded bg-zinc-100 px-2 py-1 text-sm text-zinc-700">
+                          {tabLabels[tab]} ({count})
+                        </span>
+                      </span>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={tabOrderSaving}
+                      onClick={async () => {
+                        const order = (tabOrderDraft.length > 0 ? tabOrderDraft : ordered).map((o) => o.tab);
+                        setTabOrderSaving(true);
+                        const { error: err } = await updateMyProfileDetails({ tab_order: order }, null);
+                        setTabOrderSaving(false);
+                        if (err) {
+                          setToast(t("common.tryAgain"));
+                          return;
+                        }
+                        setTabReorderMode(false);
+                        setTabOrderDraft([]);
+                        await fetchData();
+                      }}
+                      className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                    >
+                      {tabOrderSaving ? t("common.loading") : t("common.save")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTabReorderMode(false);
+                        setTabOrderDraft([]);
+                      }}
+                      className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                    >
+                      {t("common.cancel")}
+                    </button>
+                  </>
+                );
+              }
+              return (
+                <>
+                  {ordered.map(({ tab, count }) => (
+                    <button
+                      key={tab}
+                      type="button"
+                      onClick={() => setPersonaTab(tab)}
+                      className={`rounded px-3 py-1.5 text-sm font-medium ${
+                        personaTab === tab ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                      }`}
+                    >
+                      {tabLabels[tab]} ({count})
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTabOrderDraft(ordered);
+                      setTabReorderMode(true);
+                    }}
+                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
+                    title={t("my.reorderTabs")}
+                  >
+                    ↕
+                  </button>
+                </>
+              );
             })()}
           </div>
         )}
