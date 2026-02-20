@@ -6,10 +6,13 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import { useT } from "@/lib/i18n/useT";
 import {
+  ensureDefaultExhibitionMediaBuckets,
   getExhibitionById,
   listExhibitionMedia,
+  listExhibitionMediaBuckets,
   listWorksInExhibition,
   groupExhibitionMediaByBucket,
+  type ExhibitionMediaBucketRow,
   type ExhibitionMediaRow,
   type ExhibitionRow,
   type ExhibitionWorkRow,
@@ -31,6 +34,7 @@ export default function PublicExhibitionPage() {
   const [works, setWorks] = useState<ExhibitionWorkRow[]>([]);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [media, setMedia] = useState<ExhibitionMediaRow[]>([]);
+  const [mediaBucketRows, setMediaBucketRows] = useState<ExhibitionMediaBucketRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,10 +43,12 @@ export default function PublicExhibitionPage() {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const [exRes, worksRes, mediaRes, sessionRes] = await Promise.all([
+    await ensureDefaultExhibitionMediaBuckets(id);
+    const [exRes, worksRes, mediaRes, bucketRes, sessionRes] = await Promise.all([
       getExhibitionById(id),
       listWorksInExhibition(id),
       listExhibitionMedia(id),
+      listExhibitionMediaBuckets(id),
       getSession(),
     ]);
     const session = sessionRes?.data?.session;
@@ -55,6 +61,7 @@ export default function PublicExhibitionPage() {
     setExhibition(exRes.data);
     setWorks(worksRes.data ?? []);
     setMedia(mediaRes.data ?? []);
+    setMediaBucketRows(bucketRes.data ?? []);
     if ((worksRes.data ?? []).length === 0) {
       setArtworks([]);
       setLoading(false);
@@ -66,24 +73,31 @@ export default function PublicExhibitionPage() {
   }, [id]);
 
   const mediaBuckets = useMemo(() => {
-    const all = groupExhibitionMediaByBucket(media, (k) => t(k));
+    const all = groupExhibitionMediaByBucket(media, (k) => t(k), mediaBucketRows);
     return all.filter((b) => b.items.length > 0);
-  }, [media, t]);
+  }, [media, mediaBucketRows, t]);
 
   const byArtist = useMemo(() => {
+    const byId = new Map(artworks.map((a) => [a.id, a]));
+    const ordered = works.map((w) => byId.get(w.work_id)).filter((a): a is ArtworkWithLikes => !!a);
     const map = new Map<string, ArtworkWithLikes[]>();
-    for (const a of artworks) {
+    const order: string[] = [];
+    for (const a of ordered) {
       const key = a.artist_id ?? "";
-      if (!map.has(key)) map.set(key, []);
+      if (!map.has(key)) {
+        map.set(key, []);
+        order.push(key);
+      }
       map.get(key)!.push(a);
     }
-    return Array.from(map.entries()).map(([artistId, list]) => {
+    return order.map((artistId) => {
+      const list = map.get(artistId) ?? [];
       const first = list[0];
       const profile = first?.profiles as { display_name?: string; username?: string } | null | undefined;
       const name = profile?.display_name?.trim() || profile?.username || "Artist";
       return { artistId, artistName: name, list };
     });
-  }, [artworks]);
+  }, [artworks, works]);
 
   const isOwner = exhibition && userId && (exhibition.curator_id === userId || exhibition.host_profile_id === userId);
 

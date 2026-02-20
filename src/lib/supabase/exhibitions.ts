@@ -37,6 +37,16 @@ export type ExhibitionMediaRow = {
   created_at: string;
 };
 
+export type ExhibitionMediaBucketRow = {
+  id: string;
+  exhibition_id: string;
+  key: string;
+  title: string;
+  type: "installation" | "side_event" | "custom";
+  sort_order: number | null;
+  created_at: string;
+};
+
 /** List exhibitions I curate or host (for My profile "기획한 전시" / "진행 중인 전시"). */
 export async function listMyExhibitions(): Promise<{
   data: ExhibitionRow[];
@@ -284,7 +294,8 @@ export type ExhibitionMediaBucket = {
 /** Group media by display bucket: key = bucket_title ?? type (for section title). */
 export function groupExhibitionMediaByBucket(
   media: ExhibitionMediaRow[],
-  t: (key: string) => string
+  t: (key: string) => string,
+  bucketRows?: ExhibitionMediaBucketRow[]
 ): ExhibitionMediaBucket[] {
   const byKey = new Map<string, ExhibitionMediaRow[]>();
   const defaultTitles: Record<string, string> = {
@@ -320,16 +331,23 @@ export function groupExhibitionMediaByBucket(
       });
     }
   }
-  // Fixed order: installation, side_event, then custom
-  const order = ["installation", "side_event"];
-  buckets.sort((a, b) => {
-    const ai = order.indexOf(a.key);
-    const bi = order.indexOf(b.key);
-    if (ai !== -1 && bi !== -1) return ai - bi;
-    if (ai !== -1) return -1;
-    if (bi !== -1) return 1;
-    return a.key.localeCompare(b.key);
-  });
+  if (bucketRows?.length) {
+    const byMeta = new Map(bucketRows.map((r) => [r.key, r]));
+    for (const b of buckets) {
+      const meta = byMeta.get(b.key);
+      if (meta?.title?.trim()) b.title = meta.title.trim();
+    }
+    buckets.sort((a, b) => {
+      const ma = byMeta.get(a.key);
+      const mb = byMeta.get(b.key);
+      const ao = ma?.sort_order ?? Number.MAX_SAFE_INTEGER;
+      const bo = mb?.sort_order ?? Number.MAX_SAFE_INTEGER;
+      if (ao !== bo) return ao - bo;
+      if (ma && !mb) return -1;
+      if (!ma && mb) return 1;
+      return 0;
+    });
+  }
   return buckets;
 }
 
@@ -360,6 +378,108 @@ export async function insertExhibitionMedia(args: {
 export async function deleteExhibitionMedia(id: string): Promise<{ error: unknown }> {
   const { error } = await supabase.from("exhibition_media").delete().eq("id", id);
   return { error };
+}
+
+/** Ensure fixed default buckets exist for this exhibition. */
+export async function ensureDefaultExhibitionMediaBuckets(exhibitionId: string): Promise<{ error: unknown }> {
+  const rows = [
+    { exhibition_id: exhibitionId, key: "installation", title: "installation", type: "installation", sort_order: 0 },
+    { exhibition_id: exhibitionId, key: "side_event", title: "side_event", type: "side_event", sort_order: 1 },
+  ];
+  const { error } = await supabase
+    .from("exhibition_media_buckets")
+    .upsert(rows, { onConflict: "exhibition_id,key", ignoreDuplicates: false });
+  return { error };
+}
+
+export async function listExhibitionMediaBuckets(exhibitionId: string): Promise<{
+  data: ExhibitionMediaBucketRow[];
+  error: unknown;
+}> {
+  const { data, error } = await supabase
+    .from("exhibition_media_buckets")
+    .select("id, exhibition_id, key, title, type, sort_order, created_at")
+    .eq("exhibition_id", exhibitionId)
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as ExhibitionMediaBucketRow[], error: null };
+}
+
+export async function upsertExhibitionMediaBucket(args: {
+  exhibition_id: string;
+  key: string;
+  title: string;
+  type: "installation" | "side_event" | "custom";
+  sort_order?: number | null;
+}): Promise<{ error: unknown }> {
+  const { error } = await supabase.from("exhibition_media_buckets").upsert(
+    {
+      exhibition_id: args.exhibition_id,
+      key: args.key,
+      title: args.title.trim(),
+      type: args.type,
+      sort_order: args.sort_order ?? 0,
+    },
+    { onConflict: "exhibition_id,key" }
+  );
+  return { error };
+}
+
+export async function updateExhibitionMediaBucketOrder(
+  exhibitionId: string,
+  orderedBucketKeys: string[]
+): Promise<{ error: unknown }> {
+  if (orderedBucketKeys.length === 0) return { error: null };
+  const results = await Promise.all(
+    orderedBucketKeys.map((key, idx) =>
+      supabase
+        .from("exhibition_media_buckets")
+        .update({ sort_order: idx })
+        .eq("exhibition_id", exhibitionId)
+        .eq("key", key)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  return { error: failed?.error ?? null };
+}
+
+/** Persist complete works order for an exhibition (global order across artist buckets). */
+export async function updateExhibitionWorksOrder(
+  exhibitionId: string,
+  orderedWorkIds: string[]
+): Promise<{ error: unknown }> {
+  if (orderedWorkIds.length === 0) return { error: null };
+  const results = await Promise.all(
+    orderedWorkIds.map((workId, idx) =>
+      supabase
+        .from("exhibition_works")
+        .update({ sort_order: idx })
+        .eq("exhibition_id", exhibitionId)
+        .eq("work_id", workId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  return { error: failed?.error ?? null };
+}
+
+/** Persist complete media order for an exhibition (global order across media buckets). */
+export async function updateExhibitionMediaOrder(
+  exhibitionId: string,
+  orderedMediaIds: string[]
+): Promise<{ error: unknown }> {
+  if (orderedMediaIds.length === 0) return { error: null };
+  const results = await Promise.all(
+    orderedMediaIds.map((mediaId, idx) =>
+      supabase
+        .from("exhibition_media")
+        .update({ sort_order: idx })
+        .eq("exhibition_id", exhibitionId)
+        .eq("id", mediaId)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  return { error: failed?.error ?? null };
 }
 
 /** List exhibitions that include this work (for artwork detail "Part of exhibitions"). */
