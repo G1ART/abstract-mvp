@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, sendMagicLink } from "@/lib/supabase/auth";
@@ -54,7 +54,7 @@ const PRICE_CURRENCIES = [
 
 type ArtistOption = { id: string; username: string | null; display_name: string | null };
 
-export default function UploadPage() {
+function UploadPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const addToExhibitionId = searchParams.get("addToExhibition");
@@ -692,5 +692,13 @@ export default function UploadPage() {
         )}
       </main>
     </AuthGate>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <Suspense fallback={<div className="mx-auto max-w-xl px-4 py-8 text-center text-zinc-500">Loading...</div>}>
+      <UploadPageContent />
+    </Suspense>
   );
 }
