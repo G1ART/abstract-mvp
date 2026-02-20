@@ -26,8 +26,8 @@ export function FeedExhibitionCard({ exhibition }: Props) {
     >
       <div className="flex items-center gap-3 p-4">
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-            {t("feed.recommendedLabel")} · {t("exhibition.myExhibitions")}
+          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+            {t("feed.recommendedLabelExhibition")}
           </p>
           <p className="mt-0.5 line-clamp-1 font-semibold text-zinc-900">{exhibition.title}</p>
           <p className="mt-1 line-clamp-1 text-xs text-zinc-600">

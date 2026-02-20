@@ -81,7 +81,7 @@ export function FeedDiscoveryBlock({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
-            {t("feed.recommendedLabel")}
+            {t("feed.recommendedLabelPeople")}
           </p>
           <p className="font-semibold text-zinc-900">{displayName}</p>
           {username && (
