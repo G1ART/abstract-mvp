@@ -43,21 +43,52 @@ export function getPersonaCounts(artworks: ArtworkWithLikes[], profileId: string
       (c) => c.subject_profile_id === profileId && c.claim_type === "CURATED"
     )
   ).length;
-  return { all, created, owns, inventory, curated };
+  const exhibited = artworks.filter((a) =>
+    (a.claims ?? []).some(
+      (c) =>
+        c.subject_profile_id === profileId &&
+        (c.claim_type === "INVENTORY" || c.claim_type === "EXHIBITED")
+    )
+  ).length;
+  return { all, created, owns, inventory, curated, exhibited };
+}
+
+export type AllBuckets = {
+  created: ArtworkWithLikes[];
+  curated: ArtworkWithLikes[];
+  exhibited: ArtworkWithLikes[];
+  owns: ArtworkWithLikes[];
+};
+
+/** Partition artworks into buckets for "전체" (all) tab. Each work appears in exactly one bucket (priority: created > curated > exhibited > owns). */
+export function getArtworksByAllBuckets(
+  artworks: ArtworkWithLikes[],
+  profileId: string
+): AllBuckets {
+  const created: ArtworkWithLikes[] = [];
+  const curated: ArtworkWithLikes[] = [];
+  const exhibited: ArtworkWithLikes[] = [];
+  const owns: ArtworkWithLikes[] = [];
+  for (const a of artworks) {
+    const claims = a.claims ?? [];
+    const types = new Set(claims.filter((c) => c.subject_profile_id === profileId).map((c) => c.claim_type));
+    if (types.has("CREATED")) created.push(a);
+    else if (types.has("CURATED")) curated.push(a);
+    else if (types.has("INVENTORY") || types.has("EXHIBITED")) exhibited.push(a);
+    else if (types.has("OWNS")) owns.push(a);
+  }
+  return { created, curated, exhibited, owns };
 }
 
 export type PersonaTabItem = { tab: PersonaTab; count: number };
 
-type Counts = { all: number; created: number; owns: number; inventory: number; curated: number };
+type Counts = { all: number; created: number; owns: number; inventory: number; curated: number; exhibited: number };
 type RoleOptions = { main_role: string | null; roles: string[] };
 
 /**
  * Returns persona tabs in role-based default order.
- * When user has multiple personas (e.g. artist + curator), main_role decides the primary order:
- * - main_role "curator" → exhibitions first, then CURATED, then all.
- * - main_role "gallerist" → exhibitions first, then INVENTORY, then all.
- * - main_role "collector" → OWNS first, then exhibitions, then all.
- * - main_role "artist" or null/other → artist order: all first, then exhibitions, then CREATED/OWNS/INVENTORY/CURATED.
+ * INVENTORY and CURATED are not shown as tabs; they surface as buckets inside "전체" (all).
+ * Non-artist: "전체" (all) is always last (rightmost).
  * Tab order can later be made user-reorderable (persisted in profile/settings).
  */
 export function getOrderedPersonaTabs(
@@ -69,42 +100,26 @@ export function getOrderedPersonaTabs(
   const has = (r: string) => roles.includes(r) || main_role === r;
   const isArtist = counts.created > 0;
   const isCollector = counts.owns > 0 || has("collector");
-  const isCurator = counts.curated > 0 || has("curator");
-  const isGallery = counts.inventory > 0 || has("gallerist");
 
   const exhibitionItem: PersonaTabItem | null =
     exhibitionsCount > 0 ? { tab: "exhibitions", count: exhibitionsCount } : null;
   const allItem: PersonaTabItem = { tab: "all", count: counts.all };
   const createdItem = counts.created > 0 ? { tab: "CREATED" as PersonaTab, count: counts.created } : null;
   const ownsItem = counts.owns > 0 ? { tab: "OWNS" as PersonaTab, count: counts.owns } : null;
-  const inventoryItem = counts.inventory > 0 ? { tab: "INVENTORY" as PersonaTab, count: counts.inventory } : null;
-  const curatedItem = counts.curated > 0 ? { tab: "CURATED" as PersonaTab, count: counts.curated } : null;
 
   const filt = <T,>(arr: (T | null)[]): T[] => arr.filter((x): x is T => x != null);
 
   if (main_role === "collector" && isCollector) {
-    return filt([ownsItem, exhibitionItem, allItem, createdItem, inventoryItem, curatedItem]);
+    return filt([ownsItem, exhibitionItem, allItem]);
   }
 
-  if (main_role === "curator" && isCurator) {
-    return filt([exhibitionItem, curatedItem, allItem, ownsItem, inventoryItem]);
-  }
-
-  if (main_role === "gallerist" && isGallery) {
-    return filt([exhibitionItem, inventoryItem, allItem, ownsItem, curatedItem]);
+  if (main_role === "curator" || main_role === "gallerist") {
+    return filt([exhibitionItem, allItem]);
   }
 
   if (isArtist) {
-    return filt([
-      allItem,
-      exhibitionItem,
-      createdItem,
-      ownsItem,
-      inventoryItem,
-      curatedItem,
-    ]);
+    return filt([allItem, exhibitionItem, createdItem, ownsItem]);
   }
 
-  const nonArtistRest = filt([createdItem, ownsItem, inventoryItem, curatedItem]);
-  return filt([exhibitionItem]).concat(nonArtistRest, [allItem]);
+  return filt([exhibitionItem, allItem]);
 }

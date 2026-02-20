@@ -283,23 +283,17 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
         )}
       </div>
 
-      {/* Persona tabs */}
+      {/* Persona tabs: no INVENTORY/CURATED; "전체" (all) last */}
       {personaCounts.all > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
           {[
-            { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all },
             ...(personaCounts.created > 0
               ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: personaCounts.created }]
               : []),
             ...(personaCounts.owns > 0
               ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: personaCounts.owns }]
               : []),
-            ...(personaCounts.inventory > 0
-              ? [{ tab: "INVENTORY" as PersonaTab, label: t("profile.personaGallery"), count: personaCounts.inventory }]
-              : []),
-            ...(personaCounts.curated > 0
-              ? [{ tab: "CURATED" as PersonaTab, label: t("profile.personaCurated"), count: personaCounts.curated }]
-              : []),
+            { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all },
           ].map(({ tab, label, count }) => (
             <button
               key={tab}

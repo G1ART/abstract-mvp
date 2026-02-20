@@ -1,15 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Image from "next/image";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import {
   getExhibitionById,
+  listExhibitionMedia,
   listWorksInExhibition,
   removeWorkFromExhibition,
+  type ExhibitionMediaRow,
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
@@ -24,12 +26,12 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function ExhibitionDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const [exhibition, setExhibition] = useState<ExhibitionRow | null>(null);
   const [works, setWorks] = useState<ExhibitionWorkRow[]>([]);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [media, setMedia] = useState<ExhibitionMediaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -38,9 +40,10 @@ export default function ExhibitionDetailPage() {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const [exRes, worksRes] = await Promise.all([
+    const [exRes, worksRes, mediaRes] = await Promise.all([
       getExhibitionById(id),
       listWorksInExhibition(id),
+      listExhibitionMedia(id),
     ]);
     if (exRes.error || !exRes.data) {
       setLoading(false);
@@ -49,6 +52,7 @@ export default function ExhibitionDetailPage() {
     }
     setExhibition(exRes.data);
     setWorks(worksRes.data ?? []);
+    setMedia(mediaRes.data ?? []);
     if ((worksRes.data ?? []).length === 0) {
       setArtworks([]);
       setLoading(false);
@@ -58,6 +62,21 @@ export default function ExhibitionDetailPage() {
     setArtworks(artList ?? []);
     setLoading(false);
   }, [id]);
+
+  const byArtist = useMemo(() => {
+    const map = new Map<string, ArtworkWithLikes[]>();
+    for (const a of artworks) {
+      const key = a.artist_id ?? "";
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(a);
+    }
+    return Array.from(map.entries()).map(([artistId, list]) => {
+      const first = list[0];
+      const profile = first?.profiles as { display_name?: string; username?: string } | null | undefined;
+      const name = profile?.display_name?.trim() || profile?.username || "Artist";
+      return { artistId, artistName: name, list };
+    });
+  }, [artworks]);
 
   useEffect(() => {
     fetchData();
@@ -132,11 +151,60 @@ export default function ExhibitionDetailPage() {
               </div>
             </header>
 
-            <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.works")}</h2>
             {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
 
-            {artworks.length === 0 ? (
-              <div className="rounded-lg border border-zinc-200 bg-zinc-50 py-8 text-center">
+            {byArtist.length > 0 && (
+              <section className="mb-8">
+                <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.byArtist")}</h2>
+                <div className="space-y-6">
+                  {byArtist.map(({ artistId, artistName, list }) => (
+                    <div key={artistId} className="rounded-lg border border-zinc-200 bg-white p-4">
+                      <p className="mb-3 text-sm font-medium text-zinc-900">{artistName}</p>
+                      <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
+                        {list.map((art) => {
+                          const img = art.artwork_images?.[0]?.storage_path;
+                          return (
+                            <div key={art.id} className="relative">
+                              <Link
+                                href={`/artwork/${art.id}`}
+                                className="block aspect-square overflow-hidden rounded border border-zinc-100 bg-zinc-100"
+                              >
+                                {img ? (
+                                  <Image
+                                    src={getArtworkImageUrl(img, "thumb")}
+                                    alt={art.title ?? ""}
+                                    width={120}
+                                    height={120}
+                                    className="h-full w-full object-cover"
+                                    sizes="120px"
+                                  />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
+                                    No image
+                                  </div>
+                                )}
+                              </Link>
+                              <div className="mt-1 truncate text-xs text-zinc-600">{art.title ?? "Untitled"}</div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemove(art.id)}
+                                disabled={removingId === art.id}
+                                className="mt-0.5 text-[10px] font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                              >
+                                {removingId === art.id ? "..." : t("exhibition.removeFromExhibition")}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {artworks.length === 0 && (
+              <div className="mb-8 rounded-lg border border-zinc-200 bg-zinc-50 py-8 text-center">
                 <p className="mb-4 text-sm text-zinc-600">{t("exhibition.noWorks")}</p>
                 <Link
                   href={`/my/exhibitions/${id}/add`}
@@ -145,48 +213,57 @@ export default function ExhibitionDetailPage() {
                   {t("exhibition.addWork")}
                 </Link>
               </div>
-            ) : (
-              <ul className="max-w-2xl space-y-6">
-                {artworks.map((art) => {
-                  const img = art.artwork_images?.[0]?.storage_path;
-                  return (
-                    <li key={art.id} className="rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
-                      <Link href={`/artwork/${art.id}`} className="block">
-                        {img ? (
-                          <div className="relative aspect-[4/3] bg-zinc-100 sm:aspect-[3/2]">
-                            <Image
-                              src={getArtworkImageUrl(img, "thumb")}
-                              alt={art.title ?? ""}
-                              fill
-                              className="object-cover"
-                              sizes="(max-width: 640px) 100vw, 672px"
-                            />
-                          </div>
-                        ) : (
-                          <div className="aspect-[4/3] flex items-center justify-center bg-zinc-100 text-sm text-zinc-400 sm:aspect-[3/2]">
-                            No image
-                          </div>
-                        )}
-                        <div className="p-4">
-                          <p className="font-semibold text-zinc-900">{art.title ?? "Untitled"}</p>
-                          <p className="mt-1 text-sm text-zinc-500">{art.year ?? ""}</p>
-                        </div>
-                      </Link>
-                      <div className="border-t border-zinc-100 px-4 py-2">
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(art.id)}
-                          disabled={removingId === art.id}
-                          className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
-                        >
-                          {removingId === art.id ? "..." : t("exhibition.removeFromExhibition")}
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
             )}
+
+            <section className="mb-8">
+              <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.installationViews")}</h2>
+              {media.filter((m) => m.type === "installation").length === 0 ? (
+                <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
+                  {t("exhibition.noMediaYet")}
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {media
+                    .filter((m) => m.type === "installation")
+                    .map((m) => (
+                      <div key={m.id} className="relative aspect-square overflow-hidden rounded border border-zinc-200 bg-zinc-100">
+                        <Image
+                          src={getArtworkImageUrl(m.storage_path, "thumb")}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="150px"
+                        />
+                      </div>
+                    ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.sideEvents")}</h2>
+              {media.filter((m) => m.type === "side_event").length === 0 ? (
+                <p className="rounded border border-zinc-200 bg-zinc-50 px-3 py-4 text-sm text-zinc-500">
+                  {t("exhibition.noMediaYet")}
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {media
+                    .filter((m) => m.type === "side_event")
+                    .map((m) => (
+                      <div key={m.id} className="relative aspect-square overflow-hidden rounded border border-zinc-200 bg-zinc-100">
+                        <Image
+                          src={getArtworkImageUrl(m.storage_path, "thumb")}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="150px"
+                        />
+                      </div>
+                    ))}
+                </div>
+              )}
+            </section>
           </>
         )}
       </main>

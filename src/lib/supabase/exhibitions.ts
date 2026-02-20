@@ -27,6 +27,15 @@ export type ExhibitionWorkRow = {
   created_at: string;
 };
 
+export type ExhibitionMediaRow = {
+  id: string;
+  exhibition_id: string;
+  type: "installation" | "side_event";
+  storage_path: string;
+  sort_order: number | null;
+  created_at: string;
+};
+
 /** List exhibitions I curate or host (for My profile "기획한 전시" / "진행 중인 전시"). */
 export async function listMyExhibitions(): Promise<{
   data: ExhibitionRow[];
@@ -209,6 +218,21 @@ export async function getExhibitionById(id: string): Promise<{
 
   if (error) return { data: null, error };
   return { data: data as ExhibitionRow | null, error: null };
+}
+
+/** List exhibition-level media (전시전경, 부대행사). */
+export async function listExhibitionMedia(exhibitionId: string): Promise<{
+  data: ExhibitionMediaRow[];
+  error: unknown;
+}> {
+  const { data, error } = await supabase
+    .from("exhibition_media")
+    .select("id, exhibition_id, type, storage_path, sort_order, created_at")
+    .eq("exhibition_id", exhibitionId)
+    .order("sort_order", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as ExhibitionMediaRow[], error: null };
 }
 
 /** List exhibitions that include this work (for artwork detail "Part of exhibitions"). */

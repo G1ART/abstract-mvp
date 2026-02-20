@@ -30,6 +30,7 @@ import {
 } from "@/lib/supabase/artworks";
 import {
   filterArtworksByPersona,
+  getArtworksByAllBuckets,
   getOrderedPersonaTabs,
   getPersonaCounts,
   type PersonaTab,
@@ -218,15 +219,22 @@ export default function MyPage() {
   }
 
   const roles = (profile?.roles ?? []) as string[];
-  const displayedArtworks = useMemo(
-    () =>
-      profile?.id && personaTab !== "exhibitions"
-        ? filterArtworksByPersona(artworks, profile.id, personaTab)
-        : personaTab === "exhibitions"
-          ? []
-          : artworks,
-    [artworks, profile?.id, personaTab]
+  const allBuckets = useMemo(
+    () => (profile?.id ? getArtworksByAllBuckets(artworks, profile.id) : null),
+    [artworks, profile?.id]
   );
+  const displayedArtworks = useMemo(() => {
+    if (personaTab === "exhibitions") return [];
+    if (!profile?.id) return artworks;
+    if (personaTab === "all" && allBuckets)
+      return [
+        ...allBuckets.created,
+        ...allBuckets.curated,
+        ...allBuckets.exhibited,
+        ...allBuckets.owns,
+      ];
+    return filterArtworksByPersona(artworks, profile.id, personaTab);
+  }, [artworks, profile?.id, personaTab, allBuckets]);
   const showExhibitionsTab = exhibitions.length > 0;
 
   return (
@@ -574,6 +582,81 @@ export default function MyPage() {
               </li>
             ))}
           </ul>
+        ) : personaTab === "all" && allBuckets ? (
+          (() => {
+            const { created, curated, exhibited, owns } = allBuckets;
+            const hasAny = created.length + curated.length + exhibited.length + owns.length > 0;
+            if (!hasAny) {
+              return (
+                <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
+                  <p className="text-zinc-600">{t("me.noWorks")}</p>
+                  <Link
+                    href="/upload"
+                    className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  >
+                    {t("me.uploadFirst")}
+                  </Link>
+                </div>
+              );
+            }
+            const renderCard = (artwork: ArtworkWithLikes) => (
+              <div key={artwork.id} className="relative">
+                {selectMode && (
+                  <div className="absolute left-2 top-2 z-10">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(artwork.id)}
+                      onChange={() => toggleSelect(artwork.id)}
+                      className="h-5 w-5 rounded border-zinc-300"
+                      aria-label={t("my.bulkSelect.select")}
+                    />
+                  </div>
+                )}
+                <ArtworkCard
+                  artwork={artwork}
+                  likesCount={artwork.likes_count ?? 0}
+                  showEdit={!selectMode && !!profile && canEditArtwork(artwork, profile.id)}
+                  showDelete={!selectMode}
+                  onDelete={async (id) => {
+                    const { okIds, failed } = await deleteArtworksBatch([id]);
+                    if (okIds.length > 0) {
+                      setToast(t("artwork.deleted"));
+                      await fetchData();
+                    } else if (failed.length > 0) {
+                      setToast(t("my.bulkDeleteFailed"));
+                    }
+                  }}
+                />
+              </div>
+            );
+            const sections = [
+              { key: "created", list: created, label: t("profile.personaWork") },
+              { key: "curated", list: curated, label: t("profile.personaCurated") },
+              { key: "exhibited", list: exhibited, label: t("profile.bucketExhibited") },
+              { key: "owns", list: owns, label: t("profile.personaCollected") },
+            ].filter((s) => s.list.length > 0);
+            return (
+              <>
+                <div className="space-y-8">
+                  {sections.map(({ key, list, label }) => (
+                    <section key={key}>
+                      <h3 className="mb-3 text-sm font-medium text-zinc-500">
+                        {label} ({list.length})
+                      </h3>
+                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        {list.map((a) => renderCard(a))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+                {toast && (
+                  <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+                    {toast}
+                  </div>
+                )}
+              </>
+            );
+          })()
         ) : displayedArtworks.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
             <p className="text-zinc-600">{t("me.noWorks")}</p>
