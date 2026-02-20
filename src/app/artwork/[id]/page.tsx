@@ -42,6 +42,7 @@ import {
   canReplyToPriceInquiry,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
+import { listExhibitionsForWork, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
 
@@ -91,6 +92,7 @@ function ArtworkDetailContent() {
   const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
   const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
+  const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionRow[]>([]);
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -163,6 +165,11 @@ function ArtworkDetailContent() {
       }
       setArtwork(data as ArtworkWithLikes | null);
     });
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    listExhibitionsForWork(id).then(({ data }) => setExhibitionsForWork(data ?? []));
   }, [id]);
 
   useEffect(() => {
@@ -649,6 +656,42 @@ function ArtworkDetailContent() {
                     })}
                   </ul>
                 )}
+              </div>
+            )}
+            {exhibitionsForWork.length > 0 && (
+              <div className="mt-4 border-t border-zinc-200 pt-3">
+                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                  {t("artwork.partOfExhibitions")}
+                </p>
+                <ul className="mt-2 space-y-1.5 text-sm text-zinc-700">
+                  {exhibitionsForWork.map((ex) => {
+                    const dates =
+                      ex.start_date && ex.end_date
+                        ? `${ex.start_date} – ${ex.end_date}`
+                        : ex.start_date ?? ex.status;
+                    const isMyExhibition =
+                      userId && (ex.curator_id === userId || ex.host_profile_id === userId);
+                    return (
+                      <li key={ex.id}>
+                        {isMyExhibition ? (
+                          <Link
+                            href={`/my/exhibitions/${ex.id}`}
+                            className="font-medium text-zinc-900 underline hover:text-zinc-700"
+                          >
+                            {ex.title}
+                            {dates && ` · ${dates}`}
+                          </Link>
+                        ) : (
+                          <span>
+                            {ex.title}
+                            {dates && ` · ${dates}`}
+                            {ex.host_name && ` · ${ex.host_name}`}
+                          </span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
               </div>
             )}
             {canRequestClaim && (

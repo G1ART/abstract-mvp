@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, sendMagicLink } from "@/lib/supabase/auth";
 import {
   attachArtworkImage,
@@ -19,6 +19,8 @@ import {
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
 import { setArtworkBack } from "@/lib/artworkBack";
+import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
+import { logSupabaseError } from "@/lib/supabase/errors";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 
@@ -54,6 +56,8 @@ type ArtistOption = { id: string; username: string | null; display_name: string 
 
 export default function UploadPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const addToExhibitionId = searchParams.get("addToExhibition");
   const { t } = useT();
   const [userId, setUserId] = useState<string | null>(null);
   const [step, setStep] = useState<UploadStep>("intent");
@@ -286,21 +290,34 @@ export default function UploadPage() {
         return;
       }
 
+      if (addToExhibitionId?.trim()) {
+        const { error: addExErr } = await addWorkToExhibition(addToExhibitionId.trim(), artworkId);
+        if (addExErr) {
+          logSupabaseError("addWorkToExhibition", addExErr);
+        }
+      }
+
       const { getMyProfile } = await import("@/lib/supabase/profiles");
       const { data: profile } = await getMyProfile();
       const username = (profile as { username?: string | null } | null)?.username?.trim();
       if (inviteSent || inviteSendFailed) {
         setInviteToast(inviteSent ? "sent" : "failed");
         setTimeout(() => {
-          if (username) router.push(`/u/${username}`);
-          else {
+          if (addToExhibitionId?.trim()) {
+            router.push(`/my/exhibitions/${addToExhibitionId.trim()}`);
+          } else if (username) {
+            router.push(`/u/${username}`);
+          } else {
             setArtworkBack("/upload");
             router.push(`/artwork/${artworkId}`);
           }
         }, 2000);
       } else {
-        if (username) router.push(`/u/${username}`);
-        else {
+        if (addToExhibitionId?.trim()) {
+          router.push(`/my/exhibitions/${addToExhibitionId.trim()}`);
+        } else if (username) {
+          router.push(`/u/${username}`);
+        } else {
           setArtworkBack("/upload");
           router.push(`/artwork/${artworkId}`);
         }

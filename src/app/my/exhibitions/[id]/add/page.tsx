@@ -6,8 +6,17 @@ import Image from "next/image";
 import { useParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
-import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
-import { listMyArtworks, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import {
+  addWorkToExhibition,
+  listWorksInExhibition,
+} from "@/lib/supabase/exhibitions";
+import {
+  listMyArtworks,
+  listPublicArtworksListedByProfileId,
+  getArtworkImageUrl,
+  type ArtworkWithLikes,
+} from "@/lib/supabase/artworks";
+import { getMyProfile } from "@/lib/supabase/me";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 
 export default function AddWorkToExhibitionPage() {
@@ -21,9 +30,29 @@ export default function AddWorkToExhibitionPage() {
   const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
 
   const fetchArtworks = useCallback(async () => {
-    const { data } = await listMyArtworks({ limit: 100, publicOnly: false });
-    setArtworks(data ?? []);
-  }, []);
+    if (!id) return;
+    const { data: profile } = await getMyProfile();
+    const profileId = (profile as { id?: string } | null)?.id;
+    const [myRes, listedRes, inExhibitionRes] = await Promise.all([
+      listMyArtworks({ limit: 100, publicOnly: false }),
+      profileId
+        ? listPublicArtworksListedByProfileId(profileId, { limit: 100 })
+        : { data: [] as ArtworkWithLikes[], error: null },
+      listWorksInExhibition(id),
+    ]);
+    const myList = myRes.data ?? [];
+    const listedList = listedRes.data ?? [];
+    const inExhibition = new Set((inExhibitionRes.data ?? []).map((w) => w.work_id));
+    const byId = new Map<string, ArtworkWithLikes>();
+    for (const a of myList) byId.set(a.id, a);
+    for (const a of listedList) if (!byId.has(a.id)) byId.set(a.id, a);
+    const merged = Array.from(byId.values()).sort(
+      (a, b) =>
+        new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+    );
+    setArtworks(merged);
+    setDoneIds(inExhibition);
+  }, [id]);
 
   useEffect(() => {
     setLoading(true);

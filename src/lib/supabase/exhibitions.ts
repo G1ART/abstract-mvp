@@ -210,3 +210,24 @@ export async function getExhibitionById(id: string): Promise<{
   if (error) return { data: null, error };
   return { data: data as ExhibitionRow | null, error: null };
 }
+
+/** List exhibitions that include this work (for artwork detail "Part of exhibitions"). */
+export async function listExhibitionsForWork(workId: string): Promise<{
+  data: ExhibitionRow[];
+  error: unknown;
+}> {
+  const { data: ewRows, error: ewError } = await supabase
+    .from("exhibition_works")
+    .select("exhibition_id")
+    .eq("work_id", workId);
+  if (ewError || !ewRows?.length) return { data: [], error: ewError ?? null };
+  const ids = [...new Set(ewRows.map((r: { exhibition_id: string }) => r.exhibition_id))];
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .in("id", ids)
+    .eq("project_type", "exhibition")
+    .order("created_at", { ascending: false });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as ExhibitionRow[], error: null };
+}
