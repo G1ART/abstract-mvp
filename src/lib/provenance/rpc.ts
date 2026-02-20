@@ -146,6 +146,51 @@ export type PendingClaimRow = {
   profiles: { username: string | null; display_name: string | null } | null;
 };
 
+/** List all pending claims on my works (for /my/claims). */
+export async function listMyPendingClaims(): Promise<{ data: PendingClaimRow[]; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+  const { data: workRows } = await supabase
+    .from("artworks")
+    .select("id")
+    .eq("artist_id", session.user.id);
+  const workIds = (workRows ?? []).map((r: { id: string }) => r.id);
+  if (workIds.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("claims")
+    .select(
+      "id, claim_type, subject_profile_id, work_id, created_at, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name)"
+    )
+    .in("work_id", workIds)
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
+  if (error) return { data: [], error };
+  const rows: PendingClaimRow[] = (data ?? []).map((row: unknown) => {
+    const r = row as Record<string, unknown>;
+    const profiles = r.profiles;
+    const profileObj =
+      Array.isArray(profiles) && profiles.length > 0
+        ? (profiles[0] as { username: string | null; display_name: string | null })
+        : profiles && typeof profiles === "object" && !Array.isArray(profiles)
+          ? (profiles as { username: string | null; display_name: string | null })
+          : null;
+    return {
+      id: r.id,
+      claim_type: r.claim_type,
+      subject_profile_id: r.subject_profile_id,
+      work_id: r.work_id ?? null,
+      created_at: r.created_at ?? null,
+      period_status: (r.period_status as "past" | "current" | "future") ?? null,
+      start_date: (r.start_date as string) ?? null,
+      end_date: (r.end_date as string) ?? null,
+      profiles: profileObj,
+    } as PendingClaimRow;
+  });
+  return { data: rows, error: null };
+}
+
 /** List pending claims for a work (artist only sees these). */
 export async function listPendingClaimsForWork(
   workId: string

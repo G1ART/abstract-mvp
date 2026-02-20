@@ -152,6 +152,49 @@ export async function removeWorkFromExhibition(
   return { error };
 }
 
+/** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
+export async function listExhibitionsForProfile(profileId: string): Promise<{
+  data: ExhibitionRow[];
+  error: unknown;
+}> {
+  const [curatedRes, worksRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+      .eq("project_type", "exhibition")
+      .or(`curator_id.eq.${profileId},host_profile_id.eq.${profileId}`)
+      .order("created_at", { ascending: false }),
+    supabase.from("artworks").select("id").eq("artist_id", profileId),
+  ]);
+  const curated = (curatedRes.data ?? []) as ExhibitionRow[];
+  const myWorkIds = (worksRes.data ?? []).map((r: { id: string }) => r.id);
+  if (myWorkIds.length === 0) return { data: curated, error: curatedRes.error };
+  const { data: ewRows } = await supabase
+    .from("exhibition_works")
+    .select("exhibition_id")
+    .in("work_id", myWorkIds);
+  const participantIds = [...new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id))];
+  if (participantIds.length === 0) return { data: curated, error: curatedRes.error };
+  const curatedIds = new Set(curated.map((e) => e.id));
+  const needFetch = participantIds.filter((id) => !curatedIds.has(id));
+  if (needFetch.length === 0) return { data: curated, error: curatedRes.error };
+  const { data: participantProjects } = await supabase
+    .from("projects")
+    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, created_at")
+    .in("id", needFetch)
+    .eq("project_type", "exhibition");
+  const participant = (participantProjects ?? []) as ExhibitionRow[];
+  const merged = [...curated];
+  for (const p of participant) {
+    if (!curatedIds.has(p.id)) {
+      curatedIds.add(p.id);
+      merged.push(p);
+    }
+  }
+  merged.sort((a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime());
+  return { data: merged, error: null };
+}
+
 /** Get one exhibition by id (for detail/edit). */
 export async function getExhibitionById(id: string): Promise<{
   data: ExhibitionRow | null;

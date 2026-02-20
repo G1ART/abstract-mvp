@@ -71,6 +71,13 @@ export async function createPriceInquiry(artworkId: string, message?: string | n
   return { data: data as { id: string }, error: null };
 }
 
+/** Count of price inquiries on my artworks (for KPI). */
+export async function getMyPriceInquiryCount(): Promise<{ data: number; error: unknown }> {
+  const { data, error } = await listPriceInquiriesForArtist();
+  if (error) return { data: 0, error };
+  return { data: (data ?? []).length, error: null };
+}
+
 /** List inquiries on my artworks (for artist). */
 export async function listPriceInquiriesForArtist(): Promise<{ data: PriceInquiryRow[]; error: unknown }> {
   const {

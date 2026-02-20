@@ -90,9 +90,13 @@ export default function ExhibitionDetailPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-4xl px-4 py-8">
-        <div className="mb-6">
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <Link href="/my?tab=exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
+            ← {t("common.backTo")} {t("nav.myProfile")}
+          </Link>
+          <span className="text-zinc-400">|</span>
           <Link href="/my/exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("exhibition.myExhibitions")}
+            {t("exhibition.myExhibitions")}
           </Link>
         </div>
 
@@ -142,33 +146,33 @@ export default function ExhibitionDetailPage() {
                 </Link>
               </div>
             ) : (
-              <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="max-w-2xl space-y-6">
                 {artworks.map((art) => {
                   const img = art.artwork_images?.[0]?.storage_path;
                   return (
-                    <li key={art.id} className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+                    <li key={art.id} className="rounded-xl border border-zinc-200 bg-white overflow-hidden shadow-sm">
                       <Link href={`/artwork/${art.id}`} className="block">
                         {img ? (
-                          <div className="relative aspect-[4/3] bg-zinc-100">
+                          <div className="relative aspect-[4/3] bg-zinc-100 sm:aspect-[3/2]">
                             <Image
                               src={getArtworkImageUrl(img, "thumb")}
                               alt={art.title ?? ""}
                               fill
                               className="object-cover"
-                              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                              sizes="(max-width: 640px) 100vw, 672px"
                             />
                           </div>
                         ) : (
-                          <div className="aspect-[4/3] bg-zinc-100 flex items-center justify-center text-zinc-400 text-sm">
+                          <div className="aspect-[4/3] flex items-center justify-center bg-zinc-100 text-sm text-zinc-400 sm:aspect-[3/2]">
                             No image
                           </div>
                         )}
-                        <div className="p-3">
-                          <p className="font-medium text-zinc-900">{art.title ?? "Untitled"}</p>
-                          <p className="text-xs text-zinc-500">{art.year ?? ""}</p>
+                        <div className="p-4">
+                          <p className="font-semibold text-zinc-900">{art.title ?? "Untitled"}</p>
+                          <p className="mt-1 text-sm text-zinc-500">{art.year ?? ""}</p>
                         </div>
                       </Link>
-                      <div className="border-t border-zinc-100 px-3 py-2">
+                      <div className="border-t border-zinc-100 px-4 py-2">
                         <button
                           type="button"
                           onClick={() => handleRemove(art.id)}

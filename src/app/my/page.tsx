@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { ArtworkCard } from "@/components/ArtworkCard";
 import {
   getMyProfile,
   getMyStats,
+  getMyPendingClaimsCount,
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
+import { getMyPriceInquiryCount } from "@/lib/supabase/priceInquiries";
 import { listPublicArtworksListedByProfileId } from "@/lib/supabase/artworks";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
@@ -27,9 +30,11 @@ import {
 } from "@/lib/supabase/artworks";
 import {
   filterArtworksByPersona,
+  getOrderedPersonaTabs,
   getPersonaCounts,
   type PersonaTab,
 } from "@/lib/provenance/personaTabs";
+import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 
 type Profile = {
   id: string;
@@ -43,6 +48,7 @@ type Profile = {
 
 export default function MyPage() {
   const { t } = useT();
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
@@ -58,6 +64,14 @@ export default function MyPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
   const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
+  const [priceInquiryCount, setPriceInquiryCount] = useState<number>(0);
+  const [pendingClaimsCount, setPendingClaimsCount] = useState<number>(0);
+  const [exhibitions, setExhibitions] = useState<ExhibitionRow[]>([]);
+
+  const tabFromUrl = searchParams.get("tab");
+  useEffect(() => {
+    if (tabFromUrl === "exhibitions") setPersonaTab("exhibitions");
+  }, [tabFromUrl]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -124,12 +138,18 @@ export default function MyPage() {
       }
 
       if (profileData?.id) {
-        const [countRes, viewersRes] = await Promise.all([
+        const [countRes, viewersRes, inquiryCountRes, claimsCountRes] = await Promise.all([
           getProfileViewsCount(profileData.id, 7),
           canView ? getProfileViewers(profileData.id, { limit: 10 }) : { data: [], nextCursor: null, error: null },
+          getMyPriceInquiryCount(),
+          getMyPendingClaimsCount(),
         ]);
         setProfileViewsCount(countRes.data);
         setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
+        setPriceInquiryCount(inquiryCountRes.data ?? 0);
+        setPendingClaimsCount(claimsCountRes.data ?? 0);
+        const { data: exData } = await listExhibitionsForProfile(profileData.id);
+        setExhibitions(exData ?? []);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
@@ -200,11 +220,14 @@ export default function MyPage() {
   const roles = (profile?.roles ?? []) as string[];
   const displayedArtworks = useMemo(
     () =>
-      profile?.id
+      profile?.id && personaTab !== "exhibitions"
         ? filterArtworksByPersona(artworks, profile.id, personaTab)
-        : artworks,
+        : personaTab === "exhibitions"
+          ? []
+          : artworks,
     [artworks, profile?.id, personaTab]
   );
+  const showExhibitionsTab = exhibitions.length > 0;
 
   return (
     <AuthGate>
@@ -289,45 +312,49 @@ export default function MyPage() {
           </div>
         </div>
 
-        {/* KPI row - Following / Followers / Posts / Price inquiries */}
-        <div className="mb-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+        {/* KPI row - 5 items, one line */}
+        <div className="mb-8 flex flex-nowrap gap-2 overflow-x-auto pb-1 md:gap-3">
           <Link
             href="/my/following"
-            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
           >
-            <p className="text-2xl font-semibold text-zinc-900">
+            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
               {stats?.followingCount ?? 0}
             </p>
-            <p className="text-sm text-zinc-500">{t("my.kpi.following")}</p>
+            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.following")}</p>
           </Link>
           <Link
             href="/my/followers"
-            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
           >
-            <p className="text-2xl font-semibold text-zinc-900">
+            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
               {stats?.followersCount ?? 0}
             </p>
-            <p className="text-sm text-zinc-500">{t("my.kpi.followers")}</p>
+            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.followers")}</p>
           </Link>
-          <div className="rounded-lg border border-zinc-200 bg-white p-4">
-            <p className="text-2xl font-semibold text-zinc-900">
+          <div className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 md:p-4">
+            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
               {stats?.postsCount ?? 0}
             </p>
-            <p className="text-sm text-zinc-500">{t("my.kpi.posts")}</p>
+            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.posts")}</p>
           </div>
           <Link
             href="/my/inquiries"
-            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
           >
-            <p className="text-sm font-medium text-zinc-900">{t("priceInquiry.title")}</p>
-            <p className="text-xs text-zinc-500">{t("my.kpi.priceInquiries")}</p>
+            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
+              {priceInquiryCount}
+            </p>
+            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.priceInquiries")}</p>
           </Link>
           <Link
-            href="/my/exhibitions"
-            className="rounded-lg border border-zinc-200 bg-white p-4 hover:bg-zinc-50"
+            href="/my/claims"
+            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
           >
-            <p className="text-sm font-medium text-zinc-900">{t("exhibition.myExhibitions")}</p>
-            <p className="text-xs text-zinc-500">{t("exhibition.myExhibitionsHint")}</p>
+            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
+              {pendingClaimsCount}
+            </p>
+            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.claimRequests")}</p>
           </Link>
         </div>
 
@@ -403,8 +430,8 @@ export default function MyPage() {
           )}
         </div>
 
-        {/* Profile / Upload CTA */}
-        <div className="mb-8 flex flex-wrap gap-3">
+        {/* Profile / Upload CTA: Upload, 전시 만들기 및 관리 (same style), 아티스트 찾기, Reorder... */}
+        <div className="mb-8 flex flex-wrap items-center gap-3">
           {!profile?.username && (
             <Link
               href="/onboarding"
@@ -417,7 +444,13 @@ export default function MyPage() {
             href="/upload"
             className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
           >
-            Upload new work
+            {t("my.uploadNewWork")}
+          </Link>
+          <Link
+            href="/my/exhibitions"
+            className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            {t("exhibition.createAndManage")}
           </Link>
           <Link
             href="/people"
@@ -425,49 +458,55 @@ export default function MyPage() {
           >
             {t("feed.followingEmptyCta")}
           </Link>
+          {profile?.username && (
+            <Link
+              href={`/u/${profile.username}?mode=reorder`}
+              className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {t("me.reorderPortfolio")}
+            </Link>
+          )}
         </div>
 
-        {/* Persona tabs */}
-        {artworks.length > 0 && profile?.id && (
+        {/* Persona tabs: role-based order (artist / collector / curator / gallery); order is reorderable later */}
+        {((artworks.length > 0) || showExhibitionsTab) && profile?.id && (
           <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
             {(() => {
               const counts = getPersonaCounts(artworks, profile.id);
-              return [
-                { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: counts.all },
-                ...(counts.created > 0
-                  ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: counts.created }]
-                  : []),
-                ...(counts.owns > 0
-                  ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: counts.owns }]
-                  : []),
-                ...(counts.inventory > 0
-                  ? [{ tab: "INVENTORY" as PersonaTab, label: t("profile.personaGallery"), count: counts.inventory }]
-                  : []),
-                ...(counts.curated > 0
-                  ? [{ tab: "CURATED" as PersonaTab, label: t("profile.personaCurated"), count: counts.curated }]
-                  : []),
-              ].map(({ tab, label, count }) => (
+              const ordered = getOrderedPersonaTabs(counts, exhibitions.length, {
+                main_role: profile.main_role ?? null,
+                roles: roles,
+              });
+              const tabLabels: Record<PersonaTab, string> = {
+                all: t("profile.personaAll"),
+                exhibitions: t("exhibition.myExhibitions"),
+                CREATED: t("profile.personaWork"),
+                OWNS: t("profile.personaCollected"),
+                INVENTORY: t("profile.personaGallery"),
+                CURATED: t("profile.personaCurated"),
+              };
+              return ordered.map(({ tab, count }) => (
                 <button
                   key={tab}
                   type="button"
                   onClick={() => setPersonaTab(tab)}
                   className={`rounded px-3 py-1.5 text-sm font-medium ${
-                    personaTab === tab
-                      ? "bg-zinc-900 text-white"
-                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                    personaTab === tab ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
                   }`}
                 >
-                  {label} ({count})
+                  {tabLabels[tab]} ({count})
                 </button>
               ));
             })()}
           </div>
         )}
 
-        {/* My posts - bulk select delete */}
+        {/* My posts or Exhibitions */}
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">{t("me.myArtworks")}</h2>
-          {artworks.length > 0 && profile?.id && (
+          <h2 className="text-lg font-semibold text-zinc-900">
+            {personaTab === "exhibitions" ? t("exhibition.myExhibitions") : t("me.myArtworks")}
+          </h2>
+          {personaTab !== "exhibitions" && artworks.length > 0 && profile?.id && (
             <div className="flex items-center gap-2">
               {selectMode ? (
                 <>
@@ -517,7 +556,25 @@ export default function MyPage() {
           )}
         </div>
 
-        {displayedArtworks.length === 0 ? (
+        {personaTab === "exhibitions" ? (
+          <ul className="space-y-4">
+            {exhibitions.map((ex) => (
+              <li key={ex.id}>
+                <Link
+                  href={`/my/exhibitions/${ex.id}`}
+                  className="block rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                >
+                  <p className="text-lg font-semibold text-zinc-900">{ex.title}</p>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
+                    {ex.host_name && ` · ${ex.host_name}`}
+                  </p>
+                  <p className="mt-2 text-xs text-zinc-400">{t("exhibition.works")} →</p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : displayedArtworks.length === 0 ? (
           <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
             <p className="text-zinc-600">{t("me.noWorks")}</p>
             <Link
