@@ -43,7 +43,7 @@ export default function EditExhibitionPage() {
     getExhibitionById(id).then(({ data, error: err }) => {
       setLoading(false);
       if (err || !data) {
-        setError(err ? (err instanceof Error ? err.message : "Not found") : "Not found");
+        setError(err ? (err instanceof Error ? err.message : t("common.notFound")) : t("common.notFound"));
         return;
       }
       setExhibition(data);
@@ -70,7 +70,7 @@ export default function EditExhibitionPage() {
     setSubmitting(false);
     if (err) {
       logSupabaseError("updateExhibition", err);
-      setError(formatSupabaseError(err, "Failed to update"));
+      setError(formatSupabaseError(err, t("common.errorUpdate")));
       return;
     }
     router.push(`/my/exhibitions/${id}`);
@@ -98,7 +98,7 @@ export default function EditExhibitionPage() {
     return (
       <AuthGate>
         <main className="mx-auto max-w-2xl px-4 py-8">
-          <p className="text-zinc-600">Invalid exhibition.</p>
+          <p className="text-zinc-600">{t("exhibition.invalidExhibition")}</p>
         </main>
       </AuthGate>
     );
@@ -120,7 +120,7 @@ export default function EditExhibitionPage() {
         {loading ? (
           <p className="text-sm text-zinc-500">{t("common.loading")}</p>
         ) : !exhibition ? (
-          <p className="text-zinc-600">{error ?? "Not found."}</p>
+          <p className="text-zinc-600">{error ?? t("common.notFound")}</p>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <p className="text-sm text-red-600">{error}</p>}

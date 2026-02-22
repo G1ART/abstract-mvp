@@ -41,7 +41,7 @@ export default function MyInquiriesPage() {
       const { error } = await replyToPriceInquiry(inquiryId, text);
       setReplyingId(null);
       if (error) {
-        setToast("Failed to send reply");
+        setToast(t("common.replyFailed"));
         return;
       }
       setReplyText((prev) => {
@@ -50,7 +50,7 @@ export default function MyInquiriesPage() {
         return next;
       });
       await fetchList();
-      setToast("Reply sent");
+      setToast(t("common.replySent"));
     },
     [replyText, fetchList]
   );

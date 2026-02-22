@@ -55,7 +55,7 @@ export default function PublicExhibitionPage() {
     setUserId(session?.user?.id ?? null);
     if (exRes.error || !exRes.data) {
       setLoading(false);
-      setError(exRes.error ? (exRes.error instanceof Error ? exRes.error.message : "Not found") : "Not found");
+      setError(exRes.error ? (exRes.error instanceof Error ? exRes.error.message : t("common.notFound")) : t("common.notFound"));
       return;
     }
     setExhibition(exRes.data);

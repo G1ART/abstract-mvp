@@ -1,6 +1,30 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-20
+Last updated: 2026-02-22
+
+## 2026-02-22 — i18n 옵션 C: 커버리지 확대 + 아티스트 중심 번역
+
+- **방향**: “둘 다 + 지속적 통일감 유지” 적용. KO 선택 시 노출되는 영문 하드코딩 제거, 아티스트·커뮤니티 맥락에 맞는 한국어 문구 사용.
+- **신규 키 (en/ko 쌍)**: `common.*`(에러/안내/라벨), `upload.*`(의도·소유·가격·플레이스홀더·라벨), `exhibition.*`, `settings.*`(플레이스홀더·라벨), `login.*`, `onboarding.*`, `setPassword.*`, `authReset.*`, `my.*`, `bulk.*`, `app.title`/`app.description` 등 대량 추가.
+- **치환 범위**: 업로드(의도/폼/디덱), 전시(내 전시 상세·편집·작품 추가·목록), My(프로필/통계 에러·전시 버튼), 클레임/가격문의(에러·토스트), 로그인(플레이스홀더), 설정(플레이스홀더·라벨·Retry details·Dev debug), 공개 전시 `/e/[id]`(Not found). placeholder "DELETE"는 삭제 확인용으로 번역 없이 유지.
+- **기존 ko 문구**: 변경 없음. 누락 키 보강 및 하드코딩 제거만 수행.
+- **메타**: `layout` 제목/설명을 `app.title`/`app.description` 톤으로 수정(영문).
+
+**Verified:** (빌드·린트 통과 후, KO 토글 시 업로드/전시/My/설정 등 주요 플로우에서 한국어 노출 확인 권장.)
+
+---
+
+## 2026-02-20 — i18n·언어 통일 개선 방안 정리 + 브라우저 자동번역 방지
+
+- **문서**: `docs/I18N_IMPROVEMENT_OPTIONS.md` — 현재 이슈(KO에서 영문 노출, 브라우저 자동번역 충돌), 벤치마킹, 옵션 A/B/C/D와 장단점·권장 순서 정리.
+- **옵션 A 적용 (기능 영향 없음)**  
+  - **`<html lang>` 동기화**: 클라이언트에서 선택 로케일(쿠키)에 따라 `document.documentElement.lang`을 `en`/`ko`로 설정하는 `HtmlLangSync` 컴포넌트 추가.  
+  - **`<body translate="no">`**: 앱 전체를 브라우저 자동 번역에서 제외해 "Feed → 먹이", "Abstract → 초록" 등 이중 번역 방지.  
+  - **브랜드 "Abstract"**: `<span translate="no">`로 감싸 명시적 제외( body 에 이미 `translate="no"` 적용으로 중복이지만 브랜드 보호 강화).
+
+**Verified:** (배포 후 KO 선택 시 메뉴는 기존과 동일; 브라우저 번역 시 앱 문구가 덮어씌워지지 않는지 확인 권장.)
+
+---
 
 ## 2026-02-20 — 가격문의 답변 시 RLS 오류 수정
 

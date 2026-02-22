@@ -28,23 +28,23 @@ type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
-const INTENTS: { value: IntentType; label: string }[] = [
-  { value: "CREATED", label: "My work" },
-  { value: "OWNS", label: "Collected work" },
-  { value: "INVENTORY", label: "Gallery (inc. inventory)" },
-  { value: "CURATED", label: "Curated/Exhibited" },
+const INTENTS: { value: IntentType; labelKey: string }[] = [
+  { value: "CREATED", labelKey: "upload.claimCreated" },
+  { value: "OWNS", labelKey: "upload.claimOwned" },
+  { value: "INVENTORY", labelKey: "upload.claimInventory" },
+  { value: "CURATED", labelKey: "upload.claimCurated" },
 ];
 
 const OWNERSHIP_STATUSES = [
-  { value: "available", label: "Available" },
-  { value: "owned", label: "Owned" },
-  { value: "sold", label: "Sold" },
-  { value: "not_for_sale", label: "Not for sale" },
+  { value: "available", labelKey: "upload.ownershipAvailable" },
+  { value: "owned", labelKey: "upload.ownershipOwned" },
+  { value: "sold", labelKey: "upload.ownershipSold" },
+  { value: "not_for_sale", labelKey: "upload.ownershipNotForSale" },
 ] as const;
 
 const PRICING_MODES = [
-  { value: "fixed", label: "Fixed price" },
-  { value: "inquire", label: "Price upon request" },
+  { value: "fixed", labelKey: "bulk.fixed" },
+  { value: "inquire", labelKey: "bulk.inquire" },
 ] as const;
 
 const PRICE_CURRENCIES = [
@@ -134,11 +134,11 @@ function UploadPageContent() {
     if (needsAttribution(intent)) {
       if (useExternalArtist) {
         if (!externalArtistName.trim()) {
-          setError("Please enter the artist name");
+          setError(t("common.pleaseEnterArtistName"));
           return;
         }
       } else if (!selectedArtist) {
-        setError("Please select an artist");
+        setError(t("common.pleaseSelectArtist"));
         return;
       }
     }
@@ -150,16 +150,16 @@ function UploadPageContent() {
     e.preventDefault();
     setError(null);
     if (!image || !title.trim() || !year || !medium.trim() || !size.trim()) {
-      setError("Please fill required fields");
+      setError(t("common.pleaseFillRequired"));
       return;
     }
     const yearNum = parseInt(year, 10);
     if (isNaN(yearNum) || yearNum < 1000 || yearNum > 9999) {
-      setError("Please enter a valid year (4 digits)");
+      setError(t("common.pleaseEnterValidYear"));
       return;
     }
     if (pricingMode === "fixed" && (!priceAmount || parseFloat(priceAmount) <= 0)) {
-      setError("Please enter a valid price");
+      setError(t("common.pleaseEnterValidPrice"));
       return;
     }
     setStep("dedup");
@@ -182,13 +182,13 @@ function UploadPageContent() {
     setError(null);
 
     if (!image || !userId) {
-      setError(!userId ? "Not authenticated" : "Please select an image");
+      setError(!userId ? t("common.notAuthenticated") : t("common.pleaseSelectImage"));
       return;
     }
 
     const yearNum = parseInt(year, 10);
     if (isNaN(yearNum) || yearNum < 1000 || yearNum > 9999) {
-      setError("Please enter a valid year (4 digits)");
+      setError(t("common.pleaseEnterValidYear"));
       return;
     }
 
@@ -350,7 +350,7 @@ function UploadPageContent() {
         {/* Step: Intent */}
         {step === "intent" && (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-600">What are you uploading?</p>
+            <p className="text-sm text-zinc-600">{t("upload.whatUploading")}</p>
             <div className="grid gap-3">
               {INTENTS.map((opt) => (
                 <button
@@ -359,7 +359,7 @@ function UploadPageContent() {
                   onClick={() => handleIntentSelect(opt.value)}
                   className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
                 >
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
@@ -456,14 +456,14 @@ function UploadPageContent() {
                 onClick={() => setStep("intent")}
                 className="rounded border border-zinc-300 px-4 py-2 text-sm"
               >
-                Back
+                {t("common.back")}
               </button>
               <button
                 type="button"
                 onClick={handleAttributionNext}
                 className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800"
               >
-                Next
+                {t("common.next")}
               </button>
             </div>
           </div>
@@ -473,7 +473,7 @@ function UploadPageContent() {
         {step === "form" && (
           <form onSubmit={handleFormNext} className="space-y-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">Image *</label>
+              <label className="mb-1 block text-sm font-medium">{t("common.imageLabel")}</label>
               <input
                 type="file"
                 accept="image/*"
@@ -483,18 +483,18 @@ function UploadPageContent() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Title *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelTitle")}</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
-                placeholder="Artwork title"
+                placeholder={t("upload.placeholderTitle")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Year *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelYear")}</label>
               <input
                 type="number"
                 value={year}
@@ -502,44 +502,44 @@ function UploadPageContent() {
                 required
                 min={1000}
                 max={9999}
-                placeholder="2024"
+                placeholder={t("upload.placeholderYear")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Medium *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelMedium")}</label>
               <input
                 type="text"
                 value={medium}
                 onChange={(e) => setMedium(e.target.value)}
                 required
-                placeholder="e.g. Oil on canvas"
+                placeholder={t("upload.placeholderMedium")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Size *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelSize")}</label>
               <input
                 type="text"
                 value={size}
                 onChange={(e) => setSize(e.target.value)}
                 required
-                placeholder="e.g. 100 x 80 cm"
+                placeholder={t("upload.placeholderSize")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Story</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelStory")}</label>
               <textarea
                 value={story}
                 onChange={(e) => setStory(e.target.value)}
-                placeholder="Optional description"
+                placeholder={t("upload.placeholderStory")}
                 rows={3}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Ownership status *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelOwnership")}</label>
               <select
                 value={ownershipStatus}
                 onChange={(e) => setOwnershipStatus(e.target.value)}
@@ -548,7 +548,7 @@ function UploadPageContent() {
               >
                 {OWNERSHIP_STATUSES.map((o) => (
                   <option key={o.value} value={o.value}>
-                    {o.label}
+                    {t(o.labelKey)}
                   </option>
                 ))}
               </select>
@@ -569,7 +569,7 @@ function UploadPageContent() {
               </div>
             )}
             <div>
-              <label className="mb-1 block text-sm font-medium">Pricing mode *</label>
+              <label className="mb-1 block text-sm font-medium">{t("upload.labelPricingMode")}</label>
               <select
                 value={pricingMode}
                 onChange={(e) => setPricingMode(e.target.value as "fixed" | "inquire")}
@@ -577,7 +577,7 @@ function UploadPageContent() {
               >
                 {PRICING_MODES.map((p) => (
                   <option key={p.value} value={p.value}>
-                    {p.label}
+                    {t(p.labelKey)}
                   </option>
                 ))}
               </select>
@@ -586,7 +586,7 @@ function UploadPageContent() {
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="mb-1 block text-sm font-medium">Currency</label>
+                    <label className="mb-1 block text-sm font-medium">{t("upload.labelCurrency")}</label>
                     <select
                       value={priceCurrency}
                       onChange={(e) => setPriceCurrency(e.target.value)}
@@ -600,7 +600,7 @@ function UploadPageContent() {
                     </select>
                   </div>
                   <div>
-                    <label className="mb-1 block text-sm font-medium">Amount *</label>
+                    <label className="mb-1 block text-sm font-medium">{t("upload.labelAmount")}</label>
                     <input
                       type="number"
                       value={priceAmount}
@@ -608,7 +608,7 @@ function UploadPageContent() {
                       required={pricingMode === "fixed"}
                       min={0}
                       step="any"
-                      placeholder="0"
+                      placeholder={t("upload.placeholderAmount")}
                       className="w-full rounded border border-zinc-300 px-3 py-2"
                     />
                   </div>
@@ -622,7 +622,7 @@ function UploadPageContent() {
                     className="rounded"
                   />
                   <label htmlFor="pricePublic" className="text-sm">
-                    Show price publicly
+                    {t("upload.showPricePublicly")}
                   </label>
                 </div>
               </>
@@ -634,13 +634,13 @@ function UploadPageContent() {
                 onClick={() => (needsAttribution(intent) ? setStep("attribution") : setStep("intent"))}
                 className="rounded border border-zinc-300 px-4 py-2 text-sm"
               >
-                Back
+                {t("common.back")}
               </button>
               <button
                 type="submit"
                 className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800"
               >
-                Next (check duplicates)
+                {t("upload.nextCheckDedup")}
               </button>
             </div>
           </form>
@@ -649,8 +649,8 @@ function UploadPageContent() {
         {/* Step: Dedup */}
         {step === "dedup" && (
           <div className="space-y-4">
-            <p className="text-sm text-zinc-600">Similar works found</p>
-            {dedupLoading && <p className="text-sm text-zinc-500">Searching...</p>}
+            <p className="text-sm text-zinc-600">{t("upload.similarWorksFound")}</p>
+            {dedupLoading && <p className="text-sm text-zinc-500">{t("upload.searching")}</p>}
             {!dedupLoading && similarWorks.length > 0 && (
               <ul className="rounded border border-zinc-200 bg-white">
                 {similarWorks.map((w) => (
@@ -661,14 +661,14 @@ function UploadPageContent() {
                       rel="noopener noreferrer"
                       className="text-sm text-zinc-900 hover:underline"
                     >
-                      {w.title ?? "Untitled"}
+                      {w.title ?? t("common.untitled")}
                     </Link>
                   </li>
                 ))}
               </ul>
             )}
             {!dedupLoading && similarWorks.length === 0 && (
-              <p className="text-sm text-zinc-500">No similar works found.</p>
+              <p className="text-sm text-zinc-500">{t("upload.noSimilarWorksFound")}</p>
             )}
             {error && <p className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
             <div className="flex gap-3">
@@ -677,7 +677,7 @@ function UploadPageContent() {
                 onClick={() => setStep("form")}
                 className="rounded border border-zinc-300 px-4 py-2 text-sm"
               >
-                Back
+                {t("common.back")}
               </button>
               <button
                 type="button"
@@ -685,7 +685,7 @@ function UploadPageContent() {
                 disabled={isSubmitting}
                 className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
               >
-                {isSubmitting ? "Uploading..." : "Upload"}
+                {isSubmitting ? t("upload.uploading") : t("nav.upload")}
               </button>
             </div>
           </div>

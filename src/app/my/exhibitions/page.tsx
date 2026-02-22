@@ -19,11 +19,11 @@ export default function MyExhibitionsPage() {
     const { data, error: err } = await listMyExhibitions();
     setLoading(false);
     if (err) {
-      setError(err instanceof Error ? err.message : "Failed to load exhibitions");
+      setError(err instanceof Error ? err.message : t("exhibition.failedToLoad"));
       return;
     }
     setList(data ?? []);
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     fetchList();

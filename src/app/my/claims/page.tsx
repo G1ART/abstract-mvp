@@ -28,7 +28,7 @@ export default function MyClaimsPage() {
     const { data, error: listError } = await listMyPendingClaims();
     setLoading(false);
     if (listError) {
-      setError(formatSupabaseError(listError, "Failed to load"));
+      setError(formatSupabaseError(listError, t("common.errorLoad")));
       return;
     }
     setList(data ?? []);
@@ -48,7 +48,7 @@ export default function MyClaimsPage() {
     setActingId(null);
     if (err) {
       logSupabaseError("confirmClaim", err);
-      setError(formatSupabaseError(err, "Approve failed"));
+      setError(formatSupabaseError(err, t("my.claims.approveFailed")));
       return;
     }
     await fetchList();
@@ -61,7 +61,7 @@ export default function MyClaimsPage() {
     setActingId(null);
     if (err) {
       logSupabaseError("rejectClaim", err);
-      setError(formatSupabaseError(err, "Reject failed"));
+      setError(formatSupabaseError(err, t("my.claims.rejectFailed")));
       return;
     }
     await fetchList();

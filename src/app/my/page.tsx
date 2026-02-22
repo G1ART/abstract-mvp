@@ -94,13 +94,13 @@ export default function MyPage() {
 
       if (profileRes.error) {
         setError(
-          profileRes.error instanceof Error ? profileRes.error.message : "Failed to load profile"
+          profileRes.error instanceof Error ? profileRes.error.message : t("my.errorLoadProfile")
         );
         return;
       }
       if (statsRes.error) {
         setError(
-          statsRes.error instanceof Error ? statsRes.error.message : "Failed to load stats"
+          statsRes.error instanceof Error ? statsRes.error.message : t("my.errorLoadStats")
         );
         return;
       }
@@ -160,7 +160,7 @@ export default function MyPage() {
         setExhibitions(exData ?? []);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : t("common.errorOccurred"));
     } finally {
       setLoading(false);
     }

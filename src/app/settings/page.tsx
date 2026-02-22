@@ -199,7 +199,7 @@ function TaxonomyChipSelect({
             const fromOpts = value.filter((v) => options.some((o) => o.value === v));
             onChange([...fromOpts, ...otherList].slice(0, max));
           }}
-          placeholder="Other (type + Enter)"
+          placeholder={t("settings.placeholderOtherChip")}
           max={2}
         />
       )}
@@ -785,7 +785,7 @@ export default function SettingsPage() {
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name"
+                placeholder={t("settings.placeholderDisplayName")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
                 autoComplete="name"
               />
@@ -799,7 +799,7 @@ export default function SettingsPage() {
                 id="bio"
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
-                placeholder="Short bio"
+                placeholder={t("settings.placeholderBio")}
                 rows={3}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
@@ -814,7 +814,7 @@ export default function SettingsPage() {
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Location"
+                placeholder={t("settings.placeholderLocation")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
@@ -828,7 +828,7 @@ export default function SettingsPage() {
                 type="url"
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
-                placeholder="https://"
+                placeholder={t("settings.placeholderWebsite")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
             </div>
@@ -953,7 +953,7 @@ export default function SettingsPage() {
                       <div className="grid grid-cols-3 gap-3">
                         <div className="col-span-1">
                           <label className="mb-1 block text-sm font-medium">{t("settings.city")}</label>
-                          <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" className="w-full rounded border border-zinc-300 px-3 py-2 text-sm" />
+                          <input type="text" value={city} onChange={(e) => setCity(e.target.value)} placeholder={t("settings.placeholderCity")} className="w-full rounded border border-zinc-300 px-3 py-2 text-sm" />
                         </div>
                         <div>
                           <label className="mb-1 block text-sm font-medium">{t("settings.region")}</label>
@@ -966,7 +966,7 @@ export default function SettingsPage() {
                         </div>
                         <div>
                           <label className="mb-1 block text-sm font-medium">{t("settings.country")}</label>
-                          <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Country" className="w-full rounded border border-zinc-300 px-3 py-2 text-sm" />
+                          <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder={t("settings.placeholderCountry")} className="w-full rounded border border-zinc-300 px-3 py-2 text-sm" />
                         </div>
                       </div>
                       <div>
@@ -983,7 +983,7 @@ export default function SettingsPage() {
                       </div>
                       <div>
                         <label className="mb-1 block text-sm font-medium">{t("settings.keywords")} ({t("profileDetails.optional")})</label>
-                        <ChipInput values={keywords} onChange={setKeywords} placeholder="Add keyword, Enter" max={TAXONOMY_LIMITS.keywords} />
+                        <ChipInput values={keywords} onChange={setKeywords} placeholder={t("settings.placeholderKeywordAdd")} max={TAXONOMY_LIMITS.keywords} />
                       </div>
                     </div>
                   </section>
@@ -1039,11 +1039,11 @@ export default function SettingsPage() {
                       </h3>
                       <div className="space-y-4">
                         <div>
-                          <label className="mb-1 block text-sm font-medium">Price band ({t("profileDetails.optional")})</label>
+                          <label className="mb-1 block text-sm font-medium">{t("settings.labelPriceBand")} ({t("profileDetails.optional")})</label>
                           <TaxonomyChipSelect options={TAXONOMY.priceBandOptions} value={priceBand} onChange={setPriceBand} max={TAXONOMY_LIMITS.priceBand} t={t} onMaxReached={() => setMaxSelectMessage(t("profileDetails.maxSelectHint").replace("{max}", String(TAXONOMY_LIMITS.priceBand)))} />
                         </div>
                         <div>
-                          <label className="mb-1 block text-sm font-medium">Acquisition channels ({t("profileDetails.optional")})</label>
+                          <label className="mb-1 block text-sm font-medium">{t("settings.labelAcquisitionChannels")} ({t("profileDetails.optional")})</label>
                           <TaxonomyChipSelect options={TAXONOMY.acquisitionChannelOptions} value={acquisitionChannels} onChange={setAcquisitionChannels} max={TAXONOMY_LIMITS.acquisitionChannels} t={t} onMaxReached={() => setMaxSelectMessage(t("profileDetails.maxSelectHint").replace("{max}", String(TAXONOMY_LIMITS.acquisitionChannels)))} />
                         </div>
                       </div>
@@ -1058,7 +1058,7 @@ export default function SettingsPage() {
                       </h3>
                       <div className="space-y-4">
                         <div>
-                          <label className="mb-1 block text-sm font-medium">Affiliation ({t("profileDetails.optional")})</label>
+                          <label className="mb-1 block text-sm font-medium">{t("settings.labelAffiliation")} ({t("profileDetails.optional")})</label>
                           <select value={affiliation} onChange={(e) => setAffiliation(e.target.value)} className="w-full rounded border border-zinc-300 px-3 py-2">
                             <option value="">Select</option>
                             {TAXONOMY.affiliationOptions.map((o) => (
@@ -1067,7 +1067,7 @@ export default function SettingsPage() {
                           </select>
                         </div>
                         <div>
-                          <label className="mb-1 block text-sm font-medium">Program focus ({t("profileDetails.optional")})</label>
+                          <label className="mb-1 block text-sm font-medium">{t("settings.labelProgramFocus")} ({t("profileDetails.optional")})</label>
                           <TaxonomyChipSelect options={TAXONOMY.themeOptions} value={programFocus} onChange={setProgramFocus} max={TAXONOMY_LIMITS.programFocus} t={t} onMaxReached={() => setMaxSelectMessage(t("profileDetails.maxSelectHint").replace("{max}", String(TAXONOMY_LIMITS.programFocus)))} />
                         </div>
                       </div>
@@ -1088,7 +1088,7 @@ export default function SettingsPage() {
                     disabled={saving}
                     className="rounded border border-amber-600 px-2 py-1 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                   >
-                    {saving ? t("common.loading") : "Retry details"}
+                    {saving ? t("common.loading") : t("settings.retryDetails")}
                   </button>
                 )}
               </div>
@@ -1117,7 +1117,7 @@ export default function SettingsPage() {
 
         {isDev && (
           <div className="mt-8 rounded-lg border border-zinc-300 bg-zinc-50 p-4 text-sm">
-            <h3 className="mb-2 font-medium text-zinc-800">Dev debug</h3>
+            <h3 className="mb-2 font-medium text-zinc-800">{t("settings.devDebug")}</h3>
             {lastError && (
               <>
                 <p className="mb-1 text-xs text-zinc-600">

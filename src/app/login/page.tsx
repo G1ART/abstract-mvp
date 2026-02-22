@@ -109,7 +109,7 @@ export default function LoginPage() {
           >
             <input
               type="email"
-              placeholder="Email"
+              placeholder={t("login.placeholderEmail")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -118,7 +118,7 @@ export default function LoginPage() {
             />
             <input
               type="password"
-              placeholder="Password"
+              placeholder={t("login.placeholderPassword")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required

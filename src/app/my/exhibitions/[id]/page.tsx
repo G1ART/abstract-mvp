@@ -98,7 +98,7 @@ export default function ExhibitionDetailPage() {
     ]);
     if (exRes.error || !exRes.data) {
       setLoading(false);
-      setError(exRes.error ? (exRes.error instanceof Error ? exRes.error.message : "Not found") : "Not found");
+      setError(exRes.error ? (exRes.error instanceof Error ? exRes.error.message : t("common.notFound")) : t("common.notFound"));
       return;
     }
     setExhibition(exRes.data);
@@ -143,7 +143,7 @@ export default function ExhibitionDetailPage() {
     }
     return artistOrder.map((artistId) => ({
       artistId,
-      artistName: artistNameById.get(artistId) ?? "Artist",
+      artistName: artistNameById.get(artistId) ?? t("artwork.artistFallback"),
       list: listByArtist.get(artistId) ?? [],
     }));
   }, [orderedArtworks]);
@@ -219,7 +219,7 @@ export default function ExhibitionDetailPage() {
     }
     const { error: err } = await updateExhibitionWorksOrder(id, flattened);
     if (err) {
-      setError(formatSupabaseError(err, "Failed to save artist order"));
+      setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
     await fetchData();
@@ -240,7 +240,7 @@ export default function ExhibitionDetailPage() {
     }
     const { error: err } = await updateExhibitionMediaOrder(id, flattened);
     if (err) {
-      setError(formatSupabaseError(err, "Failed to save media order"));
+      setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
     await fetchData();
@@ -250,7 +250,7 @@ export default function ExhibitionDetailPage() {
     if (!id) return;
     const { error: err } = await updateExhibitionMediaBucketOrder(id, nextBucketOrder);
     if (err) {
-      setError(formatSupabaseError(err, "Failed to save bucket order"));
+      setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
     await fetchData();
@@ -274,7 +274,7 @@ export default function ExhibitionDetailPage() {
     const { error: err } = await updateExhibition(id, { cover_image_paths: coverDraft });
     setSavingCover(false);
     if (err) {
-      setError(formatSupabaseError(err, "Failed to save cover thumbnails"));
+      setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
     await fetchData();
@@ -316,7 +316,7 @@ export default function ExhibitionDetailPage() {
           sort_order: maxSort + i + 1,
         });
         if (err) {
-          setError(formatSupabaseError(err, "Failed to upload image"));
+          setError(formatSupabaseError(err, t("common.errorUpload")));
           setUploading(false);
           return;
         }
@@ -325,7 +325,7 @@ export default function ExhibitionDetailPage() {
       setUploadQueue(null);
       await fetchData();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload failed");
+      setError(e instanceof Error ? e.message : t("common.errorUpload"));
     } finally {
       setUploading(false);
     }
@@ -344,7 +344,7 @@ export default function ExhibitionDetailPage() {
     setRemovingId(null);
     if (err) {
       logSupabaseError("removeWorkFromExhibition", err);
-      setError(formatSupabaseError(err, "Failed to remove"));
+      setError(formatSupabaseError(err, t("common.errorRemove")));
       return;
     }
     await fetchData();
@@ -356,7 +356,7 @@ export default function ExhibitionDetailPage() {
     if (!err) await removeStorageFile(m.storage_path);
     setDeletingMediaId(null);
     if (err) {
-      setError(formatSupabaseError(err, "Failed to delete image"));
+      setError(formatSupabaseError(err, t("common.errorDelete")));
       return;
     }
     await fetchData();
@@ -366,7 +366,7 @@ export default function ExhibitionDetailPage() {
     return (
       <AuthGate>
         <main className="mx-auto max-w-4xl px-4 py-8">
-          <p className="text-zinc-600">Invalid exhibition.</p>
+          <p className="text-zinc-600">{t("exhibition.invalidExhibition")}</p>
         </main>
       </AuthGate>
     );
@@ -480,7 +480,7 @@ export default function ExhibitionDetailPage() {
                   onClick={saveCoverDraft}
                   className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                 >
-                  {savingCover ? t("common.loading") : "대표 썸네일 저장"}
+                  {savingCover ? t("common.loading") : t("my.exhibitionSaveCover")}
                 </button>
               </div>
             </section>
@@ -521,7 +521,7 @@ export default function ExhibitionDetailPage() {
                     onClick={uploadQueueItems}
                     className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                   >
-                    {uploading ? t("common.loading") : "업로드 실행"}
+                    {uploading ? t("common.loading") : t("my.exhibitionUploadRun")}
                   </button>
                   <button
                     type="button"
@@ -593,10 +593,10 @@ export default function ExhibitionDetailPage() {
                                     sizes="120px"
                                   />
                                 ) : (
-                                  <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">No image</div>
+                                  <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">{t("common.noImage")}</div>
                                 )}
                               </Link>
-                              <div className="mt-1 truncate text-xs text-zinc-600">{art.title ?? "Untitled"}</div>
+                              <div className="mt-1 truncate text-xs text-zinc-600">{art.title ?? t("common.untitled")}</div>
                               <button
                                 type="button"
                                 onClick={() => handleRemoveWork(art.id)}

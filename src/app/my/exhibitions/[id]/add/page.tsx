@@ -67,7 +67,7 @@ export default function AddWorkToExhibitionPage() {
     setAddingId(null);
     if (err) {
       logSupabaseError("addWorkToExhibition", err);
-      setError(formatSupabaseError(err, "Failed to add"));
+      setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
     setDoneIds((prev) => new Set(prev).add(workId));
@@ -77,7 +77,7 @@ export default function AddWorkToExhibitionPage() {
     return (
       <AuthGate>
         <main className="mx-auto max-w-4xl px-4 py-8">
-          <p className="text-zinc-600">Invalid exhibition.</p>
+          <p className="text-zinc-600">{t("exhibition.invalidExhibition")}</p>
         </main>
       </AuthGate>
     );
