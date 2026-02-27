@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getSession } from "@/lib/supabase/auth";
+import { getSession, sendMagicLink } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
   canEditArtwork,
@@ -19,9 +19,9 @@ import {
   createExternalArtistAndClaim,
   updateClaim,
 } from "@/lib/provenance/rpc";
-import { sendMagicLink } from "@/lib/supabase/auth";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -298,9 +298,17 @@ function EditArtworkContent() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          const email = externalArtistEmail.trim();
+          const { error: inviteErr } = await sendMagicLink(email);
           inviteSent = !inviteErr;
           if (inviteErr) inviteSendFailed = true;
+          if (!inviteErr) {
+            await sendArtistInviteEmailClient({
+              toEmail: email,
+              artistName: externalArtistName.trim() || null,
+              exhibitionTitle: null,
+            });
+          }
         }
       } else {
         const { error: claimErr } = await createExternalArtistAndClaim({
@@ -318,9 +326,17 @@ function EditArtworkContent() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          const email = externalArtistEmail.trim();
+          const { error: inviteErr } = await sendMagicLink(email);
           inviteSent = !inviteErr;
           if (inviteErr) inviteSendFailed = true;
+          if (!inviteErr) {
+            await sendArtistInviteEmailClient({
+              toEmail: email,
+              artistName: externalArtistName.trim() || null,
+              exhibitionTitle: null,
+            });
+          }
         }
       }
     } else {

@@ -21,6 +21,7 @@ import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { searchPeople } from "@/lib/supabase/artists";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -268,6 +269,13 @@ export default function BulkUploadPage() {
         if (inviteSent) {
           setToast(t("upload.inviteSent"));
           setTimeout(() => setToast(null), 3000);
+          if (useExternalArtist && externalArtistEmail.trim()) {
+            await sendArtistInviteEmailClient({
+              toEmail: externalArtistEmail.trim(),
+              artistName: externalArtistName.trim() || null,
+              exhibitionTitle: null,
+            });
+          }
         } else if (inviteFailed) {
           setToast(t("upload.inviteSentFailed"));
           setTimeout(() => setToast(null), 3000);
@@ -317,7 +325,9 @@ export default function BulkUploadPage() {
           </Link>
         </div>
 
-        {/* Step: Intent */}
+        {/* Step: Intent — same width as single upload (max-w-xl) */}
+        {(showIntent || showAttribution) && (
+          <div className="max-w-xl">
         {showIntent && (
           <div className="mb-8 space-y-4">
             <p className="text-sm text-zinc-600">{t("bulk.intentHint")}</p>
@@ -442,6 +452,8 @@ export default function BulkUploadPage() {
                 Back
               </button>
             </div>
+          </div>
+        )}
           </div>
         )}
 

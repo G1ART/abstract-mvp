@@ -23,6 +23,7 @@ import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
@@ -249,9 +250,17 @@ function UploadPageContent() {
           return;
         }
         if (externalArtistEmail?.trim()) {
-          const { error: inviteErr } = await sendMagicLink(externalArtistEmail.trim());
+          const email = externalArtistEmail.trim();
+          const { error: inviteErr } = await sendMagicLink(email);
           inviteSent = !inviteErr;
           if (inviteErr) inviteSendFailed = true;
+          if (!inviteErr) {
+            await sendArtistInviteEmailClient({
+              toEmail: email,
+              artistName: externalArtistName.trim() || null,
+              exhibitionTitle: null,
+            });
+          }
         }
       } else {
         const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
