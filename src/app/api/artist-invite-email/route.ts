@@ -112,6 +112,18 @@ function buildEmailHtml(payload: InvitePayload) {
   `;
 }
 
+function parseFromHeader(raw: string) {
+  // 지원: "Name <email@domain>" 또는 그냥 "email@domain"
+  const trimmed = raw.trim();
+  const match = trimmed.match(/^(.*)<(.+@.+)>$/);
+  if (match) {
+    const name = match[1].trim().replace(/^"|"$/g, "") || undefined;
+    const email = match[2].trim();
+    return { email, name };
+  }
+  return { email: trimmed, name: undefined as string | undefined };
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as InvitePayload;
@@ -121,9 +133,9 @@ export async function POST(req: Request) {
     }
 
     const apiKey = process.env.SENDGRID_API_KEY;
-    const fromEmail = process.env.INVITE_FROM_EMAIL;
+    const fromRaw = process.env.INVITE_FROM_EMAIL;
 
-    if (!apiKey || !fromEmail) {
+    if (!apiKey || !fromRaw) {
       console.error("Missing SENDGRID_API_KEY or INVITE_FROM_EMAIL");
       return NextResponse.json({ error: "Email configuration missing" }, { status: 500 });
     }
@@ -134,6 +146,7 @@ export async function POST(req: Request) {
     const subjectKo = `Abstract에서 ${inviter}님이 초대합니다`;
 
     const html = buildEmailHtml(body);
+    const from = parseFromHeader(fromRaw);
 
     const resp = await fetch("https://api.sendgrid.com/v3/mail/send", {
       method: "POST",
@@ -148,21 +161,36 @@ export async function POST(req: Request) {
             subject: `${subjectEn} / ${subjectKo}`,
           },
         ],
-        from: { email: fromEmail },
+        from: from.name ? { email: from.email, name: from.name } : { email: from.email },
         content: [{ type: "text/html", value: html }],
       }),
     });
 
     if (!resp.ok) {
-      const text = await resp.text();
-      console.error("SendGrid error", resp.status, text);
-      return NextResponse.json({ error: "Failed to send invite email" }, { status: 500 });
+    const text = await resp.text();
+    console.error("SendGrid error", resp.status, text);
+    return NextResponse.json(
+      {
+        error: "Failed to send invite email",
+        sendgridStatus: resp.status,
+        sendgridBody: text,
+      },
+      { status: 500 }
+    );
     }
 
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("artist-invite-email error", err);
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+    const anyErr = err as any;
+    return NextResponse.json(
+      {
+        error: "Unexpected error",
+        message: anyErr?.message ? String(anyErr.message) : String(anyErr),
+        stack: anyErr?.stack ?? null,
+      },
+      { status: 500 }
+    );
   }
 }
 
