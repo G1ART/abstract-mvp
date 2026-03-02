@@ -255,11 +255,11 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   if (merged.length === 0) {
     return { data: [], error: curatedRes.error ?? hostRes.error };
   }
-  const ids = merged.map((e) => e.id);
+  const exhibitionIds = merged.map((e) => e.id);
   const { data: ewRows } = await supabase
     .from("exhibition_works")
     .select("exhibition_id")
-    .in("exhibition_id", ids);
+    .in("exhibition_id", exhibitionIds);
   const withWorks = new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id));
   const filtered = merged.filter((e) => withWorks.has(e.id));
   return { data: filtered.slice(0, 30), error: curatedRes.error ?? hostRes.error };
