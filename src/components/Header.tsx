@@ -11,6 +11,7 @@ import { getMyProfile } from "@/lib/supabase/profiles";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { getUnreadCount } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
+import { useActingAs } from "@/context/ActingAsContext";
 
 const MAIN_NAV = [
   { href: "/feed?tab=all&sort=latest", key: "nav.feed" },
@@ -103,9 +104,23 @@ export function Header() {
   }
 
   const loggedIn = !!session;
+  const { actingAsLabel, clearActingAs } = useActingAs();
 
   return (
-    <header className="relative flex h-14 items-center justify-between border-b border-zinc-200 px-4">
+    <>
+      {actingAsLabel && (
+        <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-sm text-amber-900">
+          <span>{t("delegation.actingAs").replace("{name}", actingAsLabel)}</span>
+          <button
+            type="button"
+            onClick={clearActingAs}
+            className="font-medium hover:underline"
+          >
+            {t("delegation.switchToMyAccount")}
+          </button>
+        </div>
+      )}
+      <header className="relative flex h-14 items-center justify-between border-b border-zinc-200 px-4">
       <div className="flex items-center gap-6">
         <Link
           href="/feed?tab=all&sort=latest"
@@ -202,6 +217,13 @@ export function Header() {
                     onClick={() => setAvatarOpen(false)}
                   >
                     {t("account.settings")}
+                  </Link>
+                  <Link
+                    href="/my/delegations"
+                    className="block px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => setAvatarOpen(false)}
+                  >
+                    {t("delegation.myDelegations")}
                   </Link>
                   <div className="my-1 border-t border-zinc-100" />
                   <button
@@ -309,5 +331,6 @@ export function Header() {
         </div>
       )}
     </header>
+    </>
   );
 }

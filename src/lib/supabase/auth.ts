@@ -35,12 +35,17 @@ export async function signUpWithPassword(
   });
 }
 
-export async function sendMagicLink(email: string) {
+/** @param redirectTo - Optional path (or full URL) to redirect after auth (e.g. /invites/delegation?token=...) */
+export async function sendMagicLink(email: string, redirectTo?: string) {
   const origin =
     typeof window !== "undefined" ? window.location.origin : "";
+  let url = `${origin}/auth/callback`;
+  if (redirectTo && typeof redirectTo === "string" && redirectTo.startsWith("/")) {
+    url += "?next=" + encodeURIComponent(redirectTo);
+  }
   return supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: `${origin}/auth/callback` },
+    options: { emailRedirectTo: url },
   });
 }
 

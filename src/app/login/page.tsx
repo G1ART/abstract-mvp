@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import {
@@ -11,6 +11,13 @@ import {
   signInWithPassword,
 } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
+
+function safeNext(next: string | null): string | null {
+  if (!next || typeof next !== "string") return null;
+  const t = next.trim();
+  if (!t.startsWith("/") || t.startsWith("//")) return null;
+  return t;
+}
 
 const EMAIL_COOLDOWN_SEC = 30;
 const RATE_LIMIT_PATTERNS = [
@@ -28,6 +35,8 @@ function isRateLimitError(message: string): boolean {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = safeNext(searchParams.get("next"));
   const { t } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,12 +54,12 @@ export default function LoginPage() {
         return;
       }
       if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {
-        router.replace("/set-password");
+        router.replace(nextPath || "/set-password");
         return;
       }
-      router.replace("/feed?tab=all&sort=latest");
+      router.replace(nextPath || "/feed?tab=all&sort=latest");
     });
-  }, [router]);
+  }, [router, nextPath]);
 
   useEffect(() => {
     if (magicCooldown <= 0) return;
@@ -62,7 +71,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const { error: err } = await sendMagicLink(email);
+    const { error: err } = await sendMagicLink(email, nextPath ?? undefined);
     setLoading(false);
     if (err) {
       setError(
@@ -89,7 +98,7 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
     }
-    router.replace("/");
+    router.replace(nextPath || "/");
   }
 
   return (

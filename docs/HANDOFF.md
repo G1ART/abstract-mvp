@@ -1,6 +1,36 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-22
+Last updated: 2026-02-19
+
+## 2026-02-19 — 관리자 위임(Delegation): 전시/계정 관리 권한 공유
+
+- **목적**: 특정 전시 또는 계정에 대한 관리 권한을 다른 사용자에게 위임. (매니저·큐레이터·어시스턴트 등)
+- **DB**
+  - **`delegations`** 테이블: `delegator_profile_id`, `delegate_profile_id`(nullable), `delegate_email`, `scope_type`(account|project|inventory), `project_id`(scope=project 시), `permissions`, `invite_token`, `status`(pending|active|revoked).
+  - 마이그레이션: `p0_delegations.sql`, `p0_delegations_exhibition_works_projects_rls.sql`.
+  - 신규 가입 시 `delegate_email`이 일치하는 pending 위임은 트리거로 자동 연결(`delegate_profile_id` 설정, status=active).
+- **플로우**
+  - **초대**: 전시 “작품 추가” 페이지에서 “관리자 초대”로 이메일 입력 → `create_delegation_invite` RPC → `/api/delegation-invite-email`로 초대 메일 발송. 링크: `/invites/delegation?token=...`
+  - **수락**
+    - **케이스 A (이미 로그인)**: 초대 링크 접속 → “수락” 클릭 → `accept_delegation_by_token` (세션 이메일과 초대 이메일 일치 시에만). 위임 2개 이상이면 `/my/delegations`, 1개면 해당 전시 추가 페이지 또는 `/my/delegations`로 이동.
+    - **케이스 B (미로그인)**: “로그인하여 수락” → `/login?next=/invites/delegation?token=...` → 로그인(비밀번호 또는 매직링크) 후 콜백에서 `next` 있으면 해당 URL로 리다이렉트 → 케이스 A와 동일 수락.
+  - **신규 유저**: 초대 링크로 가입 시 기존 온보딩(유저네임·프로필명·역할) 유지. 가입 완료 후 트리거로 해당 이메일의 pending 위임이 자동 활성화.
+- **RLS**
+  - `exhibition_works`: insert/update/delete 시 전시 소유자(curator/host) 또는 **해당 전시에 대한 project-scope delegation이 있는 delegate** 허용.
+  - `projects`: update만 delegate 허용(insert/delete는 curator/host만).
+- **UI**
+  - `/my/delegations`: 받은 위임·보낸 위임 목록. “Manage”로 전시 추가 페이지 이동 시 “acting as” 배너 표시.
+  - 헤더: “acting as” 중일 때 “관리 중: {이름}” 배너 + “내 계정으로 전환” 버튼. 아바타 메뉴에 “위임” 링크.
+  - 로그인·콜백: `next` 쿼리 파라미터 지원(초대 수락 후 직행).
+- **알림**: 위임 수신 시 앱 내 알림은 추후 알림 시스템 정비 시 추가 예정.
+
+**Supabase SQL 적용 필요:**  
+- `supabase/migrations/p0_delegations.sql`  
+- `supabase/migrations/p0_delegations_exhibition_works_projects_rls.sql`  
+
+**Verified:** (빌드·타입 체크 후, 전시 추가 페이지에서 관리자 초대 → 이메일 수신 → 수락 플로우·RLS 동작 확인 권장.)
+
+---
 
 ## 2026-02-22 — 매직링크 온보딩: 인증 메일 중복·난수 아이디 방지
 

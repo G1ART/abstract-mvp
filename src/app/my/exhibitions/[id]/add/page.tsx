@@ -23,6 +23,8 @@ import {
   createClaimForExistingArtist,
   createExternalArtistAndClaim,
 } from "@/lib/provenance/rpc";
+import { createDelegationInvite } from "@/lib/supabase/delegations";
+import { getExhibitionById } from "@/lib/supabase/exhibitions";
 
 type Participant = {
   id: string;
@@ -59,6 +61,12 @@ export default function AddWorkToExhibitionPage() {
   // 작품 검색 (제목/설명/매체/키워드 기반 텍스트 검색; 자연어 검색의 1차 버전)
   const [workQuery, setWorkQuery] = useState("");
 
+  // 전시 관리자 위임 초대
+  const [delegateEmail, setDelegateEmail] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
+  const [exhibitionTitle, setExhibitionTitle] = useState<string | null>(null);
+
   const fetchArtworks = useCallback(async () => {
     if (!id) return;
     const { data: profile } = await getMyProfile();
@@ -88,6 +96,11 @@ export default function AddWorkToExhibitionPage() {
     setLoading(true);
     fetchArtworks().finally(() => setLoading(false));
   }, [fetchArtworks]);
+
+  useEffect(() => {
+    if (!id) return;
+    getExhibitionById(id).then(({ data }) => setExhibitionTitle(data?.title ?? null));
+  }, [id]);
 
   // 참여 작가 검색 (온보딩된 유저)
   useEffect(() => {
@@ -220,6 +233,69 @@ export default function AddWorkToExhibitionPage() {
           >
             2. {t("exhibition.stepWorks")}
           </button>
+        </div>
+
+        {/* Invite manager (delegation) */}
+        <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+          <p className="mb-2 text-xs font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="email"
+              value={delegateEmail}
+              onChange={(e) => setDelegateEmail(e.target.value)}
+              placeholder={t("delegation.inviteByEmail")}
+              className="flex-1 min-w-[180px] rounded border border-zinc-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              disabled={inviteSending || !delegateEmail.trim()}
+              onClick={async () => {
+                const email = delegateEmail.trim();
+                if (!email) return;
+                setInviteSending(true);
+                setInviteToast(null);
+                const { data: inv, error: invErr } = await createDelegationInvite({
+                  delegateEmail: email,
+                  scopeType: "project",
+                  projectId: id,
+                });
+                if (invErr || !inv?.invite_token) {
+                  setInviteToast("failed");
+                  setInviteSending(false);
+                  return;
+                }
+                const { data: profile } = await getMyProfile();
+                const inviterName =
+                  (profile as { display_name?: string | null; username?: string | null })?.display_name?.trim() ||
+                  (profile as { username?: string | null })?.username ||
+                  null;
+                const res = await fetch("/api/delegation-invite-email", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    toEmail: email,
+                    inviterName,
+                    scopeType: "project",
+                    projectTitle: exhibitionTitle,
+                    inviteToken: inv.invite_token,
+                  }),
+                });
+                setInviteSending(false);
+                setInviteToast(res.ok ? "sent" : "failed");
+                if (res.ok) setDelegateEmail("");
+              }}
+              className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {inviteSending ? t("delegation.sending") : t("delegation.sendInvite")}
+            </button>
+          </div>
+          {inviteToast && (
+            <p
+              className={`mt-2 text-xs ${inviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}
+            >
+              {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
+            </p>
+          )}
         </div>
 
         {error && <p className="mb-4 text-sm text-red-600">{error}</p>}

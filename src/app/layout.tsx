@@ -5,6 +5,7 @@ import { Header } from "@/components/Header";
 import { HtmlLangSync } from "@/components/HtmlLangSync";
 import { MigrationGuard } from "@/components/MigrationGuard";
 import { ProfileBootstrap } from "@/components/ProfileBootstrap";
+import { ActingAsProvider } from "@/context/ActingAsContext";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -37,8 +38,10 @@ export default function RootLayout({
         <AuthBootstrap />
         <MigrationGuard />
         <ProfileBootstrap />
-        <Header />
-        {children}
+        <ActingAsProvider>
+          <Header />
+          {children}
+        </ActingAsProvider>
       </body>
     </html>
   );
