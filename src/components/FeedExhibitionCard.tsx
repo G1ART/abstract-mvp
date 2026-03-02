@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
-import type { ExhibitionRow } from "@/lib/supabase/exhibitions";
+import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import Image from "next/image";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 
 type Props = {
-  exhibition: ExhibitionRow;
+  exhibition: ExhibitionWithCredits;
 };
 
 export function FeedExhibitionCard({ exhibition }: Props) {
@@ -16,7 +17,7 @@ export function FeedExhibitionCard({ exhibition }: Props) {
     exhibition.start_date && exhibition.end_date
       ? `${exhibition.start_date} – ${exhibition.end_date}`
       : exhibition.start_date ?? exhibition.status;
-  const venue = exhibition.host_name ?? "-";
+  const creditsLine = getExhibitionHostCuratorLabel(exhibition, t);
   const thumbs = (exhibition.cover_image_paths ?? []).slice(0, 3);
 
   return (
@@ -33,9 +34,7 @@ export function FeedExhibitionCard({ exhibition }: Props) {
           <p className="mt-1 line-clamp-1 text-xs text-zinc-600">
             {t("exhibition.startDate")}: {period}
           </p>
-          <p className="line-clamp-1 text-xs text-zinc-600">
-            {t("exhibition.hostName")}: {venue}
-          </p>
+          <p className="line-clamp-1 text-xs text-zinc-600">{creditsLine}</p>
         </div>
         <span className="shrink-0 text-xs font-medium text-zinc-500 group-hover:text-zinc-700">→</span>
       </div>

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import {
   deleteExhibitionMedia,
   ensureDefaultExhibitionMediaBuckets,
@@ -397,7 +398,8 @@ export default function ExhibitionDetailPage() {
                 {exhibition.start_date && exhibition.end_date
                   ? `${exhibition.start_date} – ${exhibition.end_date}`
                   : exhibition.start_date ?? ""}
-                {exhibition.host_name && ` · ${exhibition.host_name}`}
+                {" · "}
+                {getExhibitionHostCuratorLabel(exhibition, t)}
                 {" · "}
                 {t(STATUS_LABELS[exhibition.status] ?? "exhibition.statusPlanned")}
               </p>

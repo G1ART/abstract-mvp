@@ -37,7 +37,8 @@ import {
   type PersonaTab,
   type PersonaTabItem,
 } from "@/lib/provenance/personaTabs";
-import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
+import { listExhibitionsForProfile, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 
 type Profile = {
@@ -71,7 +72,7 @@ export default function MyPage() {
   const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
   const [priceInquiryCount, setPriceInquiryCount] = useState<number>(0);
   const [pendingClaimsCount, setPendingClaimsCount] = useState<number>(0);
-  const [exhibitions, setExhibitions] = useState<ExhibitionRow[]>([]);
+  const [exhibitions, setExhibitions] = useState<ExhibitionWithCredits[]>([]);
   const [tabReorderMode, setTabReorderMode] = useState(false);
   const [tabOrderDraft, setTabOrderDraft] = useState<PersonaTabItem[]>([]);
   const [tabOrderSaving, setTabOrderSaving] = useState(false);
@@ -689,7 +690,8 @@ export default function MyPage() {
                       <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
                       <p className="truncate text-xs text-zinc-500">
                         {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
-                        {ex.host_name && ` · ${ex.host_name}`}
+                        {" · "}
+                        {getExhibitionHostCuratorLabel(ex, t)}
                       </p>
                       <p className="text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
                     </div>

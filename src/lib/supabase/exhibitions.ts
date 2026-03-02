@@ -4,6 +4,9 @@
  */
 
 import { supabase } from "./client";
+import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+
+export type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 
 export type ExhibitionRow = {
   id: string;
@@ -18,6 +21,10 @@ export type ExhibitionRow = {
   cover_image_paths: string[] | null;
   created_at: string | null;
 };
+
+/** Select + curator/host profile joins for credits label. */
+const SELECT_WITH_CREDITS =
+  "id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at, curator:profiles!curator_id(display_name, username), host:profiles!host_profile_id(display_name, username)";
 
 export type ExhibitionWorkRow = {
   id: string;
@@ -50,7 +57,7 @@ export type ExhibitionMediaBucketRow = {
 
 /** List exhibitions I curate or host (for My profile "기획한 전시" / "진행 중인 전시"). */
 export async function listMyExhibitions(): Promise<{
-  data: ExhibitionRow[];
+  data: ExhibitionWithCredits[];
   error: unknown;
 }> {
   const {
@@ -60,13 +67,13 @@ export async function listMyExhibitions(): Promise<{
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .select(SELECT_WITH_CREDITS)
     .eq("project_type", "exhibition")
     .or(`curator_id.eq.${session.user.id},host_profile_id.eq.${session.user.id}`)
     .order("created_at", { ascending: false });
 
   if (error) return { data: [], error };
-  return { data: (data ?? []) as ExhibitionRow[], error: null };
+  return { data: (data ?? []) as ExhibitionWithCredits[], error: null };
 }
 
 /** Create an exhibition (project). Caller becomes curator_id. */
@@ -220,7 +227,7 @@ export async function deleteExhibitionWithArtworks(exhibitionId: string): Promis
 
 /** List exhibitions for feed: curated or hosted by any of the given profile IDs (e.g. people I follow). */
 export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
-  data: ExhibitionRow[];
+  data: ExhibitionWithCredits[];
   error: unknown;
 }> {
   if (profileIds.length === 0) return { data: [], error: null };
@@ -228,24 +235,24 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   const [curatedRes, hostRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+      .select(SELECT_WITH_CREDITS)
       .eq("project_type", "exhibition")
       .in("curator_id", ids)
       .order("created_at", { ascending: false })
       .limit(20),
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+      .select(SELECT_WITH_CREDITS)
       .eq("project_type", "exhibition")
       .in("host_profile_id", ids)
       .order("created_at", { ascending: false })
       .limit(20),
   ]);
-  const byId = new Map<string, ExhibitionRow>();
-  for (const row of (curatedRes.data ?? []) as ExhibitionRow[]) {
+  const byId = new Map<string, ExhibitionWithCredits>();
+  for (const row of (curatedRes.data ?? []) as ExhibitionWithCredits[]) {
     byId.set(row.id, row);
   }
-  for (const row of (hostRes.data ?? []) as ExhibitionRow[]) {
+  for (const row of (hostRes.data ?? []) as ExhibitionWithCredits[]) {
     if (!byId.has(row.id)) byId.set(row.id, row);
   }
   const merged = Array.from(byId.values()).sort(
@@ -267,17 +274,17 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
 
 /** List recent public exhibitions for global feed (not follow-limited). */
 export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
-  data: ExhibitionRow[];
+  data: ExhibitionWithCredits[];
   error: unknown;
 }> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .select(SELECT_WITH_CREDITS)
     .eq("project_type", "exhibition")
     .order("created_at", { ascending: false })
     .limit(limit * 2); // over-fetch; we'll filter by works below
   if (error) return { data: [], error };
-  const projects = (data ?? []) as ExhibitionRow[];
+  const projects = (data ?? []) as ExhibitionWithCredits[];
   if (projects.length === 0) return { data: [], error: null };
   const ids = projects.map((e) => e.id);
   const { data: ewRows } = await supabase
@@ -291,19 +298,19 @@ export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
 
 /** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
 export async function listExhibitionsForProfile(profileId: string): Promise<{
-  data: ExhibitionRow[];
+  data: ExhibitionWithCredits[];
   error: unknown;
 }> {
   const [curatedRes, worksRes] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+      .select(SELECT_WITH_CREDITS)
       .eq("project_type", "exhibition")
       .or(`curator_id.eq.${profileId},host_profile_id.eq.${profileId}`)
       .order("created_at", { ascending: false }),
     supabase.from("artworks").select("id").eq("artist_id", profileId),
   ]);
-  const curated = (curatedRes.data ?? []) as ExhibitionRow[];
+  const curated = (curatedRes.data ?? []) as ExhibitionWithCredits[];
   const myWorkIds = (worksRes.data ?? []).map((r: { id: string }) => r.id);
   if (myWorkIds.length === 0) return { data: curated, error: curatedRes.error };
   const { data: ewRows } = await supabase
@@ -317,10 +324,10 @@ export async function listExhibitionsForProfile(profileId: string): Promise<{
   if (needFetch.length === 0) return { data: curated, error: curatedRes.error };
   const { data: participantProjects } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .select(SELECT_WITH_CREDITS)
     .in("id", needFetch)
     .eq("project_type", "exhibition");
-  const participant = (participantProjects ?? []) as ExhibitionRow[];
+  const participant = (participantProjects ?? []) as ExhibitionWithCredits[];
   const merged = [...curated];
   for (const p of participant) {
     if (!curatedIds.has(p.id)) {
@@ -334,18 +341,18 @@ export async function listExhibitionsForProfile(profileId: string): Promise<{
 
 /** Get one exhibition by id (for detail/edit). */
 export async function getExhibitionById(id: string): Promise<{
-  data: ExhibitionRow | null;
+  data: ExhibitionWithCredits | null;
   error: unknown;
 }> {
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .select(SELECT_WITH_CREDITS)
     .eq("id", id)
     .eq("project_type", "exhibition")
     .maybeSingle();
 
   if (error) return { data: null, error };
-  return { data: data as ExhibitionRow | null, error: null };
+  return { data: data as ExhibitionWithCredits | null, error: null };
 }
 
 /** List exhibition-level media (전시전경, 부대행사, or custom buckets via bucket_title). */
@@ -565,7 +572,7 @@ export async function updateExhibitionMediaOrder(
 
 /** List exhibitions that include this work (for artwork detail "Part of exhibitions"). */
 export async function listExhibitionsForWork(workId: string): Promise<{
-  data: ExhibitionRow[];
+  data: ExhibitionWithCredits[];
   error: unknown;
 }> {
   const { data: ewRows, error: ewError } = await supabase
@@ -576,10 +583,10 @@ export async function listExhibitionsForWork(workId: string): Promise<{
   const ids = [...new Set(ewRows.map((r: { exhibition_id: string }) => r.exhibition_id))];
   const { data, error } = await supabase
     .from("projects")
-    .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
+    .select(SELECT_WITH_CREDITS)
     .in("id", ids)
     .eq("project_type", "exhibition")
     .order("created_at", { ascending: false });
   if (error) return { data: [], error };
-  return { data: (data ?? []) as ExhibitionRow[], error: null };
+  return { data: (data ?? []) as ExhibitionWithCredits[], error: null };
 }

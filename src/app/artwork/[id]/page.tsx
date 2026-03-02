@@ -43,7 +43,8 @@ import {
   canReplyToPriceInquiry,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
-import { listExhibitionsForWork, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
 
@@ -93,7 +94,7 @@ function ArtworkDetailContent() {
   const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
   const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
-  const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionRow[]>([]);
+  const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionWithCredits[]>([]);
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -692,7 +693,8 @@ function ArtworkDetailContent() {
                           <span>
                             {ex.title}
                             {dates && ` · ${dates}`}
-                            {ex.host_name && ` · ${ex.host_name}`}
+                            {" · "}
+                            {getExhibitionHostCuratorLabel(ex, t)}
                           </span>
                         )}
                       </li>

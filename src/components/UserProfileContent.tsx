@@ -20,7 +20,7 @@ import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder, getProfileArtworkOrders, applyProfileOrdering } from "@/lib/supabase/artworks";
-import type { ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
@@ -38,7 +38,7 @@ import {
 type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
-  exhibitions?: ExhibitionRow[];
+  exhibitions?: ExhibitionWithCredits[];
   initialReorderMode?: boolean;
 };
 
@@ -392,7 +392,8 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
                       <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
                       <p className="truncate text-xs text-zinc-500">
                         {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
-                        {ex.host_name && ` · ${ex.host_name}`}
+                        {" · "}
+                        {getExhibitionHostCuratorLabel(ex, t)}
                       </p>
                       <p className="text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
                     </div>

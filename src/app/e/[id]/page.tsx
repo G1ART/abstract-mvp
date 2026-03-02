@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { useT } from "@/lib/i18n/useT";
+import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import {
   ensureDefaultExhibitionMediaBuckets,
   getExhibitionById,
@@ -141,7 +142,8 @@ export default function PublicExhibitionPage() {
               {exhibition.start_date && exhibition.end_date
                 ? `${exhibition.start_date} – ${exhibition.end_date}`
                 : exhibition.start_date ?? ""}
-              {exhibition.host_name && ` · ${exhibition.host_name}`}
+              {" · "}
+              {getExhibitionHostCuratorLabel(exhibition, t)}
               {" · "}
               {t(STATUS_LABELS[exhibition.status] ?? "exhibition.statusPlanned")}
             </p>

@@ -4,12 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
-import { listMyExhibitions, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
+import { listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 
 export default function MyExhibitionsPage() {
   const { t } = useT();
-  const [list, setList] = useState<ExhibitionRow[]>([]);
+  const [list, setList] = useState<ExhibitionWithCredits[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,7 +81,8 @@ export default function MyExhibitionsPage() {
                       : ex.start_date
                         ? ex.start_date
                         : ex.status}
-                    {ex.host_name && ` · ${ex.host_name}`}
+                    {" · "}
+                    {getExhibitionHostCuratorLabel(ex, t)}
                   </p>
                 </Link>
               </li>

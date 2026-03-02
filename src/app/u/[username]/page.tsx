@@ -10,7 +10,7 @@ import {
   getProfileArtworkOrders,
   applyProfileOrdering,
 } from "@/lib/supabase/artworks";
-import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { listExhibitionsForProfile, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
@@ -94,7 +94,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     <UserProfileContent
       profile={p}
       artworks={orderedArtworks ?? []}
-      exhibitions={(exhibitions ?? []) as ExhibitionRow[]}
+      exhibitions={(exhibitions ?? []) as ExhibitionWithCredits[]}
       initialReorderMode={mode === "reorder"}
     />
   );

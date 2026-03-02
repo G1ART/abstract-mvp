@@ -11,7 +11,7 @@ import {
   listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
-import { listExhibitionsForFeed, listPublicExhibitionsForFeed, type ExhibitionRow } from "@/lib/supabase/exhibitions";
+import { listExhibitionsForFeed, listPublicExhibitionsForFeed, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FeedArtworkCard } from "./FeedArtworkCard";
@@ -25,11 +25,11 @@ const DISCOVERY_BLOCKS_MAX = 4;
 
 type FeedEntry =
   | { type: "artwork"; created_at: string | null; artwork: ArtworkWithLikes }
-  | { type: "exhibition"; created_at: string | null; exhibition: ExhibitionRow };
+  | { type: "exhibition"; created_at: string | null; exhibition: ExhibitionWithCredits };
 
 type FeedItem =
   | { type: "artwork"; artwork: ArtworkWithLikes }
-  | { type: "exhibition"; exhibition: ExhibitionRow }
+  | { type: "exhibition"; exhibition: ExhibitionWithCredits }
   | { type: "discovery"; profile: PeopleRec; artworks: ArtworkWithLikes[] };
 
 function buildFeedItems(
@@ -130,7 +130,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       getFollowingIds(),
       tab === "following"
         ? getFollowingIds().then((r) =>
-            r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionRow[], error: null }
+            r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionWithCredits[], error: null }
           )
         : listPublicExhibitionsForFeed(30),
     ]);
