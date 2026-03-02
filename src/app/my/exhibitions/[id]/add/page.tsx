@@ -467,15 +467,58 @@ export default function AddWorkToExhibitionPage() {
               </div>
             </div>
 
-            <p className="mb-3 text-xs text-zinc-500">
-              {t("exhibition.uploadNewWork")}{" "}
-              <Link
-                href={`/upload?addToExhibition=${id}`}
-                className="text-xs text-zinc-700 underline hover:text-zinc-900"
-              >
-                /upload
-              </Link>
-            </p>
+            <div className="mb-3 space-y-1 text-xs text-zinc-500">
+              <p>{t("exhibition.uploadNewWork")}</p>
+              <div className="flex flex-wrap gap-2">
+                {participants.map((p) => {
+                  const qs = new URLSearchParams({
+                    addToExhibition: id,
+                    from: "exhibition",
+                    artistId: p.id,
+                  });
+                  if (p.display_name) qs.set("artistName", p.display_name);
+                  if (p.username) qs.set("artistUsername", p.username);
+                  return (
+                    <Link
+                      key={p.id}
+                      href={`/upload?${qs.toString()}`}
+                      className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                    >
+                      {p.display_name || p.username || p.id}
+                    </Link>
+                  );
+                })}
+                {externalRows
+                  .map((r) => ({ name: r.name.trim(), email: r.email.trim() }))
+                  .filter((r) => r.name)
+                  .map((r, idx) => {
+                    const qs = new URLSearchParams({
+                      addToExhibition: id,
+                      from: "exhibition",
+                      externalName: r.name,
+                    });
+                    if (r.email) qs.set("externalEmail", r.email);
+                    return (
+                      <Link
+                        key={`${r.name}-${idx}`}
+                        href={`/upload?${qs.toString()}`}
+                        className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                      >
+                        {r.name}
+                      </Link>
+                    );
+                  })}
+                {participants.length === 0 &&
+                  !externalRows.some((r) => r.name.trim()) && (
+                    <Link
+                      href={`/upload?addToExhibition=${id}`}
+                      className="inline-flex items-center rounded-full border border-dashed border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
+                    >
+                      /upload
+                    </Link>
+                  )}
+              </div>
+            </div>
 
             {loading ? (
               <p className="text-sm text-zinc-500">{t("common.loading")}</p>

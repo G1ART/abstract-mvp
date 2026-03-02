@@ -59,19 +59,35 @@ function UploadPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const addToExhibitionId = searchParams.get("addToExhibition");
+  const fromExhibition = searchParams.get("from") === "exhibition";
+  const preselectedArtistId = searchParams.get("artistId");
+  const preselectedArtistName = searchParams.get("artistName");
+  const preselectedArtistUsername = searchParams.get("artistUsername");
+  const preselectedExternalName = searchParams.get("externalName");
+  const preselectedExternalEmail = searchParams.get("externalEmail");
   const { t } = useT();
   const [userId, setUserId] = useState<string | null>(null);
-  const [step, setStep] = useState<UploadStep>("intent");
-  const [intent, setIntent] = useState<IntentType | null>(null);
+  const [step, setStep] = useState<UploadStep>(fromExhibition ? "form" : "intent");
+  const [intent, setIntent] = useState<IntentType | null>(fromExhibition ? "CURATED" : null);
 
-  // Attribution (OWNS only)
+  // Attribution (non-CREATED)
   const [artistSearch, setArtistSearch] = useState("");
   const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
-  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
+  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(
+    preselectedArtistId
+      ? {
+          id: preselectedArtistId,
+          username: preselectedArtistUsername,
+          display_name: preselectedArtistName,
+        }
+      : null
+  );
   const [searching, setSearching] = useState(false);
-  const [useExternalArtist, setUseExternalArtist] = useState(false);
-  const [externalArtistName, setExternalArtistName] = useState("");
-  const [externalArtistEmail, setExternalArtistEmail] = useState("");
+  const [useExternalArtist, setUseExternalArtist] = useState(
+    !!preselectedExternalName && !preselectedArtistId
+  );
+  const [externalArtistName, setExternalArtistName] = useState(preselectedExternalName ?? "");
+  const [externalArtistEmail, setExternalArtistEmail] = useState(preselectedExternalEmail ?? "");
 
   // Form
   const [image, setImage] = useState<File | null>(null);

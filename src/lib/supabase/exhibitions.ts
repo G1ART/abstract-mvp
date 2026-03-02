@@ -177,6 +177,17 @@ export async function removeWorkFromExhibition(
 
 /** Delete exhibition only: removes exhibition post/media/links, keeps artworks & provenance intact. */
 export async function deleteExhibitionKeepWorks(exhibitionId: string): Promise<{ error: unknown }> {
+  // First delete provenance claims that point to this exhibition via project_id.
+  // For shell exhibitions with 0 works, 외부 작가 초대/큐레이션 클레임이 여기에 걸려 있어
+  // projects 삭제 시 FK(claims_project_id_fkey)가 막을 수 있으므로 선삭제가 필요하다.
+  const { error: claimsError } = await supabase
+    .from("claims")
+    .delete()
+    .eq("project_id", exhibitionId);
+  if (claimsError) {
+    return { error: claimsError };
+  }
+
   const { error } = await supabase
     .from("projects")
     .delete()
@@ -240,7 +251,18 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   const merged = Array.from(byId.values()).sort(
     (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
   );
-  return { data: merged.slice(0, 30), error: curatedRes.error ?? hostRes.error };
+  // Filter out "shell" exhibitions with no works (no rows in exhibition_works).
+  if (merged.length === 0) {
+    return { data: [], error: curatedRes.error ?? hostRes.error };
+  }
+  const ids = merged.map((e) => e.id);
+  const { data: ewRows } = await supabase
+    .from("exhibition_works")
+    .select("exhibition_id")
+    .in("exhibition_id", ids);
+  const withWorks = new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id));
+  const filtered = merged.filter((e) => withWorks.has(e.id));
+  return { data: filtered.slice(0, 30), error: curatedRes.error ?? hostRes.error };
 }
 
 /** List recent public exhibitions for global feed (not follow-limited). */
@@ -253,9 +275,18 @@ export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
     .select("id, project_type, title, start_date, end_date, status, curator_id, host_name, host_profile_id, cover_image_paths, created_at")
     .eq("project_type", "exhibition")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .limit(limit * 2); // over-fetch; we'll filter by works below
   if (error) return { data: [], error };
-  return { data: (data ?? []) as ExhibitionRow[], error: null };
+  const projects = (data ?? []) as ExhibitionRow[];
+  if (projects.length === 0) return { data: [], error: null };
+  const ids = projects.map((e) => e.id);
+  const { data: ewRows } = await supabase
+    .from("exhibition_works")
+    .select("exhibition_id")
+    .in("exhibition_id", ids);
+  const withWorks = new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id));
+  const filtered = projects.filter((e) => withWorks.has(e.id));
+  return { data: filtered.slice(0, limit), error: null };
 }
 
 /** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
