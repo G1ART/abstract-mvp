@@ -8,6 +8,7 @@ import {
   type Artwork,
   getArtworkImageUrl,
   getPrimaryClaim,
+  getArtworkArtistLabel,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel, claimTypeToByPhrase } from "@/lib/provenance/rpc";
@@ -47,10 +48,8 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
   );
   const firstImage = sortedImages[0];
   const imageUrl = firstImage ? getArtworkImageUrl(firstImage.storage_path, "thumb") : null;
-  const artist = artwork.profiles;
-  const username = artist?.username ?? "";
-  const artistLabel =
-    artist?.display_name?.trim() || (username ? "@" + username : null) || null;
+  const { label: artistLabel, profileUsername } = getArtworkArtistLabel(artwork);
+  const username = profileUsername ?? "";
   const primaryClaim = getPrimaryClaim(artwork);
   const listerProf = primaryClaim?.profiles;
   const listerLabel = listerProf

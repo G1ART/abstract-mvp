@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getArtworkBack } from "@/lib/artworkBack";
+import { getArtworkArtistLabel } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
@@ -404,7 +405,8 @@ function ArtworkDetailContent() {
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
   const artist = artwork.profiles;
-  const username = artist?.username ?? "";
+  const { label: artistLabel, profileUsername } = getArtworkArtistLabel(artwork);
+  const username = profileUsername ?? "";
 
   const { path: backPath, labelKey: backLabelKey } = getArtworkBack();
 
@@ -464,6 +466,11 @@ function ArtworkDetailContent() {
             <p className="mt-1 text-sm text-zinc-600">
               {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
             </p>
+            {artistLabel && (
+              <p className="mt-1 text-sm text-zinc-700">
+                {t("artwork.artistFallback")}: {artistLabel}
+              </p>
+            )}
             {artwork.ownership_status && (
               <p className="mt-2 font-medium text-zinc-700">
                 {artwork.ownership_status}

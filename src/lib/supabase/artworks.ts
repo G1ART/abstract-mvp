@@ -148,6 +148,43 @@ export function getPrimaryClaim(artwork: Artwork): ArtworkClaim | null {
   return created ?? claims[0] ?? null;
 }
 
+/**
+ * Derive the primary artist label for display.
+ * Priority:
+ * 1) External artist name from any claim (pre-onboarding invited artist)
+ * 2) Artist profile display_name
+ * 3) Artist profile username (as @username)
+ */
+export function getArtworkArtistLabel(
+  artwork: Artwork | ArtworkWithLikes
+): { label: string | null; profileUsername: string | null } {
+  const claims = (artwork as any).claims as ArtworkClaim[] | undefined;
+  if (claims && claims.length > 0) {
+    // Use first external artist name if present (invited, not yet onboarded).
+    const withExternal = claims.find(
+      (c) =>
+        (c as any).external_artists &&
+        typeof (c as any).external_artists.display_name === "string" &&
+        (c as any).external_artists.display_name.trim() !== ""
+    ) as (ArtworkClaim & { external_artists?: { display_name?: string | null } }) | undefined;
+    if (withExternal && withExternal.external_artists?.display_name) {
+      const name = withExternal.external_artists.display_name.trim();
+      if (name) {
+        return { label: name, profileUsername: null };
+      }
+    }
+  }
+
+  const artist = (artwork as any).profiles as ArtistProfile | null | undefined;
+  const username = artist?.username ?? null;
+  const displayName =
+    typeof artist?.display_name === "string" && artist.display_name.trim()
+      ? artist.display_name.trim()
+      : null;
+  const label = displayName || (username ? "@" + username : null);
+  return { label, profileUsername: username };
+}
+
 /** Whether the viewer can see full provenance (curator, collector, etc.). */
 export function canViewProvenance(artwork: Artwork, userId: string | null): boolean {
   if (artwork.provenance_visible !== false) return true;

@@ -8,6 +8,7 @@ import {
   getArtworkImageUrl,
   getPrimaryClaim,
   canEditArtwork,
+  getArtworkArtistLabel,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel } from "@/lib/provenance/rpc";
@@ -45,9 +46,8 @@ export function FeedArtworkCard({
   const sorted = [...images].sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
   const first = sorted[0];
   const imageUrl = first ? getArtworkImageUrl(first.storage_path, "thumb") : null;
-  const artist = artwork.profiles;
-  const username = artist?.username ?? "";
-  const displayName = artist?.display_name?.trim() || username || "Artist";
+  const { profileUsername } = getArtworkArtistLabel(artwork);
+  const username = profileUsername ?? "";
   const primaryClaim = getPrimaryClaim(artwork);
   const claimLabel = primaryClaim
     ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
