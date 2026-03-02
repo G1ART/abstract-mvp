@@ -5,6 +5,7 @@
 
 import { supabase } from "./client";
 import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+import { listMyDelegations } from "./delegations";
 
 export type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 
@@ -55,7 +56,24 @@ export type ExhibitionMediaBucketRow = {
   created_at: string;
 };
 
-/** List exhibitions I curate or host (for My profile "기획한 전시" / "진행 중인 전시"). */
+/** Fetch exhibitions by ids (with credits). Returns empty for invalid/empty ids. */
+export async function listExhibitionsByIds(ids: string[]): Promise<{
+  data: ExhibitionWithCredits[];
+  error: unknown;
+}> {
+  const unique = [...new Set(ids)].filter(Boolean);
+  if (unique.length === 0) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("projects")
+    .select(SELECT_WITH_CREDITS)
+    .in("id", unique)
+    .eq("project_type", "exhibition")
+    .order("created_at", { ascending: false });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as ExhibitionWithCredits[], error: null };
+}
+
+/** List exhibitions I can manage: curate, host, or active delegate. (Persistent until delegator revokes.) */
 export async function listMyExhibitions(): Promise<{
   data: ExhibitionWithCredits[];
   error: unknown;
@@ -65,15 +83,41 @@ export async function listMyExhibitions(): Promise<{
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
-  const { data, error } = await supabase
-    .from("projects")
-    .select(SELECT_WITH_CREDITS)
-    .eq("project_type", "exhibition")
-    .or(`curator_id.eq.${session.user.id},host_profile_id.eq.${session.user.id}`)
-    .order("created_at", { ascending: false });
+  const [curatedRes, delegationsRes] = await Promise.all([
+    supabase
+      .from("projects")
+      .select(SELECT_WITH_CREDITS)
+      .eq("project_type", "exhibition")
+      .or(`curator_id.eq.${session.user.id},host_profile_id.eq.${session.user.id}`)
+      .order("created_at", { ascending: false }),
+    listMyDelegations(),
+  ]);
 
-  if (error) return { data: [], error };
-  return { data: (data ?? []) as ExhibitionWithCredits[], error: null };
+  if (curatedRes.error) return { data: [], error: curatedRes.error };
+  const curated = (curatedRes.data ?? []) as ExhibitionWithCredits[];
+  const byId = new Map(curated.map((e) => [e.id, e]));
+
+  const received = delegationsRes.data?.received ?? [];
+  const delegatedProjectIds = received
+    .filter(
+      (d) =>
+        d.scope_type === "project" &&
+        d.status === "active" &&
+        d.project_id != null &&
+        !byId.has(d.project_id)
+    )
+    .map((d) => d.project_id as string);
+  if (delegatedProjectIds.length > 0) {
+    const { data: delegatedList } = await listExhibitionsByIds(delegatedProjectIds);
+    for (const e of delegatedList ?? []) {
+      if (!byId.has(e.id)) byId.set(e.id, e);
+    }
+  }
+
+  const merged = Array.from(byId.values()).sort(
+    (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+  );
+  return { data: merged, error: null };
 }
 
 /** Create an exhibition (project). Caller becomes curator_id. */

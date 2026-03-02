@@ -20,6 +20,7 @@ import {
 } from "@/lib/supabase/exhibitions";
 import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
+import { listMyDelegations } from "@/lib/supabase/delegations";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -37,6 +38,7 @@ export default function PublicExhibitionPage() {
   const [media, setMedia] = useState<ExhibitionMediaRow[]>([]);
   const [mediaBucketRows, setMediaBucketRows] = useState<ExhibitionMediaBucketRow[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,8 +55,10 @@ export default function PublicExhibitionPage() {
       getSession(),
     ]);
     const session = sessionRes?.data?.session;
-    setUserId(session?.user?.id ?? null);
+    const uid = session?.user?.id ?? null;
+    setUserId(uid);
     if (exRes.error || !exRes.data) {
+      setCanManage(false);
       setLoading(false);
       setError(exRes.error ? (exRes.error instanceof Error ? exRes.error.message : t("common.notFound")) : t("common.notFound"));
       return;
@@ -63,6 +67,21 @@ export default function PublicExhibitionPage() {
     setWorks(worksRes.data ?? []);
     setMedia(mediaRes.data ?? []);
     setMediaBucketRows(bucketRes.data ?? []);
+    const isCuratorOrHost =
+      !!uid &&
+      (exRes.data.curator_id === uid || exRes.data.host_profile_id === uid);
+    if (uid && !isCuratorOrHost) {
+      const { data: delegations } = await listMyDelegations();
+      const isDelegate = (delegations?.received ?? []).some(
+        (d) =>
+          d.scope_type === "project" &&
+          d.status === "active" &&
+          d.project_id === id
+      );
+      setCanManage(isDelegate);
+    } else {
+      setCanManage(!!isCuratorOrHost);
+    }
     if ((worksRes.data ?? []).length === 0) {
       setArtworks([]);
       setLoading(false);
@@ -100,7 +119,7 @@ export default function PublicExhibitionPage() {
     });
   }, [artworks, works]);
 
-  const isOwner = exhibition && userId && (exhibition.curator_id === userId || exhibition.host_profile_id === userId);
+  const isOwner = canManage;
 
   useEffect(() => {
     fetchData();

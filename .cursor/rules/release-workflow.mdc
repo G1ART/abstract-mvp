@@ -26,8 +26,17 @@ git status && git add -A && git commit -m "<릴리즈 메시지>" && git push or
   - 날짜 (예: `2026-02-17`)
   - 변경 요약 (bullet list)
   - Supabase SQL 적용 필요 시 해당 마이그레이션 파일명 명시
+  - **환경 변수 추가/변경이 있으면 반드시 콜아웃** (예: "Vercel에 NEXT_PUBLIC_APP_URL 추가 필요", ".env.example 및 Runbook 갱신됨")
   - `Verified:` 항목 (빌드 통과 등)
+
+## 4. 환경 변수 추가/변경 시 (필수)
+
+- 새로 쓰이거나 이름/의미가 바뀌는 **환경 변수**가 있으면:
+  1. **반드시 사용자에게 콜아웃** (릴리즈 요약·HANDOFF에 "환경 변수: … 추가/변경됨" 명시).
+  2. **`.env.example`** 에 변수와 주석 추가·수정.
+  3. **`docs/03_RUNBOOK.md`** 의 "Set Environment Variables in Vercel" 및 로컬 "Env" 항목 갱신.
+- 이렇게 해야 배포·온보딩 시 누락이 없다.
 
 ---
 
-패치 마무리 시 이 세 단계를 놓치지 않고 수행한다.
+패치 마무리 시 위 단계들을 놓치지 않고 수행한다.

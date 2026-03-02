@@ -66,6 +66,27 @@ function buildHtmlKo(payload: Payload, acceptUrl: string) {
   `;
 }
 
+const FALLBACK_APP_BASE = "https://abstract-mvp-dxfn.vercel.app";
+
+/** Returns app base URL for invite links. Rejects vercel.com (marketing) so misconfigured env never sends users there. */
+function getAppBase(): string {
+  const raw =
+    (typeof process.env.NEXT_PUBLIC_APP_URL === "string" && process.env.NEXT_PUBLIC_APP_URL.trim()) ||
+    (process.env.VERCEL_URL ? `https://${String(process.env.VERCEL_URL).trim()}` : null) ||
+    FALLBACK_APP_BASE;
+  const base = raw.startsWith("http") ? raw : `https://${raw}`;
+  try {
+    const hostname = new URL(base).hostname.toLowerCase();
+    if (hostname === "vercel.com" || hostname === "www.vercel.com") {
+      console.warn("delegation-invite-email: base was vercel.com, using fallback", { raw });
+      return FALLBACK_APP_BASE;
+    }
+  } catch {
+    return FALLBACK_APP_BASE;
+  }
+  return base.replace(/\/+$/, "");
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as Payload;
@@ -76,10 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "inviteToken required" }, { status: 400 });
     }
 
-    const base =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
-      "https://abstract-mvp-dxfn.vercel.app";
+    const base = getAppBase();
     const acceptUrl = `${base}/invites/delegation?token=${encodeURIComponent(body.inviteToken)}`;
 
     const apiKey = process.env.SENDGRID_API_KEY;

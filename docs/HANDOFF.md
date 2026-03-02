@@ -10,7 +10,7 @@ Last updated: 2026-02-19
   - 마이그레이션: `p0_delegations.sql`, `p0_delegations_exhibition_works_projects_rls.sql`.
   - 신규 가입 시 `delegate_email`이 일치하는 pending 위임은 트리거로 자동 연결(`delegate_profile_id` 설정, status=active).
 - **플로우**
-  - **초대**: 전시 “작품 추가” 페이지에서 “관리자 초대”로 이메일 입력 → `create_delegation_invite` RPC → `/api/delegation-invite-email`로 초대 메일 발송. 링크: `/invites/delegation?token=...`
+  - **초대**: 전시 “작품 추가” 페이지에서 “관리자 초대”로 이메일 입력 → `create_delegation_invite` RPC → `/api/delegation-invite-email`로 초대 메일 발송. 링크: `{NEXT_PUBLIC_APP_URL}/invites/delegation?token=...` (Vercel에 NEXT_PUBLIC_APP_URL 설정 필수. Runbook 참고.)
   - **수락**
     - **케이스 A (이미 로그인)**: 초대 링크 접속 → “수락” 클릭 → `accept_delegation_by_token` (세션 이메일과 초대 이메일 일치 시에만). 위임 2개 이상이면 `/my/delegations`, 1개면 해당 전시 추가 페이지 또는 `/my/delegations`로 이동.
     - **케이스 B (미로그인)**: “로그인하여 수락” → `/login?next=/invites/delegation?token=...` → 로그인(비밀번호 또는 매직링크) 후 콜백에서 `next` 있으면 해당 URL로 리다이렉트 → 케이스 A와 동일 수락.
@@ -805,7 +805,7 @@ git push origin main
 - SQL/RPC changes: Supabase SQL Editor에서 수동 실행(배포와 별개)
 - Pre-deploy sanity:
   - `npm run build` (가능한 경우)
-  - env vars in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Prod/Preview/Dev)
+  - env vars in Vercel: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, **`NEXT_PUBLIC_APP_URL`** (초대 링크용), (선택) `SENDGRID_API_KEY`, `INVITE_FROM_EMAIL` (Prod/Preview/Dev). 상세: `docs/03_RUNBOOK.md`
 
 ---
 

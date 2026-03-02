@@ -38,7 +38,7 @@ import {
   type PersonaTabItem,
 } from "@/lib/provenance/personaTabs";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
-import { listExhibitionsForProfile, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import { listExhibitionsForProfile, listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 
 type Profile = {
@@ -157,8 +157,19 @@ export default function MyPage() {
         setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
-        const { data: exData } = await listExhibitionsForProfile(profileData.id);
-        setExhibitions(exData ?? []);
+        const [exProfileRes, exMineRes] = await Promise.all([
+          listExhibitionsForProfile(profileData.id),
+          listMyExhibitions(),
+        ]);
+        const fromProfile = exProfileRes.data ?? [];
+        const fromMine = exMineRes.data ?? [];
+        const byId = new Map<string, ExhibitionWithCredits>();
+        for (const e of fromProfile) byId.set(e.id, e);
+        for (const e of fromMine) if (!byId.has(e.id)) byId.set(e.id, e);
+        const merged = Array.from(byId.values()).sort(
+          (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
+        setExhibitions(merged);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.errorOccurred"));

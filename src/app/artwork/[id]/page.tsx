@@ -44,6 +44,7 @@ import {
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
 import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+import { listMyDelegations } from "@/lib/supabase/delegations";
 import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
@@ -95,6 +96,7 @@ function ArtworkDetailContent() {
   const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
   const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionWithCredits[]>([]);
+  const [delegatedProjectIds, setDelegatedProjectIds] = useState<Set<string>>(new Set());
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -179,6 +181,17 @@ function ArtworkDetailContent() {
       setUserId(session?.user?.id ?? null);
     });
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    listMyDelegations().then(({ data }) => {
+      const ids = new Set<string>();
+      for (const d of data?.received ?? []) {
+        if (d.scope_type === "project" && d.status === "active" && d.project_id) ids.add(d.project_id);
+      }
+      setDelegatedProjectIds(ids);
+    });
+  }, [userId]);
 
   useEffect(() => {
     if (artwork?.artist_id && userId && userId !== artwork.artist_id) {
@@ -678,7 +691,10 @@ function ArtworkDetailContent() {
                         ? `${ex.start_date} – ${ex.end_date}`
                         : ex.start_date ?? ex.status;
                     const isMyExhibition =
-                      userId && (ex.curator_id === userId || ex.host_profile_id === userId);
+                      userId &&
+                      (ex.curator_id === userId ||
+                        ex.host_profile_id === userId ||
+                        delegatedProjectIds.has(ex.id));
                     return (
                       <li key={ex.id}>
                         {isMyExhibition ? (
