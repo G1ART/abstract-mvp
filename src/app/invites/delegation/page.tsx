@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
@@ -26,7 +26,7 @@ function scopeLabel(scope: string, t: (k: string) => string): string {
   }
 }
 
-export default function InvitesDelegationPage() {
+function InvitesDelegationInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -178,5 +178,19 @@ export default function InvitesDelegationPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InvitesDelegationPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center">
+          <p className="text-zinc-500">Loading...</p>
+        </div>
+      }
+    >
+      <InvitesDelegationInner />
+    </Suspense>
   );
 }
