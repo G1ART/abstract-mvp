@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
@@ -33,7 +33,7 @@ function isRateLimitError(message: string): boolean {
   return RATE_LIMIT_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
 }
 
-export default function LoginPage() {
+function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = safeNext(searchParams.get("next"));
@@ -195,5 +195,20 @@ export default function LoginPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col items-center justify-center px-4">
+          <h1 className="mb-6 text-xl font-semibold">Log in</h1>
+          <p className="text-zinc-500">Loading...</p>
+        </div>
+      }
+    >
+      <LoginInner />
+    </Suspense>
   );
 }
