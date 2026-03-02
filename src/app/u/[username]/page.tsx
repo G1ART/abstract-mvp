@@ -10,6 +10,7 @@ import {
   getProfileArtworkOrders,
   applyProfileOrdering,
 } from "@/lib/supabase/artworks";
+import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
@@ -62,9 +63,11 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const [
     { data: artworksAsArtist },
     { data: artworksAsLister },
+    { data: exhibitions },
   ] = await Promise.all([
     listPublicArtworksByArtistId(p.id, { limit: 50 }),
     listPublicArtworksListedByProfileId(p.id, { limit: 50 }),
+    listExhibitionsForProfile(p.id),
   ]);
 
   const seen = new Set<string>();
@@ -91,6 +94,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
     <UserProfileContent
       profile={p}
       artworks={orderedArtworks ?? []}
+      exhibitions={(exhibitions ?? []) as ExhibitionRow[]}
       initialReorderMode={mode === "reorder"}
     />
   );

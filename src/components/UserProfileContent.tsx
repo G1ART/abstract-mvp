@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   DndContext,
@@ -19,6 +20,7 @@ import { getMyProfile } from "@/lib/supabase/profiles";
 import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder, getProfileArtworkOrders, applyProfileOrdering } from "@/lib/supabase/artworks";
+import type { ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
@@ -36,6 +38,7 @@ import {
 type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
+  exhibitions?: ExhibitionRow[];
   initialReorderMode?: boolean;
 };
 
@@ -45,7 +48,7 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
   return getArtworkImageUrl(avatarUrl, "avatar");
 }
 
-export function UserProfileContent({ profile, artworks, initialReorderMode = false }: Props) {
+export function UserProfileContent({ profile, artworks, exhibitions = [], initialReorderMode = false }: Props) {
   const { t } = useT();
   const router = useRouter();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -62,6 +65,12 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
   useEffect(() => {
     setLocalArtworks(artworks);
   }, [artworks]);
+
+  useEffect(() => {
+    if (exhibitions.length > 0 && artworks.length === 0) {
+      setPersonaTab("exhibitions");
+    }
+  }, []);
 
   useEffect(() => {
     if (initialReorderMode && isOwner && artworks.length > 0) setReorderMode(true);
@@ -283,17 +292,22 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
         )}
       </div>
 
-      {/* Persona tabs: no INVENTORY/CURATED; "전체" (all) last */}
-      {personaCounts.all > 0 && (
+      {/* Persona tabs: exhibitions, CREATED, OWNS, all */}
+      {(personaCounts.all > 0 || exhibitions.length > 0) && (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
           {[
+            ...(exhibitions.length > 0
+              ? [{ tab: "exhibitions" as PersonaTab, label: t("exhibition.myExhibitions"), count: exhibitions.length }]
+              : []),
             ...(personaCounts.created > 0
               ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: personaCounts.created }]
               : []),
             ...(personaCounts.owns > 0
               ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: personaCounts.owns }]
               : []),
-            { tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all },
+            ...(personaCounts.all > 0
+              ? [{ tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all }]
+              : []),
           ].map(({ tab, label, count }) => (
             <button
               key={tab}
@@ -312,8 +326,10 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
       )}
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900">{t("profile.works")}</h2>
-        {isOwner && reorderableArtworks.length > 0 && !reorderMode && (
+        <h2 className="text-lg font-semibold text-zinc-900">
+          {personaTab === "exhibitions" ? t("exhibition.myExhibitions") : t("profile.works")}
+        </h2>
+        {personaTab !== "exhibitions" && isOwner && reorderableArtworks.length > 0 && !reorderMode && (
           <button
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
@@ -322,7 +338,7 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
             {t("profile.reorder")}
           </button>
         )}
-        {reorderMode && isOwner && reorderableArtworks.length > 0 && (
+        {personaTab !== "exhibitions" && reorderMode && isOwner && reorderableArtworks.length > 0 && (
           <div className="flex gap-2">
             <button
               type="button"
@@ -343,10 +359,50 @@ export function UserProfileContent({ profile, artworks, initialReorderMode = fal
           </div>
         )}
       </div>
-      {reorderMode && isOwner && (
+      {personaTab !== "exhibitions" && reorderMode && isOwner && (
         <p className="mb-4 text-sm text-zinc-500">{t("profile.reorderHint")}</p>
       )}
-      {reorderMode && isOwner && artworks.length > 0 ? (
+      {personaTab === "exhibitions" ? (
+        exhibitions.length === 0 ? (
+          <p className="py-8 text-center text-sm text-zinc-500">{t("exhibition.emptyList")}</p>
+        ) : (
+          <ul className="space-y-2">
+            {exhibitions.map((ex) => {
+              const firstCover = (ex.cover_image_paths ?? [])[0];
+              return (
+                <li key={ex.id}>
+                  <Link
+                    href={`/e/${ex.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2.5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                  >
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+                      {firstCover ? (
+                        <Image
+                          src={getArtworkImageUrl(firstCover, "thumb")}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="56px"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-zinc-400">·</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
+                        {ex.host_name && ` · ${ex.host_name}`}
+                      </p>
+                      <p className="text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : reorderMode && isOwner && artworks.length > 0 ? (
         <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={reorderableArtworks.map((a) => a.id)} strategy={rectSortingStrategy}>

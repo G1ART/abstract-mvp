@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
@@ -38,7 +39,6 @@ import {
 } from "@/lib/provenance/personaTabs";
 import { listExhibitionsForProfile, type ExhibitionRow } from "@/lib/supabase/exhibitions";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
-import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 
 type Profile = {
   id: string;
@@ -663,27 +663,40 @@ export default function MyPage() {
         </div>
 
         {personaTab === "exhibitions" ? (
-          <ul className="space-y-3">
-            {exhibitions.map((ex) => (
-              <li key={ex.id}>
-                <Link
-                  href={`/my/exhibitions/${ex.id}`}
-                  className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
-                >
-                  <div className="w-20 shrink-0">
-                    <ExhibitionThumbStack paths={ex.cover_image_paths} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
-                    <p className="mt-0.5 truncate text-xs text-zinc-500">
-                      {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
-                      {ex.host_name && ` · ${ex.host_name}`}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
-                  </div>
-                </Link>
-              </li>
-            ))}
+          <ul className="space-y-2">
+            {exhibitions.map((ex) => {
+              const firstCover = (ex.cover_image_paths ?? [])[0];
+              return (
+                <li key={ex.id}>
+                  <Link
+                    href={`/my/exhibitions/${ex.id}`}
+                    className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2.5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                  >
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+                      {firstCover ? (
+                        <Image
+                          src={getArtworkImageUrl(firstCover, "thumb")}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          sizes="56px"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-zinc-400">·</div>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
+                      <p className="truncate text-xs text-zinc-500">
+                        {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
+                        {ex.host_name && ` · ${ex.host_name}`}
+                      </p>
+                      <p className="text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
+                    </div>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         ) : personaTab === "all" && allBuckets ? (
           (() => {
