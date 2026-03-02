@@ -304,7 +304,10 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
             }
             if (item.type === "exhibition") {
               return (
-                <div key={`exhibition-${item.exhibition.id}`} className="col-span-full min-w-0 lg:col-span-2">
+                <div
+                  key={`exhibition-${item.exhibition.id}`}
+                  className="col-span-full min-w-0 lg:col-span-2"
+                >
                   <FeedExhibitionCard exhibition={item.exhibition} />
                 </div>
               );

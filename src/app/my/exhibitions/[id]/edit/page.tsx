@@ -13,6 +13,8 @@ import {
   type ExhibitionRow,
 } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { createDelegationInvite } from "@/lib/supabase/delegations";
+import { getMyProfile } from "@/lib/supabase/me";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -37,6 +39,9 @@ export default function EditExhibitionPage() {
   const [deleteMode, setDeleteMode] = useState<"keep_works" | "delete_all">("keep_works");
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [delegateEmail, setDelegateEmail] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -207,6 +212,67 @@ export default function EditExhibitionPage() {
               >
                 {t("common.cancel")}
               </Link>
+            </div>
+
+            <div className="mt-8 rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
+              <p className="mb-2 text-sm font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
+              <p className="mb-3 text-xs text-zinc-500">{t("delegation.inviteManagerHint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="email"
+                  value={delegateEmail}
+                  onChange={(e) => setDelegateEmail(e.target.value)}
+                  placeholder={t("delegation.inviteByEmail")}
+                  className="min-w-[180px] flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  disabled={inviteSending || !delegateEmail.trim()}
+                  onClick={async () => {
+                    const email = delegateEmail.trim();
+                    if (!email) return;
+                    setInviteSending(true);
+                    setInviteToast(null);
+                    const { data: inv, error: invErr } = await createDelegationInvite({
+                      delegateEmail: email,
+                      scopeType: "project",
+                      projectId: id,
+                    });
+                    if (invErr || !inv?.invite_token) {
+                      setInviteToast("failed");
+                      setInviteSending(false);
+                      return;
+                    }
+                    const { data: profile } = await getMyProfile();
+                    const inviterName =
+                      (profile as { display_name?: string | null; username?: string | null })?.display_name?.trim() ||
+                      (profile as { username?: string | null })?.username ||
+                      null;
+                    const res = await fetch("/api/delegation-invite-email", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        toEmail: email,
+                        inviterName,
+                        scopeType: "project",
+                        projectTitle: title || exhibition?.title,
+                        inviteToken: inv.invite_token,
+                      }),
+                    });
+                    setInviteSending(false);
+                    setInviteToast(res.ok ? "sent" : "failed");
+                    if (res.ok) setDelegateEmail("");
+                  }}
+                  className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+                >
+                  {inviteSending ? t("delegation.sending") : t("delegation.sendInvite")}
+                </button>
+              </div>
+              {inviteToast && (
+                <p className={`mt-2 text-xs ${inviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
+                  {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
+                </p>
+              )}
             </div>
 
             <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4">

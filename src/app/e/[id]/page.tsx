@@ -107,14 +107,14 @@ export default function PublicExhibitionPage() {
 
   if (!id) {
     return (
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-8">
         <p className="text-zinc-600">{t("common.invalid") ?? "Invalid exhibition."}</p>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-8">
+    <main className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href="/feed" className="text-sm text-zinc-600 hover:text-zinc-900">
           ← {t("common.backTo")} {t("nav.feed") ?? "Feed"}

@@ -365,7 +365,7 @@ export default function ExhibitionDetailPage() {
   if (!id) {
     return (
       <AuthGate>
-        <main className="mx-auto max-w-4xl px-4 py-8">
+        <main className="mx-auto max-w-3xl px-4 py-8">
           <p className="text-zinc-600">{t("exhibition.invalidExhibition")}</p>
         </main>
       </AuthGate>
@@ -374,7 +374,7 @@ export default function ExhibitionDetailPage() {
 
   return (
     <AuthGate>
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <Link href="/my?tab=exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
             ← {t("common.backTo")} {t("nav.myProfile")}
@@ -413,6 +413,12 @@ export default function ExhibitionDetailPage() {
                   className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800"
                 >
                   {t("exhibition.addWork")}
+                </Link>
+                <Link
+                  href={`/my/exhibitions/${id}/add#invite`}
+                  className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  {t("delegation.inviteManager")}
                 </Link>
               </div>
             </header>

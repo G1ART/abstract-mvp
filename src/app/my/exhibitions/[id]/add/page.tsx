@@ -236,7 +236,7 @@ export default function AddWorkToExhibitionPage() {
         </div>
 
         {/* Invite manager (delegation) */}
-        <div className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+        <div id="invite" className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
           <p className="mb-2 text-xs font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
           <div className="flex flex-wrap gap-2">
             <input

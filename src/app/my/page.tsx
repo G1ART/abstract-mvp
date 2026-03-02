@@ -663,20 +663,24 @@ export default function MyPage() {
         </div>
 
         {personaTab === "exhibitions" ? (
-          <ul className="space-y-4">
+          <ul className="space-y-3">
             {exhibitions.map((ex) => (
               <li key={ex.id}>
                 <Link
                   href={`/my/exhibitions/${ex.id}`}
-                  className="block rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                  className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-3 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
                 >
-                  <ExhibitionThumbStack paths={ex.cover_image_paths} className="mb-3" />
-                  <p className="text-lg font-semibold text-zinc-900">{ex.title}</p>
-                  <p className="mt-1 text-sm text-zinc-500">
-                    {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
-                    {ex.host_name && ` · ${ex.host_name}`}
-                  </p>
-                  <p className="mt-2 text-xs text-zinc-400">{t("exhibition.works")} →</p>
+                  <div className="w-20 shrink-0">
+                    <ExhibitionThumbStack paths={ex.cover_image_paths} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
+                    <p className="mt-0.5 truncate text-xs text-zinc-500">
+                      {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
+                      {ex.host_name && ` · ${ex.host_name}`}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
+                  </div>
                 </Link>
               </li>
             ))}
