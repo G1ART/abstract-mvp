@@ -18,6 +18,7 @@ import {
 } from "@/lib/supabase/artworks";
 import { getMyProfile } from "@/lib/supabase/me";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { createClaimForExistingArtist } from "@/lib/provenance/rpc";
 
 export default function AddWorkToExhibitionPage() {
   const params = useParams();
@@ -64,12 +65,29 @@ export default function AddWorkToExhibitionPage() {
     setAddingId(workId);
     setError(null);
     const { error: err } = await addWorkToExhibition(id, workId);
-    setAddingId(null);
     if (err) {
+      setAddingId(null);
       logSupabaseError("addWorkToExhibition", err);
       setError(formatSupabaseError(err, t("common.errorSave")));
       return;
     }
+    // Align provenance: create CURATED claim so "this work in this exhibition" has gallery–curator provenance.
+    const art = artworks.find((a) => a.id === workId);
+    if (art?.artist_id) {
+      const { error: claimErr } = await createClaimForExistingArtist({
+        artistProfileId: art.artist_id,
+        claimType: "CURATED",
+        workId,
+        projectId: id,
+        visibility: "public",
+        period_status: "current",
+      });
+      if (claimErr) {
+        logSupabaseError("createClaimForExistingArtist (after add to exhibition)", claimErr);
+        // Don't block UI: work is already in exhibition; claim may already exist.
+      }
+    }
+    setAddingId(null);
     setDoneIds((prev) => new Set(prev).add(workId));
   }
 

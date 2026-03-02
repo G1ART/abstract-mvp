@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   getSession,
-  sendPasswordReset,
   signUpWithPassword,
   HAS_PASSWORD_KEY,
 } from "@/lib/supabase/auth";
@@ -41,7 +40,6 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [passwordResetSent, setPasswordResetSent] = useState(false);
   const [signupEmailSent, setSignupEmailSent] = useState(false);
 
   useEffect(() => {
@@ -175,7 +173,11 @@ export default function OnboardingPage() {
     });
     setLoading(false);
     if (!res.ok) {
-      setError(`${res.code ?? "Error"} ${res.message}`);
+      setError(
+        res.message?.trim()
+          ? `${res.message} (${res.code ?? "Error"})`
+          : "프로필 저장에 실패했습니다. 잠시 후 다시 시도해 주세요."
+      );
       return;
     }
 
@@ -433,26 +435,10 @@ export default function OnboardingPage() {
         <p className="mb-2 text-sm font-medium text-zinc-700">
           Make future logins faster
         </p>
-        <p className="mb-3 text-xs text-zinc-500">
-          Set a password to sign in without email links.
+        <p className="text-xs text-zinc-500">
+          Continue를 누르면 다음 화면에서 비밀번호를 설정할 수 있습니다.
+          이메일 링크 없이 로그인하려면 그때 비밀번호를 입력하면 됩니다.
         </p>
-        {passwordResetSent ? (
-          <p className="text-sm text-zinc-600">
-            Check your email to set a password.
-          </p>
-        ) : (
-          <button
-            type="button"
-            onClick={async () => {
-              if (!userEmail) return;
-              const { error: err } = await sendPasswordReset(userEmail);
-              if (!err) setPasswordResetSent(true);
-            }}
-            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
-          >
-            Set password
-          </button>
-        )}
       </div>
     </div>
   );

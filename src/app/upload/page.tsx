@@ -268,6 +268,7 @@ function UploadPageContent() {
           artistProfileId,
           claimType,
           workId: artworkId,
+          projectId: addToExhibitionId?.trim() && (claimType === "CURATED" || claimType === "INVENTORY") ? addToExhibitionId.trim() : undefined,
           visibility: "public",
           ...claimPayload,
         });
@@ -349,11 +350,8 @@ function UploadPageContent() {
             {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
           </div>
         )}
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6">
           <h1 className="text-xl font-semibold">{t("upload.title")}</h1>
-          <Link href="/upload/bulk" className="text-sm text-zinc-600 hover:text-zinc-900">
-            {t("bulk.linkToBulk")} →
-          </Link>
         </div>
 
         {/* Step: Intent */}

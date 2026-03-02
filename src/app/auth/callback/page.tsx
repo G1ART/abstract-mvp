@@ -2,16 +2,37 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getSession } from "@/lib/supabase/auth";
+import { getMyProfile } from "@/lib/supabase/profiles";
+import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Supabase client with detectSessionInUrl: true processes hash/query on load.
-    // Brief delay to allow session exchange, then redirect.
-    const t = setTimeout(() => {
-      router.replace("/");
-    }, 500);
+    // Supabase processes hash/query on load. Short delay then decide redirect.
+    const t = setTimeout(async () => {
+      const {
+        data: { session },
+      } = await getSession();
+      if (!session) {
+        router.replace("/");
+        return;
+      }
+      const { data: profile } = await getMyProfile();
+      if (!profile) {
+        router.replace("/onboarding");
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true"
+      ) {
+        router.replace("/set-password");
+        return;
+      }
+      router.replace("/feed?tab=all&sort=latest");
+    }, 600);
     return () => clearTimeout(t);
   }, [router]);
 

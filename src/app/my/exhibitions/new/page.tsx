@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { createExhibition } from "@/lib/supabase/exhibitions";
@@ -16,6 +16,8 @@ const STATUS_OPTIONS = [
 
 export default function NewExhibitionPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromUpload = searchParams.get("from") === "upload";
   const { t } = useT();
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -43,15 +45,18 @@ export default function NewExhibitionPage() {
       setError(formatSupabaseError(err, "Failed to create exhibition"));
       return;
     }
-    if (data?.id) router.push(`/my/exhibitions/${data.id}`);
+    if (data?.id) router.push(`/my/exhibitions/${data.id}/add`);
   }
 
   return (
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
-          <Link href="/my/exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("exhibition.myExhibitions")}
+          <Link
+            href={fromUpload ? "/upload" : "/my/exhibitions"}
+            className="text-sm text-zinc-600 hover:text-zinc-900"
+          >
+            ← {fromUpload ? t("upload.backToUpload") : `${t("common.backTo")} ${t("exhibition.myExhibitions")}`}
           </Link>
         </div>
 

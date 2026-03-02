@@ -25,12 +25,12 @@ import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
-const INTENTS: { value: IntentType; label: string }[] = [
-  { value: "CREATED", label: "My work" },
-  { value: "OWNS", label: "Collected work" },
-  { value: "INVENTORY", label: "Gallery (inc. inventory)" },
-  { value: "CURATED", label: "Curated/Exhibited" },
-];
+const INTENT_KEYS = [
+  { value: "CREATED" as const, labelKey: "upload.claimCreated" },
+  { value: "OWNS" as const, labelKey: "upload.claimOwned" },
+  { value: "INVENTORY" as const, labelKey: "upload.claimInventory" },
+  { value: "CURATED" as const, labelKey: "upload.claimCurated" },
+] as const;
 
 type ArtistOption = { id: string; username: string | null; display_name: string | null };
 
@@ -332,14 +332,14 @@ export default function BulkUploadPage() {
           <div className="mb-8 space-y-4">
             <p className="text-sm text-zinc-600">{t("bulk.intentHint")}</p>
             <div className="grid gap-3">
-              {INTENTS.map((opt) => (
+              {INTENT_KEYS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   onClick={() => setIntent(opt.value)}
                   className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
                 >
-                  {opt.label}
+                  {t(opt.labelKey)}
                 </button>
               ))}
             </div>
