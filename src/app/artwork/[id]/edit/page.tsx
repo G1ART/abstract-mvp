@@ -73,8 +73,6 @@ function EditArtworkContent() {
   const [hosuNumber, setHosuNumber] = useState("");
   const [hosuType, setHosuType] = useState<"F" | "P" | "M" | "S" | "">("");
   const [hosuWarning, setHosuWarning] = useState<string | null>(null);
-  const [hosuNumber, setHosuNumber] = useState("");
-  const [hosuType, setHosuType] = useState<"F" | "P" | "M" | "S" | "">("");
   const [story, setStory] = useState("");
   const [ownershipStatus, setOwnershipStatus] = useState("available");
   const [pricingMode, setPricingMode] = useState<"fixed" | "inquire">("fixed");
