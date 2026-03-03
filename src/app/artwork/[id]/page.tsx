@@ -48,6 +48,7 @@ import { listMyDelegations } from "@/lib/supabase/delegations";
 import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
+import { formatSizeForLocale } from "@/lib/size/format";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
   if (artwork.pricing_mode === "inquire") return "Price upon request";
@@ -60,7 +61,7 @@ function getPriceDisplay(artwork: ArtworkWithLikes): string {
 function ArtworkDetailContent() {
   const params = useParams();
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
@@ -423,6 +424,8 @@ function ArtworkDetailContent() {
   const username = profileUsername ?? "";
 
   const { path: backPath, labelKey: backLabelKey } = getArtworkBack();
+  const sizeDisplay =
+    artwork.size != null ? formatSizeForLocale(artwork.size, locale) : null;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
@@ -480,6 +483,9 @@ function ArtworkDetailContent() {
             <p className="mt-1 text-sm text-zinc-600">
               {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
             </p>
+            {sizeDisplay && (
+              <p className="mt-1 text-sm text-zinc-600">{sizeDisplay}</p>
+            )}
             {artistLabel && (
               <p className="mt-1 text-sm text-zinc-700">
                 {t("artwork.artistFallback")}: {artistLabel}

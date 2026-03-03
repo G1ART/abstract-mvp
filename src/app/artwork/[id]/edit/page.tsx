@@ -22,6 +22,7 @@ import {
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
+import { findHosuSize } from "@/lib/size/hosu";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -69,6 +70,11 @@ function EditArtworkContent() {
   const [year, setYear] = useState("");
   const [medium, setMedium] = useState("");
   const [size, setSize] = useState("");
+  const [hosuNumber, setHosuNumber] = useState("");
+  const [hosuType, setHosuType] = useState<"F" | "P" | "M" | "S" | "">("");
+  const [hosuWarning, setHosuWarning] = useState<string | null>(null);
+  const [hosuNumber, setHosuNumber] = useState("");
+  const [hosuType, setHosuType] = useState<"F" | "P" | "M" | "S" | "">("");
   const [story, setStory] = useState("");
   const [ownershipStatus, setOwnershipStatus] = useState("available");
   const [pricingMode, setPricingMode] = useState<"fixed" | "inquire">("fixed");
@@ -460,6 +466,53 @@ function EditArtworkContent() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">Size *</label>
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <span className="text-xs text-zinc-500">Hosu (KR)</span>
+              <input
+                type="number"
+                min={0}
+                className="h-8 w-16 rounded border border-zinc-300 px-2 text-xs"
+                placeholder="30"
+                value={hosuNumber}
+                onChange={(e) => setHosuNumber(e.target.value)}
+              />
+              {(["F", "P", "M"] as const).map((tType) => (
+                <button
+                  key={tType}
+                  type="button"
+                  onClick={() => setHosuType(tType)}
+                  className={`rounded-full px-2 py-1 text-xs ${
+                    hosuType === tType
+                      ? "bg-zinc-900 text-white"
+                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  }`}
+                >
+                  {tType}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  const n = parseInt(hosuNumber, 10);
+                  if (!Number.isFinite(n) || !hosuType) return;
+                  const h = findHosuSize(n, hosuType);
+                  if (!h) {
+                    setHosuWarning(t("size.hosuNotFound"));
+                    return;
+                  }
+                  setSize(
+                    `${n}${hosuType} (${h.widthCm.toFixed(1)} x ${h.heightCm.toFixed(1)} cm)`
+                  );
+                  setHosuWarning(null);
+                }}
+                className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+              >
+                Apply
+              </button>
+              {hosuWarning && (
+                <p className="mt-1 text-xs text-amber-700">{hosuWarning}</p>
+              )}
+            </div>
             <input
               type="text"
               value={size}
