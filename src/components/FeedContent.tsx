@@ -121,6 +121,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [userId]);
 
   const fetchArtworks = useCallback(async () => {
+    if (userId == null) return;
     setLoading(true);
     setError(null);
     const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
@@ -178,15 +179,15 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     setLikedIds(liked);
 
     const recProfiles = await fetchRecProfiles();
-    const discoveryWithArtworks: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[] = [];
-    for (const p of recProfiles.slice(0, DISCOVERY_BLOCKS_MAX)) {
-      const { data: arts } = await listPublicArtworksForProfile(p.id, {
-        limit: 3,
-      });
-      if ((arts ?? []).length > 0) {
-        discoveryWithArtworks.push({ profile: p, artworks: arts ?? [] });
-      }
-    }
+    const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
+      listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
+        (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
+      )
+    );
+    const discoveryResults = await Promise.all(discoveryPromises);
+    const discoveryWithArtworks = discoveryResults.filter(
+      (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
+    );
     setDiscoveryData(discoveryWithArtworks);
     setLoading(false);
   }, [tab, sort, userId, fetchRecProfiles]);
@@ -243,8 +244,14 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-12">
-        <p className="text-zinc-600">{t("common.loading")}</p>
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
+        {Array.from({ length: 12 }, (_, i) => (
+          <div
+            key={i}
+            className="min-h-[200px] animate-pulse rounded-lg bg-zinc-200 sm:min-h-[240px]"
+            aria-hidden
+          />
+        ))}
       </div>
     );
   }
