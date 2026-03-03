@@ -10,12 +10,13 @@ import { ArtworkCard } from "@/components/ArtworkCard";
 import {
   getMyProfile,
   getMyStats,
+  getStatsForProfile,
   getMyPendingClaimsCount,
   listMyArtworks,
   type MyStats,
 } from "@/lib/supabase/me";
 import { getMyPriceInquiryCount } from "@/lib/supabase/priceInquiries";
-import { listPublicArtworksListedByProfileId } from "@/lib/supabase/artworks";
+import { listPublicArtworksForProfile, listPublicArtworksListedByProfileId } from "@/lib/supabase/artworks";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   getProfileViewsCount,
@@ -37,8 +38,10 @@ import {
   type PersonaTab,
   type PersonaTabItem,
 } from "@/lib/provenance/personaTabs";
+import { useActingAs } from "@/context/ActingAsContext";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import { listExhibitionsForProfile, listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import { getProfileById } from "@/lib/supabase/profiles";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 
 type Profile = {
@@ -55,6 +58,7 @@ type Profile = {
 export default function MyPage() {
   const { t } = useT();
   const searchParams = useSearchParams();
+  const { actingAsProfileId } = useActingAs();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
@@ -85,11 +89,14 @@ export default function MyPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    const effectiveProfileId = actingAsProfileId ?? null;
     try {
       const [profileRes, statsRes, artworksRes, entRes] = await Promise.all([
-        getMyProfile(),
-        getMyStats(),
-        listMyArtworks({ limit: 50, publicOnly: true }),
+        effectiveProfileId ? getProfileById(effectiveProfileId) : getMyProfile(),
+        effectiveProfileId ? getStatsForProfile(effectiveProfileId) : getMyStats(),
+        effectiveProfileId
+          ? listPublicArtworksForProfile(effectiveProfileId, { limit: 50 })
+          : listMyArtworks({ limit: 50, publicOnly: true }),
         getMyEntitlements(),
       ]);
 
@@ -111,7 +118,7 @@ export default function MyPage() {
       setStats(statsRes.data ?? null);
 
       let mergedArtworks = artworksRes.data ?? [];
-      if (profileData?.id) {
+      if (!effectiveProfileId && profileData?.id) {
         const listedRes = await listPublicArtworksListedByProfileId(profileData.id, {
           limit: 50,
         });
@@ -124,6 +131,12 @@ export default function MyPage() {
           }
         }
         mergedArtworks.sort(
+          (a, b) =>
+            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+        );
+      }
+      if (effectiveProfileId && Array.isArray(artworksRes.data)) {
+        mergedArtworks = [...(artworksRes.data ?? [])].sort(
           (a, b) =>
             new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
         );
@@ -150,33 +163,40 @@ export default function MyPage() {
         const [countRes, viewersRes, inquiryCountRes, claimsCountRes] = await Promise.all([
           getProfileViewsCount(profileData.id, 7),
           canView ? getProfileViewers(profileData.id, { limit: 10 }) : { data: [], nextCursor: null, error: null },
-          getMyPriceInquiryCount(),
-          getMyPendingClaimsCount(),
+          getMyPriceInquiryCount(effectiveProfileId ?? undefined),
+          getMyPendingClaimsCount(effectiveProfileId ?? undefined),
         ]);
         setProfileViewsCount(countRes.data);
         setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
-        const [exProfileRes, exMineRes] = await Promise.all([
-          listExhibitionsForProfile(profileData.id),
-          listMyExhibitions(),
-        ]);
-        const fromProfile = exProfileRes.data ?? [];
-        const fromMine = exMineRes.data ?? [];
-        const byId = new Map<string, ExhibitionWithCredits>();
-        for (const e of fromProfile) byId.set(e.id, e);
-        for (const e of fromMine) if (!byId.has(e.id)) byId.set(e.id, e);
-        const merged = Array.from(byId.values()).sort(
-          (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-        );
-        setExhibitions(merged);
+        if (effectiveProfileId) {
+          const { data: exData } = await listExhibitionsForProfile(profileData.id);
+          setExhibitions((exData ?? []).sort(
+            (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+          ));
+        } else {
+          const [exProfileRes, exMineRes] = await Promise.all([
+            listExhibitionsForProfile(profileData.id),
+            listMyExhibitions(),
+          ]);
+          const fromProfile = exProfileRes.data ?? [];
+          const fromMine = exMineRes.data ?? [];
+          const byId = new Map<string, ExhibitionWithCredits>();
+          for (const e of fromProfile) byId.set(e.id, e);
+          for (const e of fromMine) if (!byId.has(e.id)) byId.set(e.id, e);
+          const merged = Array.from(byId.values()).sort(
+            (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+          );
+          setExhibitions(merged);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : t("common.errorOccurred"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [actingAsProfileId]);
 
   useEffect(() => {
     fetchData();
@@ -295,31 +315,41 @@ export default function MyPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-4">
-            {/* Compact completeness status - click → settings */}
-            <div className="flex flex-col items-end gap-0.5">
-              <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                {t("me.profileCompletenessTitle")}
-              </span>
-              <Link
-                href="/settings"
-                title={t("me.completenessHint")}
-                className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-              >
-                <span className="flex h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">
-                  <span
-                    className="h-full bg-zinc-600 transition-all"
-                    style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
-                  />
-                </span>
-                <span>{loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}</span>
-              </Link>
-            </div>
-            <Link
-              href="/settings"
-              className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-            >
-              {t("my.actions.editProfile")}
-            </Link>
+            {!actingAsProfileId && (
+              <>
+                {/* Compact completeness status - click → settings */}
+                <div className="flex flex-col items-end gap-0.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
+                    {t("me.profileCompletenessTitle")}
+                  </span>
+                  <Link
+                    href="/settings"
+                    title={t("me.completenessHint")}
+                    className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+                  >
+                    <span className="flex h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">
+                      <span
+                        className="h-full bg-zinc-600 transition-all"
+                        style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
+                      />
+                    </span>
+                    <span>{loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}</span>
+                  </Link>
+                </div>
+                <Link
+                  href="/settings"
+                  className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                >
+                  {t("my.actions.editProfile")}
+                </Link>
+                <Link
+                  href="/my/delegations"
+                  className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                >
+                  {t("delegation.manageManagers")}
+                </Link>
+              </>
+            )}
             {profile?.username && (
               <>
                 <Link
@@ -436,7 +466,7 @@ export default function MyPage() {
                       ))}
                     </ul>
                   )}
-                  {viewers.length > 0 && (
+                  {viewers.length > 0 && !actingAsProfileId && (
                     <Link
                       href="/settings"
                       className="mt-3 inline-block text-sm text-zinc-600 hover:text-zinc-900"
@@ -445,14 +475,14 @@ export default function MyPage() {
                     </Link>
                   )}
                 </div>
-              ) : (
+              ) : !actingAsProfileId ? (
                 <Link
                   href="/settings"
                   className="mt-3 inline-block rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                 >
                   {t("insights.upgradeToSeeViewers")}
                 </Link>
-              )}
+              ) : null}
             </>
           )}
         </div>

@@ -22,6 +22,7 @@ import { setArtworkBack } from "@/lib/artworkBack";
 import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
@@ -66,6 +67,7 @@ function UploadPageContent() {
   const preselectedExternalName = searchParams.get("externalName");
   const preselectedExternalEmail = searchParams.get("externalEmail");
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [userId, setUserId] = useState<string | null>(null);
   const [step, setStep] = useState<UploadStep>(fromExhibition ? "form" : "intent");
   const [intent, setIntent] = useState<IntentType | null>(fromExhibition ? "CURATED" : null);
@@ -221,7 +223,9 @@ function UploadPageContent() {
       is_price_public: pricingMode === "fixed" ? isPricePublic : false,
       price_input_amount: pricingMode === "fixed" && priceAmount ? parseFloat(priceAmount) : undefined,
       price_input_currency: pricingMode === "fixed" ? priceCurrency : undefined,
-      artist_id: needsAttribution(intent) && selectedArtist && !isExternal ? selectedArtist.id : undefined,
+      artist_id:
+        actingAsProfileId ??
+        (needsAttribution(intent) && selectedArtist && !isExternal ? selectedArtist.id : undefined),
     };
 
     setIsSubmitting(true);

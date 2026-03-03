@@ -120,7 +120,7 @@ export async function listMyExhibitions(): Promise<{
   return { data: merged, error: null };
 }
 
-/** Create an exhibition (project). Caller becomes curator_id. */
+/** Create an exhibition (project). Caller becomes curator_id unless forProfileId (acting as account delegate). */
 export async function createExhibition(args: {
   title: string;
   start_date?: string | null;
@@ -128,12 +128,14 @@ export async function createExhibition(args: {
   status?: string;
   host_name?: string | null;
   host_profile_id?: string | null;
+  forProfileId?: string;
 }): Promise<{ data: { id: string } | null; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
 
+  const curatorId = args.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -142,7 +144,7 @@ export async function createExhibition(args: {
       start_date: args.start_date ?? null,
       end_date: args.end_date ?? null,
       status: args.status ?? "planned",
-      curator_id: session.user.id,
+      curator_id: curatorId,
       host_name: args.host_name?.trim() || null,
       host_profile_id: args.host_profile_id ?? null,
       cover_image_paths: [],

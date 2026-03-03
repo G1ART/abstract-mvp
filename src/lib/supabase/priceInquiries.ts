@@ -72,14 +72,14 @@ export async function createPriceInquiry(artworkId: string, message?: string | n
 }
 
 /** Count of price inquiries on my artworks (for KPI). */
-export async function getMyPriceInquiryCount(): Promise<{ data: number; error: unknown }> {
-  const { data, error } = await listPriceInquiriesForArtist();
+export async function getMyPriceInquiryCount(profileId?: string): Promise<{ data: number; error: unknown }> {
+  const { data, error } = await listPriceInquiriesForArtist(profileId);
   if (error) return { data: 0, error };
   return { data: (data ?? []).length, error: null };
 }
 
-/** List inquiries on my artworks (for artist). */
-export async function listPriceInquiriesForArtist(): Promise<{ data: PriceInquiryRow[]; error: unknown }> {
+/** List inquiries on my artworks (for artist). Optional profileId for acting-as account delegate. */
+export async function listPriceInquiriesForArtist(profileId?: string): Promise<{ data: PriceInquiryRow[]; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -94,7 +94,8 @@ export async function listPriceInquiriesForArtist(): Promise<{ data: PriceInquir
 
   const rows = (data ?? []) as Record<string, unknown>[];
   const normalized = rows.map(normalizeInquiry);
-  const forArtist = normalized.filter((r) => r.artwork?.artist_id === session.user.id);
+  const targetId = profileId ?? session.user.id;
+  const forArtist = normalized.filter((r) => r.artwork?.artist_id === targetId);
   return { data: forArtist, error: null };
 }
 

@@ -118,6 +118,20 @@ export async function getMyProfile(): Promise<{
   return { data: data as Profile | null, error };
 }
 
+/** Fetch profile by id. Allowed when caller is self or account-scope delegate (RLS). For "acting as" display. */
+export async function getProfileById(profileId: string): Promise<{
+  data: Profile | null;
+  error: unknown;
+}> {
+  if (!profileId) return { data: null, error: null };
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(PROFILE_ME_SELECT)
+    .eq("id", profileId)
+    .single();
+  return { data: data as Profile | null, error };
+}
+
 /** Get own profile as ProfilePublic. Used when viewing own private profile. */
 export async function getMyProfileAsPublic(): Promise<{
   data: ProfilePublic | null;

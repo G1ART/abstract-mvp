@@ -20,6 +20,7 @@ import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { searchPeople } from "@/lib/supabase/artists";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 
@@ -48,6 +49,7 @@ function deriveTitle(filename: string): string {
 
 export default function BulkUploadPage() {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [drafts, setDrafts] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -146,7 +148,10 @@ export default function BulkUploadPage() {
       let artworkId: string | null = null;
       let storagePath: string | null = null;
       try {
-        const { data: id, error: createErr } = await createDraftArtwork({ title });
+        const { data: id, error: createErr } = await createDraftArtwork(
+          { title },
+          { forProfileId: actingAsProfileId ?? undefined }
+        );
         if (createErr || !id) {
           setUploadError(createErr instanceof Error ? createErr.message : "Failed to create draft");
           continue;

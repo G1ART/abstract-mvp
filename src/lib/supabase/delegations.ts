@@ -57,6 +57,24 @@ export async function createDelegationInvite(args: {
   return { data: raw, error: null };
 }
 
+/** Invite an existing user by profile (they must accept in-app). No email sent. */
+export async function createDelegationInviteForProfile(args: {
+  delegateProfileId: string;
+  scopeType: DelegationScopeType;
+  projectId?: string | null;
+  permissions?: string[];
+}): Promise<{ data: { id: string; invite_token: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("create_delegation_invite_for_profile", {
+    p_delegate_profile_id: args.delegateProfileId,
+    p_scope_type: args.scopeType,
+    p_project_id: args.projectId ?? null,
+    p_permissions: args.permissions ?? ["view", "edit_metadata", "manage_works"],
+  });
+  if (error) return { data: null, error };
+  const raw = data as { id: string; invite_token: string } | null;
+  return { data: raw, error: null };
+}
+
 /** Get delegation by invite token (for landing page; only pending, safe fields). */
 export async function getDelegationByToken(
   token: string
@@ -88,6 +106,28 @@ export async function revokeDelegation(
   });
   if (error) return { data: null, error };
   return { data: data as { ok: boolean }, error: null };
+}
+
+/** Accept a pending delegation (delegate only; for in-app accept after invite-by-profile). */
+export async function acceptDelegationById(
+  delegationId: string
+): Promise<{ data: { ok: boolean; reason?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("accept_delegation_by_id", {
+    p_delegation_id: delegationId,
+  });
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; reason?: string }, error: null };
+}
+
+/** Decline a pending delegation (delegate only). */
+export async function declineDelegationById(
+  delegationId: string
+): Promise<{ data: { ok: boolean; reason?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("decline_delegation_by_id", {
+    p_delegation_id: delegationId,
+  });
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; reason?: string }, error: null };
 }
 
 /** List delegations for current user (sent and received). */

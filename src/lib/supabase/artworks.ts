@@ -906,8 +906,10 @@ export type DraftArtworkPayload = {
   title: string;
 };
 
+/** Optional forProfileId: when acting as account delegate, create on behalf of that profile. RLS allows only if caller is delegate. */
 export async function createDraftArtwork(
-  payload: DraftArtworkPayload
+  payload: DraftArtworkPayload,
+  options?: { forProfileId?: string }
 ): Promise<{ data: string | null; error: unknown }> {
   const {
     data: { session },
@@ -915,10 +917,11 @@ export async function createDraftArtwork(
   if (!session?.user?.id)
     return { data: null, error: new Error("Not authenticated") };
 
+  const artistId = options?.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("artworks")
     .insert({
-      artist_id: session.user.id,
+      artist_id: artistId,
       title: payload.title || "Untitled",
       visibility: "draft",
       ownership_status: "available",

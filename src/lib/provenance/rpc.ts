@@ -146,16 +146,17 @@ export type PendingClaimRow = {
   profiles: { username: string | null; display_name: string | null } | null;
 };
 
-/** List all pending claims on my works (for /my/claims). */
-export async function listMyPendingClaims(): Promise<{ data: PendingClaimRow[]; error: unknown }> {
+/** List all pending claims on my works (for /my/claims). Optional profileId for acting-as account delegate. */
+export async function listMyPendingClaims(profileId?: string): Promise<{ data: PendingClaimRow[]; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
+  const artistId = profileId ?? session.user.id;
   const { data: workRows } = await supabase
     .from("artworks")
     .select("id")
-    .eq("artist_id", session.user.id);
+    .eq("artist_id", artistId);
   const workIds = (workRows ?? []).map((r: { id: string }) => r.id);
   if (workIds.length === 0) return { data: [], error: null };
   const { data, error } = await supabase

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import {
   listMyPendingClaims,
@@ -16,6 +17,7 @@ import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 
 export default function MyClaimsPage() {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [list, setList] = useState<PendingClaimRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,14 +27,14 @@ export default function MyClaimsPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: listError } = await listMyPendingClaims();
+    const { data, error: listError } = await listMyPendingClaims(actingAsProfileId ?? undefined);
     setLoading(false);
     if (listError) {
       setError(formatSupabaseError(listError, t("common.errorLoad")));
       return;
     }
     setList(data ?? []);
-  }, []);
+  }, [actingAsProfileId]);
 
   useEffect(() => {
     fetchList();

@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { createExhibition } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
@@ -19,6 +20,7 @@ export default function NewExhibitionPage() {
   const searchParams = useSearchParams();
   const fromUpload = searchParams.get("from") === "upload";
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -38,6 +40,7 @@ export default function NewExhibitionPage() {
       end_date: endDate || null,
       status,
       host_name: hostName.trim() || null,
+      forProfileId: actingAsProfileId ?? undefined,
     });
     setSubmitting(false);
     if (err) {

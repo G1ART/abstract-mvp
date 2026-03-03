@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import {
   listPriceInquiriesForArtist,
@@ -12,6 +13,7 @@ import {
 
 export default function MyInquiriesPage() {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [list, setList] = useState<PriceInquiryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [replyingId, setReplyingId] = useState<string | null>(null);
@@ -20,14 +22,14 @@ export default function MyInquiriesPage() {
 
   const fetchList = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await listPriceInquiriesForArtist();
+    const { data, error } = await listPriceInquiriesForArtist(actingAsProfileId ?? undefined);
     if (error) {
       setLoading(false);
       return;
     }
     setList(data ?? []);
     setLoading(false);
-  }, []);
+  }, [actingAsProfileId]);
 
   useEffect(() => {
     fetchList();
