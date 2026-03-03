@@ -244,7 +244,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   if (loading) {
     return (
       <div className="flex justify-center py-12">
-        <p className="text-zinc-600">{t("feed.loading")}</p>
+        <p className="text-zinc-600">{t("common.loading")}</p>
       </div>
     );
   }

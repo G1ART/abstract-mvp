@@ -391,7 +391,7 @@ export default function MyDelegationsPage() {
 
         <p className="mt-6">
           <Link href="/my" className="text-sm font-medium text-zinc-700 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("nav.me")}
+            ← {t("common.backTo")} {t("nav.myProfile")}
           </Link>
         </p>
       </div>

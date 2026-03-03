@@ -137,7 +137,7 @@ export default function PublicExhibitionPage() {
     <main className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href="/feed" className="text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t("nav.feed") ?? "Feed"}
+          ← {t("common.backTo")} {t("nav.feed")}
         </Link>
         {isOwner && (
           <>

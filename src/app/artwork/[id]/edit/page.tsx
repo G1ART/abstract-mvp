@@ -392,7 +392,7 @@ function EditArtworkContent() {
       <div className="py-12 text-center">
         <p className="text-red-600">{error}</p>
         <Link href={`/artwork/${id}`} className="mt-4 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-          ← Back to artwork
+          ← {t("common.backTo")} {t("artwork.backToArtwork")}
         </Link>
       </div>
     );
@@ -417,7 +417,7 @@ function EditArtworkContent() {
         href={`/artwork/${id}`}
         className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
       >
-        ← Back to artwork
+        ← {t("common.backTo")} {t("artwork.backToArtwork")}
       </Link>
       <h1 className="mb-6 text-xl font-semibold">{t("artwork.editTitle")}</h1>
 

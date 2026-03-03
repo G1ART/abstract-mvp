@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import {
   getPeopleRecs,
-  searchPeople,
+  searchPeopleWithArtwork,
   ROLE_OPTIONS,
   type PeopleRec,
   type PeopleRecMode,
@@ -90,6 +91,7 @@ export function PeopleClient() {
 
   const [profiles, setProfiles] = useState<PeopleRec[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [searchSuggestion, setSearchSuggestion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
@@ -155,22 +157,23 @@ export function PeopleClient() {
           setLoading(false);
           return;
         }
-        const res = await searchPeople({
+        const res = await searchPeopleWithArtwork({
           q: debouncedSearch.trim(),
           roles: rolesArr,
           limit: INITIAL_LIMIT,
-          cursor: null,
         });
         if (res.error) {
           if (process.env.NODE_ENV === "development") {
-            console.warn("[People] searchPeople RPC error:", res.error);
+            console.warn("[People] searchPeopleWithArtwork RPC error:", res.error);
           }
           setError(t("people.loadFailed"));
           return;
         }
         setProfiles(res.data ?? []);
         setNextCursor(res.nextCursor ?? null);
+        setSearchSuggestion(res.suggestion ?? null);
       } else {
+        setSearchSuggestion(null);
         const mode = LANE_TO_MODE[lane];
         const res = await getPeopleRecs({
           mode,
@@ -207,11 +210,14 @@ export function PeopleClient() {
     setLoadingMore(true);
     try {
       if (isSearchMode) {
-        const res = await searchPeople({
+        if (!nextCursor) {
+          setLoadingMore(false);
+          return;
+        }
+        const res = await searchPeopleWithArtwork({
           q: debouncedSearch.trim(),
           roles: rolesArr,
           limit: LOAD_MORE_LIMIT,
-          cursor: nextCursor,
         });
         if (res.error) return;
         setProfiles((prev) => [...prev, ...res.data]);
@@ -331,7 +337,7 @@ export function PeopleClient() {
         </div>
 
         {loading ? (
-          <p className="text-zinc-600">{t("people.loading")}</p>
+          <p className="text-zinc-600">{t("common.loading")}</p>
         ) : error ? (
           <p className="text-red-600">{error}</p>
         ) : emptyRecommendations ? (
@@ -356,13 +362,43 @@ export function PeopleClient() {
         ) : emptySearch ? (
           <div className="py-12 text-center">
             <p className="mb-4 text-zinc-600">{t("people.noSearchResults")}</p>
-            <button
-              type="button"
-              onClick={clearRoles}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              {t("people.filterAll")}
-            </button>
+            {searchSuggestion && (
+              <p className="mb-3 text-zinc-700">
+                {t("people.didYouMean").replace("{suggestion}", searchSuggestion)}
+              </p>
+            )}
+            <div className="mb-6 flex flex-wrap justify-center gap-2">
+              {searchSuggestion && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch(searchSuggestion);
+                    setDebouncedSearch(searchSuggestion);
+                    updateUrl({ q: searchSuggestion });
+                    setSearchSuggestion(null);
+                  }}
+                  className="rounded border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                >
+                  {t("people.searchSuggestion").replace("{suggestion}", searchSuggestion)}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clearRoles}
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("people.filterAll")}
+              </button>
+            </div>
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4 text-left">
+              <p className="mb-2 text-sm font-medium text-zinc-700">{t("people.inviteCta")}</p>
+              <Link
+                href={`/people/invite?name=${encodeURIComponent(debouncedSearch.trim())}`}
+                className="inline-block rounded border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                {t("people.inviteCtaButton")}
+              </Link>
+            </div>
           </div>
         ) : (
           <>
@@ -476,7 +512,7 @@ export function PeopleClient() {
                   disabled={loadingMore}
                   className="rounded-lg border border-zinc-300 bg-white px-6 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                 >
-                  {loadingMore ? t("people.loading") : t("people.loadMore")}
+                  {loadingMore ? t("common.loading") : t("people.loadMore")}
                 </button>
               </div>
             )}

@@ -326,7 +326,7 @@ export default function BulkUploadPage() {
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-semibold">{t("bulk.title")}</h1>
           <Link href="/upload" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← Single upload
+            ← {t("common.backTo")} {t("upload.tabSingle")}
           </Link>
         </div>
 

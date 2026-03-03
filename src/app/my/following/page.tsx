@@ -51,7 +51,7 @@ export default function MyFollowingPage() {
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
         <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("nav.myProfile")}
+          ← {t("common.backTo")} {t("nav.myProfile")}
         </Link>
         <h1 className="mb-6 text-xl font-semibold text-zinc-900">{t("my.kpi.following")}</h1>
         {loading ? (

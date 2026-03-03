@@ -1,14 +1,17 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getSession } from "@/lib/supabase/auth";
+import { useT } from "@/lib/i18n/useT";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const { t } = useT();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -74,12 +77,12 @@ export default function ResetPasswordPage() {
         <p className="text-center text-zinc-600">
           Reset link invalid or expired. Please request again.
         </p>
-        <a
+        <Link
           href="/login"
-          className="mt-4 text-sm font-medium text-zinc-900 underline"
+          className="mt-4 inline-block text-sm font-medium text-zinc-700 hover:text-zinc-900"
         >
-          Back to login
-        </a>
+          ← {t("common.backTo")} {t("auth.backToLogin")}
+        </Link>
       </div>
     );
   }

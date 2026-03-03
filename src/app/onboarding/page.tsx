@@ -11,6 +11,7 @@ import {
 import { ensureFreeEntitlement } from "@/lib/entitlements";
 import { checkUsernameExists, getMyProfile } from "@/lib/supabase/profiles";
 import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
+import { useT } from "@/lib/i18n/useT";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -26,6 +27,7 @@ type UserMetadata = {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const { t } = useT();
   const [mode, setMode] = useState<"check" | "signup" | "profile">("check");
 
   const [email, setEmail] = useState("");
@@ -208,7 +210,7 @@ export default function OnboardingPage() {
               We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account, then sign in.
             </p>
             <Link href="/login" className="mt-4 inline-block text-sm font-medium text-zinc-700 hover:text-zinc-900">
-              ← Back to sign in
+              ← {t("common.backTo")} {t("auth.backToSignIn")}
             </Link>
           </div>
         ) : (

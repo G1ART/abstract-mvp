@@ -106,7 +106,7 @@ function InvitesDelegationInner() {
         <h1 className="mb-4 text-xl font-semibold">{t("delegation.inviteTitle")}</h1>
         <p className="text-zinc-600">{t("delegation.invalidOrExpired")}</p>
         <Link href="/" className="mt-6 inline-block text-sm font-medium text-zinc-700 underline">
-          ← {t("common.backTo")} Home
+          ← {t("common.backTo")} {t("common.home")}
         </Link>
       </div>
     );

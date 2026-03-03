@@ -12,6 +12,7 @@ import {
 } from "@/lib/supabase/exhibitions";
 import {
   listMyArtworks,
+  listPublicArtworksByArtistId,
   listPublicArtworksListedByProfileId,
   getArtworkImageUrl,
   type ArtworkWithLikes,
@@ -69,18 +70,38 @@ export default function AddWorkToExhibitionPage() {
 
   const fetchArtworks = useCallback(async () => {
     if (!id) return;
+    const inExhibitionRes = await listWorksInExhibition(id);
+    const inExhibition = new Set((inExhibitionRes.data ?? []).map((w) => w.work_id));
+    setDoneIds(inExhibition);
+
+    if (participants.length > 0) {
+      const results = await Promise.all(
+        participants.map((p) => listPublicArtworksByArtistId(p.id, { limit: 100 }))
+      );
+      const byId = new Map<string, ArtworkWithLikes>();
+      for (const res of results) {
+        for (const a of res.data ?? []) {
+          if (!byId.has(a.id)) byId.set(a.id, a);
+        }
+      }
+      const merged = Array.from(byId.values()).sort(
+        (a, b) =>
+          new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      );
+      setArtworks(merged);
+      return;
+    }
+
     const { data: profile } = await getMyProfile();
     const profileId = (profile as { id?: string } | null)?.id;
-    const [myRes, listedRes, inExhibitionRes] = await Promise.all([
+    const [myRes, listedRes] = await Promise.all([
       listMyArtworks({ limit: 100, publicOnly: false }),
       profileId
         ? listPublicArtworksListedByProfileId(profileId, { limit: 100 })
         : { data: [] as ArtworkWithLikes[], error: null },
-      listWorksInExhibition(id),
     ]);
     const myList = myRes.data ?? [];
     const listedList = listedRes.data ?? [];
-    const inExhibition = new Set((inExhibitionRes.data ?? []).map((w) => w.work_id));
     const byId = new Map<string, ArtworkWithLikes>();
     for (const a of myList) byId.set(a.id, a);
     for (const a of listedList) if (!byId.has(a.id)) byId.set(a.id, a);
@@ -89,8 +110,7 @@ export default function AddWorkToExhibitionPage() {
         new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
     );
     setArtworks(merged);
-    setDoneIds(inExhibition);
-  }, [id]);
+  }, [id, participants]);
 
   useEffect(() => {
     setLoading(true);
@@ -507,6 +527,9 @@ export default function AddWorkToExhibitionPage() {
           </section>
         ) : (
           <section>
+            {participants.length > 0 && (
+              <p className="mb-2 text-xs text-zinc-500">{t("exhibition.selectedArtistsWorksOnly")}</p>
+            )}
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap gap-2">
                 <span className="text-xs font-medium text-zinc-600">
