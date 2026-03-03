@@ -1,13 +1,13 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { Suspense, useCallback, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import { AuthGate } from "@/components/AuthGate";
 import { sendArtistInviteEmailWithResult } from "@/lib/email/artistInvite";
 
-export default function PeopleInvitePage() {
+function PeopleInviteForm() {
   const searchParams = useSearchParams();
   const { t } = useT();
   const nameFromQuery = searchParams.get("name") ?? "";
@@ -100,5 +100,19 @@ export default function PeopleInvitePage() {
         </form>
       </main>
     </AuthGate>
+  );
+}
+
+export default function PeopleInvitePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto max-w-md px-4 py-8">
+          <p className="text-zinc-600">Loading...</p>
+        </main>
+      }
+    >
+      <PeopleInviteForm />
+    </Suspense>
   );
 }
