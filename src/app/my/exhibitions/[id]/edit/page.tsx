@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import {
   deleteExhibitionKeepWorks,
@@ -12,9 +13,11 @@ import {
   updateExhibition,
   type ExhibitionRow,
 } from "@/lib/supabase/exhibitions";
+import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { createDelegationInvite } from "@/lib/supabase/delegations";
 import { getMyProfile } from "@/lib/supabase/me";
+import { searchPeople } from "@/lib/supabase/artists";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -22,17 +25,31 @@ const STATUS_OPTIONS = [
   { value: "ended", labelKey: "exhibition.statusEnded" },
 ] as const;
 
+type ProfileOption = { id: string; username: string | null; display_name: string | null };
+
 export default function EditExhibitionPage() {
   const params = useParams();
   const router = useRouter();
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const id = typeof params.id === "string" ? params.id : "";
-  const [exhibition, setExhibition] = useState<ExhibitionRow | null>(null);
+  const [exhibition, setExhibition] = useState<ExhibitionWithCredits | null>(null);
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState<"planned" | "live" | "ended">("planned");
+  const [curatorMe, setCuratorMe] = useState(true);
+  const [curatorSearch, setCuratorSearch] = useState("");
+  const [curatorResults, setCuratorResults] = useState<ProfileOption[]>([]);
+  const [curatorSelected, setCuratorSelected] = useState<ProfileOption | null>(null);
+  const [curatorSearching, setCuratorSearching] = useState(false);
   const [hostName, setHostName] = useState("");
+  const [hostProfileMode, setHostProfileMode] = useState<"text" | "me" | "search">("text");
+  const [hostSearch, setHostSearch] = useState("");
+  const [hostResults, setHostResults] = useState<ProfileOption[]>([]);
+  const [hostSelected, setHostSelected] = useState<ProfileOption | null>(null);
+  const [hostSearching, setHostSearching] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -43,34 +60,130 @@ export default function EditExhibitionPage() {
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
 
+  const effectiveProfileId = actingAsProfileId ?? myProfileId;
+
+  useEffect(() => {
+    getMyProfile().then(({ data }) => {
+      setMyProfileId((data as { id?: string } | null)?.id ?? null);
+    });
+  }, []);
+
   useEffect(() => {
     if (!id) return;
-    getExhibitionById(id).then(({ data, error: err }) => {
-      setLoading(false);
-      if (err || !data) {
-        setError(err ? (err instanceof Error ? err.message : t("common.notFound")) : t("common.notFound"));
-        return;
+    Promise.all([getExhibitionById(id), getMyProfile()]).then(
+      ([{ data: exData, error: exErr }, { data: profileData }]) => {
+        setLoading(false);
+        const myId = (profileData as { id?: string } | null)?.id ?? null;
+        setMyProfileId(myId);
+        if (exErr || !exData) {
+          setError(
+            exErr ? (exErr instanceof Error ? exErr.message : t("common.notFound")) : t("common.notFound")
+          );
+          return;
+        }
+        const data = exData as ExhibitionWithCredits;
+        setExhibition(data);
+        setTitle(data.title);
+        setStartDate(data.start_date ?? "");
+        setEndDate(data.end_date ?? "");
+        setStatus((data.status as "planned" | "live" | "ended") || "planned");
+        setHostName(data.host_name ?? "");
+        const effId = actingAsProfileId ?? myId;
+        if (data.curator_id === effId) {
+          setCuratorMe(true);
+          setCuratorSelected(null);
+        } else {
+          setCuratorMe(false);
+          setCuratorSelected({
+            id: data.curator_id,
+            display_name: data.curator?.display_name ?? null,
+            username: data.curator?.username ?? null,
+          });
+        }
+        if (data.host_profile_id == null || data.host_profile_id === "") {
+          setHostProfileMode("text");
+          setHostSelected(null);
+        } else if (data.host_profile_id === effId) {
+          setHostProfileMode("me");
+          setHostSelected(null);
+        } else {
+          setHostProfileMode("search");
+          setHostSelected({
+            id: data.host_profile_id,
+            display_name: data.host?.display_name ?? null,
+            username: data.host?.username ?? null,
+          });
+        }
       }
-      setExhibition(data);
-      setTitle(data.title);
-      setStartDate(data.start_date ?? "");
-      setEndDate(data.end_date ?? "");
-      setStatus((data.status as "planned" | "live" | "ended") || "planned");
-      setHostName(data.host_name ?? "");
-    });
-  }, [id]);
+    );
+  }, [id, actingAsProfileId]);
+
+  const runCuratorSearch = useCallback(async () => {
+    const q = curatorSearch.trim();
+    if (!q || q.length < 2) {
+      setCuratorResults([]);
+      return;
+    }
+    setCuratorSearching(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setCuratorResults(
+      (data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name }))
+    );
+    setCuratorSearching(false);
+  }, [curatorSearch]);
+
+  const runHostSearch = useCallback(async () => {
+    const q = hostSearch.trim();
+    if (!q || q.length < 2) {
+      setHostResults([]);
+      return;
+    }
+    setHostSearching(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setHostResults(
+      (data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name }))
+    );
+    setHostSearching(false);
+  }, [hostSearch]);
+
+  useEffect(() => {
+    const tmr = setTimeout(runCuratorSearch, 300);
+    return () => clearTimeout(tmr);
+  }, [curatorSearch, runCuratorSearch]);
+
+  useEffect(() => {
+    const tmr = setTimeout(runHostSearch, 300);
+    return () => clearTimeout(tmr);
+  }, [hostSearch, runHostSearch]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!id || !title.trim()) return;
+    if (!curatorMe && !curatorSelected) {
+      setError(t("common.pleaseSelectArtist") ?? "Please select or search for a curator.");
+      return;
+    }
+    if (curatorMe && !effectiveProfileId) {
+      setError(t("common.loading") ?? "Loading...");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    const curatorId = curatorMe ? effectiveProfileId! : curatorSelected!.id;
+    const hostProfileId =
+      hostProfileMode === "me"
+        ? effectiveProfileId ?? null
+        : hostProfileMode === "search"
+          ? hostSelected?.id ?? null
+          : null;
     const { error: err } = await updateExhibition(id, {
       title: title.trim(),
       start_date: startDate || null,
       end_date: endDate || null,
       status,
+      curator_id: curatorId,
       host_name: hostName.trim() || null,
+      host_profile_id: hostProfileId,
     });
     setSubmitting(false);
     if (err) {
@@ -188,20 +301,188 @@ export default function EditExhibitionPage() {
 
             <div>
               <label className="mb-1 block text-sm font-medium text-zinc-700">
-                {t("exhibition.hostName")}
+                {t("exhibition.curator")}
               </label>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="curator_edit"
+                    checked={curatorMe}
+                    onChange={() => {
+                      setCuratorMe(true);
+                      setCuratorSelected(null);
+                      setCuratorSearch("");
+                      setCuratorResults([]);
+                    }}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-sm">{t("exhibition.curatorMe")}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="curator_edit"
+                    checked={!curatorMe}
+                    onChange={() => setCuratorMe(false)}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-sm">{t("exhibition.searchCurator")}</span>
+                </label>
+              </div>
+              {!curatorMe && (
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    value={curatorSearch}
+                    onChange={(e) => setCuratorSearch(e.target.value)}
+                    placeholder={t("exhibition.searchCurator")}
+                    className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                  {curatorSearching && (
+                    <p className="mt-1 text-xs text-zinc-500">{t("common.loading")}</p>
+                  )}
+                  {curatorResults.length > 0 && (
+                    <ul className="mt-1 max-h-40 overflow-auto rounded border border-zinc-200 bg-white text-sm">
+                      {curatorResults.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCuratorSelected(p);
+                              setCuratorSearch("");
+                              setCuratorResults([]);
+                            }}
+                            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
+                          >
+                            {p.display_name || p.username || p.id}
+                            {p.username && (
+                              <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {curatorSelected && (
+                    <p className="mt-1 text-xs text-zinc-600">
+                      {t("common.selected")}:{" "}
+                      {curatorSelected.display_name || curatorSelected.username || curatorSelected.id}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium text-zinc-700">
+                {t("exhibition.hostVenue")}
+              </label>
+              <p className="mb-2 text-xs text-zinc-500">{t("exhibition.hostName")}</p>
               <input
                 type="text"
                 value={hostName}
                 onChange={(e) => setHostName(e.target.value)}
+                placeholder={t("exhibition.hostName")}
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <div className="mt-2 flex flex-wrap gap-3">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="host_profile_edit"
+                    checked={hostProfileMode === "text"}
+                    onChange={() => {
+                      setHostProfileMode("text");
+                      setHostSelected(null);
+                      setHostSearch("");
+                      setHostResults([]);
+                    }}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-sm text-zinc-600">{t("common.textOnly")}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="host_profile_edit"
+                    checked={hostProfileMode === "me"}
+                    onChange={() => {
+                      setHostProfileMode("me");
+                      setHostSelected(null);
+                      setHostSearch("");
+                      setHostResults([]);
+                    }}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-sm">{t("exhibition.hostVenueMe")}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="host_profile_edit"
+                    checked={hostProfileMode === "search"}
+                    onChange={() => {
+                      setHostProfileMode("search");
+                      setHostSelected(null);
+                    }}
+                    className="rounded border-zinc-300"
+                  />
+                  <span className="text-sm text-zinc-600">{t("exhibition.searchHost")}</span>
+                </label>
+              </div>
+              {hostProfileMode === "search" && (
+                <div className="mt-2">
+                  <input
+                    type="text"
+                    value={hostSearch}
+                    onChange={(e) => setHostSearch(e.target.value)}
+                    placeholder={t("exhibition.searchHost")}
+                    className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                  {hostSearching && (
+                    <p className="mt-1 text-xs text-zinc-500">{t("common.loading")}</p>
+                  )}
+                  {hostResults.length > 0 && (
+                    <ul className="mt-1 max-h-40 overflow-auto rounded border border-zinc-200 bg-white text-sm">
+                      {hostResults.map((p) => (
+                        <li key={p.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHostSelected(p);
+                              setHostSearch("");
+                              setHostResults([]);
+                            }}
+                            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
+                          >
+                            {p.display_name || p.username || p.id}
+                            {p.username && (
+                              <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                            )}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              {hostSelected && (
+                <p className="mt-1 text-xs text-zinc-600">
+                  {t("common.selected")}:{" "}
+                  {hostSelected.display_name || hostSelected.username || hostSelected.id}
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3 pt-2">
               <button
                 type="submit"
-                disabled={submitting || !title.trim()}
+                disabled={
+                  submitting ||
+                  !title.trim() ||
+                  (curatorMe ? !effectiveProfileId : !curatorSelected)
+                }
                 className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 {submitting ? "..." : t("common.save")}

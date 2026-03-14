@@ -120,12 +120,13 @@ export async function listMyExhibitions(): Promise<{
   return { data: merged, error: null };
 }
 
-/** Create an exhibition (project). Caller becomes curator_id unless forProfileId (acting as account delegate). */
+/** Create an exhibition (project). Curator/host can be set explicitly; otherwise caller is curator (or forProfileId when acting as). */
 export async function createExhibition(args: {
   title: string;
   start_date?: string | null;
   end_date?: string | null;
   status?: string;
+  curator_id?: string | null;
   host_name?: string | null;
   host_profile_id?: string | null;
   forProfileId?: string;
@@ -135,7 +136,7 @@ export async function createExhibition(args: {
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
 
-  const curatorId = args.forProfileId ?? session.user.id;
+  const curatorId = args.curator_id ?? args.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("projects")
     .insert({
@@ -156,16 +157,17 @@ export async function createExhibition(args: {
   return { data: data as { id: string }, error: null };
 }
 
-/** Update exhibition (title, dates, status, host). */
+/** Update exhibition (title, dates, status, curator, host). */
 export async function updateExhibition(
   id: string,
-  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "host_name" | "host_profile_id" | "cover_image_paths">>
+  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "curator_id" | "host_name" | "host_profile_id" | "cover_image_paths">>
 ): Promise<{ error: unknown }> {
   const payload: Record<string, unknown> = {};
   if (patch.title !== undefined) payload.title = patch.title.trim();
   if (patch.start_date !== undefined) payload.start_date = patch.start_date;
   if (patch.end_date !== undefined) payload.end_date = patch.end_date;
   if (patch.status !== undefined) payload.status = patch.status;
+  if (patch.curator_id !== undefined) payload.curator_id = patch.curator_id;
   if (patch.host_name !== undefined) payload.host_name = patch.host_name?.trim() || null;
   if (patch.host_profile_id !== undefined) payload.host_profile_id = patch.host_profile_id;
   if (patch.cover_image_paths !== undefined) payload.cover_image_paths = patch.cover_image_paths ?? [];

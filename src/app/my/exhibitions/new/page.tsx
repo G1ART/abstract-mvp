@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
@@ -8,6 +8,8 @@ import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { createExhibition } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { getMyProfile } from "@/lib/supabase/me";
+import { searchPeople } from "@/lib/supabase/artists";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -15,32 +17,108 @@ const STATUS_OPTIONS = [
   { value: "ended", labelKey: "exhibition.statusEnded" },
 ] as const;
 
+type ProfileOption = { id: string; username: string | null; display_name: string | null };
+
 export default function NewExhibitionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromUpload = searchParams.get("from") === "upload";
   const { t } = useT();
   const { actingAsProfileId } = useActingAs();
+  const [myProfileId, setMyProfileId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [status, setStatus] = useState<"planned" | "live" | "ended">("planned");
+  const [curatorMe, setCuratorMe] = useState(true);
+  const [curatorSearch, setCuratorSearch] = useState("");
+  const [curatorResults, setCuratorResults] = useState<ProfileOption[]>([]);
+  const [curatorSelected, setCuratorSelected] = useState<ProfileOption | null>(null);
+  const [curatorSearching, setCuratorSearching] = useState(false);
   const [hostName, setHostName] = useState("");
+  const [hostProfileMode, setHostProfileMode] = useState<"text" | "me" | "search">("text");
+  const [hostSearch, setHostSearch] = useState("");
+  const [hostResults, setHostResults] = useState<ProfileOption[]>([]);
+  const [hostSelected, setHostSelected] = useState<ProfileOption | null>(null);
+  const [hostSearching, setHostSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const effectiveProfileId = actingAsProfileId ?? myProfileId;
+
+  useEffect(() => {
+    getMyProfile().then(({ data }) => {
+      const id = (data as { id?: string } | null)?.id ?? null;
+      setMyProfileId(id);
+    });
+  }, []);
+
+  const runCuratorSearch = useCallback(async () => {
+    const q = curatorSearch.trim();
+    if (!q || q.length < 2) {
+      setCuratorResults([]);
+      return;
+    }
+    setCuratorSearching(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setCuratorResults(
+      (data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name }))
+    );
+    setCuratorSearching(false);
+  }, [curatorSearch]);
+
+  const runHostSearch = useCallback(async () => {
+    const q = hostSearch.trim();
+    if (!q || q.length < 2) {
+      setHostResults([]);
+      return;
+    }
+    setHostSearching(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setHostResults(
+      (data ?? []).map((p) => ({ id: p.id, username: p.username, display_name: p.display_name }))
+    );
+    setHostSearching(false);
+  }, [hostSearch]);
+
+  useEffect(() => {
+    const tmr = setTimeout(runCuratorSearch, 300);
+    return () => clearTimeout(tmr);
+  }, [curatorSearch, runCuratorSearch]);
+
+  useEffect(() => {
+    const tmr = setTimeout(runHostSearch, 300);
+    return () => clearTimeout(tmr);
+  }, [hostSearch, runHostSearch]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim()) return;
+    if (!curatorMe && !curatorSelected) {
+      setError(t("common.pleaseSelectArtist") ?? "Please select or search for a curator.");
+      return;
+    }
+    if (curatorMe && !effectiveProfileId) {
+      setError(t("common.loading") ?? "Loading...");
+      return;
+    }
     setSubmitting(true);
     setError(null);
+    const curatorId = curatorMe ? effectiveProfileId! : curatorSelected!.id;
+    const hostProfileId =
+      hostProfileMode === "me"
+        ? effectiveProfileId ?? null
+        : hostProfileMode === "search"
+          ? hostSelected?.id ?? null
+          : null;
     const { data, error: err } = await createExhibition({
       title: title.trim(),
       start_date: startDate || null,
       end_date: endDate || null,
       status,
+      curator_id: curatorId,
       host_name: hostName.trim() || null,
-      forProfileId: actingAsProfileId ?? undefined,
+      host_profile_id: hostProfileId,
     });
     setSubmitting(false);
     if (err) {
@@ -128,20 +206,186 @@ export default function NewExhibitionPage() {
 
           <div>
             <label className="mb-1 block text-sm font-medium text-zinc-700">
-              {t("exhibition.hostName")}
+              {t("exhibition.curator")}
             </label>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="curator"
+                  checked={curatorMe}
+                  onChange={() => {
+                    setCuratorMe(true);
+                    setCuratorSelected(null);
+                    setCuratorSearch("");
+                    setCuratorResults([]);
+                  }}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-sm">{t("exhibition.curatorMe")}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="curator"
+                  checked={!curatorMe}
+                  onChange={() => setCuratorMe(false)}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-sm">{t("exhibition.searchCurator")}</span>
+              </label>
+            </div>
+            {!curatorMe && (
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={curatorSearch}
+                  onChange={(e) => setCuratorSearch(e.target.value)}
+                  placeholder={t("exhibition.searchCurator")}
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {curatorSearching && (
+                  <p className="mt-1 text-xs text-zinc-500">{t("common.loading")}</p>
+                )}
+                {curatorResults.length > 0 && (
+                  <ul className="mt-1 max-h-40 overflow-auto rounded border border-zinc-200 bg-white text-sm">
+                    {curatorResults.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCuratorSelected(p);
+                            setCuratorSearch("");
+                            setCuratorResults([]);
+                          }}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
+                        >
+                          {p.display_name || p.username || p.id}
+                          {p.username && (
+                            <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {curatorSelected && (
+                  <p className="mt-1 text-xs text-zinc-600">
+                    {t("common.selected")}: {curatorSelected.display_name || curatorSelected.username || curatorSelected.id}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-zinc-700">
+              {t("exhibition.hostVenue")}
+            </label>
+            <p className="mb-2 text-xs text-zinc-500">{t("exhibition.hostName")}</p>
             <input
               type="text"
               value={hostName}
               onChange={(e) => setHostName(e.target.value)}
+              placeholder={t("exhibition.hostName")}
               className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
             />
+            <div className="mt-2 flex flex-wrap gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="host_profile"
+                  checked={hostProfileMode === "text"}
+                  onChange={() => {
+                    setHostProfileMode("text");
+                    setHostSelected(null);
+                    setHostSearch("");
+                    setHostResults([]);
+                  }}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-sm text-zinc-600">{t("common.textOnly")}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="host_profile"
+                  checked={hostProfileMode === "me"}
+                  onChange={() => {
+                    setHostProfileMode("me");
+                    setHostSelected(null);
+                    setHostSearch("");
+                    setHostResults([]);
+                  }}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-sm">{t("exhibition.hostVenueMe")}</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="host_profile"
+                  checked={hostProfileMode === "search"}
+                  onChange={() => {
+                    setHostProfileMode("search");
+                    setHostSelected(null);
+                  }}
+                  className="rounded border-zinc-300"
+                />
+                <span className="text-sm text-zinc-600">{t("exhibition.searchHost")}</span>
+              </label>
+            </div>
+            {hostProfileMode === "search" && (
+              <div className="mt-2">
+                <input
+                  type="text"
+                  value={hostSearch}
+                  onChange={(e) => setHostSearch(e.target.value)}
+                  placeholder={t("exhibition.searchHost")}
+                  className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {hostSearching && (
+                  <p className="mt-1 text-xs text-zinc-500">{t("common.loading")}</p>
+                )}
+                {hostResults.length > 0 && (
+                  <ul className="mt-1 max-h-40 overflow-auto rounded border border-zinc-200 bg-white text-sm">
+                    {hostResults.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHostSelected(p);
+                            setHostSearch("");
+                            setHostResults([]);
+                          }}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
+                        >
+                          {p.display_name || p.username || p.id}
+                          {p.username && (
+                            <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+            {hostSelected && (
+              <p className="mt-1 text-xs text-zinc-600">
+                {t("common.selected")}: {hostSelected.display_name || hostSelected.username || hostSelected.id}
+              </p>
+            )}
           </div>
 
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
-              disabled={submitting || !title.trim()}
+              disabled={
+                submitting ||
+                !title.trim() ||
+                (curatorMe ? !effectiveProfileId : !curatorSelected)
+              }
               className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {submitting ? "..." : t("exhibition.create")}
