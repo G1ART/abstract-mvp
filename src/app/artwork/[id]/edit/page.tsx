@@ -23,6 +23,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
+import { parseSizeWithUnit } from "@/lib/size/format";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -213,11 +214,14 @@ function EditArtworkContent() {
 
     let inviteSent = false;
     let inviteSendFailed = false;
+    const sizeTrimmed = size.trim();
+    const sizeWithUnit = sizeTrimmed ? parseSizeWithUnit(sizeTrimmed) : null;
     const payload: UpdateArtworkPayload = {
       title: title.trim() || null,
       year: yearNum,
       medium: medium.trim() || null,
-      size: size.trim() || null,
+      size: sizeTrimmed || null,
+      size_unit: sizeWithUnit?.unit ?? null,
       story: story.trim() || null,
       ownership_status: ownershipStatus,
       pricing_mode: pricingMode,

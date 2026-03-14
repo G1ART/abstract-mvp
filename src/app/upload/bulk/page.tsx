@@ -73,6 +73,8 @@ export default function BulkUploadPage() {
   const [externalArtistName, setExternalArtistName] = useState("");
   const [externalArtistEmail, setExternalArtistEmail] = useState("");
   const [periodStatus, setPeriodStatus] = useState<"past" | "current" | "future">("current");
+  /** Attribution 단계를 '다음' 버튼으로 완료했을 때만 true. 2자만 입력해서 자동으로 넘어가는 것 방지. */
+  const [attributionStepDone, setAttributionStepDone] = useState(false);
 
   const needsAttribution = intent !== null && intent !== "CREATED";
 
@@ -242,8 +244,9 @@ export default function BulkUploadPage() {
     if (invalid.length > 0) return;
     if (needsAttribution) {
       if (useExternalArtist) {
-        if (!externalArtistName.trim()) {
-          setToast(t("upload.externalArtistNamePlaceholder") || "Artist name required");
+        const name = externalArtistName.trim();
+        if (!name || name.length < 2) {
+          setToast(t("upload.externalArtistNamePlaceholder") || "Artist name required (min 2 characters)");
           setTimeout(() => setToast(null), 2000);
           return;
         }
@@ -316,9 +319,11 @@ export default function BulkUploadPage() {
   const selectedReady = drafts.filter((d) => selectedIds.includes(d.id) && validatePublish(d).ok).length;
   const canPublishSelected = selectedIds.length > 0 && selectedReady === selectedIds.length;
 
+  const externalNameValid = useExternalArtist && externalArtistName.trim().length >= 2;
+  const attributionValid = !needsAttribution || selectedArtist !== null || externalNameValid;
   const showIntent = intent === null;
-  const showAttribution = intent !== null && needsAttribution && !selectedArtist && !(useExternalArtist && externalArtistName.trim());
-  const showMain = intent !== null && (!needsAttribution || selectedArtist !== null || (useExternalArtist && externalArtistName.trim()));
+  const showAttribution = intent !== null && needsAttribution && !attributionStepDone;
+  const showMain = intent !== null && (!needsAttribution || attributionStepDone);
 
   return (
     <AuthGate>
@@ -440,11 +445,12 @@ export default function BulkUploadPage() {
                 </select>
               </div>
             )}
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => {
                   setIntent(null);
+                  setAttributionStepDone(false);
                   setSelectedArtist(null);
                   setUseExternalArtist(false);
                   setExternalArtistName("");
@@ -455,6 +461,18 @@ export default function BulkUploadPage() {
                 className="rounded border border-zinc-300 px-4 py-2 text-sm"
               >
                 Back
+              </button>
+              <button
+                type="button"
+                disabled={!attributionValid}
+                onClick={() => {
+                  if (!attributionValid) return;
+                  if (useExternalArtist && externalArtistName.trim().length < 2) return;
+                  setAttributionStepDone(true);
+                }}
+                className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {t("common.next") || "Next"}
               </button>
             </div>
           </div>

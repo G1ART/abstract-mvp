@@ -425,7 +425,9 @@ function ArtworkDetailContent() {
 
   const { path: backPath, labelKey: backLabelKey } = getArtworkBack();
   const sizeDisplay =
-    artwork.size != null ? formatSizeForLocale(artwork.size, locale) : null;
+    artwork.size != null
+      ? formatSizeForLocale(artwork.size, locale, artwork.size_unit ?? undefined)
+      : null;
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">

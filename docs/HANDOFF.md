@@ -2,6 +2,32 @@
 
 Last updated: 2026-02-19
 
+## 2026-02-19 — 업로더 삭제 권한·사이즈 단위·피드 더 불러오기
+
+- **1) 업로드 당사자 삭제 권한**
+  - `artworks.created_by` 컬럼 추가 (업로드한 프로필 ID). `canDeleteArtwork`: artist 또는 claim 보유자 또는 **created_by**일 때 삭제 허용.
+  - RLS: artworks DELETE, artwork_images DELETE에 `created_by = auth.uid()` 조건 추가.
+  - 싱글/드래프트 생성 시 `created_by` = 세션 유저로 설정.
+
+- **2) 작품 사이즈 단위 보존·표시**
+  - `artworks.size_unit` 추가 (`'cm' | 'in' | null`). 사용자 입력 단위를 저장.
+  - `parseSizeWithUnit()`: 입력 문자열에서 단위 감지. `formatSizeForLocale(size, locale, sizeUnit)`: size_unit이 'in'이면 KO에서만 cm로 변환 표시, 'cm'이면 EN에서만 in으로 변환 표시.
+  - 싱글 업로드·작품 수정 시 `parseSizeWithUnit`으로 단위 저장.
+
+- **3) 피드 무한 스크롤(더 불러오기)**
+  - **전체** 탭: `listPublicArtworks`에 cursor 페이지네이션 (`ArtworkCursor`), `listPublicExhibitionsForFeed`에 cursor. 응답에 `nextCursor` 포함.
+  - `FeedContent`: 스크롤 끝 감지(IntersectionObserver) 시 `loadMore()`로 다음 페이지 요청 후 피드에 이어붙임. **팔로잉** 탭은 기존대로 한 번만 로드.
+
+- **4) 벌크 업로드·외부 작가 이름**
+  - 외부 작가 이름 최소 2자 + **다음** 버튼을 눌러야 업로드 단계로 이동 (1자 입력만으로 자동 전환 방지). `attributionStepDone` 상태로 명시적 진행.
+
+**Supabase SQL 적용 필요:**  
+- `supabase/migrations/p0_artworks_created_by_and_size_unit.sql`
+
+**Verified:** (빌드·타입 체크 후, 삭제 권한·사이즈 표시·피드 스크롤 더 불러오기·벌크 다음 버튼 동작 확인 권장.)
+
+---
+
 ## 2026-02-19 — 관리자 위임(Delegation): 전시/계정 관리 권한 공유
 
 - **목적**: 특정 전시 또는 계정에 대한 관리 권한을 다른 사용자에게 위임. (매니저·큐레이터·어시스턴트 등)

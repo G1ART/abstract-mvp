@@ -26,6 +26,7 @@ import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
+import { parseSizeWithUnit } from "@/lib/size/format";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
@@ -156,7 +157,8 @@ function UploadPageContent() {
   function handleAttributionNext() {
     if (needsAttribution(intent)) {
       if (useExternalArtist) {
-        if (!externalArtistName.trim()) {
+        const name = externalArtistName.trim();
+        if (!name || name.length < 2) {
           setError(t("common.pleaseEnterArtistName"));
           return;
         }
@@ -215,12 +217,15 @@ function UploadPageContent() {
       return;
     }
 
+    const sizeTrimmed = size.trim();
+    const sizeWithUnit = sizeTrimmed ? parseSizeWithUnit(sizeTrimmed) : null;
     const isExternal = needsAttribution(intent) && useExternalArtist;
     const payload: CreateArtworkPayload = {
       title: title.trim(),
       year: yearNum,
       medium: medium.trim(),
-      size: size.trim(),
+      size: sizeTrimmed,
+      size_unit: sizeWithUnit?.unit ?? null,
       story: story.trim() || null,
       ownership_status: ownershipStatus,
       pricing_mode: pricingMode,

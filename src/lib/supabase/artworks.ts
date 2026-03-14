@@ -91,8 +91,12 @@ export type Artwork = {
   year: number | null;
   medium: string | null;
   size: string | null;
+  /** 사용자 입력 단위 보존: 'cm' | 'in' | null (null = 기존/호수 등) */
+  size_unit?: "cm" | "in" | null;
   story: string | null;
   visibility: string | null;
+  /** 업로드 당사자(레코드 생성자). 삭제 권한에 사용 */
+  created_by?: string | null;
   pricing_mode: string | null;
   is_price_public: boolean | null;
   price_usd: number | null;
@@ -120,10 +124,11 @@ export function canEditArtwork(artwork: Artwork, userId: string | null): boolean
   );
 }
 
-/** Can delete: artist or anyone who has a claim (uploader/lister). Prevents orphan works when artist never onboards. */
+/** Can delete: artist, created_by(업로더), or anyone who has a claim (uploader/lister). */
 export function canDeleteArtwork(artwork: Artwork, userId: string | null): boolean {
   if (!userId) return false;
   if (artwork.artist_id === userId) return true;
+  if (artwork.created_by === userId) return true;
   const claims = artwork.claims ?? [];
   return claims.some((c) => c.subject_profile_id === userId);
 }
@@ -209,9 +214,13 @@ export function getProvenanceClaims(artwork: Artwork): ArtworkClaim[] {
 
 export type ArtworkWithLikes = Artwork & { likes_count: number };
 
+export type ArtworkCursor = { created_at: string; id: string };
+
 type ListOptions = {
   limit?: number;
   sort?: "latest" | "popular";
+  /** cursor for next page (created_at, id of last item) */
+  cursor?: ArtworkCursor | null;
 };
 
 const ARTWORK_SELECT = `
@@ -220,8 +229,10 @@ const ARTWORK_SELECT = `
   year,
   medium,
   size,
+  size_unit,
   story,
   visibility,
+  created_by,
   pricing_mode,
   is_price_public,
   price_usd,
@@ -242,19 +253,55 @@ const ARTWORK_SELECT = `
 
 export async function listPublicArtworks(
   options: ListOptions = {}
-): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
-  const { limit = 50, sort = "latest" } = options;
+): Promise<{
+  data: ArtworkWithLikes[];
+  nextCursor: ArtworkCursor | null;
+  error: unknown;
+}> {
+  const { limit = 50, sort = "latest", cursor = null } = options;
+  const pageSize = Math.min(limit, 30);
+  const requestLimit = pageSize + 1;
 
-  const query = supabase
+  let query = supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
     .eq("visibility", "public")
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .limit(requestLimit);
+
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`
+    );
+  }
 
   const { data, error } = await query;
+  const list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[];
+
+  if (sort === "popular") {
+    list.sort((a, b) => {
+      const countA = Number(a.likes_count) || 0;
+      const countB = Number(b.likes_count) || 0;
+      if (countB !== countA) return countB - countA;
+      const dateA = new Date(a.created_at ?? 0).getTime();
+      const dateB = new Date(b.created_at ?? 0).getTime();
+      return dateB - dateA;
+    });
+  }
+
+  let nextCursor: ArtworkCursor | null = null;
+  const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
+  if (list.length > pageSize && list[pageSize]) {
+    const next = list[pageSize];
+    if (next.created_at != null && next.id) {
+      nextCursor = { created_at: next.created_at, id: next.id };
+    }
+  }
+
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    data: resultList,
+    nextCursor,
     error,
   };
 }
@@ -616,6 +663,8 @@ export type CreateArtworkPayload = {
   year: number;
   medium: string;
   size: string;
+  /** 사용자 입력 단위: 'cm' | 'in' | null */
+  size_unit?: "cm" | "in" | null;
   story?: string | null;
   ownership_status: string;
   pricing_mode: "fixed" | "inquire";
@@ -664,10 +713,12 @@ export async function createArtwork(
     .from("artworks")
     .insert({
       artist_id: artistId,
+      created_by: session.user.id,
       title: payload.title,
       year: payload.year,
       medium: payload.medium,
       size: payload.size,
+      size_unit: payload.size_unit ?? null,
       story: payload.story ?? null,
       visibility: "public",
       ownership_status: payload.ownership_status,
@@ -698,8 +749,10 @@ export async function getArtworkById(
       year,
       medium,
       size,
+      size_unit,
       story,
       visibility,
+      created_by,
       pricing_mode,
       is_price_public,
       price_usd,
@@ -922,6 +975,7 @@ export async function createDraftArtwork(
     .from("artworks")
     .insert({
       artist_id: artistId,
+      created_by: session.user.id,
       title: payload.title || "Untitled",
       visibility: "draft",
       ownership_status: "available",
@@ -940,6 +994,7 @@ export type UpdateArtworkPayload = Partial<{
   year: number | null;
   medium: string | null;
   size: string | null;
+  size_unit: "cm" | "in" | null;
   story: string | null;
   ownership_status: string | null;
   pricing_mode: "fixed" | "inquire" | null;

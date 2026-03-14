@@ -6,12 +6,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import {
   type ArtworkWithLikes,
+  type ArtworkCursor,
   listFollowingArtworks,
   listPublicArtworks,
   listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
-import { listExhibitionsForFeed, listPublicExhibitionsForFeed, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import {
+  listExhibitionsForFeed,
+  listPublicExhibitionsForFeed,
+  type ExhibitionWithCredits,
+  type ExhibitionCursor,
+} from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FeedArtworkCard } from "./FeedArtworkCard";
@@ -83,8 +89,12 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     profiles: PeopleRec[];
     fetchedAt: number;
   } | null>(null);
+  const [artworksNextCursor, setArtworksNextCursor] = useState<ArtworkCursor | null>(null);
+  const [exhibitionsNextCursor, setExhibitionsNextCursor] = useState<ExhibitionCursor | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
   const fetchRecProfiles = useCallback(async (): Promise<PeopleRec[]> => {
     const now = Date.now();
@@ -121,47 +131,78 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [userId]);
 
   const fetchArtworks = useCallback(async () => {
-    if (userId == null) return;
+    if (userId == null && tab === "following") return;
     setLoading(true);
     setError(null);
-    const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
-      tab === "following"
-        ? listFollowingArtworks({ limit: 50 })
-        : listPublicArtworks({ limit: 50, sort }),
-      getFollowingIds(),
-      tab === "following"
-        ? getFollowingIds().then((r) =>
-            r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionWithCredits[], error: null }
-          )
-        : listPublicExhibitionsForFeed(30),
-    ]);
-    const { data: listRaw, error: err } = artworksRes;
-    const followingSet = followingRes.data ?? new Set<string>();
-    setFollowingIds(followingSet);
+    setArtworksNextCursor(null);
+    setExhibitionsNextCursor(null);
 
-    if (err) {
-      const msg =
-        (err as { message?: string })?.message ??
-        (err as { error?: { message?: string } })?.error?.message ??
-        (typeof err === "string" ? err : JSON.stringify(err));
-      setError(msg);
+    if (tab === "following") {
+      const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
+        listFollowingArtworks({ limit: 50 }),
+        getFollowingIds(),
+        getFollowingIds().then((r) =>
+          r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionWithCredits[], error: null }
+        ),
+      ]);
+      const list = artworksRes.data ?? [];
+      const followingSet = followingRes.data ?? new Set<string>();
+      setFollowingIds(followingSet);
+      if (artworksRes.error) {
+        setError(String((artworksRes.error as { message?: string })?.message ?? artworksRes.error));
+        setLoading(false);
+        return;
+      }
+      setArtworks(list);
+      const exhibitions = exhibitionsRes.data ?? [];
+      const entries: FeedEntry[] = [
+        ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+        ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
+      ].sort((a, b) => {
+        const ta = new Date(a.created_at ?? 0).getTime();
+        const tb = new Date(b.created_at ?? 0).getTime();
+        return tb - ta;
+      });
+      setFeedEntries(entries);
+      const allIds = list.map((a) => a.id);
+      const liked = await getLikedArtworkIds(allIds);
+      setLikedIds(liked);
+      const recProfiles = await fetchRecProfiles();
+      const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
+        listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
+          (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
+        )
+      );
+      const discoveryResults = await Promise.all(discoveryPromises);
+      const discoveryWithArtworks = discoveryResults.filter(
+        (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
+      );
+      setDiscoveryData(discoveryWithArtworks);
       setLoading(false);
       return;
     }
 
-    let list = listRaw ?? [];
-    if (sort === "popular") {
-      list = [...list].sort((a, b) => {
-        const countA = Number(a.likes_count) || 0;
-        const countB = Number(b.likes_count) || 0;
-        if (countB !== countA) return countB - countA;
-        const dateA = new Date(a.created_at ?? 0).getTime();
-        const dateB = new Date(b.created_at ?? 0).getTime();
-        return dateB - dateA;
-      });
+    const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
+      listPublicArtworks({ limit: 30, sort }),
+      getFollowingIds(),
+      listPublicExhibitionsForFeed(20),
+    ]);
+    const followingSet = followingRes.data ?? new Set<string>();
+    setFollowingIds(followingSet);
+
+    const list = artworksRes.data ?? [];
+    const err = artworksRes.error;
+    if (err) {
+      setError(
+        (err as { message?: string })?.message ?? (typeof err === "string" ? err : JSON.stringify(err))
+      );
+      setLoading(false);
+      return;
     }
 
     setArtworks(list);
+    setArtworksNextCursor(artworksRes.nextCursor ?? null);
+    setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
 
     const exhibitions = exhibitionsRes.data ?? [];
     const entries: FeedEntry[] = [
@@ -191,6 +232,74 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     setDiscoveryData(discoveryWithArtworks);
     setLoading(false);
   }, [tab, sort, userId, fetchRecProfiles]);
+
+  const loadMore = useCallback(async () => {
+    if (tab !== "all" || loadingMore) return;
+    const hasMore = artworksNextCursor || exhibitionsNextCursor;
+    if (!hasMore) return;
+    setLoadingMore(true);
+    try {
+    const [artworksRes, exhibitionsRes] = await Promise.all([
+      artworksNextCursor
+        ? listPublicArtworks({ limit: 30, sort, cursor: artworksNextCursor })
+        : Promise.resolve({ data: [] as ArtworkWithLikes[], nextCursor: null as ArtworkCursor | null, error: null }),
+      exhibitionsNextCursor
+        ? listPublicExhibitionsForFeed(20, exhibitionsNextCursor)
+        : Promise.resolve({ data: [] as ExhibitionWithCredits[], nextCursor: null as ExhibitionCursor | null, error: null }),
+    ]);
+    setArtworksNextCursor(artworksRes.nextCursor ?? null);
+    setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
+
+    const newArtworks = artworksRes.data ?? [];
+    const newExhibitions = exhibitionsRes.data ?? [];
+    if (newArtworks.length > 0) {
+      const newIds = newArtworks.map((a) => a.id);
+      const liked = await getLikedArtworkIds(newIds);
+      setLikedIds((prev) => {
+        const next = new Set(prev);
+        liked.forEach((id) => next.add(id));
+        return next;
+      });
+    }
+
+    const newEntries: FeedEntry[] = [
+      ...newArtworks.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+      ...newExhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
+    ];
+    if (newEntries.length > 0) {
+      setArtworks((prev) => {
+        const ids = new Set(prev.map((a) => a.id));
+        const added = newArtworks.filter((a) => !ids.has(a.id));
+        return added.length > 0 ? [...prev, ...added] : prev;
+      });
+      setFeedEntries((prev) => {
+        const merged = [...prev, ...newEntries].sort((a, b) => {
+          const ta = new Date(a.created_at ?? 0).getTime();
+          const tb = new Date(b.created_at ?? 0).getTime();
+          return tb - ta;
+        });
+        return merged;
+      });
+    }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [tab, sort, artworksNextCursor, exhibitionsNextCursor, loadingMore]);
+
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || tab !== "all") return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingMore && (artworksNextCursor || exhibitionsNextCursor)) {
+          loadMore();
+        }
+      },
+      { rootMargin: "200px", threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [tab, loadingMore, artworksNextCursor, exhibitionsNextCursor, loadMore]);
 
   useEffect(() => {
     fetchArtworks();
@@ -331,6 +440,17 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
               />
             );
           })}
+        </div>
+      )}
+      {tab === "all" && (artworksNextCursor || exhibitionsNextCursor) && (
+        <div
+          ref={loadMoreSentinelRef}
+          className="flex min-h-[80px] items-center justify-center py-4"
+          aria-hidden
+        >
+          {loadingMore && (
+            <span className="text-sm text-zinc-500">{t("common.loading") || "Loading…"}</span>
+          )}
         </div>
       )}
     </div>

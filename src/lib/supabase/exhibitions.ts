@@ -318,20 +318,34 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
   return { data: filtered.slice(0, 30), error: curatedRes.error ?? hostRes.error };
 }
 
-/** List recent public exhibitions for global feed (not follow-limited). */
-export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
+export type ExhibitionCursor = { created_at: string; id: string };
+
+/** List recent public exhibitions for global feed (not follow-limited). Cursor for load more. */
+export async function listPublicExhibitionsForFeed(
+  limit = 30,
+  cursor?: ExhibitionCursor | null
+): Promise<{
   data: ExhibitionWithCredits[];
+  nextCursor: ExhibitionCursor | null;
   error: unknown;
 }> {
-  const { data, error } = await supabase
+  const pageSize = Math.min(limit, 20);
+  let query = supabase
     .from("projects")
     .select(SELECT_WITH_CREDITS)
     .eq("project_type", "exhibition")
     .order("created_at", { ascending: false })
-    .limit(limit * 2); // over-fetch; we'll filter by works below
-  if (error) return { data: [], error };
+    .order("id", { ascending: false })
+    .limit((pageSize + 1) * 2);
+  if (cursor) {
+    query = query.or(
+      `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`
+    );
+  }
+  const { data, error } = await query;
+  if (error) return { data: [], nextCursor: null, error };
   const projects = (data ?? []) as ExhibitionWithCredits[];
-  if (projects.length === 0) return { data: [], error: null };
+  if (projects.length === 0) return { data: [], nextCursor: null, error: null };
   const ids = projects.map((e) => e.id);
   const { data: ewRows } = await supabase
     .from("exhibition_works")
@@ -339,7 +353,17 @@ export async function listPublicExhibitionsForFeed(limit = 30): Promise<{
     .in("exhibition_id", ids);
   const withWorks = new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id));
   const filtered = projects.filter((e) => withWorks.has(e.id));
-  return { data: filtered.slice(0, limit), error: null };
+  const result = filtered.slice(0, pageSize + 1);
+  const hasMore = result.length > pageSize;
+  const next =
+    hasMore && result[pageSize]
+      ? { created_at: result[pageSize].created_at!, id: result[pageSize].id }
+      : null;
+  return {
+    data: hasMore ? result.slice(0, pageSize) : result,
+    nextCursor: next,
+    error: null,
+  };
 }
 
 /** List exhibitions for a profile: curated/hosted by them OR they have works in. For My & public profile tabs. */
