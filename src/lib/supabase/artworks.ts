@@ -214,12 +214,16 @@ export function getProvenanceClaims(artwork: Artwork): ArtworkClaim[] {
 
 export type ArtworkWithLikes = Artwork & { likes_count: number };
 
-export type ArtworkCursor = { created_at: string; id: string };
+/** 최신 탭: created_at, id. 인기 탭: likes_count, created_at, id */
+export type ArtworkCursor = {
+  created_at: string;
+  id: string;
+  likes_count?: number;
+};
 
 type ListOptions = {
   limit?: number;
   sort?: "latest" | "popular";
-  /** cursor for next page (created_at, id of last item) */
   cursor?: ArtworkCursor | null;
 };
 
@@ -245,6 +249,7 @@ const ARTWORK_SELECT = `
   artist_sort_order,
   created_at,
   provenance_visible,
+  likes_count,
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
   artwork_likes(count),
@@ -261,43 +266,53 @@ export async function listPublicArtworks(
   const { limit = 50, sort = "latest", cursor = null } = options;
   const pageSize = Math.min(limit, 30);
   const requestLimit = pageSize + 1;
+  const isPopular = sort === "popular";
 
   let query = supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
     .eq("visibility", "public")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
     .limit(requestLimit);
 
-  if (cursor) {
-    const createdAt = cursor.created_at.replace(/"/g, '\\"');
-    const id = cursor.id.replace(/"/g, '\\"');
-    query = query.or(
-      `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
-    );
+  if (isPopular) {
+    query = query
+      .order("likes_count", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (cursor && cursor.likes_count != null) {
+      const lc = Number(cursor.likes_count);
+      const createdAt = String(cursor.created_at).replace(/"/g, '\\"');
+      const id = String(cursor.id).replace(/"/g, '\\"');
+      query = query.or(
+        `likes_count.lt.${lc},and(likes_count.eq.${lc},created_at.lt."${createdAt}"),and(likes_count.eq.${lc},created_at.eq."${createdAt}",id.lt."${id}")`
+      );
+    }
+  } else {
+    query = query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (cursor) {
+      const createdAt = cursor.created_at.replace(/"/g, '\\"');
+      const id = cursor.id.replace(/"/g, '\\"');
+      query = query.or(
+        `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
+      );
+    }
   }
 
   const { data, error } = await query;
   const list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[];
-
-  if (sort === "popular") {
-    list.sort((a, b) => {
-      const countA = Number(a.likes_count) || 0;
-      const countB = Number(b.likes_count) || 0;
-      if (countB !== countA) return countB - countA;
-      const dateA = new Date(a.created_at ?? 0).getTime();
-      const dateB = new Date(b.created_at ?? 0).getTime();
-      return dateB - dateA;
-    });
-  }
 
   let nextCursor: ArtworkCursor | null = null;
   const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
   if (list.length > pageSize && list[pageSize]) {
     const next = list[pageSize];
     if (next.created_at != null && next.id) {
-      nextCursor = { created_at: next.created_at, id: next.id };
+      nextCursor = {
+        created_at: next.created_at,
+        id: next.id,
+        ...(isPopular && next.likes_count != null && { likes_count: Number(next.likes_count) }),
+      };
     }
   }
 
@@ -325,7 +340,12 @@ export function extractLikesCount(row: Record<string, unknown> | null | undefine
 }
 
 function normalizeArtworkRow(r: Record<string, unknown>): ArtworkWithLikes {
-  return { ...r, likes_count: extractLikesCount(r) } as ArtworkWithLikes;
+  const fromColumn =
+    r.likes_count != null && Number.isFinite(Number(r.likes_count))
+      ? Number(r.likes_count)
+      : null;
+  const likes_count = fromColumn ?? extractLikesCount(r);
+  return { ...r, likes_count } as ArtworkWithLikes;
 }
 
 type FollowingOptions = {
