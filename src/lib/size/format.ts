@@ -1,5 +1,5 @@
 import type { HosuType } from "./hosu";
-import { findHosuSize } from "./hosu";
+import { findHosuSize, findNearestHosu } from "./hosu";
 
 export type ParsedSize = {
   widthCm: number;
@@ -83,6 +83,11 @@ export function formatSizeForLocale(
 
   const { widthCm, heightCm, hosuNumber, hosuType } = parsed;
   const isKo = locale.startsWith("ko");
+  /** 사용자 입력에 호수가 없을 때, cm 기준 치수로 가장 가까운 호수(표시용). */
+  const nearestHosu =
+    hosuNumber != null && hosuType ? null : findNearestHosu(widthCm, heightCm);
+  const hosuPrefix = (h: { number: number; type: HosuType }) =>
+    isKo ? `약 ${h.number}${h.type} · ` : `~${h.number}${h.type} · `;
 
   if (sizeUnit === "in") {
     const wIn = cmToIn(widthCm);
@@ -90,32 +95,39 @@ export function formatSizeForLocale(
     if (isKo) {
       const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
       if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+      if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
       return base;
     }
     const base = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
     if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
     return base;
   }
 
   if (sizeUnit === "cm") {
     const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
     if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+    if (nearestHosu && isKo) return `${hosuPrefix(nearestHosu)}${base}`;
     if (isKo) return base;
     const wIn = cmToIn(widthCm);
     const hIn = cmToIn(heightCm);
-    return `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
+    const inBase = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
+    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${inBase}`;
+    return inBase;
   }
 
   // size_unit 없음: 기존 동작 (locale만 보고 출력)
   if (isKo) {
     const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
     if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
     return base;
   }
   const widthIn = cmToIn(widthCm);
   const heightIn = cmToIn(heightCm);
   const base = `${widthIn.toFixed(1)} × ${heightIn.toFixed(1)} in`;
   if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+  if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
   return base;
 }
 

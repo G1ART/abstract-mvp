@@ -93,6 +93,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const [exhibitionsNextCursor, setExhibitionsNextCursor] = useState<ExhibitionCursor | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const loadingMoreRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
 
@@ -234,9 +235,10 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [tab, sort, userId, fetchRecProfiles]);
 
   const loadMore = useCallback(async () => {
-    if (tab !== "all" || loadingMore) return;
+    if (tab !== "all" || loadingMore || loadingMoreRef.current) return;
     const hasMore = artworksNextCursor || exhibitionsNextCursor;
     if (!hasMore) return;
+    loadingMoreRef.current = true;
     setLoadingMore(true);
     try {
     const [artworksRes, exhibitionsRes] = await Promise.all([
@@ -282,23 +284,41 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       });
     }
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
     }
   }, [tab, sort, artworksNextCursor, exhibitionsNextCursor, loadingMore]);
 
+  // 스크롤 맨 아래 근처에서 더 불러오기: IntersectionObserver + scroll 이벤트 폴백
   useEffect(() => {
+    if (tab !== "all" || (!artworksNextCursor && !exhibitionsNextCursor)) return;
+
     const el = loadMoreSentinelRef.current;
-    if (!el || tab !== "all") return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting && !loadingMore && (artworksNextCursor || exhibitionsNextCursor)) {
-          loadMore();
-        }
-      },
-      { rootMargin: "200px", threshold: 0 }
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
+    let obs: IntersectionObserver | null = null;
+
+    if (el) {
+      obs = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]?.isIntersecting && !loadingMoreRef.current) loadMore();
+        },
+        { root: null, rootMargin: "400px", threshold: 0 }
+      );
+      obs.observe(el);
+    }
+
+    const onScroll = () => {
+      if (loadingMoreRef.current || (!artworksNextCursor && !exhibitionsNextCursor)) return;
+      const scrollTop = window.scrollY ?? document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = window.innerHeight;
+      if (scrollTop + clientHeight >= scrollHeight - 500) loadMore();
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      obs?.disconnect();
+      window.removeEventListener("scroll", onScroll);
+    };
   }, [tab, loadingMore, artworksNextCursor, exhibitionsNextCursor, loadMore]);
 
   useEffect(() => {

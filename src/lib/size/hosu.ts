@@ -122,3 +122,18 @@ export function findHosuSizesByNumber(number: number): HosuSize[] {
 export function findHosuSize(number: number, type: HosuType): HosuSize | undefined {
   return HOSU_SIZES.find((h) => h.number === number && h.type === type);
 }
+
+/** 가로·세로(cm)에 가장 가까운 호수 한 개 반환. 표시용(예: "약 8F · 50.8 × 38.1 cm"). */
+export function findNearestHosu(widthCm: number, heightCm: number): HosuSize | null {
+  if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm)) return null;
+  let best: HosuSize | null = null;
+  let bestDist = Infinity;
+  for (const h of HOSU_SIZES) {
+    const dist = (widthCm - h.widthCm) ** 2 + (heightCm - h.heightCm) ** 2;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = h;
+    }
+  }
+  return best;
+}

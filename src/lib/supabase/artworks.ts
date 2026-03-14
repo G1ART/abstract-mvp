@@ -271,8 +271,10 @@ export async function listPublicArtworks(
     .limit(requestLimit);
 
   if (cursor) {
+    const createdAt = cursor.created_at.replace(/"/g, '\\"');
+    const id = cursor.id.replace(/"/g, '\\"');
     query = query.or(
-      `created_at.lt.${cursor.created_at},and(created_at.eq.${cursor.created_at},id.lt.${cursor.id})`
+      `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
     );
   }
 
