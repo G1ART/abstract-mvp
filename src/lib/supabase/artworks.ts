@@ -1105,6 +1105,8 @@ export type PublishWithProvenanceOptions = {
   externalArtistEmail?: string | null;
   /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
   period_status?: "past" | "current" | "future" | null;
+  /** For CURATED: exhibition/project id to link claims and add works to exhibition */
+  projectId?: string | null;
 };
 
 export async function publishArtworksWithProvenance(
@@ -1139,6 +1141,7 @@ export async function publishArtworksWithProvenance(
         inviteEmail: opts.externalArtistEmail ?? null,
         claimType: opts.intent,
         workId: id,
+        projectId: opts.projectId ?? null,
         visibility: "public",
         ...claimPayload,
       });
@@ -1148,6 +1151,7 @@ export async function publishArtworksWithProvenance(
         artistProfileId: opts.artistProfileId,
         claimType: opts.intent,
         workId: id,
+        projectId: opts.projectId ?? null,
         visibility: "public",
         ...claimPayload,
       });

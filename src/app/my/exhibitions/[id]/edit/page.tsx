@@ -15,9 +15,15 @@ import {
 } from "@/lib/supabase/exhibitions";
 import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
-import { createDelegationInvite } from "@/lib/supabase/delegations";
+import {
+  createDelegationInvite,
+  createDelegationInviteForProfile,
+} from "@/lib/supabase/delegations";
 import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
+import type { PublicProfile } from "@/lib/supabase/artists";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { getSession } from "@/lib/supabase/auth";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -59,6 +65,12 @@ export default function EditExhibitionPage() {
   const [delegateEmail, setDelegateEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
+  const [delegateSearchQ, setDelegateSearchQ] = useState("");
+  const [delegateSearchResults, setDelegateSearchResults] = useState<PublicProfile[]>([]);
+  const [delegateSearchLoading, setDelegateSearchLoading] = useState(false);
+  const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
+  const [inviteByProfileToast, setInviteByProfileToast] = useState<"sent" | "failed" | null>(null);
+  const [myId, setMyId] = useState<string | null>(null);
 
   const effectiveProfileId = actingAsProfileId ?? myProfileId;
 
@@ -145,6 +157,52 @@ export default function EditExhibitionPage() {
     );
     setHostSearching(false);
   }, [hostSearch]);
+
+  useEffect(() => {
+    getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setMyId(session.user.id);
+    });
+  }, []);
+
+  const doDelegateSearch = useCallback(async () => {
+    const q = delegateSearchQ.trim();
+    if (!q) {
+      setDelegateSearchResults([]);
+      return;
+    }
+    setDelegateSearchLoading(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setDelegateSearchResults((data ?? []) as PublicProfile[]);
+    setDelegateSearchLoading(false);
+  }, [delegateSearchQ]);
+
+  useEffect(() => {
+    const t = setTimeout(doDelegateSearch, 300);
+    return () => clearTimeout(t);
+  }, [delegateSearchQ, doDelegateSearch]);
+
+  const filteredDelegateResults = myId
+    ? delegateSearchResults.filter((p) => p.id !== myId)
+    : delegateSearchResults;
+
+  async function handleInviteManagerByProfile(profile: PublicProfile) {
+    setInviteByProfileSending(true);
+    setInviteByProfileToast(null);
+    const { data, error } = await createDelegationInviteForProfile({
+      delegateProfileId: profile.id,
+      scopeType: "project",
+      projectId: id || null,
+      permissions: ["view", "edit_metadata", "manage_works"],
+    });
+    setInviteByProfileSending(false);
+    if (error || !data) {
+      setInviteByProfileToast("failed");
+      return;
+    }
+    setInviteByProfileToast("sent");
+    setDelegateSearchQ("");
+    setDelegateSearchResults([]);
+  }
 
   useEffect(() => {
     const tmr = setTimeout(runCuratorSearch, 300);
@@ -498,6 +556,63 @@ export default function EditExhibitionPage() {
             <div className="mt-8 rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
               <p className="mb-2 text-sm font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
               <p className="mb-3 text-xs text-zinc-500">{t("delegation.inviteManagerHint")}</p>
+
+              <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.inviteExistingUser")}</p>
+              <div className="relative mb-4">
+                <input
+                  type="text"
+                  value={delegateSearchQ}
+                  onChange={(e) => setDelegateSearchQ(e.target.value)}
+                  placeholder={t("delegation.searchUserPlaceholder")}
+                  className="w-full min-w-[200px] rounded border border-zinc-300 px-3 py-2 text-sm"
+                />
+                {delegateSearchLoading && (
+                  <p className="mt-1 text-xs text-zinc-400">{t("common.loading")}</p>
+                )}
+                {filteredDelegateResults.length > 0 && (
+                  <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-zinc-200 bg-white py-1 shadow-lg">
+                    {filteredDelegateResults.map((p) => (
+                      <li key={p.id}>
+                        <button
+                          type="button"
+                          onClick={() => handleInviteManagerByProfile(p)}
+                          disabled={inviteByProfileSending}
+                          className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                        >
+                          {p.avatar_url ? (
+                            <img
+                              src={
+                                p.avatar_url.startsWith("http")
+                                  ? p.avatar_url
+                                  : getArtworkImageUrl(p.avatar_url, "avatar")
+                              }
+                              alt=""
+                              className="h-8 w-8 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
+                              {(p.display_name ?? p.username ?? "?").charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="truncate">
+                            {p.display_name?.trim() || (p.username ? `@${p.username}` : p.id.slice(0, 8))}
+                          </span>
+                          {p.username && (
+                            <span className="truncate text-zinc-400">@{p.username}</span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {inviteByProfileToast && (
+                <p className={`mb-3 text-xs ${inviteByProfileToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
+                  {inviteByProfileToast === "sent" ? t("delegation.inviteSentToUser") : t("delegation.inviteToUserFailed")}
+                </p>
+              )}
+
+              <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.orInviteByEmail")}</p>
               <div className="flex flex-wrap gap-2">
                 <input
                   type="email"

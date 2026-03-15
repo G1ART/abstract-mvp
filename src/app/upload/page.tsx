@@ -27,6 +27,7 @@ import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
 import { parseSizeWithUnit } from "@/lib/size/format";
+import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
@@ -123,6 +124,20 @@ function UploadPageContent() {
       setUserId(session?.user?.id ?? null);
     });
   }, []);
+
+  // When coming from exhibition add with dropped file(s), pre-fill image (single) so user goes straight to form
+  useEffect(() => {
+    if (!fromExhibition || !addToExhibitionId?.trim()) return;
+    const pending = getAndClearPendingExhibitionFiles({
+      exhibitionId: addToExhibitionId.trim(),
+      artistId: preselectedArtistId ?? null,
+      externalName: preselectedExternalName ?? null,
+    });
+    if (pending?.files.length === 1) {
+      setImage(pending.files[0]);
+      setStep("form");
+    }
+  }, [fromExhibition, addToExhibitionId, preselectedArtistId, preselectedExternalName]);
 
   const doSearchArtists = useCallback(async () => {
     const q = artistSearch.trim();

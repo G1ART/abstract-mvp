@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   attachArtworkImage,
   createDraftArtwork,
@@ -23,6 +24,8 @@ import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
+import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
+import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -48,6 +51,16 @@ function deriveTitle(filename: string): string {
 }
 
 export default function BulkUploadPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const addToExhibitionId = searchParams.get("addToExhibition")?.trim() || null;
+  const fromExhibition = searchParams.get("from") === "exhibition";
+  const preselectedArtistId = searchParams.get("artistId");
+  const preselectedArtistName = searchParams.get("artistName");
+  const preselectedArtistUsername = searchParams.get("artistUsername");
+  const preselectedExternalName = searchParams.get("externalName");
+  const preselectedExternalEmail = searchParams.get("externalEmail");
+
   const { t } = useT();
   const { actingAsProfileId } = useActingAs();
   const [drafts, setDrafts] = useState<ArtworkWithLikes[]>([]);
@@ -63,18 +76,30 @@ export default function BulkUploadPage() {
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Persona / intent
-  const [intent, setIntent] = useState<IntentType | null>(null);
+  // Persona / intent — from exhibition add: pre-fill CURATED + artist, skip intent/attribution steps
+  const [intent, setIntent] = useState<IntentType | null>(
+    fromExhibition && addToExhibitionId ? "CURATED" : null
+  );
   const [artistSearch, setArtistSearch] = useState("");
   const [artistResults, setArtistResults] = useState<ArtistOption[]>([]);
-  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(null);
+  const [selectedArtist, setSelectedArtist] = useState<ArtistOption | null>(
+    fromExhibition && preselectedArtistId
+      ? {
+          id: preselectedArtistId,
+          username: preselectedArtistUsername ?? null,
+          display_name: preselectedArtistName ?? null,
+        }
+      : null
+  );
   const [searching, setSearching] = useState(false);
-  const [useExternalArtist, setUseExternalArtist] = useState(false);
-  const [externalArtistName, setExternalArtistName] = useState("");
-  const [externalArtistEmail, setExternalArtistEmail] = useState("");
+  const [useExternalArtist, setUseExternalArtist] = useState(!!(fromExhibition && preselectedExternalName));
+  const [externalArtistName, setExternalArtistName] = useState(preselectedExternalName ?? "");
+  const [externalArtistEmail, setExternalArtistEmail] = useState(preselectedExternalEmail ?? "");
   const [periodStatus, setPeriodStatus] = useState<"past" | "current" | "future">("current");
-  /** Attribution 단계를 '다음' 버튼으로 완료했을 때만 true. 2자만 입력해서 자동으로 넘어가는 것 방지. */
-  const [attributionStepDone, setAttributionStepDone] = useState(false);
+  /** Attribution 단계를 '다음' 버튼으로 완료했을 때만 true. 전시에서 진입 시 작가/외부 이미 선택됨 → 바로 업로드 단계. */
+  const [attributionStepDone, setAttributionStepDone] = useState(
+    !!(fromExhibition && addToExhibitionId && (preselectedArtistId || preselectedExternalName))
+  );
 
   const needsAttribution = intent !== null && intent !== "CREATED";
 
@@ -105,6 +130,22 @@ export default function BulkUploadPage() {
   useEffect(() => {
     fetchDrafts();
   }, [fetchDrafts]);
+
+  // When coming from exhibition add with dropped files, pre-fill pending files
+  useEffect(() => {
+    if (!fromExhibition || !addToExhibitionId) return;
+    const pending = getAndClearPendingExhibitionFiles({
+      exhibitionId: addToExhibitionId,
+      artistId: preselectedArtistId ?? null,
+      externalName: preselectedExternalName ?? null,
+    });
+    if (pending?.files.length) {
+      setPendingFiles((prev) => [
+        ...prev,
+        ...pending.files.map((file) => ({ id: crypto.randomUUID(), file })),
+      ]);
+    }
+  }, [fromExhibition, addToExhibitionId, preselectedArtistId, preselectedExternalName]);
 
   function addPendingFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -268,6 +309,9 @@ export default function BulkUploadPage() {
         if (intent === "INVENTORY" || intent === "CURATED") {
           opts.period_status = periodStatus;
         }
+        if (intent === "CURATED" && addToExhibitionId) {
+          opts.projectId = addToExhibitionId;
+        }
         const { error, inviteSent, inviteFailed } = await publishArtworksWithProvenance(ids, opts);
         if (error) {
           setToast(error instanceof Error ? error.message : "Publish failed");
@@ -295,6 +339,13 @@ export default function BulkUploadPage() {
           setTimeout(() => setToast(null), 3000);
           return;
         }
+      }
+      if (addToExhibitionId && ids.length > 0 && intent === "CURATED") {
+        for (const workId of ids) {
+          await addWorkToExhibition(addToExhibitionId, workId);
+        }
+        router.push(`/my/exhibitions/${addToExhibitionId}/add`);
+        return;
       }
       setSelected(new Set());
       await fetchDrafts();
@@ -330,9 +381,19 @@ export default function BulkUploadPage() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-xl font-semibold">{t("bulk.title")}</h1>
-          <Link href="/upload" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("upload.tabSingle")}
-          </Link>
+          <div className="flex items-center gap-4">
+            {addToExhibitionId && (
+              <Link
+                href={`/my/exhibitions/${addToExhibitionId}/add`}
+                className="text-sm text-zinc-600 hover:text-zinc-900"
+              >
+                ← {t("exhibition.backToExhibitionAdd")}
+              </Link>
+            )}
+            <Link href="/upload" className="text-sm text-zinc-600 hover:text-zinc-900">
+              ← {t("common.backTo")} {t("upload.tabSingle")}
+            </Link>
+          </div>
         </div>
 
         {/* Step: Intent — same width as single upload (max-w-xl) */}

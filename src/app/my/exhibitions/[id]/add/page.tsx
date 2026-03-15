@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import {
@@ -24,8 +24,14 @@ import {
   createClaimForExistingArtist,
   createExternalArtistAndClaim,
 } from "@/lib/provenance/rpc";
-import { createDelegationInvite } from "@/lib/supabase/delegations";
+import {
+  createDelegationInvite,
+  createDelegationInviteForProfile,
+} from "@/lib/supabase/delegations";
 import { getExhibitionById } from "@/lib/supabase/exhibitions";
+import type { PublicProfile } from "@/lib/supabase/artists";
+import { getSession } from "@/lib/supabase/auth";
+import { setPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 
 type Participant = {
   id: string;
@@ -35,8 +41,10 @@ type Participant = {
 
 export default function AddWorkToExhibitionPage() {
   const params = useParams();
+  const router = useRouter();
   const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
+  const [dragOverBucketKey, setDragOverBucketKey] = useState<string | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingId, setAddingId] = useState<string | null>(null);
@@ -66,6 +74,12 @@ export default function AddWorkToExhibitionPage() {
   const [delegateEmail, setDelegateEmail] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
+  const [delegateSearchQ, setDelegateSearchQ] = useState("");
+  const [delegateSearchResults, setDelegateSearchResults] = useState<PublicProfile[]>([]);
+  const [delegateSearchLoading, setDelegateSearchLoading] = useState(false);
+  const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
+  const [inviteByProfileToast, setInviteByProfileToast] = useState<"sent" | "failed" | null>(null);
+  const [myId, setMyId] = useState<string | null>(null);
   const [exhibitionTitle, setExhibitionTitle] = useState<string | null>(null);
 
   const fetchArtworks = useCallback(async () => {
@@ -122,6 +136,12 @@ export default function AddWorkToExhibitionPage() {
     getExhibitionById(id).then(({ data }) => setExhibitionTitle(data?.title ?? null));
   }, [id]);
 
+  useEffect(() => {
+    getSession().then(({ data: { session } }) => {
+      if (session?.user?.id) setMyId(session.user.id);
+    });
+  }, []);
+
   // 참여 작가 검색 (온보딩된 유저)
   useEffect(() => {
     const q = artistSearch.trim();
@@ -148,6 +168,47 @@ export default function AddWorkToExhibitionPage() {
       cancelled = true;
     };
   }, [artistSearch]);
+
+  const doDelegateSearch = useCallback(async () => {
+    const q = delegateSearchQ.trim();
+    if (!q) {
+      setDelegateSearchResults([]);
+      return;
+    }
+    setDelegateSearchLoading(true);
+    const { data } = await searchPeople({ q, limit: 10 });
+    setDelegateSearchResults((data ?? []) as PublicProfile[]);
+    setDelegateSearchLoading(false);
+  }, [delegateSearchQ]);
+
+  useEffect(() => {
+    const t = setTimeout(doDelegateSearch, 300);
+    return () => clearTimeout(t);
+  }, [delegateSearchQ, doDelegateSearch]);
+
+  const filteredDelegateResults = myId
+    ? delegateSearchResults.filter((p) => p.id !== myId)
+    : delegateSearchResults;
+
+  async function handleInviteManagerByProfile(profile: PublicProfile) {
+    if (!id) return;
+    setInviteByProfileSending(true);
+    setInviteByProfileToast(null);
+    const { data, error } = await createDelegationInviteForProfile({
+      delegateProfileId: profile.id,
+      scopeType: "project",
+      projectId: id,
+      permissions: ["view", "edit_metadata", "manage_works"],
+    });
+    setInviteByProfileSending(false);
+    if (error || !data) {
+      setInviteByProfileToast("failed");
+      return;
+    }
+    setInviteByProfileToast("sent");
+    setDelegateSearchQ("");
+    setDelegateSearchResults([]);
+  }
 
   const filteredArtworks = useMemo(() => {
     const q = workQuery.trim().toLowerCase();
@@ -258,13 +319,71 @@ export default function AddWorkToExhibitionPage() {
         {/* Invite manager (delegation) */}
         <div id="invite" className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
           <p className="mb-2 text-xs font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
+          <p className="mb-3 text-xs text-zinc-500">{t("delegation.inviteManagerHint")}</p>
+
+          <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.inviteExistingUser")}</p>
+          <div className="relative mb-3">
+            <input
+              type="text"
+              value={delegateSearchQ}
+              onChange={(e) => setDelegateSearchQ(e.target.value)}
+              placeholder={t("delegation.searchUserPlaceholder")}
+              className="w-full min-w-[200px] rounded border border-zinc-300 px-3 py-2 text-sm"
+            />
+            {delegateSearchLoading && (
+              <p className="mt-1 text-xs text-zinc-400">{t("common.loading")}</p>
+            )}
+            {filteredDelegateResults.length > 0 && (
+              <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-zinc-200 bg-white py-1 shadow-lg">
+                {filteredDelegateResults.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleInviteManagerByProfile(p)}
+                      disabled={inviteByProfileSending}
+                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                    >
+                      {p.avatar_url ? (
+                        <img
+                          src={
+                            p.avatar_url.startsWith("http")
+                              ? p.avatar_url
+                              : getArtworkImageUrl(p.avatar_url, "avatar")
+                          }
+                          alt=""
+                          className="h-8 w-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
+                          {(p.display_name ?? p.username ?? "?").charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="truncate">
+                        {p.display_name?.trim() || (p.username ? `@${p.username}` : p.id.slice(0, 8))}
+                      </span>
+                      {p.username && (
+                        <span className="truncate text-zinc-400">@{p.username}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          {inviteByProfileToast && (
+            <p className={`mb-3 text-xs ${inviteByProfileToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
+              {inviteByProfileToast === "sent" ? t("delegation.inviteSentToUser") : t("delegation.inviteToUserFailed")}
+            </p>
+          )}
+
+          <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.orInviteByEmail")}</p>
           <div className="flex flex-wrap gap-2">
             <input
               type="email"
               value={delegateEmail}
               onChange={(e) => setDelegateEmail(e.target.value)}
               placeholder={t("delegation.inviteByEmail")}
-              className="flex-1 min-w-[180px] rounded border border-zinc-300 px-3 py-2 text-sm"
+              className="min-w-[180px] flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
             />
             <button
               type="button"
@@ -310,9 +429,7 @@ export default function AddWorkToExhibitionPage() {
             </button>
           </div>
           {inviteToast && (
-            <p
-              className={`mt-2 text-xs ${inviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}
-            >
+            <p className={`mt-2 text-xs ${inviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
               {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
             </p>
           )}
@@ -527,6 +644,169 @@ export default function AddWorkToExhibitionPage() {
           </section>
         ) : (
           <section>
+            {/* 작가 단위 버킷: 드롭 존 + 단일/벌크 버튼 */}
+            <div className="mb-6 space-y-4">
+              <p className="text-sm font-semibold text-zinc-800">{t("exhibition.addWorksByArtist")}</p>
+              {(participants.length > 0 || externalRows.some((r) => r.name.trim())) ? (
+                <ul className="grid gap-4 sm:grid-cols-2">
+                  {participants.map((p) => {
+                    const bucketKey = p.id;
+                    const singleQs = new URLSearchParams({
+                      addToExhibition: id,
+                      from: "exhibition",
+                      artistId: p.id,
+                    });
+                    if (p.display_name) singleQs.set("artistName", p.display_name);
+                    if (p.username) singleQs.set("artistUsername", p.username);
+                    const bulkQs = new URLSearchParams({
+                      addToExhibition: id,
+                      from: "exhibition",
+                      artistId: p.id,
+                    });
+                    if (p.username) bulkQs.set("artistUsername", p.username);
+                    if (p.display_name) bulkQs.set("artistName", p.display_name);
+                    const label = p.display_name || p.username || p.id;
+                    return (
+                      <li key={bucketKey} className="rounded-xl border-2 border-zinc-200 bg-white p-4">
+                        <p className="mb-3 font-medium text-zinc-900">{label}</p>
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDragOverBucketKey(bucketKey);
+                          }}
+                          onDragLeave={() => setDragOverBucketKey(null)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverBucketKey(null);
+                            const files = Array.from(e.dataTransfer.files).filter((f) =>
+                              ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(f.type)
+                            );
+                            if (files.length === 0) return;
+                            setPendingExhibitionFiles({
+                              exhibitionId: id,
+                              artistId: p.id,
+                              artistName: p.display_name ?? undefined,
+                              artistUsername: p.username ?? undefined,
+                              files,
+                            });
+                            if (files.length === 1) {
+                              router.push(`/upload?${singleQs.toString()}`);
+                            } else {
+                              router.push(`/upload/bulk?${bulkQs.toString()}`);
+                            }
+                          }}
+                          className={`mb-3 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
+                            dragOverBucketKey === bucketKey
+                              ? "border-zinc-900 bg-zinc-100"
+                              : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400"
+                          }`}
+                        >
+                          {t("exhibition.dropImagesHere")}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            href={`/upload?${singleQs.toString()}`}
+                            className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                          >
+                            {t("exhibition.uploadSingleWork")}
+                          </Link>
+                          <Link
+                            href={`/upload/bulk?${bulkQs.toString()}`}
+                            className="inline-flex items-center rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                          >
+                            {t("exhibition.uploadBulkWorks")}
+                          </Link>
+                        </div>
+                      </li>
+                    );
+                  })}
+                  {externalRows
+                    .map((r) => ({ name: r.name.trim(), email: r.email.trim() }))
+                    .filter((r) => r.name)
+                    .map((r, idx) => {
+                      const bucketKey = `ext-${idx}`;
+                      const singleQs = new URLSearchParams({
+                        addToExhibition: id,
+                        from: "exhibition",
+                        externalName: r.name,
+                      });
+                      if (r.email) singleQs.set("externalEmail", r.email);
+                      const bulkQs = new URLSearchParams({
+                        addToExhibition: id,
+                        from: "exhibition",
+                        externalName: r.name,
+                      });
+                      if (r.email) bulkQs.set("externalEmail", r.email);
+                      return (
+                        <li key={bucketKey} className="rounded-xl border-2 border-zinc-200 bg-white p-4">
+                          <p className="mb-3 font-medium text-zinc-900">{r.name}</p>
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDragOverBucketKey(bucketKey);
+                            }}
+                            onDragLeave={() => setDragOverBucketKey(null)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setDragOverBucketKey(null);
+                              const files = Array.from(e.dataTransfer.files).filter((f) =>
+                                ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(f.type)
+                              );
+                              if (files.length === 0) return;
+                              setPendingExhibitionFiles({
+                                exhibitionId: id,
+                                externalName: r.name,
+                                externalEmail: r.email || undefined,
+                                files,
+                              });
+                              if (files.length === 1) {
+                                router.push(`/upload?${singleQs.toString()}`);
+                              } else {
+                                router.push(`/upload/bulk?${bulkQs.toString()}`);
+                              }
+                            }}
+                            className={`mb-3 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
+                              dragOverBucketKey === bucketKey
+                                ? "border-zinc-900 bg-zinc-100"
+                                : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400"
+                            }`}
+                          >
+                            {t("exhibition.dropImagesHere")}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Link
+                              href={`/upload?${singleQs.toString()}`}
+                              className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                            >
+                              {t("exhibition.uploadSingleWork")}
+                            </Link>
+                            <Link
+                              href={`/upload/bulk?${bulkQs.toString()}`}
+                              className="inline-flex items-center rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                            >
+                              {t("exhibition.uploadBulkWorks")}
+                            </Link>
+                          </div>
+                        </li>
+                      );
+                    })}
+                </ul>
+              ) : (
+                <div className="rounded-xl border-2 border-zinc-200 bg-zinc-50/80 p-4">
+                  <p className="mb-3 text-xs text-zinc-500">{t("exhibition.addArtistsFirst")}</p>
+                  <button
+                    type="button"
+                    onClick={() => setStep("artists")}
+                    className="text-sm font-medium text-zinc-700 underline hover:text-zinc-900"
+                  >
+                    {t("exhibition.stepArtists")} ←
+                  </button>
+                </div>
+              )}
+            </div>
+
             {participants.length > 0 && (
               <p className="mb-2 text-xs text-zinc-500">{t("exhibition.selectedArtistsWorksOnly")}</p>
             )}
@@ -563,59 +843,6 @@ export default function AddWorkToExhibitionPage() {
                   placeholder={t("exhibition.searchWorksPlaceholder")}
                   className="w-full max-w-xs rounded border border-zinc-300 px-3 py-2 text-sm"
                 />
-              </div>
-            </div>
-
-            <div className="mb-3 space-y-1 text-xs text-zinc-500">
-              <p>{t("exhibition.uploadNewWork")}</p>
-              <div className="flex flex-wrap gap-2">
-                {participants.map((p) => {
-                  const qs = new URLSearchParams({
-                    addToExhibition: id,
-                    from: "exhibition",
-                    artistId: p.id,
-                  });
-                  if (p.display_name) qs.set("artistName", p.display_name);
-                  if (p.username) qs.set("artistUsername", p.username);
-                  return (
-                    <Link
-                      key={p.id}
-                      href={`/upload?${qs.toString()}`}
-                      className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                    >
-                      {p.display_name || p.username || p.id}
-                    </Link>
-                  );
-                })}
-                {externalRows
-                  .map((r) => ({ name: r.name.trim(), email: r.email.trim() }))
-                  .filter((r) => r.name)
-                  .map((r, idx) => {
-                    const qs = new URLSearchParams({
-                      addToExhibition: id,
-                      from: "exhibition",
-                      externalName: r.name,
-                    });
-                    if (r.email) qs.set("externalEmail", r.email);
-                    return (
-                      <Link
-                        key={`${r.name}-${idx}`}
-                        href={`/upload?${qs.toString()}`}
-                        className="inline-flex items-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                      >
-                        {r.name}
-                      </Link>
-                    );
-                  })}
-                {participants.length === 0 &&
-                  !externalRows.some((r) => r.name.trim()) && (
-                    <Link
-                      href={`/upload?addToExhibition=${id}`}
-                      className="inline-flex items-center rounded-full border border-dashed border-zinc-300 px-3 py-1 text-xs text-zinc-600 hover:border-zinc-400 hover:text-zinc-900"
-                    >
-                      /upload
-                    </Link>
-                  )}
               </div>
             </div>
 
