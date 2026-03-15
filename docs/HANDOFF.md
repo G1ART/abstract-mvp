@@ -2,6 +2,25 @@
 
 Last updated: 2026-02-19
 
+## 2026-02-19 — 온보딩 UX 개선 (매직링크 진입·난수 아이디 배너)
+
+- **매직링크 진입 시 프로필 폼 노출**
+  - `ProfileBootstrap`: `pathname === "/onboarding"`일 때 `ensure_my_profile()` 호출 생략. 매직링크 클릭 → 콜백에서 `/onboarding` 이동 시 프로필이 생성되지 않아, 온보딩에서 유저아이디·공개 이름·역할을 한 번에 입력 후 저장 (추가 매직링크 발송 없음).
+- **온보딩 문구**
+  - "프로필 완성" 화면에 "유저 아이디와 공개 이름을 입력하세요. 추가 이메일 링크는 발송되지 않습니다" 안내 추가 (i18n: `onboarding.completeProfileHint`).
+- **제출 후 이동**
+  - 프로필 제출 후 비밀번호 미설정(`HAS_PASSWORD_KEY` 없음)이면 `/set-password`, 있으면 `/feed`로 이동.
+- **난수 아이디 사용자 배너**
+  - `username`이 `user_` + 8자 16진수 패턴인 사용자에게 헤더 하단에 안내 배너: "설정에서 유저 아이디를 설정하세요" + 설정 링크. 닫기 시 `localStorage`에 저장해 재노출 안 함 (`RandomIdBanner`).
+- **문서**
+  - `docs/ONBOARDING_AND_USERNAME_AUDIT.md`에 §7 벤치마킹·적용 개선 사항 추가.
+
+**Supabase SQL 적용 필요:** 없음.
+
+**Verified:** `npm run build` 통과.
+
+---
+
 ## 2026-02-19 — 업로더 삭제 권한·사이즈 단위·피드 더 불러오기
 
 - **1) 업로드 당사자 삭제 권한**

@@ -184,7 +184,11 @@ export default function OnboardingPage() {
     }
 
     await ensureFreeEntitlement(session.user.id);
-    router.replace("/feed?tab=all&sort=latest");
+    if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {
+      router.replace("/set-password");
+    } else {
+      router.replace("/feed?tab=all&sort=latest");
+    }
   }
 
   if (mode === "check") {
@@ -350,7 +354,8 @@ export default function OnboardingPage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-12">
-      <h1 className="mb-6 text-xl font-semibold">Complete your profile</h1>
+      <h1 className="mb-2 text-xl font-semibold">{t("onboarding.completeProfile")}</h1>
+      <p className="mb-6 text-sm text-zinc-500">{t("onboarding.completeProfileHint")}</p>
       <form onSubmit={handleProfileSubmit} className="space-y-4">
         <div>
           <label htmlFor="username" className="mb-1 block text-sm font-medium">
@@ -435,11 +440,10 @@ export default function OnboardingPage() {
 
       <div className="mt-10 border-t border-zinc-200 pt-6">
         <p className="mb-2 text-sm font-medium text-zinc-700">
-          Make future logins faster
+          {t("onboarding.setPasswordLater")}
         </p>
         <p className="text-xs text-zinc-500">
-          Continue를 누르면 다음 화면에서 비밀번호를 설정할 수 있습니다.
-          이메일 링크 없이 로그인하려면 그때 비밀번호를 입력하면 됩니다.
+          {t("onboarding.setPasswordLaterHint")}
         </p>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 
 const BOOTSTRAP_KEY = "ab_profile_bootstrap_done";
@@ -22,8 +23,14 @@ function setBootstrapDone(): void {
   }
 }
 
-function doEnsure(session: { user: { id: string } } | null) {
+/** Skip profile creation on onboarding so the user can set username/display_name first (no random ID). */
+function isOnboardingPath(pathname: string | null): boolean {
+  return pathname === "/onboarding";
+}
+
+function doEnsure(session: { user: { id: string } } | null, pathname: string | null) {
   if (!session?.user?.id) return;
+  if (isOnboardingPath(pathname)) return;
   if (getBootstrapDone()) return;
 
   void (async () => {
@@ -42,6 +49,8 @@ function doEnsure(session: { user: { id: string } } | null) {
 }
 
 export function ProfileBootstrap() {
+  const pathname = usePathname();
+
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session?.user?.id) {
@@ -52,15 +61,15 @@ export function ProfileBootstrap() {
         }
         return;
       }
-      doEnsure(session);
+      doEnsure(session, pathname);
     });
 
     supabase.auth.getSession().then(({ data: { session } }) => {
-      doEnsure(session);
+      doEnsure(session, pathname);
     });
 
     return () => sub.subscription.unsubscribe();
-  }, []);
+  }, [pathname]);
 
   return null;
 }
