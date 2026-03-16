@@ -111,9 +111,7 @@ function LoginInner() {
         <div className="w-full max-w-xs space-y-6">
           {/* Password login (primary) */}
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-            }}
+            onSubmit={handlePasswordSignIn}
             className="space-y-4"
           >
             <input
@@ -139,8 +137,7 @@ function LoginInner() {
             )}
             <div className="flex flex-col gap-2">
               <button
-                type="button"
-                onClick={handlePasswordSignIn}
+                type="submit"
                 disabled={loading}
                 className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
               >

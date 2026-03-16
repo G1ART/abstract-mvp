@@ -2,6 +2,24 @@
 
 Last updated: 2026-02-19
 
+## 2026-02-19 — 전시 관리자 초대·작가 버킷·벌크 전시 컨텍스트
+
+- **전시 관리자 초대: 유저 검색 + 이메일**
+  - 전시 편집(`/my/exhibitions/[id]/edit`)·전시 작품 추가(`/my/exhibitions/[id]/add`)에서 관리자 초대 시: **가입한 유저**는 이름·@유저네임 검색으로 선택 후 `createDelegationInviteForProfile`(project scope)로 앱 내 초대. **미가입자**는 기존처럼 이메일 입력 후 `createDelegationInvite` + 초대 메일 발송.
+- **전시 작품 추가: 작가 단위 버킷**
+  - 2단계(작품 선택)에서 참여 작가·외부 작가마다 **버킷** 하나씩 표시. 각 버킷: (1) **드롭 존** — 로컬 이미지 파일 1점 드롭 → 단일 업로드, 2점 이상 → 벌크 업로드로 이동(파일은 `pendingExhibitionUpload` 스토어로 전달). (2) **단일 작품 추가**·**벌크 작품 추가** 버튼. 참여 작가 없으면 "1단계에서 참여 작가 추가" 안내.
+- **벌크 업로드: 전시·작가 컨텍스트**
+  - 전시 작품 추가에서 벌크 링크 시 `addToExhibition`·`from=exhibition`·`artistId`(또는 외부는 `externalName`·`externalEmail`) 쿼리 전달. 벌크 페이지에서 이 파라미터 있으면 intent=CURATED·작가/외부 preselected·attribution 스킵 후 바로 업로드 단계. 드롭한 파일이 있으면 스토어에서 꺼내 `pendingFiles`에 추가. 발행 시 `projectId`로 클레임 연결·전시에 작품 추가 후 전시 작품 추가 페이지로 리다이렉트.
+- **단일 업로드**: 전시에서 진입 시 드롭한 파일 1개가 스토어에 있으면 `setImage`·`setStep("form")`으로 폼 단계 직진입.
+- **API**: `PublishWithProvenanceOptions`에 `projectId` 추가. `publishArtworksWithProvenance`에서 CURATED/INVENTORY 클레임 생성 시 `projectId` 전달.
+- **문서**: `docs/EXHIBITION_ADD_WORKS_ROOT_CAUSE.md`(작가 중복 선택 루프 원인), `docs/EXHIBITION_ARTIST_BUCKETS_DESIGN.md`(작가 버킷·DnD 설계), `docs/ONBOARDING_UX_FLOWS.md`(온보딩·난수아이디 UX 플로우).
+
+**Supabase SQL 적용 필요:** 없음.
+
+**Verified:** `npm run build` 통과.
+
+---
+
 ## 2026-02-19 — 온보딩 UX 개선 (매직링크 진입·난수 아이디 배너)
 
 - **매직링크 진입 시 프로필 폼 노출**

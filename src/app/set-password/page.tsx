@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
 import { AuthGate } from "@/components/AuthGate";
+import { useT } from "@/lib/i18n/useT";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function SetPasswordPage() {
   const router = useRouter();
+  const { t } = useT();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,11 +22,11 @@ export default function SetPasswordPage() {
     setError(null);
 
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      setError(t("setPassword.errorMinLength"));
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match");
+      setError(t("setPassword.errorMismatch"));
       return;
     }
 
@@ -47,11 +49,10 @@ export default function SetPasswordPage() {
     <AuthGate>
       <main className="mx-auto max-w-sm px-4 py-12">
         <h1 className="mb-2 text-xl font-semibold text-zinc-900">
-          Set your password
+          {t("setPassword.title")}
         </h1>
         <p className="mb-6 text-sm text-zinc-600">
-          Set a password so you can sign in with email and password anytime,
-          without relying on email links.
+          {t("setPassword.hint")}
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -59,14 +60,14 @@ export default function SetPasswordPage() {
               htmlFor="password"
               className="mb-1 block text-sm font-medium text-zinc-700"
             >
-              New password
+              {t("setPassword.newPassword")}
             </label>
             <input
               id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
+              placeholder={t("setPassword.placeholderPassword")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
               autoComplete="new-password"
               minLength={MIN_PASSWORD_LENGTH}
@@ -77,14 +78,14 @@ export default function SetPasswordPage() {
               htmlFor="confirm"
               className="mb-1 block text-sm font-medium text-zinc-700"
             >
-              Confirm password
+              {t("setPassword.confirm")}
             </label>
             <input
               id="confirm"
               type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              placeholder="Same as above"
+              placeholder={t("setPassword.placeholderConfirm")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
               autoComplete="new-password"
             />
@@ -97,7 +98,7 @@ export default function SetPasswordPage() {
             disabled={loading}
             className="w-full rounded bg-zinc-900 px-4 py-2 font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >
-            {loading ? "Setting password..." : "Set password"}
+            {loading ? t("setPassword.settingButton") : t("setPassword.setButton")}
           </button>
         </form>
       </main>

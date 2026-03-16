@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
+import { useT } from "@/lib/i18n/useT";
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useT();
 
   useEffect(() => {
     getSession().then(async ({ data: { session } }) => {
@@ -29,8 +31,9 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <p className="text-zinc-600">Loading...</p>
+    <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+      <p className="text-lg font-semibold text-zinc-900">Abstract</p>
+      <p className="text-zinc-600">{t("common.loading")}</p>
     </div>
   );
 }

@@ -1155,7 +1155,7 @@ export default function SettingsPage() {
             </button>
               </>
             )}
-            <TestRpcButton />
+            {process.env.NODE_ENV === "development" && <TestRpcButton />}
           </div>
         )}
 

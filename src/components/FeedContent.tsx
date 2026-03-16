@@ -420,7 +420,25 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           </Link>
         </div>
       ) : isEmpty ? (
-        <p className="py-12 text-center text-zinc-600">{t("feed.noArtworks")}</p>
+        <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
+          <p className="text-zinc-600">{t("feed.noArtworks")}</p>
+          {tab === "all" && (
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/upload"
+                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                {t("feed.emptyAllCtaUpload")}
+              </Link>
+              <Link
+                href="/people"
+                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("feed.emptyAllCtaPeople")}
+              </Link>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
           {feedItems.map((item, idx) => {

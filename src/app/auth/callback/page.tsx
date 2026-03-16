@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
+import { useT } from "@/lib/i18n/useT";
 
 /** Only allow relative paths to avoid open redirect. */
 function safeNext(next: string | null): string | null {
@@ -18,17 +19,21 @@ function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextParam = safeNext(searchParams.get("next"));
+  const { t } = useT();
 
   useEffect(() => {
-    const t = setTimeout(async () => {
+    let cancelled = false;
+    (async () => {
       const {
         data: { session },
       } = await getSession();
+      if (cancelled) return;
       if (!session) {
         router.replace("/");
         return;
       }
       const { data: profile } = await getMyProfile();
+      if (cancelled) return;
       if (!profile) {
         router.replace("/onboarding");
         return;
@@ -41,13 +46,15 @@ function AuthCallbackInner() {
         return;
       }
       router.replace(nextParam || "/feed?tab=all&sort=latest");
-    }, 600);
-    return () => clearTimeout(t);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router, nextParam]);
 
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <p className="text-zinc-600">Signing you in...</p>
+      <p className="text-zinc-600">{t("auth.signingIn")}</p>
     </div>
   );
 }
@@ -57,7 +64,7 @@ export default function AuthCallbackPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <p className="text-zinc-600">Signing you in...</p>
+          <p className="text-zinc-600">Loading...</p>
         </div>
       }
     >

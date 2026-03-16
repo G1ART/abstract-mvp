@@ -78,19 +78,19 @@ export default function OnboardingPage() {
 
     const normalizedUsername = username.trim().toLowerCase();
     if (!USERNAME_REGEX.test(normalizedUsername)) {
-      setError("Username: 3–20 chars, lowercase letters, numbers, underscores only");
+      setError(t("onboarding.errorUsernameInvalid"));
       return;
     }
     if (roles.length < 1) {
-      setError("Select at least one role");
+      setError(t("onboarding.errorSelectRole"));
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      setError(t("onboarding.errorPasswordMin"));
       return;
     }
     if (password !== passwordConfirm) {
-      setError("Passwords do not match");
+      setError(t("onboarding.errorPasswordMismatch"));
       return;
     }
 
@@ -142,11 +142,11 @@ export default function OnboardingPage() {
 
     const normalizedUsername = username.trim().toLowerCase();
     if (!USERNAME_REGEX.test(normalizedUsername)) {
-      setError("Username: 3–20 chars, lowercase letters, numbers, underscores only");
+      setError(t("onboarding.errorUsernameInvalid"));
       return;
     }
     if (roles.length < 1) {
-      setError("Select at least one role");
+      setError(t("onboarding.errorSelectRole"));
       return;
     }
 
@@ -158,7 +158,7 @@ export default function OnboardingPage() {
 
     const { exists } = await checkUsernameExists(normalizedUsername, session.user.id);
     if (exists) {
-      setError("Username already taken");
+      setError(t("onboarding.errorUsernameTaken"));
       return;
     }
 
@@ -193,8 +193,9 @@ export default function OnboardingPage() {
 
   if (mode === "check") {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <p className="text-zinc-600">Loading...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+        <p className="text-lg font-semibold text-zinc-900">Abstract</p>
+        <p className="text-zinc-600">{t("common.loading")}</p>
       </div>
     );
   }
@@ -202,16 +203,16 @@ export default function OnboardingPage() {
   if (mode === "signup") {
     return (
       <div className="mx-auto max-w-md px-4 py-12">
-        <h1 className="mb-2 text-xl font-semibold">Create your account</h1>
+        <h1 className="mb-2 text-xl font-semibold">{t("onboarding.createAccount")}</h1>
         <p className="mb-6 text-sm text-zinc-500">
-          Use email and password to sign up without waiting for an email link.
+          {t("onboarding.signupHint")}
         </p>
 
         {signupEmailSent ? (
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-            <p className="font-medium text-zinc-900">Check your email</p>
+            <p className="font-medium text-zinc-900">{t("onboarding.checkEmailTitle")}</p>
             <p className="mt-1 text-sm text-zinc-600">
-              We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account, then sign in.
+              {t("onboarding.checkEmailBody")}
             </p>
             <Link href="/login" className="mt-4 inline-block text-sm font-medium text-zinc-700 hover:text-zinc-900">
               ← {t("common.backTo")} {t("auth.backToSignIn")}
@@ -221,14 +222,14 @@ export default function OnboardingPage() {
           <form onSubmit={handleSignUp} className="space-y-4">
             <div>
               <label htmlFor="signup-email" className="mb-1 block text-sm font-medium">
-                Email *
+                {t("onboarding.labelEmail")}
               </label>
               <input
                 id="signup-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
+                placeholder={t("onboarding.placeholderEmail")}
                 required
                 className="w-full rounded border border-zinc-300 px-3 py-2"
                 autoComplete="email"
@@ -236,14 +237,14 @@ export default function OnboardingPage() {
             </div>
             <div>
               <label htmlFor="signup-password" className="mb-1 block text-sm font-medium">
-                Password *
+                {t("onboarding.labelPassword")}
               </label>
               <input
                 id="signup-password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder={`At least ${MIN_PASSWORD_LENGTH} characters`}
+                placeholder={t("setPassword.placeholderPassword")}
                 required
                 minLength={MIN_PASSWORD_LENGTH}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
@@ -252,14 +253,14 @@ export default function OnboardingPage() {
             </div>
             <div>
               <label htmlFor="signup-password-confirm" className="mb-1 block text-sm font-medium">
-                Confirm password *
+                {t("onboarding.labelConfirmPassword")}
               </label>
               <input
                 id="signup-password-confirm"
                 type="password"
                 value={passwordConfirm}
                 onChange={(e) => setPasswordConfirm(e.target.value)}
-                placeholder="Repeat password"
+                placeholder={t("onboarding.placeholderRepeatPassword")}
                 required
                 className="w-full rounded border border-zinc-300 px-3 py-2"
                 autoComplete="new-password"
@@ -267,39 +268,39 @@ export default function OnboardingPage() {
             </div>
             <div>
               <label htmlFor="signup-username" className="mb-1 block text-sm font-medium">
-                Username *
+                {t("onboarding.labelUsername")}
               </label>
               <input
                 id="signup-username"
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value.toLowerCase())}
-                placeholder="username"
+                placeholder={t("onboarding.placeholderUsername")}
                 required
                 className="w-full rounded border border-zinc-300 px-3 py-2"
                 autoComplete="username"
               />
               <p className="mt-1 text-xs text-zinc-500">
-                3–20 chars, lowercase letters, numbers, underscores
+                {t("onboarding.usernameHint")}
               </p>
             </div>
             <div>
               <label htmlFor="signup-displayName" className="mb-1 block text-sm font-medium">
-                Display name
+                {t("onboarding.labelDisplayName")}
               </label>
               <input
                 id="signup-displayName"
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Display name"
+                placeholder={t("onboarding.placeholderDisplayName")}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
                 autoComplete="name"
               />
             </div>
             <div>
               <label htmlFor="signup-mainRole" className="mb-1 block text-sm font-medium">
-                Main role
+                {t("onboarding.labelMainRole")}
               </label>
               <select
                 id="signup-mainRole"
@@ -307,7 +308,7 @@ export default function OnboardingPage() {
                 onChange={(e) => setMainRole(e.target.value)}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               >
-                <option value="">Select</option>
+                <option value="">{t("common.selectOption")}</option>
                 {MAIN_ROLES.map((r) => (
                   <option key={r} value={r}>
                     {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -316,7 +317,7 @@ export default function OnboardingPage() {
               </select>
             </div>
             <div>
-              <span className="mb-2 block text-sm font-medium">Roles * (at least one)</span>
+              <span className="mb-2 block text-sm font-medium">{t("onboarding.labelRoles")}</span>
               <div className="flex flex-wrap gap-3">
                 {ROLES.map((r) => (
                   <label key={r} className="flex cursor-pointer items-center gap-2">
@@ -337,15 +338,15 @@ export default function OnboardingPage() {
               disabled={loading}
               className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {loading ? "Creating account..." : "Create account"}
+              {loading ? t("onboarding.creatingAccount") : t("onboarding.createAccountButton")}
             </button>
           </form>
         )}
 
         <p className="mt-6 text-center text-sm text-zinc-500">
-          Already have an account?{" "}
+          {t("onboarding.alreadyHaveAccount")}{" "}
           <Link href="/login" className="font-medium text-zinc-700 hover:text-zinc-900">
-            Sign in
+            {t("auth.backToSignIn")}
           </Link>
         </p>
       </div>
@@ -359,33 +360,33 @@ export default function OnboardingPage() {
       <form onSubmit={handleProfileSubmit} className="space-y-4">
         <div>
           <label htmlFor="username" className="mb-1 block text-sm font-medium">
-            Username *
+            {t("onboarding.labelUsername")}
           </label>
           <input
             id="username"
             type="text"
             value={username}
             onChange={(e) => setUsername(e.target.value.toLowerCase())}
-            placeholder="username"
+            placeholder={t("onboarding.placeholderUsername")}
             required
             className="w-full rounded border border-zinc-300 px-3 py-2"
             autoComplete="username"
           />
           <p className="mt-1 text-xs text-zinc-500">
-            3–20 chars, lowercase letters, numbers, underscores
+            {t("onboarding.usernameHint")}
           </p>
         </div>
 
         <div>
           <label htmlFor="displayName" className="mb-1 block text-sm font-medium">
-            Display name
+            {t("onboarding.labelDisplayName")}
           </label>
           <input
             id="displayName"
             type="text"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Display name"
+            placeholder={t("onboarding.placeholderDisplayName")}
             className="w-full rounded border border-zinc-300 px-3 py-2"
             autoComplete="name"
           />
@@ -393,7 +394,7 @@ export default function OnboardingPage() {
 
         <div>
           <label htmlFor="mainRole" className="mb-1 block text-sm font-medium">
-            Main role
+            {t("onboarding.labelMainRole")}
           </label>
           <select
             id="mainRole"
@@ -401,7 +402,7 @@ export default function OnboardingPage() {
             onChange={(e) => setMainRole(e.target.value)}
             className="w-full rounded border border-zinc-300 px-3 py-2"
           >
-            <option value="">Select</option>
+            <option value="">{t("common.selectOption")}</option>
             {MAIN_ROLES.map((r) => (
               <option key={r} value={r}>
                 {r.charAt(0).toUpperCase() + r.slice(1)}
@@ -411,7 +412,7 @@ export default function OnboardingPage() {
         </div>
 
         <div>
-          <span className="mb-2 block text-sm font-medium">Roles * (at least one)</span>
+          <span className="mb-2 block text-sm font-medium">{t("onboarding.labelRoles")}</span>
           <div className="flex flex-wrap gap-3">
             {ROLES.map((r) => (
               <label key={r} className="flex cursor-pointer items-center gap-2">
@@ -434,7 +435,7 @@ export default function OnboardingPage() {
           disabled={loading}
           className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
         >
-          {loading ? "Saving..." : "Continue"}
+          {loading ? t("onboarding.saving") : t("onboarding.continue")}
         </button>
       </form>
 
