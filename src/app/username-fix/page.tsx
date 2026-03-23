@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
@@ -14,7 +15,7 @@ function safeNext(next: string | null): string {
   return trimmed;
 }
 
-export default function UsernameFixPage() {
+function UsernameFixInner() {
   const { t } = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,5 +69,23 @@ export default function UsernameFixPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function UsernameFixPage() {
+  const { t } = useT();
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto flex min-h-screen w-full max-w-lg items-center px-4 py-10">
+          <div className="w-full rounded-xl border border-amber-200 bg-amber-50 p-5">
+            <h1 className="text-lg font-semibold text-zinc-900">{t("usernameFix.title")}</h1>
+            <p className="mt-2 text-sm text-zinc-700">{t("common.loading")}</p>
+          </div>
+        </main>
+      }
+    >
+      <UsernameFixInner />
+    </Suspense>
   );
 }
