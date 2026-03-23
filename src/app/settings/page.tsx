@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
-import { getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
+import { checkUsernameExists, getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
@@ -29,6 +29,7 @@ import { BuildStamp } from "@/components/BuildStamp";
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
 const PROFILE_UPDATED_KEY = "profile_updated";
+const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 
 function payloadEqual(a: Record<string, unknown> | null, b: Record<string, unknown> | null): boolean {
   if (a === b) return true;
@@ -224,6 +225,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const { t } = useT();
   const [username, setUsername] = useState<string | null>(null);
+  const usernameInputRef = useRef<HTMLInputElement>(null);
+  const initialUsernameRef = useRef<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
@@ -271,6 +274,13 @@ export default function SettingsPage() {
   const isDev = process.env.NODE_ENV === "development";
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem("ab_focus_username_field") !== "1") return;
+    window.sessionStorage.removeItem("ab_focus_username_field");
+    setTimeout(() => usernameInputRef.current?.focus(), 60);
+  }, []);
+
+  useEffect(() => {
     if (maxSelectMessage) {
       const tid = setTimeout(() => setMaxSelectMessage(null), 3000);
       return () => clearTimeout(tid);
@@ -291,6 +301,7 @@ export default function SettingsPage() {
         if (pc != null) setDbProfileCompleteness(pc);
         if (p) {
           setUsername(p.username ?? null);
+          initialUsernameRef.current = (p.username ?? "").trim().toLowerCase();
           setAvatarUrl(p.avatar_url ?? null);
           setDisplayName(p.display_name ?? "");
           setBio(p.bio ?? "");
@@ -510,7 +521,15 @@ export default function SettingsPage() {
       setLastError(null);
       const profileUsername = (row as Profile | null)?.username?.trim().toLowerCase() ?? "";
       if (profileUsername) {
-        if (typeof window !== "undefined") window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+        if (typeof window !== "undefined") {
+          window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+          const nextPath = window.sessionStorage.getItem("ab_username_fix_next_path");
+          if (nextPath) {
+            window.sessionStorage.removeItem("ab_username_fix_next_path");
+            router.push(nextPath);
+            return;
+          }
+        }
         router.push(`/u/${profileUsername}`);
       } else {
         setSaved(true);
@@ -574,6 +593,18 @@ export default function SettingsPage() {
       setError(t("common.selectRole"));
       return;
     }
+    const normalizedUsername = (username ?? "").trim().toLowerCase();
+    if (!USERNAME_REGEX.test(normalizedUsername)) {
+      setError(t("settings.usernameInvalid"));
+      return;
+    }
+    if (normalizedUsername !== initialUsernameRef.current) {
+      const { exists } = await checkUsernameExists(normalizedUsername, uid);
+      if (exists) {
+        setError(t("settings.usernameTaken"));
+        return;
+      }
+    }
 
     const normalizedBase: NormalizedBasePayload = normalizeProfileBase({
       display_name: displayName,
@@ -605,6 +636,9 @@ export default function SettingsPage() {
     const baseSnap = { ...normalizedBase } as Record<string, unknown>;
     const detailsSnap = { ...normalizedDetails } as Record<string, unknown>;
     let basePatch = makePatch(initialBaseRef.current, baseSnap) as Record<string, unknown>;
+    if (normalizedUsername !== initialUsernameRef.current) {
+      basePatch.username = normalizedUsername;
+    }
     const detailsPatchRaw = hasOpenedDetails ? makePatch(initialDetailsRef.current, detailsSnap) as Record<string, unknown> : {};
     let detailsPatch = omitUndefined(detailsPatchRaw);
 
@@ -704,9 +738,16 @@ export default function SettingsPage() {
           : ({} as Record<string, unknown>);
       }
       const profileUsername = ref?.username?.trim().toLowerCase() ?? "";
+      initialUsernameRef.current = profileUsername;
       if (profileUsername) {
         if (typeof window !== "undefined") {
           window.sessionStorage.setItem(PROFILE_UPDATED_KEY, "true");
+          const nextPath = window.sessionStorage.getItem("ab_username_fix_next_path");
+          if (nextPath) {
+            window.sessionStorage.removeItem("ab_username_fix_next_path");
+            router.push(nextPath);
+            return;
+          }
         }
         router.push(`/u/${profileUsername}`);
       } else {
@@ -774,6 +815,23 @@ export default function SettingsPage() {
                 onChange={(e) => setIsPublic(e.target.checked)}
                 className="rounded"
               />
+            </div>
+
+            <div>
+              <label htmlFor="username" className="mb-1 block text-sm font-medium">
+                {t("settings.username")}
+              </label>
+              <input
+                id="username"
+                ref={usernameInputRef}
+                type="text"
+                value={username ?? ""}
+                onChange={(e) => setUsername(e.target.value.toLowerCase())}
+                placeholder={t("settings.placeholderUsername")}
+                className="w-full rounded border border-zinc-300 px-3 py-2"
+                autoComplete="username"
+              />
+              <p className="mt-1 text-xs text-zinc-500">{t("settings.usernameHint")}</p>
             </div>
 
             <div>

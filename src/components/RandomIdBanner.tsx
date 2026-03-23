@@ -5,11 +5,9 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
+import { isRandomUsername } from "@/lib/profile/randomUsername";
 
 const DISMISS_KEY = "ab_random_id_banner_dismissed";
-
-/** Matches auto-generated username from ensure_profile_row (user_ + first 8 hex of uuid). */
-const RANDOM_ID_REGEX = /^user_[a-f0-9]{8}$/i;
 
 export function RandomIdBanner() {
   const { t } = useT();
@@ -35,7 +33,7 @@ export function RandomIdBanner() {
       getMyProfile().then(({ data }) => {
         if (cancelled) return;
         const username = (data as { username?: string | null } | null)?.username ?? null;
-        setShow(!!username && RANDOM_ID_REGEX.test(username));
+        setShow(isRandomUsername(username));
       });
     });
     return () => {

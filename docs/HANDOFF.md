@@ -1,6 +1,20 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-02-19
+Last updated: 2026-03-23
+
+## 2026-03-23 — 난수 아이디 1회성 유도 개선(나중에 비영구)
+
+- 로그인/매직링크 콜백 후 난수 아이디(`user_XXXXXXXX`) 감지 시 `/username-fix` 안내 페이지로 유도.
+- `/username-fix`의 `나중에` 동작을 **비영구 처리**로 변경:
+  - localStorage dismiss를 저장하지 않음.
+  - 세션 prompt 플래그만 정리하고 기존 경로로 이동.
+  - 이후 재진입 시 다시 안내 노출 가능(적극 유도).
+- 설정 페이지에서 유저네임 입력/검증/중복 체크 후 저장 가능하도록 반영.
+- 랜덤 아이디 판별 로직을 공용 유틸(`src/lib/profile/randomUsername.ts`)로 통일.
+
+**Supabase SQL 적용 필요:** 없음.
+
+**Verified:** `ReadLints` 통과, `npm run build`는 기존과 같이 환경에서 장시간 빌드 단계 대기(완료 로그 미수집).
 
 ## 2026-02-19 — 전시 관리자 초대·작가 버킷·벌크 전시 컨텍스트
 

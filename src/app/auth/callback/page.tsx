@@ -6,6 +6,10 @@ import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
+import {
+  isRandomUsername,
+  RANDOM_USERNAME_PROMPTED_KEY,
+} from "@/lib/profile/randomUsername";
 
 /** Only allow relative paths to avoid open redirect. */
 function safeNext(next: string | null): string | null {
@@ -36,6 +40,16 @@ function AuthCallbackInner() {
       if (cancelled) return;
       if (!profile) {
         router.replace("/onboarding");
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        isRandomUsername(profile.username) &&
+        window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
+      ) {
+        window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
+        const target = nextParam || "/feed?tab=all&sort=latest";
+        router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
         return;
       }
       if (

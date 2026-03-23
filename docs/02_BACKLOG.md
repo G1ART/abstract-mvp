@@ -101,3 +101,16 @@ Acceptance:
 - Messaging/DM
 - Inventory/fulfillment
 - AI price suggestions (later)
+
+Catalog Ingestion Epic (P0)
+Bulk upload → Draft 생성(필수)
+Apply-to-all presets
+Batch edit (테이블/체크박스)
+Draft → Publish readiness checklist
+Thread feed 개선(피드 품질) (P1)
+“작가 단위 Popular” (작가의 최근 작품 likes 합/가중치)
+필터(availability/pricing_mode/medium/year)
+Auth 안정화 (P1)
+localStorage has_password 의존 최소화(서버/DB 플래그로 전환 후보)
+Email rate limit 대비: SMTP provider 연결(Resend 등)
+

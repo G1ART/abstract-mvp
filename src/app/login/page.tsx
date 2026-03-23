@@ -11,6 +11,10 @@ import {
   signInWithPassword,
 } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/profiles";
+import {
+  isRandomUsername,
+  RANDOM_USERNAME_PROMPTED_KEY,
+} from "@/lib/profile/randomUsername";
 
 function safeNext(next: string | null): string | null {
   if (!next || typeof next !== "string") return null;
@@ -51,6 +55,16 @@ function LoginInner() {
       const { data: profile } = await getMyProfile();
       if (!profile) {
         router.replace("/onboarding");
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        isRandomUsername(profile.username) &&
+        window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
+      ) {
+        window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
+        const target = nextPath || "/feed?tab=all&sort=latest";
+        router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
         return;
       }
       if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {

@@ -32,3 +32,6 @@ MVP는 “작품 업로드 → 공개 → 피드 노출 → 프로필/팔로우 
 - Next.js (App Router)
 - Supabase (Auth, Postgres, Storage, RLS, RPC)
 - Vercel deploy
+
+Feed가 “작가 thread” 스타일임을 MVP UX 원칙에 추가
+Settings 저장 후 “public 프로필로 리다이렉트”를 UX 원칙에 추가
