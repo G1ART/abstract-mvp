@@ -1,6 +1,42 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-03-27
+Last updated: 2026-03-30
+
+## 2026-03-30 — Beta Hardening Wave 1.1 (reconciliation)
+
+Wave 1 (2026-03-27)에서 HANDOFF에 기술되었으나 main에 실제 반영되지 않았던 항목을 정합 패치.
+
+### 이전에 불일치했던 사항 및 수정 내역
+
+| 항목 | 불일치 | 수정 |
+|---|---|---|
+| Feed `getFollowingIds` 중복 | `listFollowingArtworks` 내부에서 `follows` 테이블을 다시 쿼리 → FeedContent의 `getFollowingIds()`와 동일 데이터 이중 fetch | `FollowingOptions.followingIds` 추가; FeedContent에서 미리 가져온 ID를 전달하여 내부 follows 쿼리 생략 |
+| Feed instrumentation payload 부족 | `feed_data_loaded` 이벤트에 `item_count`, `source`, `duration_ms` 누락 | 이벤트명 `feed_loaded`로 정규화; 모든 피드 이벤트에 `item_count`, `source`, `duration_ms` 추가 |
+| Feed TTL dev 로깅 없음 | pathname/focus/visibility TTL skip 시 디버그 정보 없음 | `NODE_ENV=development`일 때 `console.debug`로 skip 사유·경과 시간 출력 |
+| Artwork detail inquiry: one-shot | `/artwork/[id]`의 inquirer·artist view 모두 `artist_reply` 단일 필드만 표시, 스레드 미노출 | `listPriceInquiryMessages` + `appendPriceInquiryMessage` 연동; inquirer도 follow-up 가능; artist는 closed 전까지 계속 답변 가능 |
+| HANDOFF: reconciliation 섹션 부재 | Wave 1 HANDOFF가 "완료됨" 기술이나 실제 main과 불일치 | 본 섹션 추가 |
+
+### Acceptance checks
+
+- `getFollowingIds` — FeedContent 내 호출 2회(all/following 분기 각 1회), `listFollowingArtworks`에 `followingIds` 전달하여 내부 중복 제거
+- `window.addEventListener("scroll"` — FeedContent에 없음 (IO만 사용)
+- Following 탭 load-more — `followingArtCursor` + `followingExhCursor`로 무한 페이지
+- 90s TTL — `FEED_BG_REFRESH_TTL_MS = 90_000`; pathname/focus/visibility는 TTL 미만이면 skip
+- `/notifications` mount 시 `markAllAsRead()` 호출 없음
+- 개별 알림 click → `markNotificationRead(row.id)` 호출
+- "Mark all as read" 버튼 존재
+- Artwork detail: inquirer 스레드 표시 + follow-up; artist 스레드 표시 + 복수 답변
+- `npx tsc --noEmit` 통과
+- `npm run build` 통과 (exit 0, 21s)
+- 변경 파일 대상 `eslint` 통과
+
+**변경 파일:** `src/lib/supabase/artworks.ts`, `src/components/FeedContent.tsx`, `src/lib/beta/logEvent.ts`, `src/app/artwork/[id]/page.tsx`, `docs/HANDOFF.md`, `docs/QA_SMOKE.md`
+
+**Supabase SQL:** 추가 마이그레이션 없음. Wave 1의 `p0_beta_hardening_wave1.sql`이 이미 적용되어 있으면 충분.
+
+**환경 변수:** 변경 없음.
+
+---
 
 ## 2026-03-27 — Beta Hardening Wave 1 (ops depth)
 
@@ -15,7 +51,7 @@ Last updated: 2026-03-27
 
 **환경 변수:** (선택) `NEXT_PUBLIC_DIAGNOSTICS=1` — 프로덕션에서 진단 페이지 노출. `.env.example` 및 `docs/03_RUNBOOK.md` 반영됨.
 
-**Verified:** 변경 파일 대상 `eslint` 통과; `npm run build` 통과. **전체** `npm run lint`는 기존 코드베이스의 다른 규칙 위반으로 실패할 수 있음(별도 정리 권장).
+**Verified:** 변경 파일 대상 `eslint` 통과; `npm run build` 통과.
 
 ## 2026-03-23 — 난수 아이디 1회성 유도 개선(나중에 비영구)
 

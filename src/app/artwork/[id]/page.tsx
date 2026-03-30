@@ -38,10 +38,13 @@ import {
   createPriceInquiry,
   getMyInquiryForArtwork,
   listPriceInquiriesForArtwork,
+  listPriceInquiryMessages,
+  appendPriceInquiryMessage,
   replyToPriceInquiry,
   resendPriceInquiryNotification,
   canReplyToPriceInquiry,
   type PriceInquiryRow,
+  type PriceInquiryMessageRow,
 } from "@/lib/supabase/priceInquiries";
 import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { listMyDelegations } from "@/lib/supabase/delegations";
@@ -96,6 +99,10 @@ function ArtworkDetailContent() {
   const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
   const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
+  const [myInquiryMessages, setMyInquiryMessages] = useState<PriceInquiryMessageRow[]>([]);
+  const [inquirerReplyText, setInquirerReplyText] = useState("");
+  const [inquirerReplying, setInquirerReplying] = useState(false);
+  const [artistInquiryMessages, setArtistInquiryMessages] = useState<Record<string, PriceInquiryMessageRow[]>>({});
   const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionWithCredits[]>([]);
   const [delegatedProjectIds, setDelegatedProjectIds] = useState<Set<string>>(new Set());
   const claimDropdownRef = useRef<HTMLDivElement>(null);
@@ -258,12 +265,28 @@ function ArtworkDetailContent() {
   }, [id, userId, artwork?.id, artwork?.pricing_mode, artwork?.is_price_public]);
 
   useEffect(() => {
+    if (!myPriceInquiry?.id) {
+      requestAnimationFrame(() => setMyInquiryMessages([]));
+      return;
+    }
+    listPriceInquiryMessages(myPriceInquiry.id).then(({ data }) => setMyInquiryMessages(data ?? []));
+  }, [myPriceInquiry?.id]);
+
+  useEffect(() => {
     if (!id || !showArtistInquiryBlock) return;
-    setArtistInquiriesLoading(true);
-    listPriceInquiriesForArtwork(id).then(({ data }) => {
-      setArtistInquiries(data ?? []);
-      setArtistInquiriesLoading(false);
+    const t = requestAnimationFrame(() => {
+      setArtistInquiriesLoading(true);
+      listPriceInquiriesForArtwork(id).then(({ data: rows }) => {
+        setArtistInquiries(rows ?? []);
+        setArtistInquiriesLoading(false);
+        for (const row of rows ?? []) {
+          listPriceInquiryMessages(row.id).then(({ data: msgs }) => {
+            if (msgs) setArtistInquiryMessages((prev) => ({ ...prev, [row.id]: msgs }));
+          });
+        }
+      });
     });
+    return () => cancelAnimationFrame(t);
   }, [id, showArtistInquiryBlock]);
 
   async function handleAskPrice() {
@@ -280,6 +303,27 @@ function ArtworkDetailContent() {
     }
     const { data: inquiry } = await getMyInquiryForArtwork(id);
     setMyPriceInquiry(inquiry ?? null);
+    if (inquiry?.id) {
+      const { data: msgs } = await listPriceInquiryMessages(inquiry.id);
+      setMyInquiryMessages(msgs ?? []);
+    }
+  }
+
+  async function handleInquirerFollowUp() {
+    if (!myPriceInquiry?.id || inquirerReplying) return;
+    const text = inquirerReplyText.trim();
+    if (!text) return;
+    setInquirerReplying(true);
+    const { error: err } = await appendPriceInquiryMessage(myPriceInquiry.id, text);
+    setInquirerReplying(false);
+    if (err) {
+      logSupabaseError("appendPriceInquiryMessage", err);
+      setError(formatSupabaseError(err, "Failed to send message"));
+      return;
+    }
+    setInquirerReplyText("");
+    const { data: msgs } = await listPriceInquiryMessages(myPriceInquiry.id);
+    setMyInquiryMessages(msgs ?? []);
   }
 
   async function handleResendNotification(inquiryId: string) {
@@ -314,8 +358,12 @@ function ArtworkDetailContent() {
       delete next[inquiryId];
       return next;
     });
-    const { data } = await listPriceInquiriesForArtwork(id);
+    const [{ data }, { data: msgs }] = await Promise.all([
+      listPriceInquiriesForArtwork(id),
+      listPriceInquiryMessages(inquiryId),
+    ]);
     setArtistInquiries(data ?? []);
+    if (msgs) setArtistInquiryMessages((prev) => ({ ...prev, [inquiryId]: msgs }));
   }
 
   /** One-click for OWNS; for CURATED/EXHIBITED we show period picker (claimTypeToRequest) first. */
@@ -507,25 +555,50 @@ function ArtworkDetailContent() {
                   <p className="text-sm text-zinc-500">{t("common.loading")}</p>
                 ) : myPriceInquiry ? (
                   <div className="text-sm text-zinc-700">
-                    {myPriceInquiry.artist_reply ? (
-                      <>
-                        <p className="font-medium text-zinc-800">{t("priceInquiry.replyFromArtist")}</p>
-                        <p className="mt-1 whitespace-pre-wrap">{myPriceInquiry.artist_reply}</p>
-                      </>
+                    {myInquiryMessages.length > 0 ? (
+                      <ul className="mb-3 space-y-2">
+                        {myInquiryMessages.map((m) => (
+                          <li key={m.id} className="rounded bg-zinc-100 px-3 py-2">
+                            <span className="text-xs text-zinc-500">{new Date(m.created_at).toLocaleString()}</span>
+                            <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : myPriceInquiry.message ? (
+                      <p className="mb-3 text-zinc-600">{myPriceInquiry.message}</p>
                     ) : (
-                      <>
-                        <p className="text-zinc-600">{t("priceInquiry.sent")}</p>
+                      <p className="mb-3 text-zinc-600">{t("priceInquiry.sent")}</p>
+                    )}
+                    {!myPriceInquiry.artist_reply && myInquiryMessages.length === 0 && (
+                      <div className="mb-2">
                         <button
                           type="button"
                           onClick={() => handleResendNotification(myPriceInquiry.id)}
                           disabled={resendingNotificationInquiryId === myPriceInquiry.id}
-                          className="mt-2 text-sm font-medium text-zinc-600 underline hover:text-zinc-800 disabled:opacity-50"
+                          className="text-sm font-medium text-zinc-600 underline hover:text-zinc-800 disabled:opacity-50"
                         >
                           {resendingNotificationInquiryId === myPriceInquiry.id ? "..." : t("priceInquiry.resendNotification")}
                         </button>
                         {successMessage && <p className="mt-1 text-sm text-green-600">{successMessage}</p>}
-                      </>
+                      </div>
                     )}
+                    <div className="mt-2">
+                      <textarea
+                        value={inquirerReplyText}
+                        onChange={(e) => setInquirerReplyText(e.target.value)}
+                        placeholder={t("priceInquiry.replyPlaceholder")}
+                        rows={2}
+                        className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
+                      />
+                      <button
+                        type="button"
+                        disabled={!inquirerReplyText.trim() || inquirerReplying}
+                        onClick={handleInquirerFollowUp}
+                        className="mt-1 rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                      >
+                        {inquirerReplying ? "..." : t("priceInquiry.reply")}
+                      </button>
+                    </div>
                   </div>
                 ) : showInquiryForm ? (
                   <div className="space-y-2">
@@ -587,15 +660,19 @@ function ArtworkDetailContent() {
                             {new Date(row.created_at).toLocaleString()}
                           </span>
                         </div>
-                        {row.message && (
+                        {(artistInquiryMessages[row.id]?.length ?? 0) > 0 ? (
+                          <ul className="mb-2 space-y-2">
+                            {artistInquiryMessages[row.id].map((m) => (
+                              <li key={m.id} className="rounded bg-zinc-100 px-3 py-2 text-sm text-zinc-800">
+                                <span className="text-xs text-zinc-500">{new Date(m.created_at).toLocaleString()}</span>
+                                <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : row.message ? (
                           <p className="mb-2 text-sm text-zinc-600">{row.message}</p>
-                        )}
-                        {row.artist_reply ? (
-                          <div className="rounded bg-zinc-100 p-2 text-sm text-zinc-800">
-                            <span className="font-medium text-zinc-600">{t("priceInquiry.replyFromArtist")}:</span>{" "}
-                            <span className="whitespace-pre-wrap">{row.artist_reply}</span>
-                          </div>
-                        ) : (
+                        ) : null}
+                        {row.inquiry_status !== "closed" && (
                           <div>
                             <textarea
                               placeholder={t("priceInquiry.replyPlaceholder")}

@@ -16,7 +16,7 @@ export type BetaEventName =
   | "exhibition_created"
   | "exhibition_artwork_added"
   | "feed_first_paint"
-  | "feed_data_loaded"
+  | "feed_loaded"
   | "feed_load_more";
 
 /**

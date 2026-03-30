@@ -27,7 +27,7 @@ import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
 import { FeedExhibitionCard } from "./FeedExhibitionCard";
 
 const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
-const FEED_STALE_MS = 90_000; // pathname / focus / visibility SWR
+const FEED_BG_REFRESH_TTL_MS = 90_000;
 const INTERLEAVE_EVERY = 5; // 5 items (artwork/exhibition) : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
 const DISCOVERY_BLOCKS_MAX = 4;
@@ -139,8 +139,9 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [userId]);
 
   const fetchArtworks = useCallback(
-    async (opts?: { force?: boolean }) => {
+    async (opts?: { force?: boolean; source?: string }) => {
       const force = opts?.force === true;
+      const source = opts?.source ?? (force ? "manual" : "ttl");
       if (userId == null && tab === "following") {
         setLoading(false);
         setFeedEntries([]);
@@ -150,9 +151,16 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
 
       if (!force) {
         const now = Date.now();
-        if (now - lastFullFetchRef.current < FEED_STALE_MS && lastFullFetchRef.current > 0) {
+        const age = now - lastFullFetchRef.current;
+        if (age < FEED_BG_REFRESH_TTL_MS && lastFullFetchRef.current > 0) {
+          if (process.env.NODE_ENV === "development") {
+            console.debug(`[Feed] TTL skip (${source}): ${Math.round(age / 1000)}s < ${FEED_BG_REFRESH_TTL_MS / 1000}s`);
+          }
           return;
         }
+      }
+      if (process.env.NODE_ENV === "development") {
+        console.debug(`[Feed] fetch (${source}), force=${force}`);
       }
       lastFullFetchRef.current = Date.now();
       dataLoadStartedRef.current = performance.now();
@@ -173,7 +181,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         setFollowingProfileIds(ids);
 
         const [artworksRes, exhibitionsRes] = await Promise.all([
-          listFollowingArtworks({ limit: 30, mergeOwnClaimedWorks: true }),
+          listFollowingArtworks({ limit: 30, mergeOwnClaimedWorks: true, followingIds: ids }),
           ids.length > 0
             ? listExhibitionsForFollowingFeed(ids, { limit: 12 })
             : Promise.resolve({
@@ -207,7 +215,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         setLikedIds(liked);
 
         const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
-        void logBetaEvent("feed_data_loaded", { tab, sort, ms: elapsed, mode: "following_reset" });
+        void logBetaEvent("feed_loaded", { tab, sort, duration_ms: elapsed, source, item_count: entries.length });
         markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
         const recProfiles = await fetchRecProfiles();
@@ -262,7 +270,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       setLikedIds(liked);
 
       const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
-      void logBetaEvent("feed_data_loaded", { tab, sort, ms: elapsed, mode: "all_reset" });
+      void logBetaEvent("feed_loaded", { tab, sort, duration_ms: elapsed, source, item_count: entries.length });
       markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
       const recProfiles = await fetchRecProfiles();
@@ -350,7 +358,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           });
         }
         const ms = Math.round(performance.now() - t0);
-        void logBetaEvent("feed_load_more", { tab, ms, artworks: newArtworks.length, exhibitions: newExhibitions.length });
+        void logBetaEvent("feed_load_more", { tab, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
       } finally {
         loadingMoreRef.current = false;
         setLoadingMore(false);
@@ -407,7 +415,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         });
       }
       const ms = Math.round(performance.now() - t0);
-      void logBetaEvent("feed_load_more", { tab, sort, ms, artworks: newArtworks.length, exhibitions: newExhibitions.length });
+      void logBetaEvent("feed_load_more", { tab, sort, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
@@ -448,20 +456,20 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   }, [hasMore, loadMore]);
 
   useEffect(() => {
-    void fetchArtworks({ force: true });
+    void fetchArtworks({ force: true, source: "initial" });
   }, [tab, sort, userId, fetchArtworks]);
 
   useEffect(() => {
     if (!pathname?.startsWith("/feed")) return;
-    void fetchArtworks();
+    void fetchArtworks({ source: "pathname" });
   }, [pathname, fetchArtworks]);
 
   useEffect(() => {
     function onFocus() {
-      void fetchArtworks();
+      void fetchArtworks({ source: "focus" });
     }
     function onVisibilityChange() {
-      if (document.visibilityState === "visible") void fetchArtworks();
+      if (document.visibilityState === "visible") void fetchArtworks({ source: "visibility" });
     }
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -476,9 +484,9 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     const firstPaint = readFeedPerf("feed_first_paint");
     if (firstPaint == null) {
       markFeedPerf("feed_first_paint");
-      void logBetaEvent("feed_first_paint", { tab, sort, data_ms: readFeedPerf("feed_data_loaded_ms") });
+      void logBetaEvent("feed_first_paint", { tab, sort, data_ms: readFeedPerf("feed_data_loaded_ms"), item_count: feedEntries.length, source: "initial" });
     }
-  }, [loading, tab, sort]);
+  }, [loading, tab, sort, feedEntries.length]);
 
   const handleLikeUpdate = useCallback(
     (artworkId: string, liked: boolean, count: number) => {
@@ -508,7 +516,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
   );
 
   const handleManualRefresh = useCallback(() => {
-    void fetchArtworks({ force: true });
+    void fetchArtworks({ force: true, source: "manual" });
   }, [fetchArtworks]);
 
   if (loading) {

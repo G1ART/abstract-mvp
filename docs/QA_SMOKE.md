@@ -30,7 +30,17 @@ Current suite is minimal (public shell + login page). Extend `e2e/smoke.spec.ts`
 6. **Notifications:** opening list does **not** auto-mark all read; per-row read on click; “Mark all as read” works.
 7. **Diagnostics:** `/my/diagnostics` in dev or with `NEXT_PUBLIC_DIAGNOSTICS=1` — events list loads after using the app.
 
+## Wave 1.1 reconciliation checks
+
+1. **Feed following tab:** load more triggers IntersectionObserver; no scroll listener present.
+2. **Feed TTL:** switch tabs, then return within 90s — no network fetch; after 90s — background refresh fires.
+3. **Feed events:** check `beta_analytics_events` for `feed_loaded` with `source`, `item_count`, `duration_ms`.
+4. **Artwork detail — inquirer thread:** send inquiry, receive reply, send follow-up — all messages visible in thread.
+5. **Artwork detail — artist thread:** artist sees thread messages per inquiry; can reply multiple times (not one-shot).
+6. **Notifications:** entering `/notifications` does NOT auto-clear unread; click single → only that row read; button clears all.
+
 ## Regression
 
 - Profile save / settings unchanged.
 - Artwork detail price inquiry still creates thread row when message non-empty.
+- Feed `getFollowingIds` called once per tab branch; `listFollowingArtworks` receives pre-fetched IDs.

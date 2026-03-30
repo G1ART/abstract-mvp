@@ -354,6 +354,8 @@ type FollowingOptions = {
   cursor?: ArtworkCursor | null;
   /** When true and `cursor` is null, merge public artworks the user claims (subject) into the first page. */
   mergeOwnClaimedWorks?: boolean;
+  /** Pre-resolved following IDs — skips internal follows query when provided. */
+  followingIds?: string[];
 };
 
 export async function listFollowingArtworks(
@@ -373,12 +375,18 @@ export async function listFollowingArtworks(
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], nextCursor: null, error: null };
 
-  const [followRes, claimRes] = await Promise.all([
-    supabase.from("follows").select("following_id").eq("follower_id", session.user.id),
+  const [resolvedFollowIds, claimRes] = await Promise.all([
+    options.followingIds
+      ? Promise.resolve(options.followingIds)
+      : supabase
+          .from("follows")
+          .select("following_id")
+          .eq("follower_id", session.user.id)
+          .then(({ data }) => (data ?? []).map((r) => r.following_id)),
     supabase.from("claims").select("work_id").eq("subject_profile_id", session.user.id).not("work_id", "is", null),
   ]);
 
-  const followingIds = new Set((followRes.data ?? []).map((r) => r.following_id));
+  const followingIds = new Set(resolvedFollowIds);
   const myWorkIds = new Set((claimRes.data ?? []).map((r) => r.work_id).filter(Boolean));
 
   const artistIds = [...followingIds];
