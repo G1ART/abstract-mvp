@@ -10,7 +10,9 @@ import {
   listSavedInterests,
   addSavedInterest,
   removeSavedInterest,
+  listPendingDigestEvents,
   type AlertPreferences,
+  type DigestEventRow,
   type DigestFrequency,
   type SavedInterest,
 } from "@/lib/supabase/alerts";
@@ -19,6 +21,7 @@ function AlertsContent() {
   const { t } = useT();
   const [prefs, setPrefs] = useState<AlertPreferences | null>(null);
   const [interests, setInterests] = useState<SavedInterest[]>([]);
+  const [digestEvents, setDigestEvents] = useState<DigestEventRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newType, setNewType] = useState<SavedInterest["interest_type"]>("artist");
@@ -26,12 +29,14 @@ function AlertsContent() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const [{ data: p }, { data: i }] = await Promise.all([
+    const [{ data: p }, { data: i }, { data: d }] = await Promise.all([
       getAlertPreferences(),
       listSavedInterests(),
+      listPendingDigestEvents(20),
     ]);
     setPrefs(p);
     setInterests(i);
+    setDigestEvents(d);
     setLoading(false);
   }, []);
 
@@ -166,6 +171,24 @@ function AlertsContent() {
                     >
                       Remove
                     </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {/* Digest preview */}
+          <section className="rounded-lg border border-zinc-200 bg-white p-4">
+            <h2 className="mb-2 font-medium text-zinc-800">Pending digest ({digestEvents.length})</h2>
+            <p className="mb-3 text-sm text-zinc-600">Preview of events queued for your next digest email.</p>
+            {digestEvents.length === 0 ? (
+              <p className="text-sm text-zinc-500">No pending events.</p>
+            ) : (
+              <ul className="max-h-48 space-y-1 overflow-y-auto">
+                {digestEvents.map((ev) => (
+                  <li key={ev.id} className="flex items-center justify-between rounded bg-zinc-50 px-3 py-1.5 text-sm">
+                    <span className="text-zinc-700">{ev.event_type}</span>
+                    <span className="text-xs text-zinc-400">{new Date(ev.created_at).toLocaleString()}</span>
                   </li>
                 ))}
               </ul>

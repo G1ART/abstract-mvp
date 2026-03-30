@@ -7,6 +7,8 @@ export type ShortlistRow = {
   description: string | null;
   is_private: boolean;
   share_token: string;
+  room_active?: boolean;
+  expires_at?: string | null;
   created_at: string;
   updated_at: string;
   item_count?: number;
@@ -266,4 +268,89 @@ export async function logRoomAction(
   } catch {
     /* best-effort */
   }
+}
+
+// ── Share controls ────────────────────────────────────────────
+
+export async function rotateShareToken(
+  shortlistId: string
+): Promise<{ data: string | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("rotate_shortlist_token", {
+    p_shortlist_id: shortlistId,
+  });
+  if (error) return { data: null, error };
+  return { data: data as string, error: null };
+}
+
+export async function toggleRoomActive(
+  shortlistId: string,
+  active: boolean
+): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from("shortlists")
+    .update({ room_active: active, updated_at: new Date().toISOString() })
+    .eq("id", shortlistId);
+  return { error };
+}
+
+export async function setRoomExpiry(
+  shortlistId: string,
+  expiresAt: string | null
+): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from("shortlists")
+    .update({ expires_at: expiresAt, updated_at: new Date().toISOString() })
+    .eq("id", shortlistId);
+  return { error };
+}
+
+// ── Profile search for collaborator add ───────────────────────
+
+export async function searchProfilesForCollab(
+  query: string
+): Promise<{ data: { id: string; username: string | null; display_name: string | null }[]; error: unknown }> {
+  const q = query.trim();
+  if (!q) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, display_name")
+    .or(`username.ilike.%${q}%,display_name.ilike.%${q}%`)
+    .limit(10);
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as { id: string; username: string | null; display_name: string | null }[], error: null };
+}
+
+// ── Check if artwork is in any of user's shortlists ──────────
+
+export async function getShortlistIdsForArtwork(
+  artworkId: string
+): Promise<{ data: string[]; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("shortlist_items")
+    .select("shortlist_id, shortlists!shortlist_id(owner_id)")
+    .eq("artwork_id", artworkId);
+  if (error) return { data: [], error };
+  const ids = (data ?? [])
+    .filter((r: Record<string, unknown>) => {
+      const sl = r.shortlists;
+      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === session.user.id;
+    })
+    .map((r: Record<string, unknown>) => r.shortlist_id as string);
+  return { data: ids, error: null };
+}
+
+export async function removeArtworkFromShortlist(
+  shortlistId: string,
+  artworkId: string
+): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from("shortlist_items")
+    .delete()
+    .eq("shortlist_id", shortlistId)
+    .eq("artwork_id", artworkId);
+  return { error };
 }

@@ -1,5 +1,14 @@
 import { supabase } from "./client";
 
+export type DigestEventRow = {
+  id: string;
+  user_id: string;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  sent_at: string | null;
+};
+
 export type DigestFrequency = "off" | "daily" | "weekly";
 
 export type AlertPreferences = {
@@ -91,4 +100,22 @@ export async function addSavedInterest(
 export async function removeSavedInterest(id: string): Promise<{ error: unknown }> {
   const { error } = await supabase.from("saved_interests").delete().eq("id", id);
   return { error };
+}
+
+export async function listPendingDigestEvents(
+  limit = 50
+): Promise<{ data: DigestEventRow[]; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("digest_events")
+    .select("*")
+    .eq("user_id", session.user.id)
+    .is("sent_at", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as DigestEventRow[], error: null };
 }

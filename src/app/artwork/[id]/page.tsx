@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getArtworkBack } from "@/lib/artworkBack";
@@ -52,6 +52,7 @@ import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
 import { formatSizeForLocale } from "@/lib/size/format";
+import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 
 function getPriceDisplay(artwork: ArtworkWithLikes): string {
   if (artwork.pricing_mode === "inquire") return "Price upon request";
@@ -64,8 +65,10 @@ function getPriceDisplay(artwork: ArtworkWithLikes): string {
 function ArtworkDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
+  const fromRoom = searchParams.get("fromRoom");
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +108,7 @@ function ArtworkDetailContent() {
   const [artistInquiryMessages, setArtistInquiryMessages] = useState<Record<string, PriceInquiryMessageRow[]>>({});
   const [exhibitionsForWork, setExhibitionsForWork] = useState<ExhibitionWithCredits[]>([]);
   const [delegatedProjectIds, setDelegatedProjectIds] = useState<Set<string>>(new Set());
+  const [shortlistOpen, setShortlistOpen] = useState(false);
   const claimDropdownRef = useRef<HTMLDivElement>(null);
   const VIEW_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -479,12 +483,19 @@ function ArtworkDetailContent() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <Link
-        href={backPath}
-        className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
-      >
-        ← {t("common.backTo")} {t(backLabelKey)}
-      </Link>
+      <div className="mb-6 flex flex-wrap items-center gap-3">
+        <Link href={backPath} className="text-sm text-zinc-600 hover:text-zinc-900">
+          ← {t("common.backTo")} {t(backLabelKey)}
+        </Link>
+        {fromRoom && (
+          <>
+            <span className="text-zinc-300">|</span>
+            <Link href={`/room/${fromRoom}`} className="text-sm text-zinc-600 hover:text-zinc-900">
+              ← Back to room
+            </Link>
+          </>
+        )}
+      </div>
       <div className="space-y-6">
         <div className="grid gap-6 sm:grid-cols-2">
           <div
@@ -699,7 +710,7 @@ function ArtworkDetailContent() {
                 )}
               </div>
             )}
-            <div className="mt-2">
+            <div className="mt-2 flex items-center gap-3">
               <LikeButton
                 artworkId={artwork.id}
                 likesCount={Number(artwork.likes_count) || 0}
@@ -712,6 +723,15 @@ function ArtworkDetailContent() {
                 }}
                 showLoginCta={!userId}
               />
+              {userId && (
+                <button
+                  type="button"
+                  onClick={() => setShortlistOpen(true)}
+                  className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  Save
+                </button>
+              )}
             </div>
             {username && (
               <div className="mt-4 flex items-center gap-3">
@@ -1016,6 +1036,7 @@ function ArtworkDetailContent() {
           <p className="text-sm text-zinc-600">{artwork.story}</p>
         )}
       </div>
+      <SaveToShortlistModal artworkId={artwork.id} open={shortlistOpen} onClose={() => setShortlistOpen(false)} />
     </main>
   );
 }

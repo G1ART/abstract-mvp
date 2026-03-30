@@ -17,7 +17,14 @@ export type BetaEventName =
   | "exhibition_artwork_added"
   | "feed_first_paint"
   | "feed_loaded"
-  | "feed_load_more";
+  | "feed_load_more"
+  | "shortlist_item_added"
+  | "shortlist_item_removed"
+  | "shortlist_collaborator_added"
+  | "room_viewed"
+  | "room_opened_artwork"
+  | "room_inquiry_clicked"
+  | "room_copy_link";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

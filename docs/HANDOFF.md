@@ -2,6 +2,69 @@
 
 Last updated: 2026-03-30
 
+## 2026-03-30 — Beta Differentiation Wave 2.1 (integration)
+
+Wave 2 표면을 실제 유저 워크플로우에 연결하는 통합 패치.
+
+### 변경 요약
+
+- **Scope A — Shortlist entry points**: `/artwork/[id]`에 "Save" 버튼 + `SaveToShortlistModal` 컴포넌트; `/e/[id]`에 "Save" 버튼 + 전시 shortlist 저장; 기존 shortlist 선택/생성/제거 가능; `shortlist_item_added`/`shortlist_item_removed` 분석 이벤트.
+- **Scope B — Shortlist collaboration**: `/my/shortlists/[id]`에 collaborator 검색·추가·제거 UI; role 선택 (viewer/editor); share controls: copy link, rotate token (이전 링크 무효화), room active 토글; `shortlist_collaborator_added`/`room_copy_link` 이벤트.
+- **Scope C — Room conversion**: `/room/[token]`에 "Ask about this work" CTA; `inquiry_clicked` 분석 로깅; `?fromRoom=` query로 artwork detail에 room breadcrumb; `room_viewed`/`room_opened_artwork`/`room_inquiry_clicked` 이벤트; private viewing room 레이블 + 만료 메시지.
+- **Scope D — Alerts integration**: `notify_followers_new_work` trigger를 artist/medium interest 매칭으로 확장; follow 알림과 interest 알림의 payload `source` 구분; `digest_events` 테이블 + notification 기반 자동 큐 producer; `/my/alerts`에 digest preview; 알림 텍스트에서 follow vs interest 구분.
+- **Scope E — Pipeline collaboration**: `inquiry_notes` RLS를 author-only → artwork artist + assignee 접근 가능하도록 변경; `auto_update_last_contact_date` 트리거 (message 삽입 시 + stage 변경 시); `/my/inquiries`에 "Assign to me" 버튼 + assigned 뱃지.
+- **Scope F — Import v2**: 지원 컬럼 7→15개로 확장 (description, visibility, price, currency, is_price_public, artist_name, tags 등); title+year 기반 중복 검출 + skip duplicates 옵션; 개선된 매핑 UI (2-column grid) + 완료 요약.
+- **Scope G — Ops panel v2**: 필터 추가 (with_delegations, recent_7d); 행별 "Profile link" 복사 + "Username fix" 링크 복사; CSV export; 5-KPI 대시보드.
+
+### 신규 파일
+
+| 파일 | 설명 |
+|---|---|
+| `supabase/migrations/p0_wave2_1_integration.sql` | Wave 2.1 스키마: share controls, notes RLS v2, last_contact triggers, interest notification, digest queue |
+| `src/components/SaveToShortlistModal.tsx` | 범용 "Save to shortlist" 모달 |
+
+### 수정 파일
+
+| 파일 | 변경 |
+|---|---|
+| `src/lib/beta/logEvent.ts` | 7개 신규 이벤트 타입 추가 |
+| `src/lib/supabase/shortlists.ts` | `rotateShareToken`, `toggleRoomActive`, `setRoomExpiry`, `searchProfilesForCollab`, `getShortlistIdsForArtwork`, `removeArtworkFromShortlist`; `room_active`/`expires_at` 타입 |
+| `src/lib/supabase/alerts.ts` | `DigestEventRow` 타입, `listPendingDigestEvents` |
+| `src/lib/supabase/notifications.ts` | `new_work` 타입 (Wave 2에서 추가됨, 유지) |
+| `src/app/artwork/[id]/page.tsx` | Save 버튼 + modal + `fromRoom` breadcrumb |
+| `src/app/e/[id]/page.tsx` | Save 버튼 + modal |
+| `src/app/my/shortlists/[id]/page.tsx` | Collaborator UI + share controls (전면 재작성) |
+| `src/app/room/[token]/page.tsx` | Inquiry CTA + analytics + 만료 처리 (전면 재작성) |
+| `src/app/my/inquiries/page.tsx` | Assignee 컨트롤 |
+| `src/app/my/library/import/page.tsx` | v2: 확장 컬럼 + 중복 검출 (전면 재작성) |
+| `src/app/my/ops/page.tsx` | Actionable controls + CSV export (전면 재작성) |
+| `src/app/my/alerts/page.tsx` | Digest preview 섹션 |
+| `src/app/notifications/page.tsx` | `new_work` source 구분 (follow vs interest) |
+
+**Supabase SQL 적용 필요:** `supabase/migrations/p0_wave2_1_integration.sql` — Wave 2 SQL 이후에 실행.
+
+**환경 변수:** 변경 없음.
+
+### Acceptance checks
+
+1. `/artwork/[id]` → "Save" → shortlist 선택/생성 → 중복 안전
+2. `/e/[id]` → "Save" → 전시를 shortlist에 추가
+3. `/my/shortlists/[id]` → collaborator 검색·추가·제거 + role badge
+4. `/my/shortlists/[id]` → rotate link → 이전 `/room/` 링크 404
+5. `/room/[token]` → "Ask about this work" CTA → `inquiry_clicked` 로그
+6. `/room/[token]` → 작품 클릭 → `/artwork/[id]?fromRoom=` → room breadcrumb 표시
+7. Saved interest (medium: "Oil") → 아티스트가 Oil 작품 업로드 → interest 알림 생성
+8. 알림 텍스트: follow 출처 vs interest 출처 구분
+9. `/my/alerts` → digest preview에 pending events 표시
+10. `inquiry_notes` → artist + assignee 접근 가능 (author-only 아님)
+11. Message 전송 → `last_contact_date` 자동 업데이트
+12. `/my/inquiries` → "Assign to me" → assigned badge
+13. CSV import → 15개 컬럼 매핑 + 중복 검출 + skip
+14. `/my/ops` → CSV export + profile link 복사 + recent_7d 필터
+15. `npx tsc --noEmit` 통과
+
+---
+
 ## 2026-03-30 — Beta Differentiation Wave 2
 
 ### 변경 요약

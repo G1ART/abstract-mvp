@@ -326,6 +326,24 @@ export default function MyInquiriesPage() {
                       </select>
                     </div>
                     <div className="flex items-center gap-1">
+                      <label className="text-xs text-zinc-500">Assignee</label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void updateInquiryPipeline(row.id, { assignee_id: actingAsProfileId ?? undefined });
+                          setList((prev) =>
+                            prev.map((r) => (r.id === row.id ? { ...r, assignee_id: actingAsProfileId } : r))
+                          );
+                        }}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                      >
+                        {row.assignee_id ? "Reassign to me" : "Assign to me"}
+                      </button>
+                      {row.assignee_id && (
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">assigned</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1">
                       <label className="text-xs text-zinc-500">Next action</label>
                       <input
                         type="date"

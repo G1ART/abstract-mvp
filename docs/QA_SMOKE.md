@@ -30,6 +30,24 @@ Current suite is minimal (public shell + login page). Extend `e2e/smoke.spec.ts`
 6. **Notifications:** opening list does **not** auto-mark all read; per-row read on click; “Mark all as read” works.
 7. **Diagnostics:** `/my/diagnostics` in dev or with `NEXT_PUBLIC_DIAGNOSTICS=1` — events list loads after using the app.
 
+## Wave 2.1 integration checks
+
+1. **Shortlist from artwork:** `/artwork/[id]` → "Save" → choose/create shortlist → saved; repeat → toggled off.
+2. **Shortlist from exhibition:** `/e/[id]` → "Save" → add exhibition to shortlist.
+3. **Collaborator add:** `/my/shortlists/[id]` → search username → add as viewer → appears in list with badge.
+4. **Collaborator remove:** remove collaborator → gone from list.
+5. **Rotate link:** click "Rotate link" → old `/room/` link fails → new link works.
+6. **Room disable:** toggle "Room: Disabled" → `/room/[token]` shows expired message.
+7. **Room CTA:** `/room/[token]` → "Ask about this work" → navigates to `/artwork/[id]?fromRoom=...`.
+8. **Room breadcrumb:** artwork detail from room → "← Back to room" visible.
+9. **Interest notification:** add "Oil" medium interest → upload artwork with medium "Oil on canvas" → notification generated with interest source.
+10. **Digest queue:** after notification → `/my/alerts` → digest preview shows event.
+11. **Assignee:** `/my/inquiries` → "Assign to me" → "assigned" badge visible.
+12. **Last contact auto:** reply to inquiry → `last_contact_date` updated automatically.
+13. **Notes RLS:** inquiry note visible to artwork artist, not just author (test with acting-as).
+14. **Import v2:** paste CSV with 10+ columns → auto-map → preview with duplicate flags → skip duplicates → import summary.
+15. **Ops export:** `/my/ops` → "Export CSV" → file downloads. Profile link copy works. Recent 7d filter works.
+
 ## Wave 2 differentiation checks
 
 1. **Shortlists:** create shortlist, add artwork, copy share link → open `/room/{token}` in incognito → items visible.

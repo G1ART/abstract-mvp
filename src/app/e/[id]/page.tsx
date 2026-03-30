@@ -21,6 +21,7 @@ import {
 import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import { listMyDelegations } from "@/lib/supabase/delegations";
+import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -41,6 +42,7 @@ export default function PublicExhibitionPage() {
   const [canManage, setCanManage] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shortlistOpen, setShortlistOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!id) return;
@@ -156,17 +158,31 @@ export default function PublicExhibitionPage() {
       ) : (
         <>
           <header className="mb-8">
-            <h1 className="text-xl font-semibold text-zinc-900">{exhibition.title}</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              {exhibition.start_date && exhibition.end_date
-                ? `${exhibition.start_date} – ${exhibition.end_date}`
-                : exhibition.start_date ?? ""}
-              {" · "}
-              {getExhibitionHostCuratorLabel(exhibition, t)}
-              {" · "}
-              {t(STATUS_LABELS[exhibition.status] ?? "exhibition.statusPlanned")}
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-xl font-semibold text-zinc-900">{exhibition.title}</h1>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {exhibition.start_date && exhibition.end_date
+                    ? `${exhibition.start_date} – ${exhibition.end_date}`
+                    : exhibition.start_date ?? ""}
+                  {" · "}
+                  {getExhibitionHostCuratorLabel(exhibition, t)}
+                  {" · "}
+                  {t(STATUS_LABELS[exhibition.status] ?? "exhibition.statusPlanned")}
+                </p>
+              </div>
+              {userId && (
+                <button
+                  type="button"
+                  onClick={() => setShortlistOpen(true)}
+                  className="shrink-0 rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
+                >
+                  Save
+                </button>
+              )}
+            </div>
           </header>
+          <SaveToShortlistModal exhibitionId={id} open={shortlistOpen} onClose={() => setShortlistOpen(false)} />
 
           {byArtist.length > 0 && (
             <section className="mb-8">
