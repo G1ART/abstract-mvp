@@ -8,11 +8,16 @@ import { useT } from "@/lib/i18n/useT";
 import {
   listPriceInquiriesForArtist,
   listPriceInquiryMessages,
+  listInquiryNotes,
+  addInquiryNote,
   markPriceInquiryRead,
   replyToPriceInquiry,
   setPriceInquiryStatus,
+  updateInquiryPipeline,
   type InquiryListCursor,
+  type InquiryNoteRow,
   type InquiryStatus,
+  type PipelineStage,
   type PriceInquiryMessageRow,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
@@ -30,8 +35,11 @@ export default function MyInquiriesPage() {
   const [statusFilter, setStatusFilter] = useState<InquiryStatus | "all">("all");
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineStage | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [messagesByInquiry, setMessagesByInquiry] = useState<Record<string, PriceInquiryMessageRow[]>>({});
+  const [notesByInquiry, setNotesByInquiry] = useState<Record<string, InquiryNoteRow[]>>({});
+  const [noteText, setNoteText] = useState<Record<string, string>>({});
   const [loadingMessages, setLoadingMessages] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +54,7 @@ export default function MyInquiriesPage() {
       limit: 20,
       cursor: null,
       status: statusFilter,
+      pipelineStage: pipelineFilter,
       search: searchDebounced,
     });
     if (error) {
@@ -55,7 +64,7 @@ export default function MyInquiriesPage() {
     setList(data ?? []);
     setNextCursor(nc);
     setLoading(false);
-  }, [actingAsProfileId, statusFilter, searchDebounced]);
+  }, [actingAsProfileId, statusFilter, pipelineFilter, searchDebounced]);
 
   useEffect(() => {
     const t = requestAnimationFrame(() => {
@@ -71,6 +80,7 @@ export default function MyInquiriesPage() {
       profileId: actingAsProfileId ?? undefined,
       limit: 20,
       cursor: nextCursor,
+      pipelineStage: pipelineFilter,
       status: statusFilter,
       search: searchDebounced,
     });
@@ -94,10 +104,16 @@ export default function MyInquiriesPage() {
       setExpandedId(id);
       void markPriceInquiryRead(id);
       setLoadingMessages(id);
-      const { data, error } = await listPriceInquiryMessages(id);
+      const [{ data, error }, { data: notes }] = await Promise.all([
+        listPriceInquiryMessages(id),
+        listInquiryNotes(id),
+      ]);
       setLoadingMessages(null);
       if (!error && data) {
         setMessagesByInquiry((prev) => ({ ...prev, [id]: data }));
+      }
+      if (notes) {
+        setNotesByInquiry((prev) => ({ ...prev, [id]: notes }));
       }
     },
     [expandedId]
@@ -142,6 +158,36 @@ export default function MyInquiriesPage() {
     [t]
   );
 
+  const handlePipelineChange = useCallback(
+    async (inquiryId: string, stage: PipelineStage) => {
+      const { error } = await updateInquiryPipeline(inquiryId, { pipeline_stage: stage });
+      if (error) { setToast(t("priceInquiry.statusUpdateFailed")); return; }
+      setList((prev) => prev.map((r) => (r.id === inquiryId ? { ...r, pipeline_stage: stage } : r)));
+    },
+    [t]
+  );
+
+  const handleAddNote = useCallback(
+    async (inquiryId: string) => {
+      const text = noteText[inquiryId]?.trim();
+      if (!text) return;
+      const { error } = await addInquiryNote(inquiryId, text);
+      if (error) { setToast(t("common.replyFailed")); return; }
+      setNoteText((prev) => { const n = { ...prev }; delete n[inquiryId]; return n; });
+      const { data: notes } = await listInquiryNotes(inquiryId);
+      if (notes) setNotesByInquiry((prev) => ({ ...prev, [inquiryId]: notes }));
+    },
+    [noteText, t]
+  );
+
+  const handleNextActionDate = useCallback(
+    async (inquiryId: string, date: string) => {
+      await updateInquiryPipeline(inquiryId, { next_action_date: date || null });
+      setList((prev) => prev.map((r) => (r.id === inquiryId ? { ...r, next_action_date: date || null } : r)));
+    },
+    []
+  );
+
   const unreadCount = useMemo(() => list.filter((r) => r.artist_unread === true).length, [list]);
 
   return (
@@ -177,6 +223,19 @@ export default function MyInquiriesPage() {
             <option value="open">{t("priceInquiry.filterOpen")}</option>
             <option value="replied">{t("priceInquiry.filterReplied")}</option>
             <option value="closed">{t("priceInquiry.filterClosed")}</option>
+          </select>
+          <select
+            value={pipelineFilter}
+            onChange={(e) => setPipelineFilter(e.target.value as PipelineStage | "all")}
+            className="rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="all">Pipeline: All</option>
+            <option value="new">New</option>
+            <option value="contacted">Contacted</option>
+            <option value="in_discussion">In Discussion</option>
+            <option value="offer_sent">Offer Sent</option>
+            <option value="closed_won">Closed Won</option>
+            <option value="closed_lost">Closed Lost</option>
           </select>
         </div>
 
@@ -237,18 +296,44 @@ export default function MyInquiriesPage() {
                         : new Date(row.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <label className="text-xs text-zinc-500">{t("priceInquiry.statusLabel")}</label>
-                    <select
-                      value={row.inquiry_status ?? "open"}
-                      onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
-                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                    >
-                      <option value="new">new</option>
-                      <option value="open">open</option>
-                      <option value="replied">replied</option>
-                      <option value="closed">closed</option>
-                    </select>
+                  <div className="mb-3 flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-zinc-500">{t("priceInquiry.statusLabel")}</label>
+                      <select
+                        value={row.inquiry_status ?? "open"}
+                        onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                      >
+                        <option value="new">new</option>
+                        <option value="open">open</option>
+                        <option value="replied">replied</option>
+                        <option value="closed">closed</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-zinc-500">Pipeline</label>
+                      <select
+                        value={row.pipeline_stage ?? "new"}
+                        onChange={(e) => void handlePipelineChange(row.id, e.target.value as PipelineStage)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                      >
+                        <option value="new">New</option>
+                        <option value="contacted">Contacted</option>
+                        <option value="in_discussion">In Discussion</option>
+                        <option value="offer_sent">Offer Sent</option>
+                        <option value="closed_won">Won</option>
+                        <option value="closed_lost">Lost</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <label className="text-xs text-zinc-500">Next action</label>
+                      <input
+                        type="date"
+                        value={row.next_action_date ?? ""}
+                        onChange={(e) => void handleNextActionDate(row.id, e.target.value)}
+                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                      />
+                    </div>
                   </div>
 
                   {expanded && (
@@ -289,6 +374,38 @@ export default function MyInquiriesPage() {
                         >
                           {replyingId === row.id ? t("common.loading") : t("priceInquiry.reply")}
                         </button>
+                      </div>
+
+                      {/* Internal notes (private to gallery) */}
+                      <div className="mt-4 border-t border-zinc-100 pt-3">
+                        <p className="mb-2 text-xs font-medium text-zinc-500">Internal Notes</p>
+                        {(notesByInquiry[row.id] ?? []).length > 0 && (
+                          <ul className="mb-3 space-y-2">
+                            {notesByInquiry[row.id].map((n) => (
+                              <li key={n.id} className="rounded bg-amber-50 px-3 py-2 text-sm text-zinc-700">
+                                <span className="text-xs text-zinc-400">{new Date(n.created_at).toLocaleString()}</span>
+                                <p className="mt-0.5 whitespace-pre-wrap">{n.body}</p>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Add internal note..."
+                            value={noteText[row.id] ?? ""}
+                            onChange={(e) => setNoteText((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                            className="flex-1 rounded border border-zinc-300 px-3 py-1.5 text-sm"
+                          />
+                          <button
+                            type="button"
+                            disabled={!noteText[row.id]?.trim()}
+                            onClick={() => void handleAddNote(row.id)}
+                            className="rounded bg-zinc-700 px-3 py-1.5 text-sm text-white hover:bg-zinc-600 disabled:opacity-50"
+                          >
+                            Add
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}

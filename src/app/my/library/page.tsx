@@ -12,6 +12,7 @@ import {
   type MyLibrarySort,
   listMyArtworksForLibrary,
 } from "@/lib/supabase/artworks";
+import { generateCsv, downloadCsv } from "@/lib/csv/parse";
 
 const OWNERSHIP_VALUES = ["available", "owned", "sold", "not_for_sale"] as const;
 
@@ -101,7 +102,35 @@ export default function MyLibraryPage() {
         <Link href="/my" className="mb-4 inline-block text-sm text-zinc-600 hover:text-zinc-900">
           ← {t("library.back")}
         </Link>
-        <h1 className="mb-1 text-xl font-semibold text-zinc-900">{t("library.title")}</h1>
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold text-zinc-900">{t("library.title")}</h1>
+          <div className="flex gap-2">
+            <Link href="/my/library/import" className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
+              Import CSV
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                const headers = ["title", "year", "medium", "size", "size_unit", "ownership_status", "pricing_mode", "visibility"];
+                const rows = items.map((a) => [
+                  a.title ?? "",
+                  String(a.year ?? ""),
+                  a.medium ?? "",
+                  a.size ?? "",
+                  String((a as Record<string, unknown>).size_unit ?? ""),
+                  a.ownership_status ?? "",
+                  a.pricing_mode ?? "",
+                  a.visibility ?? "",
+                ]);
+                downloadCsv("library_export.csv", generateCsv(headers, rows));
+              }}
+              disabled={items.length === 0}
+              className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              Export CSV
+            </button>
+          </div>
+        </div>
         <p className="mb-6 text-sm text-zinc-600">{t("library.hint")}</p>
 
         <div className="mb-6 flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">

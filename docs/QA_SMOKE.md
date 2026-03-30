@@ -30,6 +30,19 @@ Current suite is minimal (public shell + login page). Extend `e2e/smoke.spec.ts`
 6. **Notifications:** opening list does **not** auto-mark all read; per-row read on click; “Mark all as read” works.
 7. **Diagnostics:** `/my/diagnostics` in dev or with `NEXT_PUBLIC_DIAGNOSTICS=1` — events list loads after using the app.
 
+## Wave 2 differentiation checks
+
+1. **Shortlists:** create shortlist, add artwork, copy share link → open `/room/{token}` in incognito → items visible.
+2. **Shortlist detail:** edit title/description, remove item, see collaborator count.
+3. **Pipeline:** `/my/inquiries` → change pipeline stage → filter by stage → verify.
+4. **Internal notes:** expand inquiry → add note → note appears; note NOT visible to inquirer.
+5. **Next action date:** set date, verify it persists after page reload.
+6. **CSV import:** `/my/library/import` → paste CSV → map columns → validate → import → check drafts in library.
+7. **CSV export:** `/my/library` → click Export CSV → file downloads with correct data.
+8. **Alerts:** `/my/alerts` → toggle new work alerts → change digest → add/remove interest.
+9. **Ops panel:** `/my/ops` → see profile table → filter by random username → filter by no uploads.
+10. **New work trigger:** follow an artist → artist uploads public work → follower gets notification (requires alert_preferences row with `new_work_alerts = true`).
+
 ## Wave 1.1 reconciliation checks
 
 1. **Feed following tab:** load more triggers IntersectionObserver; no scroll listener present.

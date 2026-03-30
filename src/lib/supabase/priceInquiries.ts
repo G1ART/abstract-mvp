@@ -2,6 +2,7 @@ import { supabase } from "./client";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 
 export type InquiryStatus = "new" | "open" | "replied" | "closed";
+export type PipelineStage = "new" | "contacted" | "in_discussion" | "offer_sent" | "closed_won" | "closed_lost";
 
 export type PriceInquiryRow = {
   id: string;
@@ -16,8 +17,20 @@ export type PriceInquiryRow = {
   last_message_at?: string | null;
   artist_unread?: boolean | null;
   inquirer_unread?: boolean | null;
+  pipeline_stage?: PipelineStage | null;
+  assignee_id?: string | null;
+  next_action_date?: string | null;
+  last_contact_date?: string | null;
   artwork?: { id: string; title: string | null; artist_id: string } | null;
   inquirer?: { username: string | null; display_name: string | null } | null;
+};
+
+export type InquiryNoteRow = {
+  id: string;
+  inquiry_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
 };
 
 export type PriceInquiryMessageRow = {
@@ -41,6 +54,10 @@ const INQUIRY_SELECT = `
   last_message_at,
   artist_unread,
   inquirer_unread,
+  pipeline_stage,
+  assignee_id,
+  next_action_date,
+  last_contact_date,
   artworks!artwork_id(id, title, artist_id),
   profiles!inquirer_id(username, display_name)
 `;
@@ -59,6 +76,10 @@ const INQUIRY_LIST_SELECT = `
   last_message_at,
   artist_unread,
   inquirer_unread,
+  pipeline_stage,
+  assignee_id,
+  next_action_date,
+  last_contact_date,
   artworks!artwork_id!inner(id, title, artist_id),
   profiles!inquirer_id(username, display_name)
 `;
@@ -70,6 +91,7 @@ export type ListPriceInquiriesForArtistOptions = {
   limit?: number;
   cursor?: InquiryListCursor | null;
   status?: InquiryStatus | "all";
+  pipelineStage?: PipelineStage | "all";
   search?: string;
 };
 
@@ -103,6 +125,10 @@ function normalizeInquiry(row: Record<string, unknown>): PriceInquiryRow {
     last_message_at: (row.last_message_at as string) ?? null,
     artist_unread: row.artist_unread as boolean | null,
     inquirer_unread: row.inquirer_unread as boolean | null,
+    pipeline_stage: (row.pipeline_stage as PipelineStage) ?? null,
+    assignee_id: (row.assignee_id as string) ?? null,
+    next_action_date: (row.next_action_date as string) ?? null,
+    last_contact_date: (row.last_contact_date as string) ?? null,
     artwork: artwork ?? null,
     inquirer: inquirer ?? null,
   };
@@ -174,6 +200,7 @@ export async function listPriceInquiriesForArtist(
     limit = 25,
     cursor = null,
     status = "all",
+    pipelineStage = "all",
     search = "",
   } = options;
 
@@ -196,6 +223,9 @@ export async function listPriceInquiriesForArtist(
 
   if (status !== "all") {
     query = query.eq("inquiry_status", status);
+  }
+  if (pipelineStage !== "all") {
+    query = query.eq("pipeline_stage", pipelineStage);
   }
 
   const q = search.trim().replace(/,/g, " ");
@@ -358,5 +388,56 @@ export async function replyToPriceInquiry(inquiryId: string, reply: string): Pro
     body: reply.trim() || "",
   });
   if (!error) logBetaEventSync("inquiry_replied", { inquiry_id: inquiryId });
+  return { error };
+}
+
+// ── Pipeline helpers ──────────────────────────────────────────
+
+export async function updateInquiryPipeline(
+  inquiryId: string,
+  fields: {
+    pipeline_stage?: PipelineStage;
+    assignee_id?: string;
+    next_action_date?: string | null;
+    last_contact_date?: string | null;
+  }
+): Promise<{ error: unknown }> {
+  const { error } = await supabase.rpc("update_inquiry_pipeline", {
+    p_inquiry_id: inquiryId,
+    p_pipeline_stage: fields.pipeline_stage ?? null,
+    p_assignee_id: fields.assignee_id ?? null,
+    p_next_action_date: fields.next_action_date ?? null,
+    p_last_contact_date: fields.last_contact_date ?? null,
+  });
+  return { error };
+}
+
+// ── Inquiry notes (internal, private to gallery) ──────────────
+
+export async function listInquiryNotes(
+  inquiryId: string
+): Promise<{ data: InquiryNoteRow[]; error: unknown }> {
+  const { data, error } = await supabase
+    .from("inquiry_notes")
+    .select("id, inquiry_id, author_id, body, created_at")
+    .eq("inquiry_id", inquiryId)
+    .order("created_at", { ascending: true });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as InquiryNoteRow[], error: null };
+}
+
+export async function addInquiryNote(
+  inquiryId: string,
+  body: string
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+  const { error } = await supabase.from("inquiry_notes").insert({
+    inquiry_id: inquiryId,
+    author_id: session.user.id,
+    body: body.trim(),
+  });
   return { error };
 }

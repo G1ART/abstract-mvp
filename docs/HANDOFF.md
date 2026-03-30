@@ -2,6 +2,45 @@
 
 Last updated: 2026-03-30
 
+## 2026-03-30 — Beta Differentiation Wave 2
+
+### 변경 요약
+
+- **Scope A — Shortlists / Private Rooms**: `shortlists`, `shortlist_items`, `shortlist_collaborators`, `shortlist_views` 테이블; `/my/shortlists` (목록·생성), `/my/shortlists/[id]` (상세·편집), `/room/[token]` (공유 뷰잉 룸); `get_shortlist_by_token`, `get_shortlist_items_by_token` RPC; 조회·열기·inquiry_clicked 분석.
+- **Scope B — Sales Pipeline Lite**: `pipeline_stage` enum (`new`~`closed_lost`), `assignee_id`, `next_action_date`, `last_contact_date` 컬럼 추가; `inquiry_notes` 내부 메모 테이블; `update_inquiry_pipeline` RPC; `/my/inquiries`에 pipeline 필터·단계 변경·next action 날짜·내부 메모 UI.
+- **Scope C — Structured Import/Export**: `src/lib/csv/parse.ts` 클라이언트 CSV 파서·생성·다운로드; `/my/library/import` 위자드 (붙여넣기 → 매핑 → 유효성 검사 → 가져오기); `/my/library`에 Export CSV 버튼.
+- **Scope D — Follow Alerts/Digest**: `alert_preferences`, `saved_interests` 테이블; `notify_followers_new_work` 트리거 (공개 작품 업로드 시 팔로워에게 알림); `/my/alerts` 설정 페이지 (신작 알림 토글, digest 빈도, 관심사 저장).
+- **Scope E — Ops Panel**: `ops_onboarding_summary` RPC; `/my/ops` 페이지 (전체 프로필 수, 난수 아이디, 미업로드, 대리 위임 현황; 필터링 테이블).
+
+### 신규 파일
+
+| 파일 | 설명 |
+|---|---|
+| `supabase/migrations/p0_wave2_differentiation.sql` | 전체 Wave 2 스키마 |
+| `src/lib/supabase/shortlists.ts` | Shortlist CRUD + room RPC |
+| `src/lib/supabase/alerts.ts` | Alert preferences + saved interests |
+| `src/lib/csv/parse.ts` | CSV 파서·생성·다운로드 |
+| `src/app/my/shortlists/page.tsx` | 숏리스트 목록 |
+| `src/app/my/shortlists/[id]/page.tsx` | 숏리스트 상세 |
+| `src/app/room/[token]/page.tsx` | 공유 뷰잉 룸 |
+| `src/app/my/library/import/page.tsx` | CSV 가져오기 위자드 |
+| `src/app/my/alerts/page.tsx` | 알림 설정 |
+| `src/app/my/ops/page.tsx` | 베타 운영 패널 |
+
+### 수정 파일
+
+| 파일 | 변경 |
+|---|---|
+| `src/lib/supabase/priceInquiries.ts` | `PipelineStage` 타입, pipeline 컬럼, `updateInquiryPipeline`, `listInquiryNotes`, `addInquiryNote` |
+| `src/app/my/inquiries/page.tsx` | Pipeline 필터·단계 변경·next action·내부 메모 UI |
+| `src/app/my/library/page.tsx` | Import/Export 버튼 추가 |
+
+**Supabase SQL 적용 필요:** `supabase/migrations/p0_wave2_differentiation.sql` — Wave 1 SQL 이후에 실행.
+
+**환경 변수:** 변경 없음.
+
+---
+
 ## 2026-03-30 — Beta Hardening Wave 1.1 (reconciliation)
 
 Wave 1 (2026-03-27)에서 HANDOFF에 기술되었으나 main에 실제 반영되지 않았던 항목을 정합 패치.

@@ -29,6 +29,8 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
       return t("notifications.priceInquiryText").replace("{name}", name).replace("{title}", title);
     case "price_inquiry_reply":
       return t("notifications.priceInquiryReplyText").replace("{name}", name).replace("{title}", title);
+    case "new_work":
+      return `${name} uploaded a new work: ${title}`;
     default:
       return "";
   }
