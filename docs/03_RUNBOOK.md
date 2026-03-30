@@ -11,6 +11,7 @@
   - NEXT_PUBLIC_SUPABASE_ANON_KEY
   - NEXT_PUBLIC_APP_URL (로컬: `http://localhost:3000`; 배포 시 Vercel에서 프로덕션 URL로 설정)
   - (optional) NEXT_PUBLIC_KRW_TO_USD_RATE
+  - (optional) `NEXT_PUBLIC_DIAGNOSTICS=1` — enables `/my/diagnostics` in production (otherwise dev-only). Uses `beta_analytics_events` (apply `p0_beta_hardening_wave1.sql`).
   - 초대 메일 사용 시: SENDGRID_API_KEY, INVITE_FROM_EMAIL
 
 3) Run
@@ -47,6 +48,7 @@
 - **NEXT_PUBLIC_SUPABASE_ANON_KEY**
 - **NEXT_PUBLIC_APP_URL** — 앱 공개 URL (예: `https://abstract-mvp-dxfn.vercel.app`). 위임/초대 이메일 링크의 base로 사용. 없으면 초대 링크가 잘못된 주소로 갈 수 있음.
 - (optional) NEXT_PUBLIC_KRW_TO_USD_RATE
+- (optional) **NEXT_PUBLIC_DIAGNOSTICS** — `1`이면 `/my/diagnostics` 노출(베타 이벤트 테이블 필요)
 
   초대 메일(위임·아티스트 초대)을 쓰는 경우 추가:
 - **SENDGRID_API_KEY**

@@ -322,6 +322,65 @@ export async function listExhibitionsForFeed(profileIds: string[]): Promise<{
 
 export type ExhibitionCursor = { created_at: string; id: string };
 
+/**
+ * Following feed: exhibitions curated or hosted by any of `profileIds`.
+ * Keyset pagination; filters to exhibitions that have at least one work in exhibition_works.
+ */
+export async function listExhibitionsForFollowingFeed(
+  profileIds: string[],
+  options: { limit?: number; cursor?: ExhibitionCursor | null } = {}
+): Promise<{
+  data: ExhibitionWithCredits[];
+  nextCursor: ExhibitionCursor | null;
+  error: unknown;
+}> {
+  if (profileIds.length === 0) return { data: [], nextCursor: null, error: null };
+  const ids = profileIds.slice(0, 50).filter(Boolean);
+  const idList = ids.join(",");
+  const pageSize = Math.min(options.limit ?? 12, 20);
+  const cursor = options.cursor ?? null;
+  const fetchLimit = (pageSize + 1) * 3;
+
+  let query = supabase
+    .from("projects")
+    .select(SELECT_WITH_CREDITS)
+    .eq("project_type", "exhibition")
+    .or(`curator_id.in.(${idList}),host_profile_id.in.(${idList})`)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(fetchLimit);
+
+  if (cursor?.created_at && cursor?.id) {
+    const createdAt = cursor.created_at.replace(/"/g, '\\"');
+    const id = cursor.id.replace(/"/g, '\\"');
+    query = query.or(
+      `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) return { data: [], nextCursor: null, error };
+
+  const projects = (data ?? []) as ExhibitionWithCredits[];
+  if (projects.length === 0) return { data: [], nextCursor: null, error: null };
+
+  const eids = projects.map((e) => e.id);
+  const { data: ewRows } = await supabase
+    .from("exhibition_works")
+    .select("exhibition_id")
+    .in("exhibition_id", eids);
+  const withWorks = new Set((ewRows ?? []).map((r: { exhibition_id: string }) => r.exhibition_id));
+  const filtered = projects.filter((e) => withWorks.has(e.id));
+  const slice = filtered.slice(0, pageSize + 1);
+  const hasMore = slice.length > pageSize;
+  const page = hasMore ? slice.slice(0, pageSize) : slice;
+  const next =
+    hasMore && slice[pageSize]
+      ? { created_at: slice[pageSize].created_at!, id: slice[pageSize].id }
+      : null;
+  return { data: page, nextCursor: next, error: null };
+}
+
 /** List recent public exhibitions for global feed (not follow-limited). Cursor for load more. */
 export async function listPublicExhibitionsForFeed(
   limit = 30,

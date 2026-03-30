@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { like, unlike } from "@/lib/supabase/likes";
 
 type Props = {
@@ -45,6 +46,7 @@ export function LikeButton({
         setCount(count);
         return;
       }
+      if (nextLiked) logBetaEventSync("artwork_liked", { artwork_id: artworkId });
       onUpdate?.(nextLiked, nextCount);
     },
     [artworkId, liked, count, loading, showLoginCta, onUpdate]

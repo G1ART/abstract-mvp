@@ -1,4 +1,7 @@
 import { supabase } from "./client";
+import { logBetaEventSync } from "@/lib/beta/logEvent";
+
+export type InquiryStatus = "new" | "open" | "replied" | "closed";
 
 export type PriceInquiryRow = {
   id: string;
@@ -7,9 +10,22 @@ export type PriceInquiryRow = {
   message: string | null;
   artist_reply: string | null;
   replied_at: string | null;
+  replied_by_id?: string | null;
   created_at: string;
+  inquiry_status?: InquiryStatus | null;
+  last_message_at?: string | null;
+  artist_unread?: boolean | null;
+  inquirer_unread?: boolean | null;
   artwork?: { id: string; title: string | null; artist_id: string } | null;
   inquirer?: { username: string | null; display_name: string | null } | null;
+};
+
+export type PriceInquiryMessageRow = {
+  id: string;
+  inquiry_id: string;
+  sender_id: string;
+  body: string;
+  created_at: string;
 };
 
 const INQUIRY_SELECT = `
@@ -19,10 +35,47 @@ const INQUIRY_SELECT = `
   message,
   artist_reply,
   replied_at,
+  replied_by_id,
   created_at,
+  inquiry_status,
+  last_message_at,
+  artist_unread,
+  inquirer_unread,
   artworks!artwork_id(id, title, artist_id),
   profiles!inquirer_id(username, display_name)
 `;
+
+/** Artist inbox list: inner join artwork so we can filter by artist_id server-side. */
+const INQUIRY_LIST_SELECT = `
+  id,
+  artwork_id,
+  inquirer_id,
+  message,
+  artist_reply,
+  replied_at,
+  replied_by_id,
+  created_at,
+  inquiry_status,
+  last_message_at,
+  artist_unread,
+  inquirer_unread,
+  artworks!artwork_id!inner(id, title, artist_id),
+  profiles!inquirer_id(username, display_name)
+`;
+
+export type InquiryListCursor = { last_message_at: string; id: string };
+
+export type ListPriceInquiriesForArtistOptions = {
+  profileId?: string;
+  limit?: number;
+  cursor?: InquiryListCursor | null;
+  status?: InquiryStatus | "all";
+  search?: string;
+};
+
+function escapeIlike(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+}
 
 function normalizeInquiry(row: Record<string, unknown>): PriceInquiryRow {
   const aw = row.artworks;
@@ -44,14 +97,22 @@ function normalizeInquiry(row: Record<string, unknown>): PriceInquiryRow {
     message: (row.message as string) ?? null,
     artist_reply: (row.artist_reply as string) ?? null,
     replied_at: (row.replied_at as string) ?? null,
+    replied_by_id: (row.replied_by_id as string) ?? null,
     created_at: row.created_at as string,
+    inquiry_status: (row.inquiry_status as InquiryStatus) ?? null,
+    last_message_at: (row.last_message_at as string) ?? null,
+    artist_unread: row.artist_unread as boolean | null,
+    inquirer_unread: row.inquirer_unread as boolean | null,
     artwork: artwork ?? null,
     inquirer: inquirer ?? null,
   };
 }
 
 /** Create a price inquiry for an artwork (caller = inquirer). */
-export async function createPriceInquiry(artworkId: string, message?: string | null): Promise<{ data: { id: string } | null; error: unknown }> {
+export async function createPriceInquiry(
+  artworkId: string,
+  message?: string | null
+): Promise<{ data: { id: string } | null; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -68,35 +129,152 @@ export async function createPriceInquiry(artworkId: string, message?: string | n
     .single();
 
   if (error) return { data: null, error };
-  return { data: data as { id: string }, error: null };
+  const row = data as { id: string };
+  const trimmed = message?.trim();
+  if (trimmed) {
+    const { error: msgErr } = await supabase.from("price_inquiry_messages").insert({
+      inquiry_id: row.id,
+      sender_id: session.user.id,
+      body: trimmed,
+    });
+    if (msgErr) return { data: row, error: msgErr };
+  }
+  logBetaEventSync("inquiry_created", { artwork_id: artworkId, inquiry_id: row.id });
+  return { data: row, error: null };
 }
 
 /** Count of price inquiries on my artworks (for KPI). */
 export async function getMyPriceInquiryCount(profileId?: string): Promise<{ data: number; error: unknown }> {
-  const { data, error } = await listPriceInquiriesForArtist(profileId);
-  if (error) return { data: 0, error };
-  return { data: (data ?? []).length, error: null };
-}
-
-/** List inquiries on my artworks (for artist). Optional profileId for acting-as account delegate. */
-export async function listPriceInquiriesForArtist(profileId?: string): Promise<{ data: PriceInquiryRow[]; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  if (!session?.user?.id) return { data: [], error: null };
-
-  const { data, error } = await supabase
+  if (!session?.user?.id) return { data: 0, error: null };
+  const targetId = profileId ?? session.user.id;
+  const { count, error } = await supabase
     .from("price_inquiries")
-    .select(INQUIRY_SELECT)
-    .order("created_at", { ascending: false });
+    .select("id, artworks!artwork_id!inner(artist_id)", { count: "exact", head: true })
+    .eq("artworks.artist_id", targetId);
+  if (error) return { data: 0, error };
+  return { data: count ?? 0, error: null };
+}
 
-  if (error) return { data: [], error };
+/**
+ * List inquiries on my artworks (artist / delegate acting-as).
+ * Keyset on (last_message_at desc, id desc).
+ */
+export async function listPriceInquiriesForArtist(
+  options: ListPriceInquiriesForArtistOptions = {}
+): Promise<{
+  data: PriceInquiryRow[];
+  nextCursor: InquiryListCursor | null;
+  error: unknown;
+}> {
+  const {
+    profileId,
+    limit = 25,
+    cursor = null,
+    status = "all",
+    search = "",
+  } = options;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], nextCursor: null, error: null };
+
+  const targetId = profileId ?? session.user.id;
+  const pageSize = Math.min(Math.max(1, limit), 50);
+  const requestLimit = pageSize + 1;
+
+  let query = supabase
+    .from("price_inquiries")
+    .select(INQUIRY_LIST_SELECT)
+    .eq("artworks.artist_id", targetId)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .order("id", { ascending: false })
+    .limit(requestLimit);
+
+  if (status !== "all") {
+    query = query.eq("inquiry_status", status);
+  }
+
+  const q = search.trim().replace(/,/g, " ");
+  if (q) {
+    const pat = `%${escapeIlike(q)}%`;
+    query = query.or(`artworks.title.ilike.${pat},profiles.username.ilike.${pat}`);
+  }
+
+  if (cursor?.last_message_at && cursor?.id) {
+    const ts = String(cursor.last_message_at).replace(/"/g, '\\"');
+    const id = String(cursor.id).replace(/"/g, '\\"');
+    query = query.or(
+      `last_message_at.lt."${ts}",and(last_message_at.eq."${ts}",id.lt."${id}")`
+    );
+  }
+
+  const { data, error } = await query;
+  if (error) return { data: [], nextCursor: null, error };
 
   const rows = (data ?? []) as Record<string, unknown>[];
   const normalized = rows.map(normalizeInquiry);
-  const targetId = profileId ?? session.user.id;
-  const forArtist = normalized.filter((r) => r.artwork?.artist_id === targetId);
-  return { data: forArtist, error: null };
+  const slice = normalized.length > pageSize ? normalized.slice(0, pageSize) : normalized;
+  let nextCursor: InquiryListCursor | null = null;
+  if (normalized.length > pageSize && slice.length > 0) {
+    const last = slice[slice.length - 1];
+    const lm = last.last_message_at ?? last.created_at;
+    if (lm && last.id) nextCursor = { last_message_at: lm, id: last.id };
+  }
+  return { data: slice, nextCursor, error: null };
+}
+
+export async function listPriceInquiryMessages(
+  inquiryId: string
+): Promise<{ data: PriceInquiryMessageRow[]; error: unknown }> {
+  const { data, error } = await supabase
+    .from("price_inquiry_messages")
+    .select("id, inquiry_id, sender_id, body, created_at")
+    .eq("inquiry_id", inquiryId)
+    .order("created_at", { ascending: true });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as PriceInquiryMessageRow[], error: null };
+}
+
+export async function markPriceInquiryRead(inquiryId: string): Promise<{ error: unknown }> {
+  const { error } = await supabase.rpc("mark_price_inquiry_read", {
+    p_inquiry_id: inquiryId,
+  });
+  return { error };
+}
+
+export async function setPriceInquiryStatus(
+  inquiryId: string,
+  status: InquiryStatus
+): Promise<{ error: unknown }> {
+  const { error } = await supabase.rpc("set_price_inquiry_status", {
+    p_inquiry_id: inquiryId,
+    p_status: status,
+  });
+  return { error };
+}
+
+/** Append a thread message (inquirer or artist/delegate). */
+export async function appendPriceInquiryMessage(
+  inquiryId: string,
+  body: string
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+  const text = body.trim();
+  if (!text) return { error: new Error("Empty message") };
+
+  const { error } = await supabase.from("price_inquiry_messages").insert({
+    inquiry_id: inquiryId,
+    sender_id: session.user.id,
+    body: text,
+  });
+  return { error };
 }
 
 /** Whether the current user can reply to price inquiries for this artwork (backend: CREATED claim = artist). */
@@ -165,21 +343,20 @@ export async function resendPriceInquiryNotification(inquiryId: string): Promise
   return { data: typeof data === "number" ? data : 0, error: null };
 }
 
-/** Artist or delegate replies to an inquiry (first reply wins). */
+/**
+ * Artist/delegate reply: inserts a thread row; DB trigger syncs legacy artist_reply / replied_at for notifications.
+ */
 export async function replyToPriceInquiry(inquiryId: string, reply: string): Promise<{ error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { error: new Error("Not authenticated") };
 
-  const { error } = await supabase
-    .from("price_inquiries")
-    .update({
-      artist_reply: reply.trim() || null,
-      replied_at: new Date().toISOString(),
-      replied_by_id: session.user.id,
-    })
-    .eq("id", inquiryId);
-
+  const { error } = await supabase.from("price_inquiry_messages").insert({
+    inquiry_id: inquiryId,
+    sender_id: session.user.id,
+    body: reply.trim() || "",
+  });
+  if (!error) logBetaEventSync("inquiry_replied", { inquiry_id: inquiryId });
   return { error };
 }

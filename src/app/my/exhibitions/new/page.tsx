@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
+import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { createExhibition } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { getMyProfile } from "@/lib/supabase/me";
@@ -126,7 +127,10 @@ export default function NewExhibitionPage() {
       setError(formatSupabaseError(err, "Failed to create exhibition"));
       return;
     }
-    if (data?.id) router.push(`/my/exhibitions/${data.id}/add`);
+    if (data?.id) {
+      logBetaEventSync("exhibition_created", { exhibition_id: data.id });
+      router.push(`/my/exhibitions/${data.id}/add`);
+    }
   }
 
   return (

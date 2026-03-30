@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AuthGate } from "@/components/AuthGate";
 import {
   listNotifications,
   markAllAsRead,
+  markNotificationRead,
   type NotificationRow,
-  type NotificationType,
 } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
 
@@ -35,6 +35,9 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
 }
 
 function notificationLink(row: NotificationRow): string | null {
+  if (row.type === "price_inquiry" || row.type === "price_inquiry_reply") {
+    return "/my/inquiries";
+  }
   if (row.type === "follow" && row.actor_id) {
     const u = row.actor?.username;
     return u ? `/u/${u}` : null;
@@ -47,23 +50,31 @@ function NotificationsContent() {
   const { t } = useT();
   const [list, setList] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [markingAll, setMarkingAll] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
+  const refresh = useCallback(() => {
     listNotifications({ limit: 50 }).then(({ data }) => {
-      if (mounted) setList(data);
+      setList(data);
       setLoading(false);
     });
-    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
-    markAllAsRead().then(() => {
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("notifications-read"));
-      }
+    const t = requestAnimationFrame(() => {
+      refresh();
     });
-  }, []);
+    return () => cancelAnimationFrame(t);
+  }, [refresh]);
+
+  const handleMarkAll = useCallback(async () => {
+    setMarkingAll(true);
+    await markAllAsRead();
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("notifications-read"));
+    }
+    await refresh();
+    setMarkingAll(false);
+  }, [refresh]);
 
   if (loading) {
     return (
@@ -81,7 +92,19 @@ function NotificationsContent() {
       >
         ← {t("common.backTo")} {t("nav.feed")}
       </Link>
-      <h1 className="text-xl font-semibold text-zinc-900">{t("notifications.title")}</h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-xl font-semibold text-zinc-900">{t("notifications.title")}</h1>
+        {list.length > 0 && (
+          <button
+            type="button"
+            disabled={markingAll}
+            onClick={() => void handleMarkAll()}
+            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+          >
+            {markingAll ? t("common.loading") : t("notifications.markAllRead")}
+          </button>
+        )}
+      </div>
       {list.length === 0 ? (
         <p className="mt-4 text-sm text-zinc-500">{t("notifications.empty")}</p>
       ) : (
@@ -89,8 +112,10 @@ function NotificationsContent() {
           {list.map((row) => {
             const href = notificationLink(row);
             const label = notificationLabel(row, t);
+            const unread = row.read_at == null;
             const content = (
               <span className="block py-3 text-sm text-zinc-700">
+                {unread && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-blue-500 align-middle" aria-hidden />}
                 {label}
                 <span className="ml-2 text-zinc-400">
                   {new Date(row.created_at).toLocaleDateString(undefined, {
@@ -105,7 +130,14 @@ function NotificationsContent() {
             return (
               <li key={row.id}>
                 {href ? (
-                  <Link href={href} className="block hover:bg-zinc-50">
+                  <Link
+                    href={href}
+                    className="block hover:bg-zinc-50"
+                    onClick={() => {
+                      void markNotificationRead(row.id);
+                      window.dispatchEvent(new CustomEvent("notifications-read"));
+                    }}
+                  >
                     {content}
                   </Link>
                 ) : (

@@ -1,13 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import {
   listPriceInquiriesForArtist,
+  listPriceInquiryMessages,
+  markPriceInquiryRead,
   replyToPriceInquiry,
+  setPriceInquiryStatus,
+  type InquiryListCursor,
+  type InquiryStatus,
+  type PriceInquiryMessageRow,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
 
@@ -15,25 +21,87 @@ export default function MyInquiriesPage() {
   const { t } = useT();
   const { actingAsProfileId } = useActingAs();
   const [list, setList] = useState<PriceInquiryRow[]>([]);
+  const [nextCursor, setNextCursor] = useState<InquiryListCursor | null>(null);
   const [loading, setLoading] = useState(true);
-  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [replyingId, setReplyingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<InquiryStatus | "all">("all");
+  const [search, setSearch] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [messagesByInquiry, setMessagesByInquiry] = useState<Record<string, PriceInquiryMessageRow[]>>({});
+  const [loadingMessages, setLoadingMessages] = useState<string | null>(null);
 
-  const fetchList = useCallback(async () => {
+  useEffect(() => {
+    const tmr = setTimeout(() => setSearchDebounced(search.trim()), 350);
+    return () => clearTimeout(tmr);
+  }, [search]);
+
+  const fetchFirstPage = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await listPriceInquiriesForArtist(actingAsProfileId ?? undefined);
+    const { data, nextCursor: nc, error } = await listPriceInquiriesForArtist({
+      profileId: actingAsProfileId ?? undefined,
+      limit: 20,
+      cursor: null,
+      status: statusFilter,
+      search: searchDebounced,
+    });
     if (error) {
       setLoading(false);
       return;
     }
     setList(data ?? []);
+    setNextCursor(nc);
     setLoading(false);
-  }, [actingAsProfileId]);
+  }, [actingAsProfileId, statusFilter, searchDebounced]);
 
   useEffect(() => {
-    fetchList();
-  }, [fetchList]);
+    const t = requestAnimationFrame(() => {
+      void fetchFirstPage();
+    });
+    return () => cancelAnimationFrame(t);
+  }, [fetchFirstPage]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    const { data, nextCursor: nc, error } = await listPriceInquiriesForArtist({
+      profileId: actingAsProfileId ?? undefined,
+      limit: 20,
+      cursor: nextCursor,
+      status: statusFilter,
+      search: searchDebounced,
+    });
+    setLoadingMore(false);
+    if (error) return;
+    setList((prev) => {
+      const seen = new Set(prev.map((r) => r.id));
+      const add = (data ?? []).filter((r) => !seen.has(r.id));
+      return [...prev, ...add];
+    });
+    setNextCursor(nc);
+  }, [nextCursor, loadingMore, actingAsProfileId, statusFilter, searchDebounced]);
+
+  const openThread = useCallback(
+    async (row: PriceInquiryRow) => {
+      const id = row.id;
+      if (expandedId === id) {
+        setExpandedId(null);
+        return;
+      }
+      setExpandedId(id);
+      void markPriceInquiryRead(id);
+      setLoadingMessages(id);
+      const { data, error } = await listPriceInquiryMessages(id);
+      setLoadingMessages(null);
+      if (!error && data) {
+        setMessagesByInquiry((prev) => ({ ...prev, [id]: data }));
+      }
+    },
+    [expandedId]
+  );
 
   const handleReply = useCallback(
     async (inquiryId: string) => {
@@ -51,11 +119,30 @@ export default function MyInquiriesPage() {
         delete next[inquiryId];
         return next;
       });
-      await fetchList();
+      const { data: msgs } = await listPriceInquiryMessages(inquiryId);
+      if (msgs) setMessagesByInquiry((prev) => ({ ...prev, [inquiryId]: msgs }));
+      await fetchFirstPage();
       setToast(t("common.replySent"));
     },
-    [replyText, fetchList]
+    [replyText, fetchFirstPage, t]
   );
+
+  const handleStatusChange = useCallback(
+    async (inquiryId: string, status: InquiryStatus) => {
+      const { error } = await setPriceInquiryStatus(inquiryId, status);
+      if (error) {
+        setToast(t("priceInquiry.statusUpdateFailed"));
+        return;
+      }
+      setList((prev) =>
+        prev.map((r) => (r.id === inquiryId ? { ...r, inquiry_status: status } : r))
+      );
+      setToast(t("priceInquiry.statusUpdated"));
+    },
+    [t]
+  );
+
+  const unreadCount = useMemo(() => list.filter((r) => r.artist_unread === true).length, [list]);
 
   return (
     <AuthGate>
@@ -63,78 +150,175 @@ export default function MyInquiriesPage() {
         <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
           ← {t("common.backTo")} {t("nav.myProfile")}
         </Link>
-        <h1 className="mb-6 text-xl font-semibold text-zinc-900">{t("priceInquiry.title")}</h1>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-zinc-900">{t("priceInquiry.title")}</h1>
+            {unreadCount > 0 && (
+              <p className="mt-1 text-sm text-amber-700">{t("priceInquiry.unreadBadge").replace("{n}", String(unreadCount))}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("priceInquiry.searchPlaceholder")}
+            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm sm:max-w-xs"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as InquiryStatus | "all")}
+            className="rounded border border-zinc-300 px-3 py-2 text-sm"
+          >
+            <option value="all">{t("priceInquiry.filterAll")}</option>
+            <option value="new">{t("priceInquiry.filterNew")}</option>
+            <option value="open">{t("priceInquiry.filterOpen")}</option>
+            <option value="replied">{t("priceInquiry.filterReplied")}</option>
+            <option value="closed">{t("priceInquiry.filterClosed")}</option>
+          </select>
+        </div>
+
         {toast && (
           <p className="mb-4 text-sm text-zinc-600" role="status">
             {toast}
           </p>
         )}
+
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
         ) : list.length === 0 ? (
           <p className="text-zinc-600">{t("priceInquiry.empty")}</p>
         ) : (
           <ul className="space-y-4">
-            {list.map((row) => (
-              <li
-                key={row.id}
-                className="rounded-lg border border-zinc-200 bg-white p-4"
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Link
-                    href={`/artwork/${row.artwork_id}`}
-                    className="font-medium text-zinc-900 hover:underline"
-                  >
-                    {row.artwork?.title ?? "Untitled"}
-                  </Link>
-                  <span className="text-zinc-400">·</span>
-                  <span className="text-sm text-zinc-600">
-                    {row.inquirer?.display_name?.trim() || row.inquirer?.username || "Someone"}
-                    {row.inquirer?.username && (
-                      <span className="text-zinc-400"> @{row.inquirer.username}</span>
-                    )}
-                  </span>
-                </div>
-                <p className="text-xs text-zinc-500">
-                  {new Date(row.created_at).toLocaleString()}
-                </p>
-                {row.message && (
-                  <p className="mt-2 text-sm text-zinc-700">{row.message}</p>
-                )}
-                {row.artist_reply ? (
-                  <div className="mt-3 rounded bg-zinc-100 p-3 text-sm text-zinc-800">
-                    <span className="font-medium text-zinc-600">{t("priceInquiry.replyFromArtist")}:</span>{" "}
-                    {row.artist_reply}
-                    {row.replied_at && (
-                      <p className="mt-1 text-xs text-zinc-500">
-                        {new Date(row.replied_at).toLocaleString()}
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <div className="mt-3">
-                    <textarea
-                      placeholder={t("priceInquiry.replyPlaceholder")}
-                      value={replyText[row.id] ?? ""}
-                      onChange={(e) =>
-                        setReplyText((prev) => ({ ...prev, [row.id]: e.target.value }))
-                      }
-                      className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
-                      rows={3}
-                    />
+            {list.map((row) => {
+              const expanded = expandedId === row.id;
+              const msgs = messagesByInquiry[row.id];
+              return (
+                <li
+                  key={row.id}
+                  className={`rounded-lg border bg-white p-4 ${
+                    row.artist_unread ? "border-amber-200 ring-1 ring-amber-100" : "border-zinc-200"
+                  }`}
+                >
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      disabled={!replyText[row.id]?.trim() || replyingId === row.id}
-                      onClick={() => handleReply(row.id)}
-                      className="mt-2 rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                      onClick={() => void openThread(row)}
+                      className="text-left font-medium text-zinc-900 hover:underline"
                     >
-                      {replyingId === row.id ? t("common.loading") : t("priceInquiry.reply")}
+                      {row.artwork?.title ?? "Untitled"}
                     </button>
+                    <Link
+                      href={`/artwork/${row.artwork_id}`}
+                      className="text-xs text-zinc-500 hover:text-zinc-800"
+                      onClick={() => void markPriceInquiryRead(row.id)}
+                    >
+                      {t("priceInquiry.viewArtwork")}
+                    </Link>
+                    {row.artist_unread && (
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
+                        {t("priceInquiry.unread")}
+                      </span>
+                    )}
                   </div>
-                )}
-              </li>
-            ))}
+                  <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                    <span>
+                      {row.inquirer?.display_name?.trim() || row.inquirer?.username || "Someone"}
+                      {row.inquirer?.username && (
+                        <span className="text-zinc-400"> @{row.inquirer.username}</span>
+                      )}
+                    </span>
+                    <span className="text-zinc-400">·</span>
+                    <span className="text-xs text-zinc-500">
+                      {row.last_message_at
+                        ? new Date(row.last_message_at).toLocaleString()
+                        : new Date(row.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-zinc-500">{t("priceInquiry.statusLabel")}</label>
+                    <select
+                      value={row.inquiry_status ?? "open"}
+                      onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
+                      className="rounded border border-zinc-300 px-2 py-1 text-xs"
+                    >
+                      <option value="new">new</option>
+                      <option value="open">open</option>
+                      <option value="replied">replied</option>
+                      <option value="closed">closed</option>
+                    </select>
+                  </div>
+
+                  {expanded && (
+                    <div className="mt-3 border-t border-zinc-100 pt-3">
+                      {loadingMessages === row.id ? (
+                        <p className="text-sm text-zinc-500">{t("common.loading")}</p>
+                      ) : msgs && msgs.length > 0 ? (
+                        <ul className="mb-4 space-y-3">
+                          {msgs.map((m) => (
+                            <li key={m.id} className="rounded bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+                              <span className="text-xs text-zinc-500">
+                                {new Date(m.created_at).toLocaleString()}
+                              </span>
+                              <p className="mt-1 whitespace-pre-wrap">{m.body}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        row.message && (
+                          <p className="mb-3 text-sm text-zinc-700">{row.message}</p>
+                        )
+                      )}
+                      <div>
+                        <textarea
+                          placeholder={t("priceInquiry.replyPlaceholder")}
+                          value={replyText[row.id] ?? ""}
+                          onChange={(e) =>
+                            setReplyText((prev) => ({ ...prev, [row.id]: e.target.value }))
+                          }
+                          className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+                          rows={3}
+                        />
+                        <button
+                          type="button"
+                          disabled={!replyText[row.id]?.trim() || replyingId === row.id}
+                          onClick={() => void handleReply(row.id)}
+                          className="mt-2 rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                        >
+                          {replyingId === row.id ? t("common.loading") : t("priceInquiry.reply")}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!expanded && (
+                    <button
+                      type="button"
+                      onClick={() => void openThread(row)}
+                      className="text-sm text-zinc-600 underline hover:text-zinc-900"
+                    >
+                      {t("priceInquiry.openThread")}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+        )}
+
+        {nextCursor != null && !loading && (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMore()}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {loadingMore ? t("common.loading") : t("priceInquiry.loadMore")}
+            </button>
+          </div>
         )}
       </main>
     </AuthGate>

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
+import { logBetaEvent } from "@/lib/beta/logEvent";
+import { markFeedPerf, readFeedPerf } from "@/lib/feed/feedPerf";
 import {
   type ArtworkWithLikes,
   type ArtworkCursor,
@@ -13,7 +15,7 @@ import {
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import {
-  listExhibitionsForFeed,
+  listExhibitionsForFollowingFeed,
   listPublicExhibitionsForFeed,
   type ExhibitionWithCredits,
   type ExhibitionCursor,
@@ -25,6 +27,7 @@ import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
 import { FeedExhibitionCard } from "./FeedExhibitionCard";
 
 const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
+const FEED_STALE_MS = 90_000; // pathname / focus / visibility SWR
 const INTERLEAVE_EVERY = 5; // 5 items (artwork/exhibition) : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
 const DISCOVERY_BLOCKS_MAX = 4;
@@ -78,24 +81,28 @@ type Props = {
 export function FeedContent({ tab, sort = "latest", userId }: Props) {
   const pathname = usePathname();
   const { t } = useT();
-  const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([]);
   const [discoveryData, setDiscoveryData] = useState<
     { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
   >([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [followingProfileIds, setFollowingProfileIds] = useState<string[]>([]);
   const recCacheRef = useRef<{
     profiles: PeopleRec[];
     fetchedAt: number;
   } | null>(null);
   const [artworksNextCursor, setArtworksNextCursor] = useState<ArtworkCursor | null>(null);
   const [exhibitionsNextCursor, setExhibitionsNextCursor] = useState<ExhibitionCursor | null>(null);
+  const [followingArtCursor, setFollowingArtCursor] = useState<ArtworkCursor | null>(null);
+  const [followingExhCursor, setFollowingExhCursor] = useState<ExhibitionCursor | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const lastFullFetchRef = useRef(0);
+  const dataLoadStartedRef = useRef(0);
 
   const fetchRecProfiles = useCallback(async (): Promise<PeopleRec[]> => {
     const now = Date.now();
@@ -131,30 +138,114 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     return strong;
   }, [userId]);
 
-  const fetchArtworks = useCallback(async () => {
-    if (userId == null && tab === "following") return;
-    setLoading(true);
-    setError(null);
-    setArtworksNextCursor(null);
-    setExhibitionsNextCursor(null);
+  const fetchArtworks = useCallback(
+    async (opts?: { force?: boolean }) => {
+      const force = opts?.force === true;
+      if (userId == null && tab === "following") {
+        setLoading(false);
+        setFeedEntries([]);
+        setDiscoveryData([]);
+        return;
+      }
 
-    if (tab === "following") {
-      const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
-        listFollowingArtworks({ limit: 50 }),
-        getFollowingIds(),
-        getFollowingIds().then((r) =>
-          r.data?.size ? listExhibitionsForFeed(Array.from(r.data)) : { data: [] as ExhibitionWithCredits[], error: null }
-        ),
-      ]);
-      const list = artworksRes.data ?? [];
-      const followingSet = followingRes.data ?? new Set<string>();
-      setFollowingIds(followingSet);
-      if (artworksRes.error) {
-        setError(String((artworksRes.error as { message?: string })?.message ?? artworksRes.error));
+      if (!force) {
+        const now = Date.now();
+        if (now - lastFullFetchRef.current < FEED_STALE_MS && lastFullFetchRef.current > 0) {
+          return;
+        }
+      }
+      lastFullFetchRef.current = Date.now();
+      dataLoadStartedRef.current = performance.now();
+      markFeedPerf("feed_fetch_started");
+
+      setLoading(true);
+      setError(null);
+      setArtworksNextCursor(null);
+      setExhibitionsNextCursor(null);
+      setFollowingArtCursor(null);
+      setFollowingExhCursor(null);
+
+      if (tab === "following") {
+        const followingRes = await getFollowingIds();
+        const followingSet = followingRes.data ?? new Set<string>();
+        const ids = Array.from(followingSet);
+        setFollowingIds(followingSet);
+        setFollowingProfileIds(ids);
+
+        const [artworksRes, exhibitionsRes] = await Promise.all([
+          listFollowingArtworks({ limit: 30, mergeOwnClaimedWorks: true }),
+          ids.length > 0
+            ? listExhibitionsForFollowingFeed(ids, { limit: 12 })
+            : Promise.resolve({
+                data: [] as ExhibitionWithCredits[],
+                nextCursor: null as ExhibitionCursor | null,
+                error: null,
+              }),
+        ]);
+
+        const list = artworksRes.data ?? [];
+        if (artworksRes.error) {
+          setError(String((artworksRes.error as { message?: string })?.message ?? artworksRes.error));
+          setLoading(false);
+          return;
+        }
+        setFollowingArtCursor(artworksRes.nextCursor ?? null);
+        setFollowingExhCursor(exhibitionsRes.nextCursor ?? null);
+
+        const exhibitions = exhibitionsRes.data ?? [];
+        const entries: FeedEntry[] = [
+          ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+          ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
+        ].sort((a, b) => {
+          const ta = new Date(a.created_at ?? 0).getTime();
+          const tb = new Date(b.created_at ?? 0).getTime();
+          return tb - ta;
+        });
+        setFeedEntries(entries);
+        const allIds = list.map((a) => a.id);
+        const liked = await getLikedArtworkIds(allIds);
+        setLikedIds(liked);
+
+        const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
+        void logBetaEvent("feed_data_loaded", { tab, sort, ms: elapsed, mode: "following_reset" });
+        markFeedPerf("feed_data_loaded_ms", String(elapsed));
+
+        const recProfiles = await fetchRecProfiles();
+        const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
+          listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
+            (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
+          )
+        );
+        const discoveryResults = await Promise.all(discoveryPromises);
+        const discoveryWithArtworks = discoveryResults.filter(
+          (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
+        );
+        setDiscoveryData(discoveryWithArtworks);
         setLoading(false);
         return;
       }
-      setArtworks(list);
+
+      const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
+        listPublicArtworks({ limit: 30, sort }),
+        getFollowingIds(),
+        listPublicExhibitionsForFeed(20),
+      ]);
+      const followingSet = followingRes.data ?? new Set<string>();
+      setFollowingIds(followingSet);
+
+      const list = artworksRes.data ?? [];
+      const err = artworksRes.error;
+      if (err) {
+        setError(
+          (err as { message?: string })?.message ?? (typeof err === "string" ? err : JSON.stringify(err))
+        );
+        setLoading(false);
+        return;
+      }
+
+      setArtworksNextCursor(artworksRes.nextCursor ?? null);
+      setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
+
       const exhibitions = exhibitionsRes.data ?? [];
       const entries: FeedEntry[] = [
         ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
@@ -165,9 +256,15 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         return tb - ta;
       });
       setFeedEntries(entries);
+
       const allIds = list.map((a) => a.id);
       const liked = await getLikedArtworkIds(allIds);
       setLikedIds(liked);
+
+      const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
+      void logBetaEvent("feed_data_loaded", { tab, sort, ms: elapsed, mode: "all_reset" });
+      markFeedPerf("feed_data_loaded_ms", String(elapsed));
+
       const recProfiles = await fetchRecProfiles();
       const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
         listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
@@ -180,118 +277,157 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       );
       setDiscoveryData(discoveryWithArtworks);
       setLoading(false);
-      return;
-    }
-
-    const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
-      listPublicArtworks({ limit: 30, sort }),
-      getFollowingIds(),
-      listPublicExhibitionsForFeed(20),
-    ]);
-    const followingSet = followingRes.data ?? new Set<string>();
-    setFollowingIds(followingSet);
-
-    const list = artworksRes.data ?? [];
-    const err = artworksRes.error;
-    if (err) {
-      setError(
-        (err as { message?: string })?.message ?? (typeof err === "string" ? err : JSON.stringify(err))
-      );
-      setLoading(false);
-      return;
-    }
-
-    setArtworks(list);
-    setArtworksNextCursor(artworksRes.nextCursor ?? null);
-    setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
-
-    const exhibitions = exhibitionsRes.data ?? [];
-    const entries: FeedEntry[] = [
-      ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
-      ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
-    ].sort((a, b) => {
-      const ta = new Date(a.created_at ?? 0).getTime();
-      const tb = new Date(b.created_at ?? 0).getTime();
-      return tb - ta;
-    });
-    setFeedEntries(entries);
-
-    const allIds = list.map((a) => a.id);
-    const liked = await getLikedArtworkIds(allIds);
-    setLikedIds(liked);
-
-    const recProfiles = await fetchRecProfiles();
-    const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
-      listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
-        (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
-      )
-    );
-    const discoveryResults = await Promise.all(discoveryPromises);
-    const discoveryWithArtworks = discoveryResults.filter(
-      (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
-    );
-    setDiscoveryData(discoveryWithArtworks);
-    setLoading(false);
-  }, [tab, sort, userId, fetchRecProfiles]);
+    },
+    [tab, sort, userId, fetchRecProfiles]
+  );
 
   const loadMore = useCallback(async () => {
-    if (tab !== "all" || loadingMore || loadingMoreRef.current) return;
+    if (loadingMoreRef.current) return;
+
+    if (tab === "following") {
+      const artCur = followingArtCursor;
+      const exhCur = followingExhCursor;
+      const ids = followingProfileIds;
+      if (!artCur && !exhCur) return;
+      if (exhCur && ids.length === 0) return;
+
+      loadingMoreRef.current = true;
+      setLoadingMore(true);
+      const t0 = performance.now();
+      try {
+        const [artworksRes, exhibitionsRes] = await Promise.all([
+          artCur
+            ? listFollowingArtworks({
+                limit: 30,
+                cursor: artCur,
+                mergeOwnClaimedWorks: false,
+              })
+            : Promise.resolve({
+                data: [] as ArtworkWithLikes[],
+                nextCursor: null as ArtworkCursor | null,
+                error: null,
+              }),
+          exhCur && ids.length > 0
+            ? listExhibitionsForFollowingFeed(ids, { limit: 12, cursor: exhCur })
+            : Promise.resolve({
+                data: [] as ExhibitionWithCredits[],
+                nextCursor: null as ExhibitionCursor | null,
+                error: null,
+              }),
+        ]);
+
+        setFollowingArtCursor(artworksRes.nextCursor ?? null);
+        setFollowingExhCursor(exhibitionsRes.nextCursor ?? null);
+
+        const newArtworks = artworksRes.data ?? [];
+        const newExhibitions = exhibitionsRes.data ?? [];
+        if (newArtworks.length > 0) {
+          const newIds = newArtworks.map((a) => a.id);
+          const liked = await getLikedArtworkIds(newIds);
+          setLikedIds((prev) => {
+            const next = new Set(prev);
+            liked.forEach((id) => next.add(id));
+            return next;
+          });
+        }
+
+        const newEntries: FeedEntry[] = [
+          ...newArtworks.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+          ...newExhibitions.map((e) => ({
+            type: "exhibition" as const,
+            created_at: e.created_at ?? null,
+            exhibition: e,
+          })),
+        ];
+        if (newEntries.length > 0) {
+          setFeedEntries((prev) => {
+            const merged = [...prev, ...newEntries].sort((a, b) => {
+              const ta = new Date(a.created_at ?? 0).getTime();
+              const tb = new Date(b.created_at ?? 0).getTime();
+              return tb - ta;
+            });
+            return merged;
+          });
+        }
+        const ms = Math.round(performance.now() - t0);
+        void logBetaEvent("feed_load_more", { tab, ms, artworks: newArtworks.length, exhibitions: newExhibitions.length });
+      } finally {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+      return;
+    }
+
+    if (tab !== "all") return;
     const hasMore = artworksNextCursor || exhibitionsNextCursor;
     if (!hasMore) return;
     loadingMoreRef.current = true;
     setLoadingMore(true);
+    const t0 = performance.now();
     try {
-    const [artworksRes, exhibitionsRes] = await Promise.all([
-      artworksNextCursor
-        ? listPublicArtworks({ limit: 30, sort, cursor: artworksNextCursor })
-        : Promise.resolve({ data: [] as ArtworkWithLikes[], nextCursor: null as ArtworkCursor | null, error: null }),
-      exhibitionsNextCursor
-        ? listPublicExhibitionsForFeed(20, exhibitionsNextCursor)
-        : Promise.resolve({ data: [] as ExhibitionWithCredits[], nextCursor: null as ExhibitionCursor | null, error: null }),
-    ]);
-    setArtworksNextCursor(artworksRes.nextCursor ?? null);
-    setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
+      const [artworksRes, exhibitionsRes] = await Promise.all([
+        artworksNextCursor
+          ? listPublicArtworks({ limit: 30, sort, cursor: artworksNextCursor })
+          : Promise.resolve({ data: [] as ArtworkWithLikes[], nextCursor: null as ArtworkCursor | null, error: null }),
+        exhibitionsNextCursor
+          ? listPublicExhibitionsForFeed(20, exhibitionsNextCursor)
+          : Promise.resolve({
+              data: [] as ExhibitionWithCredits[],
+              nextCursor: null as ExhibitionCursor | null,
+              error: null,
+            }),
+      ]);
+      setArtworksNextCursor(artworksRes.nextCursor ?? null);
+      setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
 
-    const newArtworks = artworksRes.data ?? [];
-    const newExhibitions = exhibitionsRes.data ?? [];
-    if (newArtworks.length > 0) {
-      const newIds = newArtworks.map((a) => a.id);
-      const liked = await getLikedArtworkIds(newIds);
-      setLikedIds((prev) => {
-        const next = new Set(prev);
-        liked.forEach((id) => next.add(id));
-        return next;
-      });
-    }
-
-    const newEntries: FeedEntry[] = [
-      ...newArtworks.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
-      ...newExhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
-    ];
-    if (newEntries.length > 0) {
-      setArtworks((prev) => {
-        const ids = new Set(prev.map((a) => a.id));
-        const added = newArtworks.filter((a) => !ids.has(a.id));
-        return added.length > 0 ? [...prev, ...added] : prev;
-      });
-      setFeedEntries((prev) => {
-        const merged = [...prev, ...newEntries].sort((a, b) => {
-          const ta = new Date(a.created_at ?? 0).getTime();
-          const tb = new Date(b.created_at ?? 0).getTime();
-          return tb - ta;
+      const newArtworks = artworksRes.data ?? [];
+      const newExhibitions = exhibitionsRes.data ?? [];
+      if (newArtworks.length > 0) {
+        const newIds = newArtworks.map((a) => a.id);
+        const liked = await getLikedArtworkIds(newIds);
+        setLikedIds((prev) => {
+          const next = new Set(prev);
+          liked.forEach((id) => next.add(id));
+          return next;
         });
-        return merged;
-      });
-    }
+      }
+
+      const newEntries: FeedEntry[] = [
+        ...newArtworks.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
+        ...newExhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
+      ];
+      if (newEntries.length > 0) {
+        setFeedEntries((prev) => {
+          const merged = [...prev, ...newEntries].sort((a, b) => {
+            const ta = new Date(a.created_at ?? 0).getTime();
+            const tb = new Date(b.created_at ?? 0).getTime();
+            return tb - ta;
+          });
+          return merged;
+        });
+      }
+      const ms = Math.round(performance.now() - t0);
+      void logBetaEvent("feed_load_more", { tab, sort, ms, artworks: newArtworks.length, exhibitions: newExhibitions.length });
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [tab, sort, artworksNextCursor, exhibitionsNextCursor, loadingMore]);
+  }, [
+    tab,
+    sort,
+    followingArtCursor,
+    followingExhCursor,
+    followingProfileIds,
+    artworksNextCursor,
+    exhibitionsNextCursor,
+  ]);
 
-  // 스크롤 맨 아래 근처에서 더 불러오기: IntersectionObserver + scroll 이벤트 폴백
+  const hasMoreFollowing = tab === "following" && (followingArtCursor != null || followingExhCursor != null);
+  const hasMoreAll = tab === "all" && (artworksNextCursor != null || exhibitionsNextCursor != null);
+  const hasMore = hasMoreFollowing || hasMoreAll;
+
   useEffect(() => {
-    if (tab !== "all" || (!artworksNextCursor && !exhibitionsNextCursor)) return;
+    if (!hasMore) return;
 
     const el = loadMoreSentinelRef.current;
     let obs: IntersectionObserver | null = null;
@@ -299,52 +435,50 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     if (el) {
       obs = new IntersectionObserver(
         (entries) => {
-          if (entries[0]?.isIntersecting && !loadingMoreRef.current) loadMore();
+          if (entries[0]?.isIntersecting && !loadingMoreRef.current) void loadMore();
         },
         { root: null, rootMargin: "400px", threshold: 0 }
       );
       obs.observe(el);
     }
 
-    const onScroll = () => {
-      if (loadingMoreRef.current || (!artworksNextCursor && !exhibitionsNextCursor)) return;
-      const scrollTop = window.scrollY ?? document.documentElement.scrollTop;
-      const scrollHeight = document.documentElement.scrollHeight;
-      const clientHeight = window.innerHeight;
-      if (scrollTop + clientHeight >= scrollHeight - 500) loadMore();
-    };
-
-    window.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       obs?.disconnect();
-      window.removeEventListener("scroll", onScroll);
     };
-  }, [tab, loadingMore, artworksNextCursor, exhibitionsNextCursor, loadMore]);
+  }, [hasMore, loadMore]);
 
   useEffect(() => {
-    fetchArtworks();
-  }, [fetchArtworks]);
+    void fetchArtworks({ force: true });
+  }, [tab, sort, userId, fetchArtworks]);
 
   useEffect(() => {
-    if (pathname?.startsWith("/feed")) {
-      fetchArtworks();
-    }
+    if (!pathname?.startsWith("/feed")) return;
+    void fetchArtworks();
   }, [pathname, fetchArtworks]);
 
   useEffect(() => {
-    function refresh() {
-      fetchArtworks();
+    function onFocus() {
+      void fetchArtworks();
     }
     function onVisibilityChange() {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") void fetchArtworks();
     }
-    window.addEventListener("focus", refresh);
+    window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
-      window.removeEventListener("focus", refresh);
+      window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [fetchArtworks]);
+
+  useEffect(() => {
+    if (loading) return;
+    const firstPaint = readFeedPerf("feed_first_paint");
+    if (firstPaint == null) {
+      markFeedPerf("feed_first_paint");
+      void logBetaEvent("feed_first_paint", { tab, sort, data_ms: readFeedPerf("feed_data_loaded_ms") });
+    }
+  }, [loading, tab, sort]);
 
   const handleLikeUpdate = useCallback(
     (artworkId: string, liked: boolean, count: number) => {
@@ -354,9 +488,11 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         else next.delete(artworkId);
         return next;
       });
-      setArtworks((prev) =>
-        prev.map((a) =>
-          a.id === artworkId ? { ...a, likes_count: count } : a
+      setFeedEntries((prev) =>
+        prev.map((e) =>
+          e.type === "artwork" && e.artwork.id === artworkId
+            ? { ...e, artwork: { ...e.artwork, likes_count: count } }
+            : e
         )
       );
       setDiscoveryData((prev) =>
@@ -370,6 +506,10 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     },
     []
   );
+
+  const handleManualRefresh = useCallback(() => {
+    void fetchArtworks({ force: true });
+  }, [fetchArtworks]);
 
   if (loading) {
     return (
@@ -403,7 +543,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       <div className="mb-4 flex justify-end">
         <button
           type="button"
-          onClick={fetchArtworks}
+          onClick={handleManualRefresh}
           className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50"
         >
           {t("common.refresh")}
@@ -480,7 +620,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           })}
         </div>
       )}
-      {tab === "all" && (artworksNextCursor || exhibitionsNextCursor) && (
+      {hasMore && (
         <div
           ref={loadMoreSentinelRef}
           className="flex min-h-[80px] items-center justify-center py-4"

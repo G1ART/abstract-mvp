@@ -1,6 +1,21 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-03-23
+Last updated: 2026-03-27
+
+## 2026-03-27 — Beta Hardening Wave 1 (ops depth)
+
+- **피드 (`FeedContent`)**: 팔로잉 탭에 작품·전시 **커서 페이지네이션** 및 load-more; `getFollowingIds` 단일 호출; pathname/focus/visibility는 **90s TTL**로만 백그라운드 갱신(수동 새로고침은 강제); IntersectionObserver만 사용(스크롤 폴백 제거); `beta_analytics_events`에 피드 로드/첫 페인트/ loadMore 계측.
+- **가격 문의**: `price_inquiry_messages` 스레드 API 정리; 작가 인박스는 `artworks!inner`로 **서버 필터 + 키셋 페이지**; `/my/inquiries`에 상태 필터·검색·스레드·읽음(`mark_price_inquiry_read`)·답변 append.
+- **알림**: 목록 진입 시 **전체 읽음 자동 처리 제거**; 행 클릭 시 해당 알림만 읽음; **「모두 읽음」** 버튼 별도. 가격 문의 알림 링크 → `/my/inquiries`.
+- **라이브러리**: `/my/library` — `listMyArtworksForLibrary` 기반 필터·정렬·더 보기; `/my`에서 링크(대리 로그인 시 숨김).
+- **벌크 업로드**: 제목 접두/접미/치환(확인 모달), 사이즈·단위, 고정가·통화·가격 공개, 전시 연결/해제, CSV 텍스트 붙여넣기로 초안 생성, 벌크 발행 시 `bulk_publish_completed` 이벤트.
+- **분석·기타**: `LikeButton`/`FollowButton`/전시 생성에 베타 이벤트; `/my/diagnostics`(개발 또는 `NEXT_PUBLIC_DIAGNOSTICS=1`); Playwright 최소 스모크; README·`docs/QA_SMOKE.md`·Runbook·`.env.example` 갱신.
+
+**Supabase SQL 적용 필요:** `supabase/migrations/p0_beta_hardening_wave1.sql` (이미 적용한 환경은 재실행 idempotent).
+
+**환경 변수:** (선택) `NEXT_PUBLIC_DIAGNOSTICS=1` — 프로덕션에서 진단 페이지 노출. `.env.example` 및 `docs/03_RUNBOOK.md` 반영됨.
+
+**Verified:** 변경 파일 대상 `eslint` 통과; `npm run build` 통과. **전체** `npm run lint`는 기존 코드베이스의 다른 규칙 위반으로 실패할 수 있음(별도 정리 권장).
 
 ## 2026-03-23 — 난수 아이디 1회성 유도 개선(나중에 비영구)
 

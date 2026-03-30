@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { follow, unfollow } from "@/lib/supabase/follows";
 
 type Props = {
@@ -39,6 +40,7 @@ export function FollowButton({
       setIsFollowing(true);
       const { error } = await follow(targetProfileId);
       if (error) setIsFollowing(false);
+      else logBetaEventSync("profile_followed", { profile_id: targetProfileId });
       return;
     }
 

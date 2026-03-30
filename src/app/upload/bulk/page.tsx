@@ -15,7 +15,9 @@ import {
   updateArtwork,
   validatePublish,
   type ArtworkWithLikes,
+  type UpdateArtworkPayload,
 } from "@/lib/supabase/artworks";
+import { logBetaEvent } from "@/lib/beta/logEvent";
 import { getSession } from "@/lib/supabase/auth";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
@@ -24,7 +26,12 @@ import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
-import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
+import {
+  addWorkToExhibition,
+  listMyExhibitions,
+  removeWorkFromExhibition,
+  type ExhibitionWithCredits,
+} from "@/lib/supabase/exhibitions";
 import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
@@ -75,6 +82,22 @@ export default function BulkUploadPage() {
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+
+  const [titleBulkMode, setTitleBulkMode] = useState<"none" | "prefix" | "suffix" | "replace">("none");
+  const [titleBulkText, setTitleBulkText] = useState("");
+  const [titleReplaceFrom, setTitleReplaceFrom] = useState("");
+  const [titleReplaceTo, setTitleReplaceTo] = useState("");
+  const [pendingBulk, setPendingBulk] = useState<null | { message: string; run: () => Promise<void> }>(null);
+  const [bulkSize, setBulkSize] = useState("");
+  const [bulkSizeUnit, setBulkSizeUnit] = useState<"" | "cm" | "in">("");
+  const [bulkPriceAmount, setBulkPriceAmount] = useState("");
+  const [bulkPriceCurrency, setBulkPriceCurrency] = useState("USD");
+  const [bulkPricePublic, setBulkPricePublic] = useState(false);
+  const [myExhibitions, setMyExhibitions] = useState<ExhibitionWithCredits[]>([]);
+  const [linkExhibitionId, setLinkExhibitionId] = useState("");
+  const [linkingExhibition, setLinkingExhibition] = useState(false);
+  const [csvText, setCsvText] = useState("");
+  const [csvBusy, setCsvBusy] = useState(false);
 
   // Persona / intent — from exhibition add: pre-fill CURATED + artist, skip intent/attribution steps
   const [intent, setIntent] = useState<IntentType | null>(
@@ -255,10 +278,7 @@ export default function BulkUploadPage() {
     else setSelected(new Set(drafts.map((d) => d.id)));
   }
 
-  async function applyToDrafts(
-    ids: string[],
-    partial: { year?: number; medium?: string; ownership_status?: string; pricing_mode?: "fixed" | "inquire"; is_price_public?: boolean }
-  ) {
+  async function applyToDrafts(ids: string[], partial: UpdateArtworkPayload) {
     for (const id of ids) {
       await updateArtwork(id, partial);
     }
@@ -268,13 +288,159 @@ export default function BulkUploadPage() {
   async function handleApply(field: string, value: unknown) {
     const ids = selected.size > 0 ? Array.from(selected) : drafts.map((d) => d.id);
     if (ids.length === 0) return;
-    const payload: Record<string, unknown> = {};
+    const payload: UpdateArtworkPayload = {};
     if (field === "year") payload.year = typeof value === "number" ? value : parseInt(String(value), 10) || null;
     else if (field === "medium") payload.medium = String(value ?? "");
     else if (field === "ownership_status") payload.ownership_status = String(value ?? "");
     else if (field === "pricing_mode") payload.pricing_mode = value as "fixed" | "inquire";
     else if (field === "is_price_public") payload.is_price_public = Boolean(value);
-    await applyToDrafts(ids, payload as Parameters<typeof applyToDrafts>[1]);
+    await applyToDrafts(ids, payload);
+  }
+
+  function targetDraftIds(): string[] {
+    const ids = selected.size > 0 ? Array.from(selected) : drafts.map((d) => d.id);
+    return ids;
+  }
+
+  function openBulkConfirm(message: string, run: () => Promise<void>) {
+    setPendingBulk({ message, run });
+  }
+
+  async function runTitleBulk() {
+    const ids = targetDraftIds();
+    if (ids.length === 0 || titleBulkMode === "none") return;
+    for (const id of ids) {
+      const d = drafts.find((x) => x.id === id);
+      const next = transformTitle(d?.title ?? null, titleBulkMode, titleBulkText, titleReplaceFrom, titleReplaceTo);
+      await updateArtwork(id, { title: next || d?.title || "Untitled" });
+    }
+    await fetchDrafts();
+    setPendingBulk(null);
+    setToast(t("bulk.applyTitleBulk"));
+    setTimeout(() => setToast(null), 2000);
+  }
+
+  async function applySizeBulk() {
+    const ids = targetDraftIds();
+    if (ids.length === 0) return;
+    const partial: UpdateArtworkPayload = {
+      size: bulkSize.trim() || null,
+      size_unit: bulkSizeUnit === "" ? null : bulkSizeUnit,
+    };
+    await applyToDrafts(ids, partial);
+    setPendingBulk(null);
+  }
+
+  async function applyPriceBulk() {
+    const ids = targetDraftIds();
+    if (ids.length === 0) return;
+    const n = parseFloat(bulkPriceAmount);
+    const partial: UpdateArtworkPayload = {
+      pricing_mode: "fixed",
+      price_input_amount: Number.isFinite(n) ? n : null,
+      price_input_currency: bulkPriceCurrency.trim() || null,
+      is_price_public: bulkPricePublic,
+    };
+    await applyToDrafts(ids, partial);
+    setPendingBulk(null);
+  }
+
+  async function linkSelectedToExhibition() {
+    const ids = targetDraftIds();
+    if (!linkExhibitionId || ids.length === 0) return;
+    setLinkingExhibition(true);
+    try {
+      for (const workId of ids) {
+        await addWorkToExhibition(linkExhibitionId, workId);
+      }
+      void logBetaEvent("exhibition_artwork_added", { exhibition_id: linkExhibitionId, count: ids.length });
+      setToast(t("bulk.exhibitionLinked"));
+      setTimeout(() => setToast(null), 2000);
+    } finally {
+      setLinkingExhibition(false);
+      setPendingBulk(null);
+    }
+  }
+
+  async function unlinkSelectedFromExhibition() {
+    const ids = targetDraftIds();
+    if (!linkExhibitionId || ids.length === 0) return;
+    setLinkingExhibition(true);
+    try {
+      for (const workId of ids) {
+        await removeWorkFromExhibition(linkExhibitionId, workId);
+      }
+    } finally {
+      setLinkingExhibition(false);
+      setPendingBulk(null);
+    }
+  }
+
+  function parseCsvLine(line: string): string[] {
+    const out: string[] = [];
+    let cur = "";
+    let inQ = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line[i];
+      if (c === '"') {
+        inQ = !inQ;
+        continue;
+      }
+      if (!inQ && c === ",") {
+        out.push(cur.trim());
+        cur = "";
+        continue;
+      }
+      cur += c;
+    }
+    out.push(cur.trim());
+    return out;
+  }
+
+  async function importCsvDrafts() {
+    const lines = csvText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      setToast(t("bulk.csvRequiredTitle"));
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    const header = parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+    const ti = header.findIndex((h) => h === "title" || h === "name");
+    if (ti < 0) {
+      setToast(t("bulk.csvRequiredTitle"));
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    const yi = header.findIndex((h) => h === "year");
+    const mi = header.findIndex((h) => h === "medium");
+    setCsvBusy(true);
+    try {
+      let ok = 0;
+      for (let r = 1; r < lines.length; r++) {
+        const cells = parseCsvLine(lines[r]);
+        const title = (cells[ti] ?? "").trim() || "Untitled";
+        const yearRaw = yi >= 0 ? cells[yi] : "";
+        const year = yearRaw ? parseInt(yearRaw, 10) : null;
+        const medium = mi >= 0 ? (cells[mi] ?? "").trim() || null : null;
+        const { data: id, error } = await createDraftArtwork(
+          { title },
+          { forProfileId: actingAsProfileId ?? undefined }
+        );
+        if (!error && id) {
+          const patch: UpdateArtworkPayload = {};
+          if (Number.isFinite(year as number)) patch.year = year as number;
+          if (medium) patch.medium = medium;
+          if (Object.keys(patch).length > 0) await updateArtwork(id, patch);
+          ok += 1;
+        }
+      }
+      setCsvText("");
+      await fetchDrafts();
+      setToast(`Imported ${ok} draft(s)`);
+      setTimeout(() => setToast(null), 3000);
+    } finally {
+      setCsvBusy(false);
+    }
   }
 
   async function handlePublish() {
@@ -349,6 +515,7 @@ export default function BulkUploadPage() {
       }
       setSelected(new Set());
       await fetchDrafts();
+      void logBetaEvent("bulk_publish_completed", { count: ids.length });
     } finally {
       setPublishing(false);
     }
@@ -375,6 +542,25 @@ export default function BulkUploadPage() {
   const showIntent = intent === null;
   const showAttribution = intent !== null && needsAttribution && !attributionStepDone;
   const showMain = intent !== null && (!needsAttribution || attributionStepDone);
+
+  useEffect(() => {
+    if (!showMain) return;
+    void listMyExhibitions().then(({ data }) => setMyExhibitions(data ?? []));
+  }, [showMain]);
+
+  function transformTitle(
+    title: string | null,
+    mode: typeof titleBulkMode,
+    seg: string,
+    from: string,
+    to: string
+  ): string {
+    const base = title ?? "";
+    if (mode === "prefix") return (seg + base).trim();
+    if (mode === "suffix") return (base + seg).trim();
+    if (mode === "replace" && from) return base.split(from).join(to);
+    return base;
+  }
 
   return (
     <AuthGate>
@@ -681,6 +867,214 @@ export default function BulkUploadPage() {
                 <option value="inquire">{t("bulk.inquire")}</option>
                 <option value="fixed">{t("bulk.fixed")}</option>
               </select>
+              <label className="flex items-center gap-1 text-sm text-zinc-700">
+                <input
+                  type="checkbox"
+                  onChange={(e) => handleApply("is_price_public", e.target.checked)}
+                />
+                {t("bulk.pricePublic")}
+              </label>
+            </div>
+            <div className="mt-4 space-y-2 border-t border-zinc-200 pt-3">
+              <p className="text-xs font-medium text-zinc-600">{t("bulk.applyTitleBulk")}</p>
+              <div className="flex flex-wrap gap-2">
+                <select
+                  value={titleBulkMode}
+                  onChange={(e) => setTitleBulkMode(e.target.value as typeof titleBulkMode)}
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                >
+                  <option value="none">{t("bulk.titleModeNone")}</option>
+                  <option value="prefix">{t("bulk.titleModePrefix")}</option>
+                  <option value="suffix">{t("bulk.titleModeSuffix")}</option>
+                  <option value="replace">{t("bulk.titleModeReplace")}</option>
+                </select>
+                {titleBulkMode !== "replace" && titleBulkMode !== "none" && (
+                  <input
+                    value={titleBulkText}
+                    onChange={(e) => setTitleBulkText(e.target.value)}
+                    placeholder={t("bulk.titleNewSegment")}
+                    className="w-48 rounded border border-zinc-300 px-2 py-1 text-sm"
+                  />
+                )}
+                {titleBulkMode === "replace" && (
+                  <>
+                    <input
+                      value={titleReplaceFrom}
+                      onChange={(e) => setTitleReplaceFrom(e.target.value)}
+                      placeholder={t("bulk.titleReplaceFrom")}
+                      className="w-36 rounded border border-zinc-300 px-2 py-1 text-sm"
+                    />
+                    <input
+                      value={titleReplaceTo}
+                      onChange={(e) => setTitleReplaceTo(e.target.value)}
+                      placeholder={t("bulk.titleReplaceTo")}
+                      className="w-36 rounded border border-zinc-300 px-2 py-1 text-sm"
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  disabled={titleBulkMode === "none"}
+                  onClick={() =>
+                    openBulkConfirm(
+                      t("bulk.confirmDestructive").replace("{n}", String(targetDraftIds().length)),
+                      runTitleBulk
+                    )
+                  }
+                  className="rounded bg-zinc-800 px-2 py-1 text-sm text-white disabled:opacity-50"
+                >
+                  {t("bulk.applyTitleBulk")}
+                </button>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-200 pt-3">
+              <input
+                value={bulkSize}
+                onChange={(e) => setBulkSize(e.target.value)}
+                placeholder={t("bulk.size")}
+                className="w-28 rounded border border-zinc-300 px-2 py-1 text-sm"
+              />
+              <select
+                value={bulkSizeUnit}
+                onChange={(e) => setBulkSizeUnit(e.target.value as "" | "cm" | "in")}
+                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+              >
+                <option value="">{t("bulk.sizeUnit")}</option>
+                <option value="cm">cm</option>
+                <option value="in">in</option>
+              </select>
+              <button
+                type="button"
+                onClick={() =>
+                  openBulkConfirm(
+                    t("bulk.confirmDestructive").replace("{n}", String(targetDraftIds().length)),
+                    applySizeBulk
+                  )
+                }
+                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+              >
+                Apply size
+              </button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-200 pt-3">
+              <input
+                type="number"
+                value={bulkPriceAmount}
+                onChange={(e) => setBulkPriceAmount(e.target.value)}
+                placeholder={t("bulk.fixedPrice")}
+                className="w-32 rounded border border-zinc-300 px-2 py-1 text-sm"
+              />
+              <input
+                value={bulkPriceCurrency}
+                onChange={(e) => setBulkPriceCurrency(e.target.value)}
+                placeholder={t("bulk.priceCurrency")}
+                className="w-24 rounded border border-zinc-300 px-2 py-1 text-sm"
+              />
+              <label className="flex items-center gap-1 text-sm">
+                <input
+                  type="checkbox"
+                  checked={bulkPricePublic}
+                  onChange={(e) => setBulkPricePublic(e.target.checked)}
+                />
+                {t("bulk.pricePublic")}
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  openBulkConfirm(
+                    t("bulk.confirmDestructive").replace("{n}", String(targetDraftIds().length)),
+                    applyPriceBulk
+                  )
+                }
+                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+              >
+                Apply price
+              </button>
+            </div>
+            {myExhibitions.length > 0 && (
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-zinc-200 pt-3">
+                <select
+                  value={linkExhibitionId}
+                  onChange={(e) => setLinkExhibitionId(e.target.value)}
+                  className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                >
+                  <option value="">— exhibition —</option>
+                  {myExhibitions.map((ex) => (
+                    <option key={ex.id} value={ex.id}>
+                      {ex.title}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={!linkExhibitionId || linkingExhibition}
+                  onClick={() =>
+                    openBulkConfirm(
+                      t("bulk.confirmDestructive").replace("{n}", String(targetDraftIds().length)),
+                      linkSelectedToExhibition
+                    )
+                  }
+                  className="rounded bg-zinc-800 px-2 py-1 text-sm text-white disabled:opacity-50"
+                >
+                  Link to exhibition
+                </button>
+                <button
+                  type="button"
+                  disabled={!linkExhibitionId || linkingExhibition}
+                  onClick={() =>
+                    openBulkConfirm(
+                      t("bulk.confirmDestructive").replace("{n}", String(targetDraftIds().length)),
+                      unlinkSelectedFromExhibition
+                    )
+                  }
+                  className="rounded border border-red-200 px-2 py-1 text-sm text-red-800 disabled:opacity-50"
+                >
+                  Unlink from exhibition
+                </button>
+              </div>
+            )}
+            <div className="mt-4 border-t border-zinc-200 pt-3">
+              <p className="mb-2 text-xs font-medium text-zinc-700">{t("bulk.csvTitle")}</p>
+              <p className="mb-2 text-xs text-zinc-500">{t("bulk.csvHint")}</p>
+              <textarea
+                value={csvText}
+                onChange={(e) => setCsvText(e.target.value)}
+                placeholder="title,year,medium"
+                rows={5}
+                className="mb-2 w-full rounded border border-zinc-300 px-2 py-1 font-mono text-xs"
+              />
+              <button
+                type="button"
+                disabled={csvBusy}
+                onClick={() => void importCsvDrafts()}
+                className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+              >
+                {csvBusy ? "…" : t("bulk.csvImport")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {pendingBulk && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <div className="max-w-md rounded-lg bg-white p-6 shadow-lg">
+              <p className="mb-4 text-sm text-zinc-800">{pendingBulk.message}</p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingBulk(null)}
+                  className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void pendingBulk.run()}
+                  className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white"
+                >
+                  {t("bulk.confirmOk")}
+                </button>
+              </div>
             </div>
           </div>
         )}

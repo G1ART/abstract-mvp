@@ -503,6 +503,14 @@ export default function MyPage() {
           >
             {t("my.uploadNewWork")}
           </Link>
+          {!actingAsProfileId && (
+            <Link
+              href="/my/library"
+              className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {t("library.title")}
+            </Link>
+          )}
           <Link
             href="/my/exhibitions"
             className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"

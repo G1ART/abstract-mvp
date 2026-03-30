@@ -350,17 +350,28 @@ function normalizeArtworkRow(r: Record<string, unknown>): ArtworkWithLikes {
 
 type FollowingOptions = {
   limit?: number;
+  /** Keyset cursor; when set, only the following-artists stream is paginated (no merged “my claimed” merge). */
+  cursor?: ArtworkCursor | null;
+  /** When true and `cursor` is null, merge public artworks the user claims (subject) into the first page. */
+  mergeOwnClaimedWorks?: boolean;
 };
 
 export async function listFollowingArtworks(
   options: FollowingOptions = {}
-): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
-  const { limit = 50 } = options;
+): Promise<{ data: ArtworkWithLikes[]; nextCursor: ArtworkCursor | null; error: unknown }> {
+  const {
+    limit = 50,
+    cursor = null,
+    mergeOwnClaimedWorks = cursor == null,
+  } = options;
+
+  const pageSize = Math.min(limit, 30);
+  const requestLimit = pageSize + 1;
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
-  if (!session?.user?.id) return { data: [], error: null };
+  if (!session?.user?.id) return { data: [], nextCursor: null, error: null };
 
   const [followRes, claimRes] = await Promise.all([
     supabase.from("follows").select("following_id").eq("follower_id", session.user.id),
@@ -374,21 +385,42 @@ export async function listFollowingArtworks(
   const hasFollowing = artistIds.length > 0;
 
   let list: ArtworkWithLikes[] = [];
+  let nextCursor: ArtworkCursor | null = null;
 
   if (hasFollowing) {
-    const { data, error } = await supabase
+    let query = supabase
       .from("artworks")
       .select(ARTWORK_SELECT)
       .eq("visibility", "public")
       .in("artist_id", artistIds)
       .order("created_at", { ascending: false })
-      .limit(limit);
-    if (error) return { data: [], error };
+      .order("id", { ascending: false })
+      .limit(requestLimit);
+
+    if (cursor && cursor.created_at && cursor.id) {
+      const createdAt = String(cursor.created_at).replace(/"/g, '\\"');
+      const id = String(cursor.id).replace(/"/g, '\\"');
+      query = query.or(
+        `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
+      );
+    }
+
+    const { data, error } = await query;
+    if (error) return { data: [], nextCursor: null, error };
     list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>) as ArtworkWithLikes);
+
+    const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
+    if (list.length > pageSize && list[pageSize]) {
+      const next = list[pageSize];
+      if (next.created_at != null && next.id) {
+        nextCursor = { created_at: next.created_at, id: next.id };
+      }
+    }
+    list = resultList;
   }
 
-  if (myWorkIds.size > 0) {
-    const idsToFetch = [...myWorkIds].filter((id) => !list.some((a) => a.id === id)).slice(0, limit);
+  if (mergeOwnClaimedWorks && myWorkIds.size > 0) {
+    const idsToFetch = [...myWorkIds].filter((id) => !list.some((a) => a.id === id)).slice(0, pageSize);
     if (idsToFetch.length > 0) {
       const { data, error } = await supabase
         .from("artworks")
@@ -408,12 +440,12 @@ export async function listFollowingArtworks(
           (a, b) =>
             new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
         );
-        list = list.slice(0, limit);
+        list = list.slice(0, pageSize);
       }
     }
   }
 
-  return { data: list, error: null };
+  return { data: list, nextCursor, error: null };
 }
 
 type MyArtworksOptions = {
@@ -448,6 +480,120 @@ export async function listMyArtworks(
     data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
     error: null,
   };
+}
+
+/** Owner library: filters, search, keyset pagination (created_at + id, or likes + created_at + id). */
+export type MyLibrarySort = "created_at" | "likes" | "artist_sort";
+
+export type MyLibraryListOptions = {
+  limit?: number;
+  cursor?: ArtworkCursor | null;
+  /** all | public | draft */
+  visibility?: "all" | "public" | "draft";
+  ownershipStatus?: string | null;
+  pricingMode?: string | null;
+  search?: string;
+  sort?: MyLibrarySort;
+  createdBy?: string | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+};
+
+export async function listMyArtworksForLibrary(
+  options: MyLibraryListOptions = {}
+): Promise<{
+  data: ArtworkWithLikes[];
+  nextCursor: ArtworkCursor | null;
+  error: unknown;
+}> {
+  const {
+    limit = 40,
+    cursor = null,
+    visibility = "all",
+    ownershipStatus = null,
+    pricingMode = null,
+    search = "",
+    sort = "created_at",
+    createdBy = null,
+    dateFrom = null,
+    dateTo = null,
+  } = options;
+
+  const pageSize = Math.min(limit, 50);
+  const requestLimit = pageSize + 1;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], nextCursor: null, error: null };
+
+  let query = supabase
+    .from("artworks")
+    .select(ARTWORK_SELECT)
+    .eq("artist_id", session.user.id);
+
+  if (visibility === "public") query = query.eq("visibility", "public");
+  else if (visibility === "draft") query = query.eq("visibility", "draft");
+
+  if (ownershipStatus) query = query.eq("ownership_status", ownershipStatus);
+  if (pricingMode) query = query.eq("pricing_mode", pricingMode);
+  if (createdBy) query = query.eq("created_by", createdBy);
+  if (search.trim()) query = query.ilike("title", `%${search.trim().replace(/%/g, "\\%")}%`);
+  if (dateFrom) query = query.gte("created_at", dateFrom);
+  if (dateTo) query = query.lte("created_at", dateTo);
+
+  const isPopular = sort === "likes";
+  if (sort === "artist_sort") {
+    query = query
+      .order("artist_sort_order", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+  } else if (isPopular) {
+    query = query
+      .order("likes_count", { ascending: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (cursor && cursor.likes_count != null) {
+      const lc = Number(cursor.likes_count);
+      const createdAt = String(cursor.created_at).replace(/"/g, '\\"');
+      const id = String(cursor.id).replace(/"/g, '\\"');
+      query = query.or(
+        `likes_count.lt.${lc},and(likes_count.eq.${lc},created_at.lt."${createdAt}"),and(likes_count.eq.${lc},created_at.eq."${createdAt}",id.lt."${id}")`
+      );
+    }
+  } else {
+    query = query
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
+    if (cursor?.created_at && cursor?.id) {
+      const createdAt = String(cursor.created_at).replace(/"/g, '\\"');
+      const id = String(cursor.id).replace(/"/g, '\\"');
+      query = query.or(
+        `created_at.lt."${createdAt}",and(created_at.eq."${createdAt}",id.lt."${id}")`
+      );
+    }
+  }
+
+  query = query.limit(requestLimit);
+
+  const { data, error } = await query;
+  if (error) return { data: [], nextCursor: null, error };
+
+  const list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[];
+  const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
+  let nextCursor: ArtworkCursor | null = null;
+  if (list.length > pageSize && list[pageSize]) {
+    const next = list[pageSize];
+    if (next.created_at && next.id) {
+      nextCursor = {
+        created_at: next.created_at,
+        id: next.id,
+        ...(isPopular && next.likes_count != null && { likes_count: Number(next.likes_count) }),
+      };
+    }
+  }
+
+  return { data: resultList, nextCursor, error: null };
 }
 
 type ByArtistOptions = { limit?: number };
