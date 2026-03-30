@@ -30,18 +30,36 @@ Current suite is minimal (public shell + login page). Extend `e2e/smoke.spec.ts`
 6. **Notifications:** opening list does **not** auto-mark all read; per-row read on click; “Mark all as read” works.
 7. **Diagnostics:** `/my/diagnostics` in dev or with `NEXT_PUBLIC_DIAGNOSTICS=1` — events list loads after using the app.
 
-## Trust & Simplicity checks
+## "Basics Are Solid" checks
 
+### Feed
 1. **Feed infinite scroll (All):** scroll to bottom → more items load → no duplicates → "You're all caught up" at end.
 2. **Feed infinite scroll (Following):** same behavior for Following tab.
+
+### Artist attribution
 3. **External artist on exhibition:** create exhibition with non-onboarded external artist → `/e/[id]` shows external artist name, not "Artist" or blank.
 4. **External artist on artwork detail:** artwork with external artist → `/artwork/[id]` shows correct name in provenance.
-5. **Save modal:** `/artwork/[id]` → "Save" → modal title is just "Save", list shows existing shortlists, can create new.
-6. **Room simplicity:** `/room/[token]` → no "Private viewing room" banner, just title + "by" credit + artwork cards.
-7. **Alerts simplicity:** `/my/alerts` → title is "Alerts", digest section says "coming soon", no pending events shown unless there are some (collapsed).
-8. **Ops hidden:** `/my` dashboard has no "Ops Panel" link. `/my/ops` still works via URL and shows "(internal)".
-9. **Import template:** `/my/library/import` → "Download template CSV" works, field names show human-readable labels, required fields have red asterisk.
-10. **Import duplicate skip:** import CSV with duplicates → duplicates flagged → "Skip duplicates" checked by default → summary shows skipped count.
+
+### Size truth
+5. **Size "20 x 30 in":** enters as inch → size_unit = "in" → EN shows inch, KO shows cm conversion.
+6. **Size "50 x 40 cm":** enters as cm → size_unit = "cm" → KO shows cm, EN shows inch conversion.
+7. **Size "100 x 80":** unitless → size_unit = null → both locales show raw numbers, no unit conversion.
+8. **Size "30F":** hosu → size_unit = "cm" → correct hosu + cm display.
+
+### Price truth
+9. **KRW price display:** artwork with price_input_currency=KRW → shows "₩X KRW (≈ $Y USD)" on detail page.
+10. **USD price display:** artwork with price_input_currency=USD → shows "$X USD" only.
+11. **Inquire mode:** pricing_mode=inquire → shows i18n "Price upon request" / "가격 문의".
+
+### Import honesty
+12. **Import template:** `/my/library/import` → "Download template CSV" has exactly 7 columns (title, year, medium, size, size_unit, ownership_status, pricing_mode).
+13. **Import persist:** import CSV with all 7 fields → all persist to artwork draft → editable in artwork edit page.
+14. **Import duplicate skip:** duplicates flagged → skip checked by default → summary accurate.
+
+### Surface simplification
+15. **Save modal:** modal title "Save", clear saved/add states.
+16. **Alerts:** title "Alerts", digest "coming soon", no over-promise.
+17. **Ops hidden:** `/my` dashboard has no "Ops Panel" link. `/my/ops` works via URL only.
 
 ## Wave 2.1 integration checks
 

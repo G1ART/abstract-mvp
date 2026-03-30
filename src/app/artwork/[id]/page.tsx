@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getArtworkBack } from "@/lib/artworkBack";
-import { getArtworkArtistLabel } from "@/lib/supabase/artworks";
+import { getArtworkArtistLabel, getArtworkPriceDisplay } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
@@ -54,13 +54,6 @@ import { useT } from "@/lib/i18n/useT";
 import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 
-function getPriceDisplay(artwork: ArtworkWithLikes): string {
-  if (artwork.pricing_mode === "inquire") return "Price upon request";
-  if (artwork.is_price_public && artwork.price_usd != null) {
-    return `$${Number(artwork.price_usd).toLocaleString()} USD`;
-  }
-  return "Price hidden";
-}
 
 function ArtworkDetailContent() {
   const params = useParams();
@@ -558,7 +551,7 @@ function ArtworkDetailContent() {
               </p>
             )}
             <p className="mt-2 text-sm text-zinc-600">
-              {getPriceDisplay(artwork)}
+              {getArtworkPriceDisplay(artwork, t)}
             </p>
             {showPriceInquiryBlock && (
               <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">

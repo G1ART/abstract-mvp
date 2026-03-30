@@ -9,6 +9,7 @@ import {
   getArtworkImageUrl,
   getPrimaryClaim,
   getArtworkArtistLabel,
+  getArtworkPriceDisplay,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel, claimTypeToByPhrase } from "@/lib/provenance/rpc";
@@ -30,13 +31,6 @@ type Props = {
   viewerId?: string | null;
 };
 
-function getPriceDisplay(artwork: Artwork): string {
-  if (artwork.pricing_mode === "inquire") return "Price upon request";
-  if (artwork.is_price_public && artwork.price_usd != null) {
-    return `$${Number(artwork.price_usd).toLocaleString()} USD`;
-  }
-  return "Price hidden";
-}
 
 export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUpdate, showDelete = false, onDelete, showEdit = false, disableNavigation = false, dragHandle, viewerId = null }: Props) {
   const router = useRouter();
@@ -119,7 +113,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
             </p>
           )}
           <p className="mt-1 text-sm text-zinc-600">
-            {getPriceDisplay(artwork)}
+            {getArtworkPriceDisplay(artwork, t)}
           </p>
           {(artistLabel || (listerLabel && byPhrase)) && (
             <p className="mt-1 text-sm text-zinc-500">

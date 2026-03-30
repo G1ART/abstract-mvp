@@ -19,24 +19,20 @@ export function inToCm(inVal: number): number {
 }
 
 /** 파싱 결과 + 사용자 입력 단위. 표시 시 locale 변환에 사용 */
-export type ParsedSizeWithUnit = { parsed: ParsedSize; unit: SizeUnit };
+export type ParsedSizeWithUnit = { parsed: ParsedSize; unit: SizeUnit | null };
 
-/** parseSize와 동일하되, 입력 문자열에서 감지한 단위(cm | in)를 함께 반환. 호수는 cm. */
+/**
+ * parseSize와 동일하되, 입력 문자열에서 감지한 단위를 함께 반환.
+ * unit은 suffix가 명시적으로 존재할 때만 설정됨:
+ * - "20 x 30 in" / "24 x 18 inches" → unit: "in"
+ * - "50 x 40 cm" / "100×80cm" → unit: "cm"
+ * - "30F" → unit: "cm" (호수는 항상 cm)
+ * - "100 x 80" (suffix 없음) → unit: null (unitless)
+ */
 export function parseSizeWithUnit(size: string): ParsedSizeWithUnit | null {
   const raw = size.trim();
-  // 3) "W x H in" 패턴 먼저 (in이 명시된 경우)
-  const inMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*in(?:ch(?:es)?)?)?/i);
-  if (inMatch) {
-    const wIn = parseFloat(inMatch[1]);
-    const hIn = parseFloat(inMatch[2]);
-    if (Number.isFinite(wIn) && Number.isFinite(hIn)) {
-      return {
-        parsed: { widthCm: wIn * 2.54, heightCm: hIn * 2.54 },
-        unit: "in",
-      };
-    }
-  }
-  // 1) 호수 → cm
+
+  // 1) 호수 → cm (항상 cm)
   const hosuMatch = raw.match(/(\d+)\s*([FPMScfmps])/);
   if (hosuMatch) {
     const num = parseInt(hosuMatch[1], 10);
@@ -54,8 +50,34 @@ export function parseSizeWithUnit(size: string): ParsedSizeWithUnit | null {
       };
     }
   }
-  // 2) "W x H cm" 패턴
-  const cmMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*cm)?/i);
+
+  // 2) "W x H in" / "W x H inches" — explicit inch suffix required
+  const inMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s+in(?:ch(?:es)?)?\s*$/i);
+  if (inMatch) {
+    const wIn = parseFloat(inMatch[1]);
+    const hIn = parseFloat(inMatch[2]);
+    if (Number.isFinite(wIn) && Number.isFinite(hIn)) {
+      return {
+        parsed: { widthCm: wIn * 2.54, heightCm: hIn * 2.54 },
+        unit: "in",
+      };
+    }
+  }
+  // Also match "WxHin" (no space before unit)
+  const inMatchNoSpace = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)in(?:ch(?:es)?)?\s*$/i);
+  if (inMatchNoSpace) {
+    const wIn = parseFloat(inMatchNoSpace[1]);
+    const hIn = parseFloat(inMatchNoSpace[2]);
+    if (Number.isFinite(wIn) && Number.isFinite(hIn)) {
+      return {
+        parsed: { widthCm: wIn * 2.54, heightCm: hIn * 2.54 },
+        unit: "in",
+      };
+    }
+  }
+
+  // 3) "W x H cm" — explicit cm suffix required
+  const cmMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*cm\s*$/i);
   if (cmMatch) {
     const w = parseFloat(cmMatch[1]);
     const h = parseFloat(cmMatch[2]);
@@ -63,6 +85,17 @@ export function parseSizeWithUnit(size: string): ParsedSizeWithUnit | null {
       return { parsed: { widthCm: w, heightCm: h }, unit: "cm" };
     }
   }
+
+  // 4) "W x H" — unitless, no conversion
+  const plainMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*$/);
+  if (plainMatch) {
+    const w = parseFloat(plainMatch[1]);
+    const h = parseFloat(plainMatch[2]);
+    if (Number.isFinite(w) && Number.isFinite(h)) {
+      return { parsed: { widthCm: w, heightCm: h }, unit: null };
+    }
+  }
+
   return null;
 }
 
@@ -116,17 +149,12 @@ export function formatSizeForLocale(
     return inBase;
   }
 
-  // size_unit 없음: 기존 동작 (locale만 보고 출력)
-  if (isKo) {
-    const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
-    if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
-    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
-    return base;
+  // size_unit 없음: 원본 수치를 보존하되 호수는 참고 표시
+  if (hosuNumber != null && hosuType) {
+    const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)}`;
+    return `${hosuNumber}${hosuType} · ${base}`;
   }
-  const widthIn = cmToIn(widthCm);
-  const heightIn = cmToIn(heightCm);
-  const base = `${widthIn.toFixed(1)} × ${heightIn.toFixed(1)} in`;
-  if (hosuNumber != null && hosuType) return `${hosuNumber}${hosuType} · ${base}`;
+  const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)}`;
   if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
   return base;
 }
@@ -150,24 +178,22 @@ export function parseSize(size: string): ParsedSize | null {
     }
   }
 
-  // 2) "W x H cm" 패턴
-  const cmMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*cm)?/i);
-  if (cmMatch) {
-    const w = parseFloat(cmMatch[1]);
-    const h = parseFloat(cmMatch[2]);
-    if (Number.isFinite(w) && Number.isFinite(h)) {
-      return { widthCm: w, heightCm: h };
-    }
-  }
-
-  // 3) "W x H in" 패턴
-  const inMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*in(?:ch(?:es)?)?)?/i);
+  // 2) "W x H in" / "W x H inches" — explicit inch suffix
+  const inMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)\s*in(?:ch(?:es)?)?\b/i);
   if (inMatch) {
     const wIn = parseFloat(inMatch[1]);
     const hIn = parseFloat(inMatch[2]);
     if (Number.isFinite(wIn) && Number.isFinite(hIn)) {
-      const w = wIn * 2.54;
-      const h = hIn * 2.54;
+      return { widthCm: wIn * 2.54, heightCm: hIn * 2.54 };
+    }
+  }
+
+  // 3) "W x H cm" / "W x H" — treat as cm (display parser, not unit-aware)
+  const cmMatch = raw.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
+  if (cmMatch) {
+    const w = parseFloat(cmMatch[1]);
+    const h = parseFloat(cmMatch[2]);
+    if (Number.isFinite(w) && Number.isFinite(h)) {
       return { widthCm: w, heightCm: h };
     }
   }

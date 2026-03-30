@@ -2,41 +2,52 @@
 
 Last updated: 2026-03-30
 
-## 2026-03-30 — Beta Trust & Simplicity Patch
+## 2026-03-30 — "Basics Are Solid" Patch
 
-기능 추가 없이 기본기를 복원하는 패치. "이 플랫폼은 살아있고 기본이 탄탄하다"를 우선함.
+기능 추가 없이 기본기를 복원하는 올인원 패치. "이 플랫폼은 살아있고 기본이 탄탄하다"를 우선함.
 
 ### 변경 요약
 
-- **Scope A — Feed 복원**: `loadMore` 시 중복 방지 (`deduplicateAndSort` 헬퍼 추가), 양 탭(All/Following) 모두 IntersectionObserver로 통일, 끝 상태("You're all caught up") 표시, 불필요한 `tab !== "all"` 가드 제거.
-- **Scope B — Artist attribution SSOT**: `getArtworkArtistLabel()` (artworks.ts)을 SSOT resolver로 확립. 공개 전시(`/e/[id]`)와 전시 관리(`/my/exhibitions/[id]`) 페이지의 아티스트 그룹핑을 `artist_id` 단독 → `artist_id || ext:label` 복합 키로 변경. 외부(미가입) 아티스트 이름이 빈 버킷으로 빠지지 않음. `artwork/[id]` provenance의 hardcoded "Artist" fallback → `getArtworkArtistLabel` 결과 사용.
-- **Scope C — Wave 2 표면 간소화**:
-  - Shortlist: 모달 제목 "Save to shortlist" → "Save", 빈 상태 텍스트 간소화, detail 페이지의 "Share & Room" 패널 제거 → 단순 버튼 행으로, collaborator 섹션 라벨 "Collaborators" → "people sharing".
-  - Room: "Private viewing room" 헤더 제거 → 타이틀 + "by" 크레딧만, 시각적 clutter 줄임.
-  - Alerts: 제목 "Follow Alerts & Digest" → "Alerts", digest 섹션에 "Email delivery coming soon" 명시, digest preview → `<details>` 접힘으로 de-emphasize.
-  - Ops: `/my` 대시보드에서 "Ops Panel" 링크 제거 (직접 URL만), 타이틀에 "(internal)" 표시.
-- **Scope D — Import 간소화**: CSV 템플릿 다운로드 기능 추가, 설명문 간소화 ("Only title is required — everything else is optional"), field 라벨 snake_case → 사람 읽기 용 표시, required 필드에 빨간 별표, done 단계 요약문 자연어화.
-- **Scope E — Documentation**: 이 HANDOFF 섹션 + QA_SMOKE 업데이트.
+- **Scope A — Feed 복원**: `loadMore` 시 중복 방지 (`deduplicateAndSort` 헬퍼), 양 탭(All/Following) 모두 IntersectionObserver 무한 스크롤, 끝 상태("You're all caught up") 표시, 불필요한 가드 제거.
+- **Scope B — Artist attribution SSOT**: `getArtworkArtistLabel()` SSOT resolver. 전시 페이지 그룹핑을 복합 키(`artist_id || ext:label`)로 변경. 외부(미가입) 아티스트 이름이 빈 버킷으로 빠지지 않음.
+- **Scope C — Size truth 경화**:
+  - `parseSizeWithUnit()` 수정: inch/cm 접미사가 **명시적으로 존재**할 때만 해당 단위로 인식. `100 x 80` (접미사 없음) → `unit: null` (unitless).
+  - `formatSizeForLocale()` 수정: `sizeUnit === null`일 때 원본 수치 보존, cm→in 변환 하지 않음.
+  - `parseSize()` 수정: inch regex에서 explicit suffix 요구.
+- **Scope D — Price truth 경화**:
+  - `getArtworkPriceDisplay()` 공유 유틸 추가 (`artworks.ts`). 입력 통화를 우선 표시: `₩3,000,000 KRW (≈ $2,250 USD)`. USD 입력은 단순 표시.
+  - i18n 키 추가: `artwork.priceUponRequest`, `artwork.priceHidden`, `artwork.priceApprox`.
+  - `ArtworkCard`, `FeedArtworkCard`, `artwork/[id]` 3곳의 hardcoded `getPriceDisplay` → 공유 유틸로 교체.
+- **Scope E — Import 정직성**:
+  - SUPPORTED_COLUMNS 15개 → 7개로 축소 (title, year, medium, size, size_unit, ownership_status, pricing_mode). 실제 `updateArtwork`가 persist하는 필드만 표시.
+  - description, price, currency, is_price_public, artist_name, artist_username, tags 제거 (persist 안 됨).
+  - 템플릿, 요약, copy는 정직한 계약만 반영.
+- **Scope F — 표면 간소화**: Save 모달 "Save" 제목, Alerts de-emphasis, Ops 내부전용, Room 헤더 간소화 (이전 패치).
 
 ### 수정 파일
 
 | 파일 | 변경 |
 |---|---|
-| `src/components/FeedContent.tsx` | `deduplicateAndSort` 추가, `tab !== "all"` 가드 제거, 끝 상태 UI |
-| `src/app/e/[id]/page.tsx` | `getArtworkArtistLabel` 적용, 그룹 키 복합화 |
-| `src/app/my/exhibitions/[id]/page.tsx` | 동일 — `getArtworkArtistLabel` 적용 |
-| `src/app/artwork/[id]/page.tsx` | provenance "Artist" fallback → `artistLabel` 사용 |
+| `src/lib/size/format.ts` | `parseSizeWithUnit` unitless 수정, `formatSizeForLocale` null unit 보존, `parseSize` inch regex 수정 |
+| `src/lib/supabase/artworks.ts` | `getArtworkPriceDisplay()` 추가 |
+| `src/lib/i18n/messages.ts` | price i18n 키 3개 추가 (en/ko) |
+| `src/components/ArtworkCard.tsx` | hardcoded `getPriceDisplay` → `getArtworkPriceDisplay` |
+| `src/components/FeedArtworkCard.tsx` | 동일 |
+| `src/app/artwork/[id]/page.tsx` | 동일 |
+| `src/app/my/library/import/page.tsx` | SUPPORTED_COLUMNS 축소, dead persist 코드 제거 |
+| `src/components/FeedContent.tsx` | dedup, 끝 상태, IO 통일 |
+| `src/app/e/[id]/page.tsx` | artist SSOT 적용 |
+| `src/app/my/exhibitions/[id]/page.tsx` | artist SSOT 적용 |
 | `src/components/SaveToShortlistModal.tsx` | copy 간소화 |
-| `src/app/my/shortlists/[id]/page.tsx` | share controls 간소화, collaborator 라벨 간소화 |
+| `src/app/my/shortlists/[id]/page.tsx` | share controls 간소화 |
 | `src/app/room/[token]/page.tsx` | 헤더 간소화 |
-| `src/app/my/alerts/page.tsx` | digest de-emphasize, 제목 간소화 |
+| `src/app/my/alerts/page.tsx` | digest de-emphasize |
 | `src/app/my/ops/page.tsx` | "(internal)" 표시 |
-| `src/app/my/page.tsx` | Ops Panel 링크 제거 |
-| `src/app/my/library/import/page.tsx` | 템플릿 다운로드, 설명 간소화, field 라벨 개선 |
+| `src/app/my/page.tsx` | Ops 링크 제거 |
 | `docs/HANDOFF.md` | 이 섹션 |
-| `docs/QA_SMOKE.md` | Trust & Simplicity 체크 추가 |
+| `docs/QA_SMOKE.md` | 체크 업데이트 |
 
-**Supabase SQL:** 이번 패치에서 SQL 돌려야 할 것은 없음.
+**Supabase SQL:** 돌려야 할 것 없음.
 
 **환경 변수:** 변경 없음.
 
@@ -50,7 +61,7 @@ Last updated: 2026-03-30
 3. `@profiles.username`
 4. fallback: `null` → UI에서 `t("artwork.artistFallback")` 표시
 
-모든 작품 아티스트 이름 표시에 이 함수만 사용해야 함. 각 페이지가 독자적으로 `profile?.display_name || profile?.username || "Artist"`를 작성하면 안 됨.
+모든 작품 아티스트 이름 표시에 이 함수만 사용해야 함.
 
 ### Feed 동작 (product truth)
 
@@ -59,6 +70,36 @@ Last updated: 2026-03-30
 - **끝 상태**: cursor가 null → "You're all caught up" 텍스트 표시
 - **Refresh**: 수동 refresh 버튼 + visibility/focus TTL refresh (90초)
 - **No scroll fallback**: IntersectionObserver만 사용
+
+### Size truth (product truth)
+
+`parseSizeWithUnit(size)` — `src/lib/size/format.ts`
+
+- `"20 x 30 in"` → unit: "in", widthCm: 50.8, heightCm: 76.2
+- `"50 x 40 cm"` → unit: "cm", widthCm: 50, heightCm: 40
+- `"30F"` → unit: "cm", 호수 기반 cm
+- `"100 x 80"` → unit: null (unitless), widthCm: 100, heightCm: 80
+
+`formatSizeForLocale(size, locale, sizeUnit)`:
+- `sizeUnit === "in"`: EN에서 inch 그대로, KO에서 cm 변환
+- `sizeUnit === "cm"`: KO에서 cm 그대로, EN에서 inch 변환
+- `sizeUnit === null`: 원본 수치 보존, 단위 변환 없음
+
+### Price truth (product truth)
+
+`getArtworkPriceDisplay(artwork, t)` — `src/lib/supabase/artworks.ts`
+
+- `pricing_mode === "inquire"` → i18n `artwork.priceUponRequest`
+- `is_price_public === false` → i18n `artwork.priceHidden`
+- 입력 통화 존재 시: `₩3,000,000 KRW (≈ $2,250 USD)` — 입력 통화 우선, FX 메타 있을 때만 USD 근사
+- USD 입력: `$2,250 USD` 단순 표시
+- 입력 통화 없으면 `$X USD` fallback
+
+### Import contract (product truth)
+
+**실제 persist 되는 필드만 지원:** title (필수), year, medium, size, size_unit, ownership_status, pricing_mode
+
+**미지원 (일부러 제거):** description, visibility, price, currency, is_price_public, artist_name, artist_username, tags — `updateArtwork` payload에 없거나 DB 컬럼 불일치.
 
 ### Internal routes
 
@@ -70,14 +111,15 @@ Last updated: 2026-03-30
 
 1. 메인 피드 하단에서 추가 콘텐츠 안정적 로딩
 2. 중복 반복 카드 없음
-3. 공개 전시 페이지에서 미가입 외부 아티스트 이름 정확히 표시
-4. 작품 상세에서 아티스트 어트리뷰션 정확
-5. Save 모달이 처음 사용에 이해 가능
-6. Room 페이지가 단순하고 행동 지향적
-7. Alerts 페이지가 digest/email 과약속 안 함
-8. Import 템플릿 + 중복 스킵 + 요약 정상
-9. `/my/ops`가 일반 네비게이션에 미노출
-10. 빌드 통과
+3. `/e/[id]` 외부 아티스트 이름 정확
+4. `artwork/[id]` 아티스트 어트리뷰션 정확
+5. 사이즈 매트릭스 통과: `20x30in` → inch, `50x40cm` → cm, `100x80` → unitless, `30F` → 호수
+6. KRW/USD 가격 표시 정확
+7. Import 템플릿에 7개 필드만, 정직한 요약
+8. Save 모달 간소화
+9. Alerts 간소화
+10. `/my/ops` 미노출
+11. 빌드 통과
 
 ---
 

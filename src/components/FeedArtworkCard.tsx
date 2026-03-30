@@ -9,6 +9,7 @@ import {
   getPrimaryClaim,
   canEditArtwork,
   getArtworkArtistLabel,
+  getArtworkPriceDisplay,
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel } from "@/lib/provenance/rpc";
@@ -16,13 +17,6 @@ import { useT } from "@/lib/i18n/useT";
 import { LikeButton } from "./LikeButton";
 import Link from "next/link";
 
-function getPriceDisplay(artwork: ArtworkWithLikes): string | null {
-  if (artwork.pricing_mode === "inquire") return "Price upon request";
-  if (artwork.is_price_public && artwork.price_usd != null) {
-    return `$${Number(artwork.price_usd).toLocaleString()} USD`;
-  }
-  return null;
-}
 
 type Props = {
   artwork: ArtworkWithLikes;
@@ -52,7 +46,8 @@ export function FeedArtworkCard({
   const claimLabel = primaryClaim
     ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
     : "Work";
-  const priceDisplay = getPriceDisplay(artwork);
+  const priceRaw = getArtworkPriceDisplay(artwork, t);
+  const priceDisplay = priceRaw === t("artwork.priceHidden") ? null : priceRaw;
 
   function handleClick() {
     setArtworkBack(pathname ?? "/feed");

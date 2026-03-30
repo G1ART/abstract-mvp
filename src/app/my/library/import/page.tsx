@@ -12,9 +12,7 @@ import { supabase } from "@/lib/supabase/client";
 const REQUIRED_COLUMNS = ["title"];
 const SUPPORTED_COLUMNS = [
   "title", "year", "medium", "size", "size_unit",
-  "ownership_status", "pricing_mode", "description",
-  "visibility", "price", "currency", "is_price_public",
-  "artist_name", "artist_username", "tags",
+  "ownership_status", "pricing_mode",
 ];
 
 type ImportRow = {
@@ -135,14 +133,6 @@ function ImportContent() {
       if (mapField("size_unit")) updates.size_unit = mapField("size_unit");
       if (mapField("ownership_status")) updates.ownership_status = mapField("ownership_status");
       if (mapField("pricing_mode")) updates.pricing_mode = mapField("pricing_mode");
-      if (mapField("description")) updates.description = mapField("description");
-      if (mapField("visibility") && ["public", "draft"].includes(mapField("visibility"))) {
-        updates.visibility = mapField("visibility");
-      }
-      if (mapField("price")) updates.price_usd = Number(mapField("price")) || null;
-      if (mapField("currency")) updates.currency = mapField("currency");
-      if (mapField("is_price_public")) updates.is_price_public = mapField("is_price_public").toLowerCase() === "true";
-      if (mapField("tags")) updates.tags = mapField("tags").split(",").map((t: string) => t.trim()).filter(Boolean);
 
       if (Object.keys(updates).length > 0) {
         await updateArtwork(artworkId, updates);

@@ -190,6 +190,44 @@ export function getArtworkArtistLabel(
   return { label, profileUsername: username };
 }
 
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$", KRW: "₩", EUR: "€", GBP: "£", JPY: "¥",
+};
+
+/**
+ * Canonical price display for an artwork.
+ * Shows input currency first; USD approximation as secondary when FX metadata exists.
+ * @param t i18n function for "artwork.priceUponRequest", "artwork.priceHidden"
+ */
+export function getArtworkPriceDisplay(
+  artwork: Artwork | ArtworkWithLikes,
+  t: (key: string) => string
+): string {
+  if (artwork.pricing_mode === "inquire") return t("artwork.priceUponRequest");
+  if (!artwork.is_price_public) return t("artwork.priceHidden");
+
+  const inputAmt = artwork.price_input_amount;
+  const inputCur = artwork.price_input_currency;
+  const priceUsd = artwork.price_usd;
+  const fxRate = artwork.fx_rate_to_usd;
+
+  if (inputAmt != null && inputCur) {
+    const sym = CURRENCY_SYMBOLS[inputCur] ?? "";
+    const formatted = `${sym}${Number(inputAmt).toLocaleString()} ${inputCur}`;
+    if (inputCur === "USD") return formatted;
+    if (priceUsd != null && fxRate != null) {
+      return `${formatted} (≈ $${Number(priceUsd).toLocaleString()} USD)`;
+    }
+    return formatted;
+  }
+
+  if (priceUsd != null) {
+    return `$${Number(priceUsd).toLocaleString()} USD`;
+  }
+
+  return t("artwork.priceHidden");
+}
+
 /** Whether the viewer can see full provenance (curator, collector, etc.). */
 export function canViewProvenance(artwork: Artwork, userId: string | null): boolean {
   if (artwork.provenance_visible !== false) return true;
