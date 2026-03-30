@@ -18,7 +18,7 @@ import {
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
-import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
@@ -103,23 +103,24 @@ export default function PublicExhibitionPage() {
     const byId = new Map(artworks.map((a) => [a.id, a]));
     const ordered = works.map((w) => byId.get(w.work_id)).filter((a): a is ArtworkWithLikes => !!a);
     const map = new Map<string, ArtworkWithLikes[]>();
+    const nameMap = new Map<string, string>();
     const order: string[] = [];
     for (const a of ordered) {
-      const key = a.artist_id ?? "";
+      const { label } = getArtworkArtistLabel(a);
+      const key = a.artist_id || `ext:${label ?? "unknown"}`;
       if (!map.has(key)) {
         map.set(key, []);
+        nameMap.set(key, label ?? t("artwork.artistFallback"));
         order.push(key);
       }
       map.get(key)!.push(a);
     }
-    return order.map((artistId) => {
-      const list = map.get(artistId) ?? [];
-      const first = list[0];
-      const profile = first?.profiles as { display_name?: string; username?: string } | null | undefined;
-      const name = profile?.display_name?.trim() || profile?.username || "Artist";
-      return { artistId, artistName: name, list };
-    });
-  }, [artworks, works]);
+    return order.map((key) => ({
+      artistId: key,
+      artistName: nameMap.get(key) ?? t("artwork.artistFallback"),
+      list: map.get(key) ?? [],
+    }));
+  }, [artworks, works, t]);
 
   const isOwner = canManage;
 

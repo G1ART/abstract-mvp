@@ -775,7 +775,7 @@ function ArtworkDetailContent() {
                         : "";
                       return (
                         <li key={c.id ?? i} className="flex justify-between gap-2">
-                          <span>{c.claim_type === "CREATED" ? `by ${artwork?.profiles?.display_name ?? artwork?.profiles?.username ?? "Artist"}` : label}</span>
+                          <span>{c.claim_type === "CREATED" ? `by ${artistLabel ?? t("artwork.artistFallback")}` : label}</span>
                           {date && <span className="text-zinc-400">{date}</span>}
                         </li>
                       );

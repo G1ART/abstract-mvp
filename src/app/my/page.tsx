@@ -530,12 +530,6 @@ export default function MyPage() {
             Alerts
           </Link>
           <Link
-            href="/my/ops"
-            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Ops Panel
-          </Link>
-          <Link
             href="/people"
             className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >

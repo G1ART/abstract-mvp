@@ -6,6 +6,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { parseCsv, validateCsvRows, type CsvValidationError } from "@/lib/csv/parse";
 import { createDraftArtwork, updateArtwork } from "@/lib/supabase/artworks";
+import { generateCsv, downloadCsv } from "@/lib/csv/parse";
 import { supabase } from "@/lib/supabase/client";
 
 const REQUIRED_COLUMNS = ["title"];
@@ -163,31 +164,46 @@ function ImportContent() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
       <Link href="/my/library" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">← Library</Link>
-      <h1 className="mb-6 text-xl font-semibold text-zinc-900">Import artworks from CSV</h1>
+      <h1 className="mb-6 text-xl font-semibold text-zinc-900">Import artworks</h1>
 
       {step === "paste" && (
         <div className="space-y-4">
           <p className="text-sm text-zinc-600">
-            Paste CSV text below. Required: <code className="rounded bg-zinc-100 px-1">title</code>. Supported: year, medium, size, size_unit, ownership_status, pricing_mode, description, visibility, price, currency, is_price_public, artist_name, artist_username, tags.
+            Paste CSV data below. Only <strong>title</strong> is required — everything else is optional and can be edited later.
           </p>
+          <button
+            type="button"
+            onClick={() => {
+              const tmpl = generateCsv(
+                SUPPORTED_COLUMNS,
+                [SUPPORTED_COLUMNS.map((c) => REQUIRED_COLUMNS.includes(c) ? "(required)" : "(optional)")]
+              );
+              downloadCsv("import_template.csv", tmpl);
+            }}
+            className="text-sm text-zinc-500 underline hover:text-zinc-700"
+          >
+            Download template CSV
+          </button>
           <textarea
             value={csvText}
             onChange={(e) => setCsvText(e.target.value)}
             rows={10}
             className="w-full rounded border border-zinc-300 px-3 py-2 font-mono text-sm"
-            placeholder="title,year,medium,description&#10;Untitled,2024,Oil on canvas,A beautiful painting"
+            placeholder="title,year,medium&#10;Untitled,2024,Oil on canvas"
           />
-          <button type="button" disabled={!csvText.trim()} onClick={handleParse} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50">Parse</button>
+          <button type="button" disabled={!csvText.trim()} onClick={handleParse} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50">Next</button>
         </div>
       )}
 
       {step === "map" && (
         <div className="space-y-4">
-          <p className="text-sm text-zinc-600">Map CSV columns to artwork fields ({headers.length} columns detected, {rows.length} rows):</p>
+          <p className="text-sm text-zinc-600">Match your columns to artwork fields. {rows.length} rows found.</p>
           <div className="grid gap-2 sm:grid-cols-2">
             {SUPPORTED_COLUMNS.map((col) => (
               <div key={col} className="flex items-center gap-2">
-                <label className="w-32 text-sm font-medium text-zinc-700">{col}{REQUIRED_COLUMNS.includes(col) ? " *" : ""}</label>
+                <label className="w-32 text-sm text-zinc-700">
+                  {col.replace(/_/g, " ")}{REQUIRED_COLUMNS.includes(col) ? <span className="text-red-500"> *</span> : ""}
+                </label>
                 <select value={mapping[col] ?? ""} onChange={(e) => setMapping((prev) => ({ ...prev, [col]: e.target.value }))} className="flex-1 rounded border border-zinc-300 px-2 py-1.5 text-sm">
                   <option value="">— skip —</option>
                   {headers.map((h) => <option key={h} value={h}>{h}</option>)}
@@ -265,8 +281,12 @@ function ImportContent() {
       {step === "done" && (
         <div className="space-y-3">
           <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-            <p className="text-sm font-medium text-green-800">Import complete</p>
-            <p className="mt-1 text-sm text-green-700">{successCount} created · {errCount} errors · {skipCount} skipped</p>
+            <p className="text-sm font-medium text-green-800">Done!</p>
+            <p className="mt-1 text-sm text-green-700">
+              {successCount} artwork{successCount !== 1 ? "s" : ""} added as drafts.
+              {skipCount > 0 ? ` ${skipCount} skipped (duplicates).` : ""}
+              {errCount > 0 ? ` ${errCount} had issues — see below.` : ""}
+            </p>
           </div>
           {errCount > 0 && (
             <ul className="max-h-32 space-y-1 overflow-y-auto">

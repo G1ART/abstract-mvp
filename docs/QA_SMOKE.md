@@ -30,6 +30,19 @@ Current suite is minimal (public shell + login page). Extend `e2e/smoke.spec.ts`
 6. **Notifications:** opening list does **not** auto-mark all read; per-row read on click; “Mark all as read” works.
 7. **Diagnostics:** `/my/diagnostics` in dev or with `NEXT_PUBLIC_DIAGNOSTICS=1` — events list loads after using the app.
 
+## Trust & Simplicity checks
+
+1. **Feed infinite scroll (All):** scroll to bottom → more items load → no duplicates → "You're all caught up" at end.
+2. **Feed infinite scroll (Following):** same behavior for Following tab.
+3. **External artist on exhibition:** create exhibition with non-onboarded external artist → `/e/[id]` shows external artist name, not "Artist" or blank.
+4. **External artist on artwork detail:** artwork with external artist → `/artwork/[id]` shows correct name in provenance.
+5. **Save modal:** `/artwork/[id]` → "Save" → modal title is just "Save", list shows existing shortlists, can create new.
+6. **Room simplicity:** `/room/[token]` → no "Private viewing room" banner, just title + "by" credit + artwork cards.
+7. **Alerts simplicity:** `/my/alerts` → title is "Alerts", digest section says "coming soon", no pending events shown unless there are some (collapsed).
+8. **Ops hidden:** `/my` dashboard has no "Ops Panel" link. `/my/ops` still works via URL and shows "(internal)".
+9. **Import template:** `/my/library/import` → "Download template CSV" works, field names show human-readable labels, required fields have red asterisk.
+10. **Import duplicate skip:** import CSV with duplicates → duplicates flagged → "Skip duplicates" checked by default → summary shows skipped count.
+
 ## Wave 2.1 integration checks
 
 1. **Shortlist from artwork:** `/artwork/[id]` → "Save" → choose/create shortlist → saved; repeat → toggled off.

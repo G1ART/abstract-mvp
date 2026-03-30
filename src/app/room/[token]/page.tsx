@@ -80,11 +80,10 @@ export default function RoomPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-8 text-center">
-        <p className="mb-1 text-xs font-medium uppercase tracking-wide text-zinc-400">Private viewing room</p>
-        <h1 className="text-2xl font-semibold text-zinc-900">{meta.title}</h1>
-        {meta.description && <p className="mx-auto mt-2 max-w-md text-sm text-zinc-600">{meta.description}</p>}
+        <h1 className="text-xl font-semibold text-zinc-900">{meta.title}</h1>
+        {meta.description && <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">{meta.description}</p>}
         <p className="mt-1 text-xs text-zinc-400">
-          Curated by {meta.owner_display_name ?? meta.owner_username ?? "—"}
+          by {meta.owner_display_name ?? meta.owner_username ?? "—"}
         </p>
       </div>
 

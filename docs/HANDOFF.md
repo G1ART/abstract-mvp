@@ -2,6 +2,85 @@
 
 Last updated: 2026-03-30
 
+## 2026-03-30 — Beta Trust & Simplicity Patch
+
+기능 추가 없이 기본기를 복원하는 패치. "이 플랫폼은 살아있고 기본이 탄탄하다"를 우선함.
+
+### 변경 요약
+
+- **Scope A — Feed 복원**: `loadMore` 시 중복 방지 (`deduplicateAndSort` 헬퍼 추가), 양 탭(All/Following) 모두 IntersectionObserver로 통일, 끝 상태("You're all caught up") 표시, 불필요한 `tab !== "all"` 가드 제거.
+- **Scope B — Artist attribution SSOT**: `getArtworkArtistLabel()` (artworks.ts)을 SSOT resolver로 확립. 공개 전시(`/e/[id]`)와 전시 관리(`/my/exhibitions/[id]`) 페이지의 아티스트 그룹핑을 `artist_id` 단독 → `artist_id || ext:label` 복합 키로 변경. 외부(미가입) 아티스트 이름이 빈 버킷으로 빠지지 않음. `artwork/[id]` provenance의 hardcoded "Artist" fallback → `getArtworkArtistLabel` 결과 사용.
+- **Scope C — Wave 2 표면 간소화**:
+  - Shortlist: 모달 제목 "Save to shortlist" → "Save", 빈 상태 텍스트 간소화, detail 페이지의 "Share & Room" 패널 제거 → 단순 버튼 행으로, collaborator 섹션 라벨 "Collaborators" → "people sharing".
+  - Room: "Private viewing room" 헤더 제거 → 타이틀 + "by" 크레딧만, 시각적 clutter 줄임.
+  - Alerts: 제목 "Follow Alerts & Digest" → "Alerts", digest 섹션에 "Email delivery coming soon" 명시, digest preview → `<details>` 접힘으로 de-emphasize.
+  - Ops: `/my` 대시보드에서 "Ops Panel" 링크 제거 (직접 URL만), 타이틀에 "(internal)" 표시.
+- **Scope D — Import 간소화**: CSV 템플릿 다운로드 기능 추가, 설명문 간소화 ("Only title is required — everything else is optional"), field 라벨 snake_case → 사람 읽기 용 표시, required 필드에 빨간 별표, done 단계 요약문 자연어화.
+- **Scope E — Documentation**: 이 HANDOFF 섹션 + QA_SMOKE 업데이트.
+
+### 수정 파일
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/FeedContent.tsx` | `deduplicateAndSort` 추가, `tab !== "all"` 가드 제거, 끝 상태 UI |
+| `src/app/e/[id]/page.tsx` | `getArtworkArtistLabel` 적용, 그룹 키 복합화 |
+| `src/app/my/exhibitions/[id]/page.tsx` | 동일 — `getArtworkArtistLabel` 적용 |
+| `src/app/artwork/[id]/page.tsx` | provenance "Artist" fallback → `artistLabel` 사용 |
+| `src/components/SaveToShortlistModal.tsx` | copy 간소화 |
+| `src/app/my/shortlists/[id]/page.tsx` | share controls 간소화, collaborator 라벨 간소화 |
+| `src/app/room/[token]/page.tsx` | 헤더 간소화 |
+| `src/app/my/alerts/page.tsx` | digest de-emphasize, 제목 간소화 |
+| `src/app/my/ops/page.tsx` | "(internal)" 표시 |
+| `src/app/my/page.tsx` | Ops Panel 링크 제거 |
+| `src/app/my/library/import/page.tsx` | 템플릿 다운로드, 설명 간소화, field 라벨 개선 |
+| `docs/HANDOFF.md` | 이 섹션 |
+| `docs/QA_SMOKE.md` | Trust & Simplicity 체크 추가 |
+
+**Supabase SQL:** 이번 패치에서 SQL 돌려야 할 것은 없음.
+
+**환경 변수:** 변경 없음.
+
+### Artist attribution SSOT (product truth)
+
+`getArtworkArtistLabel(artwork)` — `src/lib/supabase/artworks.ts`
+
+우선순위:
+1. `claims → external_artists.display_name` (초대된 미가입 아티스트)
+2. `profiles.display_name` (가입된 아티스트)
+3. `@profiles.username`
+4. fallback: `null` → UI에서 `t("artwork.artistFallback")` 표시
+
+모든 작품 아티스트 이름 표시에 이 함수만 사용해야 함. 각 페이지가 독자적으로 `profile?.display_name || profile?.username || "Artist"`를 작성하면 안 됨.
+
+### Feed 동작 (product truth)
+
+- **All / Following 모두**: IntersectionObserver (rootMargin 400px) 기반 무한 스크롤
+- **Dedup**: merge 시 artwork ID / exhibition ID 기준 중복 제거
+- **끝 상태**: cursor가 null → "You're all caught up" 텍스트 표시
+- **Refresh**: 수동 refresh 버튼 + visibility/focus TTL refresh (90초)
+- **No scroll fallback**: IntersectionObserver만 사용
+
+### Internal routes
+
+| 경로 | 대상 | 접근 |
+|---|---|---|
+| `/my/ops` | 운영팀 | URL 직접 접근만 (대시보드에 미노출) |
+
+### Acceptance checks
+
+1. 메인 피드 하단에서 추가 콘텐츠 안정적 로딩
+2. 중복 반복 카드 없음
+3. 공개 전시 페이지에서 미가입 외부 아티스트 이름 정확히 표시
+4. 작품 상세에서 아티스트 어트리뷰션 정확
+5. Save 모달이 처음 사용에 이해 가능
+6. Room 페이지가 단순하고 행동 지향적
+7. Alerts 페이지가 digest/email 과약속 안 함
+8. Import 템플릿 + 중복 스킵 + 요약 정상
+9. `/my/ops`가 일반 네비게이션에 미노출
+10. 빌드 통과
+
+---
+
 ## 2026-03-30 — Beta Differentiation Wave 2.1 (integration)
 
 Wave 2 표면을 실제 유저 워크플로우에 연결하는 통합 패치.

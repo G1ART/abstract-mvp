@@ -160,30 +160,27 @@ function ShortlistDetailContent() {
             <button type="button" onClick={() => setEditingTitle(true)} className="text-xs text-zinc-500 hover:text-zinc-800">Edit</button>
           </div>
           {shortlist.description && <p className="mt-1 text-sm text-zinc-600">{shortlist.description}</p>}
-          <p className="mt-1 text-xs text-zinc-400">{shortlist.is_private ? "Private" : "Public"} · {items.length} items · {collaborators.length} collaborators</p>
+          <p className="mt-1 text-xs text-zinc-400">{items.length} items{collaborators.length > 0 ? ` · ${collaborators.length} people` : ""}</p>
         </div>
       )}
 
-      {/* Share controls */}
-      <div className="mb-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-        <p className="mb-2 text-xs font-medium text-zinc-500">Share & Room</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" onClick={copyShareLink} className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
-            {linkCopied ? "Copied!" : "Copy link"}
-          </button>
-          <button type="button" onClick={handleRotateToken} className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
-            Rotate link
-          </button>
-          <button type="button" onClick={() => void handleToggleRoom()} className={`rounded border px-3 py-1.5 text-sm ${roomActive ? "border-green-300 bg-green-50 text-green-700" : "border-red-300 bg-red-50 text-red-700"}`}>
-            Room: {roomActive ? "Active" : "Disabled"}
-          </button>
-        </div>
+      {/* Share */}
+      <div className="mb-6 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={copyShareLink} className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
+          {linkCopied ? "Copied!" : "Share link"}
+        </button>
+        <button type="button" onClick={() => void handleToggleRoom()} className={`rounded border px-3 py-1.5 text-sm ${roomActive ? "border-zinc-300 text-zinc-700" : "border-zinc-200 text-zinc-400"}`}>
+          {roomActive ? "Link active" : "Link disabled"}
+        </button>
+        <button type="button" onClick={handleRotateToken} className="text-xs text-zinc-400 hover:text-zinc-600">
+          Reset link
+        </button>
       </div>
 
-      {/* Collaborators */}
+      {/* People */}
       <div className="mb-6">
-        <button type="button" onClick={() => setShowCollabPanel(!showCollabPanel)} className="mb-2 text-sm font-medium text-zinc-700 hover:text-zinc-900">
-          Collaborators ({collaborators.length}) {showCollabPanel ? "▲" : "▼"}
+        <button type="button" onClick={() => setShowCollabPanel(!showCollabPanel)} className="mb-2 text-sm text-zinc-500 hover:text-zinc-700">
+          {collaborators.length > 0 ? `${collaborators.length} people sharing` : "Share with people"} {showCollabPanel ? "▲" : "▼"}
         </button>
         {showCollabPanel && (
           <div className="rounded-lg border border-zinc-200 bg-white p-4">
@@ -225,7 +222,7 @@ function ShortlistDetailContent() {
 
       {/* Items grid */}
       {items.length === 0 ? (
-        <p className="text-sm text-zinc-500">No items yet. Add artworks or exhibitions from their detail pages.</p>
+        <p className="text-sm text-zinc-500">No items yet. Use the Save button on any artwork to add it here.</p>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {items.map((item) => (

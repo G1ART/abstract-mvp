@@ -81,7 +81,7 @@ function OpsContent() {
       <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
         ← {t("common.backTo")} {t("nav.myProfile")}
       </Link>
-      <h1 className="mb-4 text-xl font-semibold text-zinc-900">Beta Ops Panel</h1>
+      <h1 className="mb-4 text-xl font-semibold text-zinc-900">Ops <span className="text-sm font-normal text-zinc-400">(internal)</span></h1>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-5">
         <div className="rounded-lg border border-zinc-200 bg-white p-3 text-center">

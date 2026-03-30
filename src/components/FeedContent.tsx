@@ -72,6 +72,21 @@ function buildFeedItems(
   return items;
 }
 
+function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
+  const seen = new Set<string>();
+  const unique = entries.filter((e) => {
+    const id = e.type === "artwork" ? `a:${e.artwork.id}` : `e:${e.exhibition.id}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  return unique.sort((a, b) => {
+    const ta = new Date(a.created_at ?? 0).getTime();
+    const tb = new Date(b.created_at ?? 0).getTime();
+    return tb - ta;
+  });
+}
+
 type Props = {
   tab: "all" | "following";
   sort?: "latest" | "popular";
@@ -348,14 +363,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           })),
         ];
         if (newEntries.length > 0) {
-          setFeedEntries((prev) => {
-            const merged = [...prev, ...newEntries].sort((a, b) => {
-              const ta = new Date(a.created_at ?? 0).getTime();
-              const tb = new Date(b.created_at ?? 0).getTime();
-              return tb - ta;
-            });
-            return merged;
-          });
+          setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
         }
         const ms = Math.round(performance.now() - t0);
         void logBetaEvent("feed_load_more", { tab, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
@@ -366,7 +374,6 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       return;
     }
 
-    if (tab !== "all") return;
     const hasMore = artworksNextCursor || exhibitionsNextCursor;
     if (!hasMore) return;
     loadingMoreRef.current = true;
@@ -405,14 +412,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         ...newExhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
       ];
       if (newEntries.length > 0) {
-        setFeedEntries((prev) => {
-          const merged = [...prev, ...newEntries].sort((a, b) => {
-            const ta = new Date(a.created_at ?? 0).getTime();
-            const tb = new Date(b.created_at ?? 0).getTime();
-            return tb - ta;
-          });
-          return merged;
-        });
+        setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
       }
       const ms = Math.round(performance.now() - t0);
       void logBetaEvent("feed_load_more", { tab, sort, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
@@ -628,7 +628,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           })}
         </div>
       )}
-      {hasMore && (
+      {hasMore ? (
         <div
           ref={loadMoreSentinelRef}
           className="flex min-h-[80px] items-center justify-center py-4"
@@ -638,7 +638,9 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
             <span className="text-sm text-zinc-500">{t("common.loading") || "Loading…"}</span>
           )}
         </div>
-      )}
+      ) : feedEntries.length > 0 ? (
+        <p className="py-8 text-center text-xs text-zinc-400">You&apos;re all caught up</p>
+      ) : null}
     </div>
   );
 }

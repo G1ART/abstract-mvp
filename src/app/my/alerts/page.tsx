@@ -76,7 +76,7 @@ function AlertsContent() {
       <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
         ← {t("common.backTo")} {t("nav.myProfile")}
       </Link>
-      <h1 className="mb-6 text-xl font-semibold text-zinc-900">Follow Alerts & Digest</h1>
+      <h1 className="mb-6 text-xl font-semibold text-zinc-900">Alerts</h1>
 
       {loading ? (
         <p className="text-zinc-500">{t("common.loading")}</p>
@@ -98,10 +98,10 @@ function AlertsContent() {
             </label>
           </section>
 
-          {/* Digest frequency */}
+          {/* Digest preference */}
           <section className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="mb-2 font-medium text-zinc-800">Digest frequency</h2>
-            <p className="mb-3 text-sm text-zinc-600">Receive a summary of activity from your follows.</p>
+            <h2 className="mb-2 font-medium text-zinc-800">Digest</h2>
+            <p className="mb-3 text-sm text-zinc-500">Choose how often you want a summary. Email delivery coming soon.</p>
             <div className="flex gap-3">
               {(["off", "daily", "weekly"] as const).map((freq) => (
                 <button
@@ -177,23 +177,22 @@ function AlertsContent() {
             )}
           </section>
 
-          {/* Digest preview */}
-          <section className="rounded-lg border border-zinc-200 bg-white p-4">
-            <h2 className="mb-2 font-medium text-zinc-800">Pending digest ({digestEvents.length})</h2>
-            <p className="mb-3 text-sm text-zinc-600">Preview of events queued for your next digest email.</p>
-            {digestEvents.length === 0 ? (
-              <p className="text-sm text-zinc-500">No pending events.</p>
-            ) : (
-              <ul className="max-h-48 space-y-1 overflow-y-auto">
+          {/* Queued activity (subtle) */}
+          {digestEvents.length > 0 && (
+            <details className="rounded-lg border border-zinc-100 bg-zinc-50 p-4">
+              <summary className="cursor-pointer text-sm text-zinc-500">
+                {digestEvents.length} queued event{digestEvents.length !== 1 ? "s" : ""}
+              </summary>
+              <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                 {digestEvents.map((ev) => (
-                  <li key={ev.id} className="flex items-center justify-between rounded bg-zinc-50 px-3 py-1.5 text-sm">
-                    <span className="text-zinc-700">{ev.event_type}</span>
+                  <li key={ev.id} className="flex items-center justify-between rounded bg-white px-3 py-1.5 text-sm">
+                    <span className="text-zinc-600">{ev.event_type}</span>
                     <span className="text-xs text-zinc-400">{new Date(ev.created_at).toLocaleString()}</span>
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
+            </details>
+          )}
         </div>
       )}
     </main>

@@ -28,7 +28,7 @@ import {
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
-import { getArtworksByIds, getArtworkImageUrl, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
@@ -132,20 +132,19 @@ export default function ExhibitionDetailPage() {
     const artistNameById = new Map<string, string>();
     const artistOrder: string[] = [];
     for (const art of orderedArtworks) {
-      const artistId = art.artist_id ?? "";
-      if (!listByArtist.has(artistId)) {
-        listByArtist.set(artistId, []);
-        artistOrder.push(artistId);
+      const { label } = getArtworkArtistLabel(art);
+      const key = art.artist_id || `ext:${label ?? "unknown"}`;
+      if (!listByArtist.has(key)) {
+        listByArtist.set(key, []);
+        artistOrder.push(key);
       }
-      listByArtist.get(artistId)!.push(art);
-      const profile = art.profiles as { display_name?: string; username?: string } | null | undefined;
-      const artistName = profile?.display_name?.trim() || profile?.username || "Artist";
-      artistNameById.set(artistId, artistName);
+      listByArtist.get(key)!.push(art);
+      artistNameById.set(key, label ?? t("artwork.artistFallback"));
     }
-    return artistOrder.map((artistId) => ({
-      artistId,
-      artistName: artistNameById.get(artistId) ?? t("artwork.artistFallback"),
-      list: listByArtist.get(artistId) ?? [],
+    return artistOrder.map((key) => ({
+      artistId: key,
+      artistName: artistNameById.get(key) ?? t("artwork.artistFallback"),
+      list: listByArtist.get(key) ?? [],
     }));
   }, [orderedArtworks]);
 

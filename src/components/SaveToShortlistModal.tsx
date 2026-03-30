@@ -101,7 +101,7 @@ export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }:
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold text-zinc-900">Save to shortlist</h2>
+          <h2 className="text-base font-semibold text-zinc-900">Save</h2>
           <button type="button" onClick={onClose} className="text-zinc-400 hover:text-zinc-600">×</button>
         </div>
 
@@ -112,7 +112,7 @@ export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }:
             <div className="mb-3 flex gap-2">
               <input
                 type="text"
-                placeholder="New shortlist..."
+                placeholder="New list name..."
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
@@ -129,7 +129,7 @@ export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }:
             </div>
 
             {lists.length === 0 ? (
-              <p className="py-2 text-center text-sm text-zinc-500">No shortlists yet.</p>
+              <p className="py-2 text-center text-sm text-zinc-500">No lists yet. Create one above.</p>
             ) : (
               <ul className="max-h-48 space-y-1 overflow-y-auto">
                 {lists.map((sl) => {
