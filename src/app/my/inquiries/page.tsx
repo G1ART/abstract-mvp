@@ -24,6 +24,7 @@ import {
 import { EmptyState } from "@/components/ds/EmptyState";
 import { Chip } from "@/components/ds/Chip";
 import { formatIdentityPair } from "@/lib/identity/format";
+import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 
 export default function MyInquiriesPage() {
   const { t } = useT();
@@ -396,6 +397,22 @@ export default function MyInquiriesPage() {
                         >
                           {replyingId === row.id ? t("common.loading") : t("priceInquiry.reply")}
                         </button>
+                        <InquiryReplyAssist
+                          artwork={{
+                            title: row.artwork?.title ?? null,
+                          }}
+                          thread={(messagesByInquiry[row.id] ?? [])
+                            .slice(-3)
+                            .map((m) => ({
+                              from: (m.sender_id === row.inquirer_id
+                                ? "inquirer"
+                                : "owner") as "inquirer" | "owner",
+                              text: m.body ?? "",
+                            }))}
+                          onApply={(text) =>
+                            setReplyText((prev) => ({ ...prev, [row.id]: text }))
+                          }
+                        />
                       </div>
 
                       {/* Internal notes (private to gallery) */}

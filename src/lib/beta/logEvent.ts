@@ -24,7 +24,8 @@ export type BetaEventName =
   | "room_viewed"
   | "room_opened_artwork"
   | "room_inquiry_clicked"
-  | "room_copy_link";
+  | "room_copy_link"
+  | "ai_accepted";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

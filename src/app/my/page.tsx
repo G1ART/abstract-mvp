@@ -382,7 +382,17 @@ export default function MyPage() {
           />
         )}
 
-        {profile && !actingAsProfileId && <StudioIntelligenceSurface />}
+        {profile && !actingAsProfileId && (
+          <StudioIntelligenceSurface
+            profile={profile}
+            completeness={computedCompleteness}
+            artworks={artworks}
+            exhibitions={exhibitions}
+            stats={stats}
+            viewsCount7d={profileViewsCount}
+            inquiries7d={priceInquiryCount}
+          />
+        )}
 
         {toast && (
           <div className="fixed bottom-4 right-4 rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">

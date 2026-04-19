@@ -25,6 +25,7 @@ import {
   type TaxonomyOption,
 } from "@/lib/profile/taxonomy";
 import { BuildStamp } from "@/components/BuildStamp";
+import { BioDraftAssist } from "@/components/ai/BioDraftAssist";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -860,6 +861,15 @@ export default function SettingsPage() {
                 placeholder={t("settings.placeholderBio")}
                 rows={3}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
+              />
+              <BioDraftAssist
+                currentBio={bio}
+                displayName={displayName}
+                role={mainRole || roles[0] || null}
+                themes={themes}
+                mediums={mediums}
+                city={city || location}
+                onApply={(text) => setBio(text)}
               />
             </div>
 

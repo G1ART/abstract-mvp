@@ -87,5 +87,37 @@ link a follow‑up issue.
 | G1 | `npx tsc --noEmit` | manual | 0 errors | ⬜ | local |
 | G2 | `npm run build` | manual | 0 errors | ⬜ | local |
 | G3 | `npx playwright test` | manual | smoke + auth‑gate pass | ⬜ | CI |
-| G4 | `supabase db push` | manual | all 4 migrations applied | ⬜ | staging |
+| G4 | `supabase db push` | manual | all migrations applied (incl. `20260419120000_ai_events.sql`) | ⬜ | staging |
 | G5 | PR description links this file | manual | checked | ⬜ | PR body |
+
+## H. AI-Native Studio Layer (Wave 1)
+
+Prereq: staging has `OPENAI_API_KEY` set. Cases H8+ exercise the key-missing path.
+
+| # | Case | Type | Expected | Result | Evidence |
+|---|------|------|----------|--------|----------|
+| H1 | `/my` intelligence area renders 4 cards | manual | Profile / Portfolio / Weekly Digest / Matchmaker appear under StudioPortfolioPanel | ⬜ | `src/components/studio/StudioIntelligenceSurface.tsx` |
+| H2 | Intelligence hidden when acting-as | manual | cards disappear for delegate sessions | ⬜ | `/my` top-level guard |
+| H3 | Profile Copilot CTA | manual | click → suggestions render with action links | ⬜ | `ProfileCopilotCard` |
+| H4 | Portfolio Copilot disabled at <2 works | manual | CTA disabled + soft hint | ⬜ | `PortfolioCopilotCard` |
+| H5 | Weekly Digest empty copy | manual | with 0 views / 0 inquiries, quiet empty copy, no fake data | ⬜ | `WeeklyDigestCard` |
+| H6 | Matchmaker lazy load | manual | loads top 5 peers + one sentence rationale each on mount | ⬜ | `MatchmakerCard` |
+| H7 | Soft cap | manual | 30th call in 24h → 429 + `ai.error.softCap` shown | ⬜ | `ai_events` row count |
+| H8 | No `OPENAI_API_KEY` | manual | CTAs still visible, press → `ai.error.unavailable`, no crash | ⬜ | remove key + reload |
+| H9 | Timeout fallback | manual | server latency > 8s → `ai.error.tryLater` | ⬜ | throttle |
+| H10 | Bio Draft insert | manual | empty bio → apply fills textarea, pre-filled bio → confirm prompt | ⬜ | `BioDraftAssist` |
+| H11 | Bio Draft tone preset | manual | changing chip changes draft flavour on next generate | ⬜ | `BioDraftAssist` |
+| H12 | Exhibition Draft (new) | manual | title / description / wall_text / invite_blurb all generate, only title applies | ⬜ | `ExhibitionDraftAssist` on `/my/exhibitions/new` |
+| H13 | Exhibition Draft (edit) | manual | works list from `listWorksInExhibition` feeds the context | ⬜ | `ExhibitionDraftAssist` on `/my/exhibitions/[id]/edit` |
+| H14 | Exhibition drafts not saved | manual | page reload keeps form pristine, drafts gone | ⬜ | no DB write |
+| H15 | Inquiry reply draft | manual | textarea gets draft text, send button still manual | ⬜ | `/my/inquiries` |
+| H16 | Inquiry follow-up toggle | manual | follow-up mode yields nudge language, not initial reply | ⬜ | `InquiryReplyAssist` |
+| H17 | Artist block inquiry draft | manual | same behavior on `/artwork/[id]` | ⬜ | artist block |
+| H18 | Matchmaker rationale fallback | manual | when AI degraded, each card shows `ai.matchmaker.rationaleFallback` | ⬜ | `MatchmakerCard` |
+| H19 | `/people` intro draft | manual | each peer card has `연결 메시지 초안` button; click → copyable drafts, no auto-send | ⬜ | `IntroMessageAssist` |
+| H20 | Public shell AI-free | manual | `/u`, `/e`, `/artwork` (viewer), feed have no AI affordance | ⬜ | visual audit |
+| H21 | `ai_events` insert | sql | 1 row per route call with feature_key + latency_ms + context_size | ⬜ | `select count(*) from ai_events` |
+| H22 | `ai_events` RLS | sql | anon + other user cannot read my rows | ⬜ | `ai_events_select_own` |
+| H23 | `ai_accepted` client event | manual | 채택 / 복사 시 `beta_analytics_events` 에 `ai_accepted` 1행 | ⬜ | `logBetaEvent` |
+| H24 | No "AI" literal in UI | manual | user-visible buttons/cards never say "AI" (tooltip only) | ⬜ | `ai.disclosure.tooltip` |
+| H25 | Safety: no claim/provenance write | code | `FORBIDDEN_ACTIONS` unchanged, no route mutates claims | ⬜ | `src/lib/ai/safety.ts` |

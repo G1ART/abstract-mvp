@@ -22,6 +22,8 @@ import {
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { Chip } from "@/components/ds/Chip";
+import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
+import { getMyProfile } from "@/lib/supabase/me";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
@@ -88,6 +90,13 @@ export function PeopleClient() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState<string | null>(null);
+  const [myProfile, setMyProfile] = useState<{
+    display_name: string | null;
+    main_role: string | null;
+    themes: string[];
+    mediums: string[];
+    city: string | null;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const updateUrl = useCallback(
@@ -116,6 +125,33 @@ export function PeopleClient() {
   useEffect(() => {
     getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id ?? null);
+    });
+    getMyProfile().then(({ data }) => {
+      if (!data) return;
+      const p = data as Record<string, unknown>;
+      const details =
+        p.profile_details && typeof p.profile_details === "object"
+          ? (p.profile_details as Record<string, unknown>)
+          : {};
+      const themes = Array.isArray(details.themes)
+        ? (details.themes as string[]).filter((x) => typeof x === "string")
+        : [];
+      const mediums = Array.isArray(details.mediums)
+        ? (details.mediums as string[]).filter((x) => typeof x === "string")
+        : [];
+      const city =
+        typeof details.city === "string"
+          ? (details.city as string)
+          : typeof p.city === "string"
+            ? (p.city as string)
+            : null;
+      setMyProfile({
+        display_name: (p.display_name as string | null) ?? null,
+        main_role: (p.main_role as string | null) ?? null,
+        themes,
+        mediums,
+        city,
+      });
     });
   }, []);
 
@@ -440,7 +476,7 @@ export function PeopleClient() {
                     </div>
                     {!isSelf && (
                       <div
-                        className="shrink-0"
+                        className="flex shrink-0 flex-col items-end gap-2"
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}
                       >
@@ -449,6 +485,23 @@ export function PeopleClient() {
                           initialFollowing={initialFollowing}
                           size="sm"
                         />
+                        {userId && (
+                          <IntroMessageAssist
+                            me={{
+                              display_name: myProfile?.display_name ?? null,
+                              role: myProfile?.main_role ?? null,
+                              themes: myProfile?.themes ?? [],
+                              mediums: myProfile?.mediums ?? [],
+                              city: myProfile?.city ?? null,
+                            }}
+                            recipient={{
+                              id: profile.id,
+                              display_name: profile.display_name,
+                              role: profile.main_role,
+                              sharedSignals: profile.reason_tags ?? [],
+                            }}
+                          />
+                        )}
                       </div>
                     )}
                   </article>

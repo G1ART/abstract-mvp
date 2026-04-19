@@ -54,6 +54,7 @@ import { useT } from "@/lib/i18n/useT";
 import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
+import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 
 
 function ArtworkDetailContent() {
@@ -735,6 +736,27 @@ function ArtworkDetailContent() {
                             >
                               {replyingInquiryId === row.id ? t("common.loading") : t("priceInquiry.reply")}
                             </button>
+                            <InquiryReplyAssist
+                              artwork={{
+                                title: artwork.title ?? null,
+                                artistName:
+                                  formatIdentityPair(artist ?? null).primary,
+                              }}
+                              thread={(artistInquiryMessages[row.id] ?? [])
+                                .slice(-3)
+                                .map((m) => ({
+                                  from: (m.sender_id === row.inquirer_id
+                                    ? "inquirer"
+                                    : "owner") as "inquirer" | "owner",
+                                  text: m.body ?? "",
+                                }))}
+                              onApply={(text) =>
+                                setArtistReplyText((prev) => ({
+                                  ...prev,
+                                  [row.id]: text,
+                                }))
+                              }
+                            />
                           </div>
                         )}
                       </li>

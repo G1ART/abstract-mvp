@@ -1,6 +1,51 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-18
+Last updated: 2026-04-19
+
+## 2026-04-19 — AI-Native Studio Layer (Wave 1)
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "`/my` Studio에 AI 초안 보조 레이어를 얹는다. 결과물은 모두 편집 가능한 미리보기이며, 신뢰 경계 자동 판정은 하지 않는다."
+
+### 1. 스코프
+
+| 트랙 | 내용 |
+|---|---|
+| 인프라 (Track 0) | `openai` 패키지 추가, `ai_events` 테이블 + RLS (`20260419120000_ai_events.sql`), 환경 변수 문서화 (`.env.example`에 `OPENAI_API_KEY`, `OPENAI_MODEL`, `AI_USER_DAILY_SOFT_CAP`). |
+| AI 코어 (Track D) | `src/lib/ai/{client,safety,events,softCap,prompts,contexts,route,browser,types}` + 8개 route handler (`/api/ai/*`). Bearer JWT + RLS 기반 서버 슈파베이스 클라이언트. 8초 timeout, 1회 재시도, 파싱 실패 시 `degraded: true`. |
+| Studio Intelligence (Track A) | `StudioIntelligenceSurface`가 4카드 (`ProfileCopilotCard`, `PortfolioCopilotCard`, `WeeklyDigestCard`, `MatchmakerCard`)를 렌더. `actingAsProfileId`일 때는 노출하지 않음. |
+| Workflow assist (Track B) | `BioDraftAssist` (settings), `ExhibitionDraftAssist` (new / edit 전시), `InquiryReplyAssist` (`/my/inquiries`, `/artwork/[id]` 작가 블록). 전시 초안은 저장하지 않으며 제목만 채택 가능. 답장은 textarea에 삽입 후 사람이 전송. |
+| Matchmaker Lite (Track C) | Studio Matchmaker 카드 + `/people` 카드의 `연결 메시지 초안` 버튼 (`IntroMessageAssist`). 자동 전송 없음. |
+| UX 카피 (Track E) | `ai.*` i18n 네임스페이스 신규 (EN/KO). 사용자 surface에 "AI" 단어 미사용 (`ai.disclosure.tooltip`만 예외). |
+| 관측/비용 (Track F) | `ai_events` insert (feature, context_size, latency_ms, model, error_code). `checkDailySoftCap` (기본 30 req/user/day, `AI_USER_DAILY_SOFT_CAP`으로 조정 가능). 클라이언트 채택 시 `logBetaEvent("ai_accepted", {...})`. |
+| 문서 (Track G) | `docs/DESIGN.md` 섹션 1.4 (Trust boundary), 1.5 (Studio intelligence hierarchy), 1.6 (AI assist CTAs in workflows). `docs/QA_MEGA_UPGRADE.md`에 수동 QA 체크리스트. |
+
+### 2. 명시적 연기 / 비범위
+
+- 전시 description / wall text / invite blurb **DB 저장**은 이번 웨이브 범위 밖 (`projects` 테이블에 컬럼 없음). 현재는 복사 / 편집 전용.
+- 포트폴리오 자동 재정렬 저장, press kit PDF 생성, 자동 outreach 발송, multi-agent UI는 모두 이번 웨이브 범위 밖.
+- Claim 승인 / provenance 확정 / identity merge 자동화는 영구 금지 (safety.ts).
+
+### 3. 환경 변수
+
+```
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini         # 선택
+AI_USER_DAILY_SOFT_CAP=30        # 선택
+```
+
+`OPENAI_API_KEY` 미설정 시 모든 AI route는 503 + `{degraded:true, reason:"no_key"}` 반환, UI는 조용히 fallback 문구만 표시.
+
+### 4. 리스크
+
+- Supabase 세션 쿠키가 아닌 `Authorization: Bearer <access_token>` 패턴이 새 약속. `src/lib/ai/browser.ts`의 `callAi` 한 곳에만 존재.
+- OpenAI JSON 이탈 시 `stripCodeFence` + 마지막 `{...}` 파싱 fallback. 그래도 실패면 `degraded: true`.
+- Soft cap 값(30)은 초기 추정치 — `ai_events` 로그 본 뒤 조정.
+
+---
 
 ## 2026-04-18 — Abstract Next Mega Upgrade (Studio Slim-down + Design Spine + Reco Contract)
 

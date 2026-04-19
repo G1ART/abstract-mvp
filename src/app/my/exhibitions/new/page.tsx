@@ -12,6 +12,7 @@ import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -165,6 +166,27 @@ export default function NewExhibitionPage() {
               className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               required
             />
+            <div className="mt-3">
+              <ExhibitionDraftAssist
+                title={title}
+                startDate={startDate}
+                endDate={endDate}
+                curatorLabel={
+                  curatorMe
+                    ? t("exhibition.curatorMe")
+                    : curatorSelected
+                      ? formatDisplayName(curatorSelected)
+                      : null
+                }
+                hostLabel={
+                  hostSelected
+                    ? formatDisplayName(hostSelected)
+                    : hostName || null
+                }
+                works={[]}
+                onApplyTitle={(text) => setTitle(text)}
+              />
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

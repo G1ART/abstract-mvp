@@ -1,6 +1,6 @@
 # Abstract — Design Spine
 
-Status: Next Mega Upgrade baseline (2026‑04)
+Status: AI-Native Studio Layer wave 1 baseline (2026‑04)
 
 This document is the single source of truth for how the Abstract product
 presents itself. Every new screen or component must be checked against it.
@@ -39,9 +39,7 @@ Order from top of viewport:
 6. `StudioViewsInsights` — condensed last‑7‑day views + recent viewers
    preview; the full experience lives under `/settings`.
 7. `StudioPortfolioPanel` — persona tabs, reorder mode, bulk delete.
-8. `StudioIntelligenceSurface` — **empty** structural container. The
-   shell exists so the upcoming AI layer has a home; it must never ship
-   placeholder or "coming soon" copy.
+8. `StudioIntelligenceSurface` — intelligence hierarchy (see §1.5).
 
 Non‑negotiables:
 
@@ -49,6 +47,63 @@ Non‑negotiables:
   moved under one of the section entries.
 - The Studio shell never shows copy that reads "coming soon" or
   "placeholder" in production.
+
+### 1.4 Trust boundary
+
+Abstract is a human‑centered platform. The model never speaks with authority:
+
+- No AI result is allowed to approve / reject a claim, confirm provenance,
+  assert ownership, merge identities, or send outbound messages. The
+  `FORBIDDEN_ACTIONS` constant in `src/lib/ai/safety.ts` enumerates these.
+- Every AI surface is an editable preview. The user must press a button to
+  generate, and a second, explicit action to apply or send. Drafts are
+  never auto‑inserted over existing user text; overwrite requires a
+  confirm prompt.
+- AI surfaces are confined to the Studio shell (`/my`) and the Settings /
+  Exhibition / Inquiry / People authoring flows. Public shell pages
+  (`/u`, `/artwork`, `/e`, feed) carry no model output.
+
+### 1.5 Studio intelligence hierarchy
+
+The intelligence area appears once per `/my` view (hidden when the user is
+acting on behalf of another profile) and composes four cards in this order:
+
+1. **Profile Copilot** — completeness number + 2‑4 missing points +
+   1‑3 concrete next actions linking back to Settings / Upload / etc.
+2. **Portfolio Copilot** — reorder hints, series suggestions, missing
+   metadata, exhibition‑link opportunities. Suggestions never persist —
+   they link to the existing edit / reorder surfaces.
+3. **Weekly Digest** — one‑line headline, 2‑3 change bullets, 1‑2 next
+   moves. Quiet copy when inputs are mostly zero; never fabricates
+   momentum.
+4. **Matchmaker Lite** — top 3‑5 people from `likes_based` lane plus a
+   one‑sentence rationale per card. Ranking stays with
+   `getPeopleRecommendations`; AI only produces the rationale sentence.
+
+Each card has exactly one primary CTA (generate / refresh), preview body,
+and optional per‑row action links. Error, soft‑cap, and no‑key states use
+`ai.error.*` / `ai.state.*` copy — never silent failure.
+
+### 1.6 AI assist CTAs in workflows
+
+Workflow AI assist appears inline with the relevant input field:
+
+- `BioDraftAssist` under the Settings bio textarea.
+- `ExhibitionDraftAssist` under the exhibition title field in
+  `/my/exhibitions/new` and `/my/exhibitions/[id]/edit`. Four kinds:
+  `title`, `description`, `wall_text`, `invite_blurb`. Drafts are
+  edit/copy only — Wave 1 does not persist description or wall text.
+- `InquiryReplyAssist` under the reply textarea in `/my/inquiries` and
+  the artist block of `/artwork/[id]`. Supports tone preset and
+  follow‑up toggle. Drafts insert into the reply state; a human still
+  presses **Send**.
+- `IntroMessageAssist` on `/people` recommendation cards. Produces a
+  draft the user copies, then sends themselves outside the card.
+
+Copy rule: avoid the literal word **"AI"** in user‑facing surfaces. Use
+action language ("소개문 초안", "답장 초안 받기", "연결 메시지 초안").
+`ai.disclosure.tooltip` is the only place the nature of the helper is
+named, and it lives in tooltip text.
 
 ### 1.3 Sub‑page shell
 
