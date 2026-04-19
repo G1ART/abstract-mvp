@@ -6,6 +6,7 @@ import { HtmlLangSync } from "@/components/HtmlLangSync";
 import { MigrationGuard } from "@/components/MigrationGuard";
 import { ProfileBootstrap } from "@/components/ProfileBootstrap";
 import { RandomIdBanner } from "@/components/RandomIdBanner";
+import { ActingAsBanner } from "@/components/ActingAsBanner";
 import { ActingAsProvider } from "@/context/ActingAsContext";
 import "./globals.css";
 
@@ -41,6 +42,7 @@ export default function RootLayout({
         <ProfileBootstrap />
         <ActingAsProvider>
           <Header />
+          <ActingAsBanner />
           <RandomIdBanner />
           {children}
         </ActingAsProvider>

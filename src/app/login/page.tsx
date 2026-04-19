@@ -6,11 +6,10 @@ import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import {
   getSession,
-  HAS_PASSWORD_KEY,
+  getMyAuthState,
   sendMagicLink,
   signInWithPassword,
 } from "@/lib/supabase/auth";
-import { getMyProfile } from "@/lib/supabase/profiles";
 import {
   isRandomUsername,
   RANDOM_USERNAME_PROMPTED_KEY,
@@ -50,16 +49,21 @@ function LoginInner() {
   const [magicCooldown, setMagicCooldown] = useState(0);
 
   useEffect(() => {
-    getSession().then(async ({ data: { session } }) => {
-      if (!session) return;
-      const { data: profile } = await getMyProfile();
-      if (!profile) {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { session },
+      } = await getSession();
+      if (cancelled || !session) return;
+      const state = await getMyAuthState();
+      if (cancelled) return;
+      if (!state || state.needs_onboarding) {
         router.replace("/onboarding");
         return;
       }
       if (
         typeof window !== "undefined" &&
-        isRandomUsername(profile.username) &&
+        isRandomUsername(state.username) &&
         window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
       ) {
         window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
@@ -67,12 +71,15 @@ function LoginInner() {
         router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
         return;
       }
-      if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {
+      if (!state.has_password) {
         router.replace(nextPath || "/set-password");
         return;
       }
       router.replace(nextPath || "/feed?tab=all&sort=latest");
-    });
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [router, nextPath]);
 
   useEffect(() => {
@@ -108,9 +115,6 @@ function LoginInner() {
     if (err) {
       setError(err.message);
       return;
-    }
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
     }
     router.replace(nextPath || "/");
   }

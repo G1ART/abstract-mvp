@@ -30,11 +30,16 @@ export function FeedExhibitionCard({ exhibition }: Props) {
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
             {t("feed.recommendedLabelExhibition")}
           </p>
-          <p className="mt-0.5 line-clamp-1 font-semibold text-zinc-900">{exhibition.title}</p>
+          {/* Credits (host/curator) rise above the title to anchor the exhibition to its people. */}
+          <p className="mt-0.5 line-clamp-1 text-xs font-semibold text-zinc-700">
+            {creditsLine}
+          </p>
+          <p className="mt-0.5 line-clamp-1 text-base font-semibold text-zinc-900">
+            {exhibition.title}
+          </p>
           <p className="mt-1 line-clamp-1 text-xs text-zinc-600">
             {t("exhibition.startDate")}: {period}
           </p>
-          <p className="line-clamp-1 text-xs text-zinc-600">{creditsLine}</p>
         </div>
         <span className="shrink-0 text-xs font-medium text-zinc-500 group-hover:text-zinc-700">→</span>
       </div>

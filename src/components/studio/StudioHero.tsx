@@ -1,0 +1,124 @@
+"use client";
+
+import Image from "next/image";
+import Link from "next/link";
+import { useT } from "@/lib/i18n/useT";
+import {
+  formatIdentityPair,
+  formatRoleChips,
+  type IdentityInput,
+} from "@/lib/identity/format";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+
+type Props = {
+  profile: IdentityInput & {
+    avatar_url?: string | null;
+    is_public?: boolean | null;
+    profile_completeness?: number | null;
+  };
+  completeness?: number | null;
+  publicHref?: string | null;
+};
+
+function avatarUrl(v: string | null | undefined): string | null {
+  if (!v) return null;
+  if (v.startsWith("http")) return v;
+  return getArtworkImageUrl(v, "avatar");
+}
+
+/**
+ * Studio Hero (Track 3.1 / 3.2)
+ *
+ * Top of /my. Shows the authenticated artist as if it were their public
+ * profile card, with edit + preview-public affordances. Provides the
+ * completeness bar that drives the Next Actions priority.
+ */
+export function StudioHero({ profile, completeness, publicHref }: Props) {
+  const { t } = useT();
+  const identity = formatIdentityPair(profile);
+  const roleChips = formatRoleChips(profile, t, { max: 3 });
+  const avatar = avatarUrl(profile.avatar_url);
+  const pct = Math.max(0, Math.min(100, Math.round(completeness ?? 0)));
+  const isPublic = profile.is_public !== false;
+
+  return (
+    <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6">
+      <div className="flex items-start gap-4">
+        <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full bg-zinc-200">
+          {avatar ? (
+            <Image
+              src={avatar}
+              alt=""
+              width={64}
+              height={64}
+              className="h-full w-full object-cover"
+              unoptimized
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-xl font-medium text-zinc-500">
+              {identity.primary.charAt(0).toUpperCase()}
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="truncate text-lg font-semibold text-zinc-900">
+              {identity.primary}
+            </h2>
+            {identity.secondary && (
+              <span className="text-sm text-zinc-500">{identity.secondary}</span>
+            )}
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] ${isPublic ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-700"}`}
+            >
+              {isPublic ? t("studio.hero.public") : t("studio.hero.private")}
+            </span>
+          </div>
+          {roleChips.length > 0 && (
+            <p className="mt-1 flex flex-wrap gap-1">
+              {roleChips.map((chip) => (
+                <span
+                  key={chip.key}
+                  className={`rounded-full px-2 py-0.5 text-xs ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
+                >
+                  {chip.label}
+                  {chip.isPrimary && (
+                    <span className="ml-1 opacity-70">· {t("role.primarySuffix")}</span>
+                  )}
+                </span>
+              ))}
+            </p>
+          )}
+          <div className="mt-3">
+            <div className="flex items-center justify-between text-xs text-zinc-500">
+              <span>{t("studio.hero.completeness")}</span>
+              <span className="font-medium text-zinc-700">{pct}%</span>
+            </div>
+            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
+              <div
+                className="h-full rounded-full bg-zinc-900 transition-all"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href="/settings"
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {t("studio.hero.editProfile")}
+            </Link>
+            {publicHref && (
+              <Link
+                href={publicHref}
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("studio.hero.previewPublic")}
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}

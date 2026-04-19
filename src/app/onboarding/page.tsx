@@ -1,22 +1,31 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   getSession,
+  getMyAuthState,
   signUpWithPassword,
-  HAS_PASSWORD_KEY,
 } from "@/lib/supabase/auth";
 import { ensureFreeEntitlement } from "@/lib/entitlements";
 import { checkUsernameExists, getMyProfile } from "@/lib/supabase/profiles";
 import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { useT } from "@/lib/i18n/useT";
+import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
+import { ROLE_KEYS, type RoleKey } from "@/lib/identity/roles";
 
-const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
+const MAIN_ROLES = ROLE_KEYS;
 const ROLES = [...MAIN_ROLES];
 const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
 const MIN_PASSWORD_LENGTH = 8;
+
+type UsernameCheckState =
+  | { kind: "idle" }
+  | { kind: "invalid" }
+  | { kind: "checking" }
+  | { kind: "available" }
+  | { kind: "taken" };
 
 type UserMetadata = {
   username?: string | null;
@@ -39,10 +48,13 @@ export default function OnboardingPage() {
   const [mainRole, setMainRole] = useState<string>("");
   const [roles, setRoles] = useState<string[]>([]);
 
+  const [isPublic, setIsPublic] = useState(true);
+  const [usernameCheck, setUsernameCheck] = useState<UsernameCheckState>({ kind: "idle" });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [signupEmailSent, setSignupEmailSent] = useState(false);
+  const checkSeqRef = useRef(0);
 
   useEffect(() => {
     getSession().then(async ({ data: { session } }) => {
@@ -71,6 +83,53 @@ export default function OnboardingPage() {
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
     );
   }
+
+  const normalizedUsername = username.trim().toLowerCase();
+  useEffect(() => {
+    if (!normalizedUsername) {
+      setUsernameCheck({ kind: "idle" });
+      return;
+    }
+    if (!USERNAME_REGEX.test(normalizedUsername)) {
+      setUsernameCheck({ kind: "invalid" });
+      return;
+    }
+    setUsernameCheck({ kind: "checking" });
+    const seq = ++checkSeqRef.current;
+    const handle = setTimeout(async () => {
+      const { data: { session } } = await getSession();
+      const { exists } = await checkUsernameExists(
+        normalizedUsername,
+        session?.user?.id
+      );
+      if (seq !== checkSeqRef.current) return;
+      setUsernameCheck({ kind: exists ? "taken" : "available" });
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [normalizedUsername]);
+
+  const previewRoles = useMemo(() => {
+    const filtered = roles.filter((r): r is RoleKey =>
+      (ROLE_KEYS as readonly string[]).includes(r)
+    );
+    return filtered;
+  }, [roles]);
+
+  const previewProfile = useMemo(
+    () => ({
+      display_name: displayName.trim() || null,
+      username: normalizedUsername || null,
+      main_role: mainRole || null,
+      roles: previewRoles,
+    }),
+    [displayName, normalizedUsername, mainRole, previewRoles]
+  );
+  const identityPreview = formatIdentityPair(previewProfile);
+  const rolePreviewChips = formatRoleChips(previewProfile, t, { max: 3 });
+
+  const isUsernameReady =
+    usernameCheck.kind === "available" || (mode === "profile" && usernameCheck.kind === "idle");
+  const canSubmitProfile = isUsernameReady && roles.length >= 1 && !loading;
 
   async function handleSignUp(e: FormEvent) {
     e.preventDefault();
@@ -129,9 +188,6 @@ export default function OnboardingPage() {
         return;
       }
       await ensureFreeEntitlement(data.session.user.id);
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
-      }
       router.replace("/feed?tab=all&sort=latest");
     }
   }
@@ -169,6 +225,7 @@ export default function OnboardingPage() {
         display_name: displayName.trim() || undefined,
         main_role: mainRole || undefined,
         roles,
+        is_public: isPublic,
       },
       detailsPatch: {},
       completeness: null,
@@ -184,7 +241,8 @@ export default function OnboardingPage() {
     }
 
     await ensureFreeEntitlement(session.user.id);
-    if (typeof window !== "undefined" && window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true") {
+    const state = await getMyAuthState();
+    if (state && !state.has_password) {
       router.replace("/set-password");
     } else {
       router.replace("/feed?tab=all&sort=latest");
@@ -353,10 +411,61 @@ export default function OnboardingPage() {
     );
   }
 
+  const usernameStatus = (() => {
+    switch (usernameCheck.kind) {
+      case "checking":
+        return { label: t("onboarding.usernameChecking"), tone: "text-zinc-500" };
+      case "available":
+        return { label: t("onboarding.usernameAvailable"), tone: "text-emerald-600" };
+      case "taken":
+        return { label: t("onboarding.usernameTaken"), tone: "text-red-600" };
+      case "invalid":
+        return { label: t("onboarding.errorUsernameInvalid"), tone: "text-red-600" };
+      default:
+        return null;
+    }
+  })();
+
   return (
     <div className="mx-auto max-w-md px-4 py-12">
       <h1 className="mb-2 text-xl font-semibold">{t("onboarding.completeProfile")}</h1>
       <p className="mb-6 text-sm text-zinc-500">{t("onboarding.completeProfileHint")}</p>
+
+      <section
+        aria-label={t("onboarding.previewLabel")}
+        className="mb-6 rounded-2xl border border-zinc-200 bg-white p-4"
+      >
+        <p className="mb-2 text-[11px] uppercase tracking-wide text-zinc-500">
+          {t("onboarding.previewLabel")}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-base font-semibold text-zinc-900">
+            {identityPreview.primary || t("onboarding.previewEmpty")}
+          </span>
+          {identityPreview.secondary && (
+            <span className="text-sm text-zinc-500">{identityPreview.secondary}</span>
+          )}
+          <span
+            className={`rounded-full px-2 py-0.5 text-[11px] ${isPublic ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-700"}`}
+          >
+            {isPublic ? t("studio.hero.public") : t("studio.hero.private")}
+          </span>
+        </div>
+        {rolePreviewChips.length > 0 && (
+          <p className="mt-2 flex flex-wrap gap-1">
+            {rolePreviewChips.map((chip) => (
+              <span
+                key={chip.key}
+                className={`rounded-full px-2 py-0.5 text-xs ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
+              >
+                {chip.label}
+              </span>
+            ))}
+          </p>
+        )}
+        {userEmail && <p className="mt-2 text-xs text-zinc-500">{userEmail}</p>}
+      </section>
+
       <form onSubmit={handleProfileSubmit} className="space-y-4">
         <div>
           <label htmlFor="username" className="mb-1 block text-sm font-medium">
@@ -371,10 +480,16 @@ export default function OnboardingPage() {
             required
             className="w-full rounded border border-zinc-300 px-3 py-2"
             autoComplete="username"
+            aria-describedby="username-status"
           />
-          <p className="mt-1 text-xs text-zinc-500">
-            {t("onboarding.usernameHint")}
-          </p>
+          <div className="mt-1 flex items-center justify-between">
+            <p className="text-xs text-zinc-500">{t("onboarding.usernameHint")}</p>
+            {usernameStatus && (
+              <p id="username-status" className={`text-xs ${usernameStatus.tone}`}>
+                {usernameStatus.label}
+              </p>
+            )}
+          </div>
         </div>
 
         <div>
@@ -428,11 +543,37 @@ export default function OnboardingPage() {
           </div>
         </div>
 
+        <div className="rounded-lg border border-zinc-200 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-zinc-900">
+                {t("onboarding.privacyTitle")}
+              </p>
+              <p className="text-xs text-zinc-500">
+                {isPublic
+                  ? t("onboarding.privacyPublicHint")
+                  : t("onboarding.privacyPrivateHint")}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={isPublic}
+              onClick={() => setIsPublic((v) => !v)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${isPublic ? "bg-emerald-500" : "bg-zinc-300"}`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${isPublic ? "translate-x-5" : "translate-x-0.5"}`}
+              />
+            </button>
+          </div>
+        </div>
+
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={!canSubmitProfile}
           className="w-full rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
         >
           {loading ? t("onboarding.saving") : t("onboarding.continue")}

@@ -13,6 +13,11 @@ import {
 } from "@/lib/supabase/artworks";
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToByPhrase } from "@/lib/provenance/rpc";
+import {
+  formatDisplayName,
+  formatIdentityPair,
+  formatRoleChips,
+} from "@/lib/identity/format";
 import { FollowButton } from "./FollowButton";
 import { LikeButton } from "./LikeButton";
 
@@ -54,7 +59,13 @@ export function ArtistThreadCard({
   const pathname = usePathname();
   const { t } = useT();
   const username = artist.username ?? "";
-  const displayName = artist.display_name ?? username;
+  const { primary: displayName, secondary: handleLabel } =
+    formatIdentityPair(artist);
+  const roleChips = formatRoleChips(
+    { roles: artist.roles ?? [], main_role: null, ...artist },
+    t,
+    { max: 2 }
+  );
   const avatarUrl = getAvatarUrl(artist.avatar_url);
   const worksToShow = artworks.slice(0, MAX_WORKS_IN_THREAD);
   const firstClaim = worksToShow[0]
@@ -104,7 +115,21 @@ export function ArtistThreadCard({
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-medium text-zinc-900">{displayName}</p>
-          <p className="text-sm text-zinc-500">@{username}</p>
+          {handleLabel && (
+            <p className="text-sm text-zinc-500">{handleLabel}</p>
+          )}
+          {roleChips.length > 0 && (
+            <p className="mt-0.5 flex flex-wrap gap-1 text-[11px] text-zinc-500">
+              {roleChips.map((chip) => (
+                <span
+                  key={chip.key}
+                  className={`rounded-full border px-2 py-0.5 ${chip.isPrimary ? "border-zinc-400 bg-zinc-50 text-zinc-700" : "border-zinc-200 text-zinc-500"}`}
+                >
+                  {chip.label}
+                </span>
+              ))}
+            </p>
+          )}
         </div>
         <div
           className="shrink-0"
@@ -199,8 +224,8 @@ export function ArtistThreadCard({
       {/* Attribution + View profile link */}
       <div className="border-t border-zinc-100 px-4 py-2">
         <p className="text-xs text-zinc-500">
-          by {displayName}
-          {username && byPhrase && <> · {byPhrase} {displayName}</>}
+          by {formatDisplayName(artist)}
+          {byPhrase && <> · {byPhrase} {displayName}</>}
         </p>
         {username && (
           <Link

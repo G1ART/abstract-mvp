@@ -1,6 +1,73 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-03-30
+Last updated: 2026-04-18
+
+## 2026-04-18 — Abstract Mega Upgrade (Identity + Trust + Profile-first UX + Proactive Portfolio)
+
+브랜치: `feature/abstract-mega-upgrade-profile-first`
+
+### 0. 한 줄 요약
+
+> "기본을 견고하게, 프로필을 중심으로, 의사 결정을 1개씩."
+
+### 1. Before / After
+
+| 축 | Before | After |
+|---|---|---|
+| Auth 상태 | `localStorage.HAS_PASSWORD_KEY`에 의존 (비권위적) | `public.get_my_auth_state()` RPC를 호출부 7곳에서 사용 |
+| Storage RLS | `artworks` bucket에 public delete 정책 존재 | `can_manage_artworks_storage_path()` 함수로 소유자/프로젝트 멤버만 관리 |
+| Profiles RLS | `profiles_select_self USING(true)` 등 과도 허용 | `profiles_read_public_or_self` 1개로 축약, private 차단 |
+| Shortlists/Projects RLS | self-join 오타로 권한 평가 불가 | `EXISTS (... sc.profile_id = auth.uid())`로 재작성 |
+| 정체성 렌더 | ad-hoc `profile.display_name` | `src/lib/identity/format.ts` SSOT 경유 |
+| Role 라벨 | 하드코딩 문자열 | `roleLabel(key, t)` + i18n 키 (artist/curator/collector/gallerist) |
+| 추천 이유 | `follow_graph` 태그를 그대로 노출 | `reasonTagToI18n` 사용자 문장 |
+| Recommendation API | RPC 2개 직접 호출 | `getPeopleRecommendations` 단일 contract |
+| Provenance 라벨 | `CURATED`, `EXHIBITED` raw | `provenanceLabel()` + `label.*` i18n |
+| 아트워크 상세 | 정보가 평면 나열 | 작품→작가(역할칩+팔로우)→provenance→전시→가격→related |
+| /my | 921 라인 단일 페이지 | `StudioHero` + `StudioSignals` + `StudioNextActions` + `StudioSectionNav` 상단 + 기존 상세 유지 |
+| Acting-as | 페이지마다 별도 UI | 글로벌 `ActingAsBanner` |
+| 온보딩 | 검증 실패 메시지만 | `@handle` 실시간 availability, public/private 토글, role chip, 프리뷰 카드 |
+| Debug 페이지 | dev 분기만 | middleware에서 production 접근 차단 |
+
+### 2. 기능 지도 (새 표면)
+
+```
+/my
+  └─ StudioHero         (src/components/studio/StudioHero.tsx)
+  └─ StudioSignals      (7일 views/followers/inquiries/claims)
+  └─ StudioNextActions  (src/lib/studio/priority.ts 가 우선순위 계산)
+  └─ StudioSectionNav   (Portfolio / Exhibitions / Inbox / Network / Operations)
+/onboarding             (live @handle check + privacy toggle + preview)
+/my/claims              (trust workflow copy + pending badge)
+/my/delegations         (stage chips: Invitation / Acting as / Closed)
+<ActingAsBanner/>       (layout 최상단, 계정 위임 상태 상시 표시)
+
+src/lib/identity/format.ts          — display_name/@handle/role pair SSOT
+src/lib/identity/roles.ts           — RoleKey + roleLabel + hasAnyRole
+src/lib/people/reason.ts            — 추천 이유 사람 언어화
+src/lib/supabase/recommendations.ts — getPeopleRecommendations 단일 contract
+src/lib/provenance/label.ts         — claim_type → user-facing label
+src/lib/profile/surface.ts          — getProfileSurface: profile_details 격하
+src/lib/studio/priority.ts          — Next Actions 우선순위 엔진
+```
+
+### 3. 정책 (SSOT)
+
+- DB 인증 상태는 `get_my_auth_state()` 하나가 결정한다. 클라이언트는 판단하지 않는다.
+- `storage.objects` 정책은 `artworks`에 대해서만 `can_manage_artworks_storage_path` 경유로 허용한다. 공개 delete는 절대 존재하지 않는다.
+- UI에서 `profile.display_name` / `profile_details` 직접 참조 금지. 모든 접근은 `formatIdentityPair`, `formatRoleChips`, `getProfileSurface`를 통과한다.
+- provenance/role/reason의 표시는 항상 i18n 키를 거친다.
+
+### 4. 테스트
+
+- `supabase/tests/p0_rls_matrix.sql` — storage/profiles/shortlists/projects/auth-state smoke matrix.
+- `e2e/auth-gate.spec.ts` — anon 사용자가 `/my`, `/onboarding`, `/set-password`에서 올바르게 redirect 되는지 검증.
+- 기존 `e2e/smoke.spec.ts` 회귀.
+
+### 5. 리스크
+
+- /my 페이지는 신규 Studio 블록과 기존 컴포넌트가 공존한다. 후속 PR에서 하단 상세 섹션을 `StudioSectionNav` 기준으로 /my/\* 로 이전해야 최종 단순화가 완료된다.
+- `profile_details` 컬럼은 RLS 축약만 수행했고 삭제하지 않았다. 다음 패치에서 컬럼을 제거하기 전에 기록 작성 코드 경로를 점검해야 한다.
 
 ## 2026-03-30 — "Basics Are Solid" Patch
 

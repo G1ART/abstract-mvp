@@ -10,9 +10,10 @@ import {
   type NotificationRow,
 } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
+import { formatDisplayName } from "@/lib/identity/format";
 
 function notificationLabel(row: NotificationRow, t: (k: string) => string): string {
-  const name = row.actor?.display_name?.trim() || row.actor?.username || "Someone";
+  const name = formatDisplayName(row.actor);
   const title = row.artwork?.title || "Untitled";
   switch (row.type) {
     case "like":

@@ -16,6 +16,11 @@ import {
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { AuthGate } from "@/components/AuthGate";
 import { FollowButton } from "@/components/FollowButton";
+import {
+  formatIdentityPair,
+  formatRoleChips,
+} from "@/lib/identity/format";
+import { reasonTagToI18n } from "@/lib/people/reason";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
@@ -29,25 +34,11 @@ const LANE_TO_MODE: Record<LaneKey, PeopleRecMode> = {
 };
 
 function formatReasonLine(profile: PeopleRec, t: (key: string) => string): string {
-  const tags = profile.reason_tags ?? [];
-  const parts: string[] = [];
-  for (const tag of tags) {
-    if (tag === "follow_graph") parts.push(t("people.reason.followGraph"));
-    else if (tag === "likes_based") parts.push(t("people.reason.likesBased"));
-    else if (tag === "expand") parts.push(t("people.reason.expand"));
-    else if (tag === "shared_themes" && profile.reason_detail?.sharedThemesTop) {
-      parts.push(
-        `${t("people.reason.sharedThemes")}: ${(profile.reason_detail.sharedThemesTop as string[]).join(", ")}`
-      );
-    } else if (tag === "shared_school" && profile.reason_detail?.sharedSchool) {
-      parts.push(
-        `${t("people.reason.sharedSchool")}: ${profile.reason_detail.sharedSchool as string}`
-      );
-    } else if (tag === "role_match") parts.push(t("people.reason.roleMatch"));
-    else if (tag === "same_city") parts.push(t("people.reason.sameCity"));
-    else if (tag === "shared_medium") parts.push(t("people.reason.sharedMedium"));
-  }
-  return parts.join(" · ");
+  const detail = profile.reason_detail ?? {};
+  return reasonTagToI18n(profile.reason_tags ?? [], t, {
+    medium: typeof detail.medium === "string" ? detail.medium : null,
+    city: typeof detail.city === "string" ? detail.city : null,
+  });
 }
 
 function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string | null {
@@ -413,6 +404,8 @@ export function PeopleClient() {
                     ? formatReasonLine(profile, t)
                     : null;
                 const badge = !isSearchMode ? getScoreBadge(profile, t) : null;
+                const identity = formatIdentityPair(profile);
+                const roleChips = formatRoleChips(profile, t, { max: 3 });
 
                 return (
                   <article
@@ -441,38 +434,31 @@ export function PeopleClient() {
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-500">
-                          {(profile.display_name ?? username)
-                            .charAt(0)
-                            .toUpperCase()}
+                          {identity.primary.charAt(0).toUpperCase()}
                         </div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-zinc-900">
-                        {profile.display_name ?? username}
+                        {identity.primary}
                       </p>
-                      <p className="text-sm text-zinc-500">@{username}</p>
+                      {identity.secondary && (
+                        <p className="text-sm text-zinc-500">{identity.secondary}</p>
+                      )}
                       {profile.bio && (
                         <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
                           {profile.bio}
                         </p>
                       )}
                       <div className="mt-1 flex flex-wrap gap-1">
-                        {profile.main_role && (
-                          <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-700">
-                            {t(`people.role.${profile.main_role}`)}
+                        {roleChips.map((chip) => (
+                          <span
+                            key={chip.key}
+                            className={`rounded-full px-2 py-0.5 text-xs ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"}`}
+                          >
+                            {chip.label}
                           </span>
-                        )}
-                        {((profile.roles ?? []) as string[])
-                          .filter((r) => r !== profile.main_role)
-                          .map((r) => (
-                            <span
-                              key={r}
-                              className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600"
-                            >
-                              {t(`people.role.${r}`)}
-                            </span>
-                          ))}
+                        ))}
                       </div>
                       {reasonLine && (
                         <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">

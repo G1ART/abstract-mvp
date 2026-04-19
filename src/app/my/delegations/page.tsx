@@ -20,6 +20,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { searchPeople } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import type { PublicProfile } from "@/lib/supabase/artists";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 function scopeLabel(scope: string, t: (k: string) => string): string {
   switch (scope) {
@@ -198,33 +199,45 @@ export default function MyDelegationsPage() {
   return (
     <AuthGate>
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
+        <h1 className="mb-2 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
+        <p className="mb-6 text-sm text-zinc-500">{t("delegation.stagesIntro")}</p>
 
         <section className="mb-8">
           <h2 className="mb-3 text-sm font-medium text-zinc-500">
             {t("delegation.received")}
           </h2>
           {received.length === 0 ? (
-            <p className="text-sm text-zinc-500">No invitations or delegations received.</p>
+            <p className="text-sm text-zinc-500">{t("delegation.receivedEmpty")}</p>
           ) : (
             <ul className="space-y-3">
               {received.map((d) => {
-                const name =
-                  d.delegator_profile?.display_name?.trim() ||
-                  (d.delegator_profile?.username ? `@${d.delegator_profile.username}` : null) ||
-                  "Someone";
+                const name = formatDisplayName(d.delegator_profile);
+                const handle = formatUsername(d.delegator_profile);
                 const scope = scopeLabel(d.scope_type, t);
                 const projectTitle =
                   d.scope_type === "project" && d.project?.title ? ` — ${d.project.title}` : "";
+                const stageKey = d.status === "pending"
+                  ? "delegation.stagePending"
+                  : d.status === "active"
+                  ? "delegation.stageActive"
+                  : "delegation.stageClosed";
+                const stageTone = d.status === "pending"
+                  ? "bg-amber-100 text-amber-900"
+                  : d.status === "active"
+                  ? "bg-emerald-100 text-emerald-900"
+                  : "bg-zinc-200 text-zinc-700";
                 return (
                   <li
                     key={d.id}
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3"
                   >
-                    <span className="text-sm text-zinc-700">
-                      {name}: {scope}
-                      {projectTitle}
-                      {d.status === "pending" && " (pending)"}
+                    <span className="flex flex-wrap items-center gap-2 text-sm text-zinc-700">
+                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${stageTone}`}>
+                        {t(stageKey)}
+                      </span>
+                      <span className="font-medium">{name}</span>
+                      {handle && <span className="text-zinc-500">{handle}</span>}
+                      <span className="text-zinc-500">· {scope}{projectTitle}</span>
                     </span>
                     <span className="flex items-center gap-2">
                       {d.status === "pending" && (

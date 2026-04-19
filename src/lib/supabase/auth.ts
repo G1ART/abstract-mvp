@@ -1,8 +1,5 @@
 import { supabase } from "./client";
 
-/** localStorage key: set to "true" after user sets password (set-password page or password login). */
-export const HAS_PASSWORD_KEY = "has_password";
-
 export async function signInWithPassword(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
@@ -63,4 +60,31 @@ export async function signOut() {
 
 export async function getSession() {
   return supabase.auth.getSession();
+}
+
+/** Server-authoritative auth/onboarding state. Reads auth.users via SECURITY
+ *  DEFINER RPC so the client cannot lie (unlike the old localStorage
+ *  HAS_PASSWORD_KEY gate that used to be here).                                */
+export type MyAuthState = {
+  user_id: string;
+  has_password: boolean;
+  is_email_confirmed: boolean;
+  needs_onboarding: boolean;
+  username: string | null;
+};
+
+export async function getMyAuthState(): Promise<MyAuthState | null> {
+  const { data, error } = await supabase.rpc("get_my_auth_state");
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
+  if (!r.user_id) return null;
+  return {
+    user_id: String(r.user_id),
+    has_password: !!r.has_password,
+    is_email_confirmed: !!r.is_email_confirmed,
+    needs_onboarding: !!r.needs_onboarding,
+    username: r.username == null ? null : String(r.username),
+  };
 }

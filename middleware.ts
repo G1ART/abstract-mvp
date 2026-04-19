@@ -5,7 +5,19 @@ import {
   defaultLocaleFromRequest,
 } from "@/lib/i18n/locale";
 
+const DEBUG_ROUTE_PATTERNS = [/^\/debug-schema(\/|$)/, /^\/my\/diagnostics(\/|$)/];
+
+function isDebugRouteBlocked(pathname: string): boolean {
+  if (process.env.NODE_ENV !== "production") return false;
+  if (process.env.NEXT_PUBLIC_DIAGNOSTICS === "1") return false;
+  return DEBUG_ROUTE_PATTERNS.some((re) => re.test(pathname));
+}
+
 export function middleware(request: NextRequest) {
+  if (isDebugRouteBlocked(request.nextUrl.pathname)) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   const cookie = request.cookies.get(LOCALE_COOKIE);
   if (cookie?.value) {
     return NextResponse.next();

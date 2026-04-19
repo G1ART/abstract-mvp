@@ -3,7 +3,6 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
-import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 
@@ -39,9 +38,6 @@ export default function SetPasswordPage() {
       return;
     }
 
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(HAS_PASSWORD_KEY, "true");
-    }
     router.replace("/feed?tab=all&sort=latest");
   }
 

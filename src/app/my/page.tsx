@@ -43,6 +43,16 @@ import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import { listExhibitionsForProfile, listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { getProfileById } from "@/lib/supabase/profiles";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
+import {
+  StudioHero,
+  StudioSignals,
+  StudioNextActions,
+  StudioSectionNav,
+  type StudioSignal,
+  type StudioSection,
+} from "@/components/studio";
+import { computeStudioNextActions } from "@/lib/studio/priority";
+import { hasAnyRole } from "@/lib/identity/roles";
 
 type Profile = {
   id: string;
@@ -276,9 +286,102 @@ export default function MyPage() {
   }, [artworks, profile?.id, personaTab, allBuckets]);
   const showExhibitionsTab = exhibitions.length > 0;
 
+  const studioSignals: StudioSignal[] = (() => {
+    if (!profile) return [];
+    const out: StudioSignal[] = [];
+    if (!actingAsProfileId) {
+      out.push({
+        key: "views",
+        label: t("studio.signals.views7d"),
+        value: canViewViewers && profileViewsCount != null ? profileViewsCount : "—",
+        tone: canViewViewers ? "default" : "locked",
+        hint: canViewViewers ? null : t("studio.signals.lockedUpsell"),
+      });
+    }
+    out.push({
+      key: "followers",
+      label: t("studio.signals.followerDelta"),
+      value: stats?.followersCount ?? 0,
+    });
+    out.push({
+      key: "inquiries",
+      label: t("studio.signals.unreadInquiries"),
+      value: priceInquiryCount,
+      tone: priceInquiryCount > 0 ? "warning" : "default",
+    });
+    out.push({
+      key: "claims",
+      label: t("studio.signals.pendingClaims"),
+      value: pendingClaimsCount,
+      tone: pendingClaimsCount > 0 ? "warning" : "default",
+    });
+    return out;
+  })();
+
+  const studioActions = profile
+    ? computeStudioNextActions({
+        profileCompleteness: computedCompleteness,
+        artworkCount: artworks.length,
+        pendingClaimsCount,
+        priceInquiryCount,
+        unreadInbox: priceInquiryCount,
+        hasAvatar: !!profile.avatar_url,
+        hasRoles: hasAnyRole({ main_role: profile.main_role, roles: profile.roles }),
+        hasExhibitions: exhibitions.length > 0,
+        t,
+      })
+    : [];
+
+  const studioSections: StudioSection[] = [
+    {
+      key: "portfolio",
+      labelKey: "studio.sections.portfolio",
+      href: "/my",
+      count: artworks.length,
+    },
+    {
+      key: "exhibitions",
+      labelKey: "studio.sections.exhibitions",
+      href: "/my?tab=exhibitions",
+      count: exhibitions.length,
+    },
+    {
+      key: "inbox",
+      labelKey: "studio.sections.inbox",
+      href: "/my/inquiries",
+      count: priceInquiryCount,
+      badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
+    },
+    {
+      key: "network",
+      labelKey: "studio.sections.network",
+      href: "/people",
+      count: stats?.followersCount ?? 0,
+    },
+    {
+      key: "operations",
+      labelKey: "studio.sections.operations",
+      href: "/my/claims",
+      count: pendingClaimsCount,
+      badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
+    },
+  ];
+
   return (
     <AuthGate>
       <main className="mx-auto max-w-4xl px-4 py-8">
+        {profile && !actingAsProfileId && (
+          <>
+            <StudioHero
+              profile={profile}
+              completeness={computedCompleteness}
+              publicHref={profile.username ? `/u/${profile.username}` : null}
+            />
+            <StudioSignals signals={studioSignals} />
+            <StudioNextActions actions={studioActions} />
+            <StudioSectionNav sections={studioSections} />
+          </>
+        )}
         {/* Header */}
         <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-wrap items-start gap-4">

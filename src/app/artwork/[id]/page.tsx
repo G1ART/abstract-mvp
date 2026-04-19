@@ -53,6 +53,7 @@ import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
 import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
+import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 
 
 function ArtworkDetailContent() {
@@ -534,16 +535,50 @@ function ArtworkDetailContent() {
             <h1 className="text-xl font-semibold text-zinc-900">
               {artwork.title ?? "Untitled"}
             </h1>
-            <p className="mt-1 text-sm text-zinc-600">
+            {(() => {
+              const identity = formatIdentityPair(artist ?? null);
+              const chips = formatRoleChips(artist ?? null, t, { max: 2 });
+              if (!artistLabel && !identity.primary) return null;
+              return (
+                <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {username ? (
+                    <Link
+                      href={`/u/${username}`}
+                      className="text-sm font-semibold text-zinc-900 hover:underline"
+                    >
+                      {identity.primary || artistLabel}
+                    </Link>
+                  ) : (
+                    <span className="text-sm font-semibold text-zinc-900">
+                      {identity.primary || artistLabel}
+                    </span>
+                  )}
+                  {identity.secondary && (
+                    <span className="text-xs text-zinc-500">{identity.secondary}</span>
+                  )}
+                  {chips.map((chip) => (
+                    <span
+                      key={chip.key}
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
+                    >
+                      {chip.label}
+                    </span>
+                  ))}
+                  {userId && userId !== artwork.artist_id && username && (
+                    <FollowButton
+                      targetProfileId={artwork.artist_id}
+                      initialFollowing={following}
+                      size="sm"
+                    />
+                  )}
+                </div>
+              );
+            })()}
+            <p className="mt-3 text-sm text-zinc-600">
               {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
             </p>
             {sizeDisplay && (
               <p className="mt-1 text-sm text-zinc-600">{sizeDisplay}</p>
-            )}
-            {artistLabel && (
-              <p className="mt-1 text-sm text-zinc-700">
-                {t("artwork.artistFallback")}: {artistLabel}
-              </p>
             )}
             {artwork.ownership_status && (
               <p className="mt-2 font-medium text-zinc-700">
@@ -726,24 +761,6 @@ function ArtworkDetailContent() {
                 </button>
               )}
             </div>
-            {username && (
-              <div className="mt-4 flex items-center gap-3">
-                <Link
-                  href={`/u/${username}`}
-                  className="text-sm font-medium text-zinc-700 hover:text-zinc-900"
-                >
-                  @{username}
-                  {artist?.display_name && ` (${artist.display_name})`}
-                </Link>
-                {userId && userId !== artwork.artist_id && (
-                  <FollowButton
-                    targetProfileId={artwork.artist_id}
-                    initialFollowing={following}
-                    size="sm"
-                  />
-                )}
-              </div>
-            )}
             {showProvenance && (
               <div className="mt-4">
                 <ArtworkProvenanceBlock artwork={artwork} viewerId={userId} variant="full" />

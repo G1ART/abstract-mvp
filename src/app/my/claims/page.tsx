@@ -14,6 +14,7 @@ import {
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 export default function MyClaimsPage() {
   const { t } = useT();
@@ -75,7 +76,8 @@ export default function MyClaimsPage() {
         <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
           ← {t("common.backTo")} {t("nav.myProfile")}
         </Link>
-        <h1 className="mb-6 text-xl font-semibold text-zinc-900">{t("my.kpi.claimRequests")}</h1>
+        <h1 className="mb-2 text-xl font-semibold text-zinc-900">{t("my.kpi.claimRequests")}</h1>
+        <p className="mb-6 text-sm text-zinc-500">{t("claims.intro")}</p>
         {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
@@ -83,17 +85,25 @@ export default function MyClaimsPage() {
           <p className="text-zinc-600">{t("my.claimsEmpty")}</p>
         ) : (
           <ul className="space-y-4">
-            {list.map((row) => (
+            {list.map((row) => {
+              const claimant = row.profiles ?? null;
+              const claimantName = formatDisplayName(claimant);
+              const claimantHandle = formatUsername(claimant);
+              return (
               <li key={row.id} className="rounded-lg border border-zinc-200 bg-white p-4">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-amber-900">
+                    {t("claims.statusPending")}
+                  </span>
                   <span className="font-medium text-zinc-900">
                     {claimTypeToLabel(row.claim_type as ClaimType)}
                   </span>
-                  <span className="text-sm text-zinc-500">
-                    {row.profiles?.display_name?.trim() || row.profiles?.username || "Someone"}
-                    {row.profiles?.username && ` @${row.profiles.username}`}
-                  </span>
                 </div>
+                <p className="mb-2 text-sm text-zinc-600">
+                  {t("claims.requestedBy")}{" "}
+                  <span className="font-medium text-zinc-800">{claimantName}</span>
+                  {claimantHandle && <span className="ml-1 text-zinc-500">{claimantHandle}</span>}
+                </p>
                 {row.work_id && (
                   <Link
                     href={`/artwork/${row.work_id}`}
@@ -139,8 +149,10 @@ export default function MyClaimsPage() {
                     {t("my.rejectClaim")}
                   </button>
                 </div>
+                <p className="mt-3 text-[11px] text-zinc-500">{t("claims.trustNote")}</p>
               </li>
-            ))}
+            );
+            })}
           </ul>
         )}
       </main>

@@ -2,9 +2,7 @@
 
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getSession } from "@/lib/supabase/auth";
-import { getMyProfile } from "@/lib/supabase/profiles";
-import { HAS_PASSWORD_KEY } from "@/lib/supabase/auth";
+import { getSession, getMyAuthState } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import {
   isRandomUsername,
@@ -36,15 +34,15 @@ function AuthCallbackInner() {
         router.replace("/");
         return;
       }
-      const { data: profile } = await getMyProfile();
+      const state = await getMyAuthState();
       if (cancelled) return;
-      if (!profile) {
+      if (!state || state.needs_onboarding) {
         router.replace("/onboarding");
         return;
       }
       if (
         typeof window !== "undefined" &&
-        isRandomUsername(profile.username) &&
+        isRandomUsername(state.username) &&
         window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
       ) {
         window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
@@ -52,10 +50,7 @@ function AuthCallbackInner() {
         router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
         return;
       }
-      if (
-        typeof window !== "undefined" &&
-        window.localStorage.getItem(HAS_PASSWORD_KEY) !== "true"
-      ) {
+      if (!state.has_password) {
         router.replace(nextParam || "/set-password");
         return;
       }

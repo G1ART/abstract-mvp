@@ -5,6 +5,12 @@ import type { Artwork, ArtworkClaim } from "@/lib/supabase/artworks";
 import { getProvenanceClaims, canViewProvenance } from "@/lib/supabase/artworks";
 import { claimTypeToByPhrase } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
+import { formatDisplayName } from "@/lib/identity/format";
+import {
+  claimTypeToProvenanceKind,
+  provenanceLabel,
+} from "@/lib/provenance/label";
+import { useT } from "@/lib/i18n/useT";
 
 type Props = {
   artwork: Artwork;
@@ -18,13 +24,26 @@ type Props = {
   excludeClaimId?: string | null;
 };
 
-function ClaimLine({ claim, stopPropagation }: { claim: ArtworkClaim; stopPropagation?: boolean }) {
+function ClaimLine({
+  claim,
+  stopPropagation,
+  t,
+}: {
+  claim: ArtworkClaim;
+  stopPropagation?: boolean;
+  t: (k: string) => string;
+}) {
   const byPhrase = claimTypeToByPhrase(claim.claim_type as ClaimType);
   if (!byPhrase) return null;
+
   const prof = claim.profiles;
-  const label = prof?.display_name?.trim() || (prof?.username ? `@${prof.username}` : null) || "—";
-  const content = (
-    <>
+  const label = formatDisplayName(prof);
+  const kind = claimTypeToProvenanceKind(claim.claim_type as ClaimType);
+  const sentence = provenanceLabel(kind, t);
+
+  return (
+    <span>
+      <span className="text-zinc-400">{sentence}</span>{" "}
       {byPhrase}{" "}
       {prof?.username ? (
         <Link
@@ -37,9 +56,8 @@ function ClaimLine({ claim, stopPropagation }: { claim: ArtworkClaim; stopPropag
       ) : (
         label
       )}
-    </>
+    </span>
   );
-  return <span>{content}</span>;
 }
 
 export function ArtworkProvenanceBlock({
@@ -50,6 +68,7 @@ export function ArtworkProvenanceBlock({
   stopPropagation = false,
   excludeClaimId = null,
 }: Props) {
+  const { t } = useT();
   if (!canViewProvenance(artwork, viewerId)) return null;
   const claims = getProvenanceClaims(artwork);
   const nonCreated = claims.filter(
@@ -63,7 +82,7 @@ export function ArtworkProvenanceBlock({
         {nonCreated.map((c, i) => (
           <span key={c.id ?? i}>
             {i > 0 && " · "}
-            <ClaimLine claim={c} stopPropagation={stopPropagation} />
+            <ClaimLine claim={c} stopPropagation={stopPropagation} t={t} />
           </span>
         ))}
       </p>
@@ -74,7 +93,7 @@ export function ArtworkProvenanceBlock({
     <ul className={`mt-2 space-y-1 text-sm text-zinc-600 ${className}`}>
       {nonCreated.map((c, i) => (
         <li key={c.id ?? i}>
-          <ClaimLine claim={c} stopPropagation={stopPropagation} />
+          <ClaimLine claim={c} stopPropagation={stopPropagation} t={t} />
         </li>
       ))}
     </ul>
