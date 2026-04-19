@@ -689,12 +689,17 @@ function ArtworkDetailContent() {
                     {artistInquiries.map((row) => (
                       <li key={row.id} className="rounded border border-zinc-200 bg-white p-3">
                         <div className="mb-1 flex flex-wrap items-center gap-2 text-sm">
-                          <span className="font-medium text-zinc-700">
-                            {row.inquirer?.display_name?.trim() || row.inquirer?.username || "Someone"}
-                            {row.inquirer?.username && (
-                              <span className="font-normal text-zinc-500"> @{row.inquirer.username}</span>
-                            )}
-                          </span>
+                          {(() => {
+                            const pair = formatIdentityPair(row.inquirer);
+                            return (
+                              <span className="font-medium text-zinc-700">
+                                {pair.primary}
+                                {pair.secondary && (
+                                  <span className="font-normal text-zinc-500"> {pair.secondary}</span>
+                                )}
+                              </span>
+                            );
+                          })()}
                           <span className="text-xs text-zinc-400">
                             {new Date(row.created_at).toLocaleString()}
                           </span>
@@ -778,7 +783,7 @@ function ArtworkDetailContent() {
                     {provenanceClaims.map((c, i) => {
                       const byPhrase = claimTypeToByPhrase(c.claim_type as ClaimType);
                       const label = byPhrase
-                        ? `${byPhrase} ${c.profiles?.display_name?.trim() || c.profiles?.username || "—"}`
+                        ? `${byPhrase} ${formatIdentityPair(c.profiles).primary}`
                         : (c.claim_type === "CREATED" && artwork?.profiles?.display_name) || "—";
                       const date = c.created_at
                         ? new Date(c.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })
@@ -918,7 +923,7 @@ function ArtworkDetailContent() {
                 <p className="mb-2 text-sm font-medium text-zinc-700">{t("artwork.pendingRequests")}</p>
                 <ul className="space-y-2">
                   {pendingClaims.map((row) => {
-                    const name = row.profiles?.display_name?.trim() || row.profiles?.username || "—";
+                    const name = formatIdentityPair(row.profiles).primary;
                     const typeLabel =
                       row.claim_type === "OWNS"
                         ? t("artwork.ownedByMe")

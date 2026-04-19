@@ -22,6 +22,7 @@ import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type Artwo
 import { getSession } from "@/lib/supabase/auth";
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
+import { EmptyState } from "@/components/ds";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -190,7 +191,7 @@ export default function PublicExhibitionPage() {
               <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.byArtist")}</h2>
               <div className="space-y-6">
                 {byArtist.map(({ artistId, artistName, list }) => (
-                  <div key={artistId} className="rounded-lg border border-zinc-200 bg-white p-4">
+                  <div key={artistId} className="rounded-2xl border border-zinc-200 bg-white p-4">
                     <p className="mb-3 text-sm font-medium text-zinc-900">{artistName}</p>
                     <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
                       {list.map((art) => {
@@ -228,8 +229,8 @@ export default function PublicExhibitionPage() {
           )}
 
           {artworks.length === 0 && (
-            <div className="mb-8 rounded-lg border border-zinc-200 bg-zinc-50 py-8 text-center">
-              <p className="text-sm text-zinc-600">{t("exhibition.noWorks")}</p>
+            <div className="mb-8">
+              <EmptyState title={t("exhibition.noWorks")} size="sm" />
             </div>
           )}
 

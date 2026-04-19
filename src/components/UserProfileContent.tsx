@@ -26,6 +26,8 @@ import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
 import { ArtworkCard } from "./ArtworkCard";
 import { SortableArtworkCard } from "./SortableArtworkCard";
+import { Chip, EmptyState } from "@/components/ds";
+import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
 
@@ -200,11 +202,9 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
     }
   }, []);
 
-  const username = profile.username ?? "";
-  const displayName = profile.display_name ?? username;
+  const { primary: displayName, secondary: usernameHandle } = formatIdentityPair(profile);
   const avatarUrl = getAvatarUrl(profile.avatar_url);
-  const roles = (profile.roles ?? []).filter(Boolean);
-  const mainRole = profile.main_role;
+  const roleChips = formatRoleChips(profile, t, { max: 6 });
 
   const personaCounts = useMemo(
     () => getPersonaCounts(artworks, profile.id),
@@ -257,7 +257,9 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-xl font-semibold text-zinc-900">{displayName}</h1>
-            <p className="text-sm text-zinc-500">@{username}</p>
+            {usernameHandle && (
+              <p className="text-sm text-zinc-500">{usernameHandle}</p>
+            )}
             <div className="mt-2">
               <ProfileActions profileId={profile.id} />
             </div>
@@ -270,18 +272,13 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
           <p className="text-sm text-zinc-400">{t("profile.noBio")}</p>
         )}
 
-        {roles.length > 0 && (
+        {roleChips.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {[mainRole, ...roles.filter((r) => r !== mainRole)]
-              .filter(Boolean)
-              .map((r) => (
-                <span
-                  key={r!}
-                  className="rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700"
-                >
-                  {r}
-                </span>
-              ))}
+            {roleChips.map((chip) => (
+              <Chip key={chip.key} tone={chip.isPrimary ? "accent" : "neutral"}>
+                {chip.label}
+              </Chip>
+            ))}
           </div>
         )}
 
@@ -364,7 +361,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
       )}
       {personaTab === "exhibitions" ? (
         exhibitions.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-500">{t("exhibition.emptyList")}</p>
+          <EmptyState title={t("exhibition.emptyList")} size="sm" />
         ) : (
           <ul className="space-y-2">
             {exhibitions.map((ex) => {
@@ -373,7 +370,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
                 <li key={ex.id}>
                   <Link
                     href={`/e/${ex.id}`}
-                    className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2.5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
+                    className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-2.5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
                   >
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
                       {firstCover ? (
@@ -443,7 +440,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
           )}
         </>
       ) : displayedArtworks.length === 0 ? (
-        <p className="py-8 text-center text-sm text-zinc-500">{t("profile.noWorks")}</p>
+        <EmptyState title={t("profile.noWorks")} size="sm" />
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {displayedArtworks.map((artwork) => (

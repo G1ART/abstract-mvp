@@ -1,12 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
-import { ArtworkCard } from "@/components/ArtworkCard";
 import {
   getMyProfile,
   getMyStats,
@@ -16,7 +13,11 @@ import {
   type MyStats,
 } from "@/lib/supabase/me";
 import { getMyPriceInquiryCount } from "@/lib/supabase/priceInquiries";
-import { listPublicArtworksForProfile, listPublicArtworksListedByProfileId } from "@/lib/supabase/artworks";
+import {
+  listPublicArtworksForProfile,
+  listPublicArtworksListedByProfileId,
+  type ArtworkWithLikes,
+} from "@/lib/supabase/artworks";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
 import {
   getProfileViewsCount,
@@ -24,35 +25,29 @@ import {
   type ProfileViewerRow,
 } from "@/lib/supabase/profileViews";
 import { getMyEntitlements, hasFeature, type Plan } from "@/lib/entitlements";
-import {
-  type ArtworkWithLikes,
-  canEditArtwork,
-  deleteArtworksBatch,
-  getArtworkImageUrl,
-} from "@/lib/supabase/artworks";
-import {
-  filterArtworksByPersona,
-  getArtworksByAllBuckets,
-  getOrderedPersonaTabs,
-  getPersonaCounts,
-  type PersonaTab,
-  type PersonaTabItem,
-} from "@/lib/provenance/personaTabs";
 import { useActingAs } from "@/context/ActingAsContext";
-import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
-import { listExhibitionsForProfile, listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import {
+  listExhibitionsForProfile,
+  listMyExhibitions,
+  type ExhibitionWithCredits,
+} from "@/lib/supabase/exhibitions";
 import { getProfileById } from "@/lib/supabase/profiles";
-import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 import {
   StudioHero,
   StudioSignals,
   StudioNextActions,
   StudioSectionNav,
+  StudioQuickActions,
+  StudioViewsInsights,
+  StudioPortfolioPanel,
+  StudioIntelligenceSurface,
   type StudioSignal,
   type StudioSection,
+  type QuickAction,
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
-import { hasAnyRole } from "@/lib/identity/roles";
+import { hasAnyRole, normalizeRoleList } from "@/lib/identity/roles";
+import type { PersonaTab } from "@/lib/provenance/personaTabs";
 
 type Profile = {
   id: string;
@@ -63,6 +58,7 @@ type Profile = {
   roles: string[] | null;
   profile_completeness?: number | null;
   profile_details?: Record<string, unknown> | null;
+  is_public?: boolean | null;
 };
 
 export default function MyPage() {
@@ -72,29 +68,18 @@ export default function MyPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [stats, setStats] = useState<MyStats | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
+  const [exhibitions, setExhibitions] = useState<ExhibitionWithCredits[]>([]);
   const [profileViewsCount, setProfileViewsCount] = useState<number | null>(null);
   const [viewers, setViewers] = useState<ProfileViewerRow[]>([]);
   const [canViewViewers, setCanViewViewers] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [deleting, setDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [priceInquiryCount, setPriceInquiryCount] = useState(0);
+  const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
-  const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
-  const [priceInquiryCount, setPriceInquiryCount] = useState<number>(0);
-  const [pendingClaimsCount, setPendingClaimsCount] = useState<number>(0);
-  const [exhibitions, setExhibitions] = useState<ExhibitionWithCredits[]>([]);
-  const [tabReorderMode, setTabReorderMode] = useState(false);
-  const [tabOrderDraft, setTabOrderDraft] = useState<PersonaTabItem[]>([]);
-  const [tabOrderSaving, setTabOrderSaving] = useState(false);
+  const [, setLoading] = useState(true);
+  const [, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const tabFromUrl = searchParams.get("tab");
-  useEffect(() => {
-    if (tabFromUrl === "exhibitions") setPersonaTab("exhibitions");
-  }, [tabFromUrl]);
+  const initialTab: PersonaTab = searchParams.get("tab") === "exhibitions" ? "exhibitions" : "all";
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -140,25 +125,22 @@ export default function MyPage() {
             mergedArtworks.push(a);
           }
         }
-        mergedArtworks.sort(
-          (a, b) =>
-            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-        );
       }
-      if (effectiveProfileId && Array.isArray(artworksRes.data)) {
-        mergedArtworks = [...(artworksRes.data ?? [])].sort(
-          (a, b) =>
-            new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-        );
-      }
+      mergedArtworks = [...mergedArtworks].sort(
+        (a, b) =>
+          new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+      );
       setArtworks(mergedArtworks);
+
       const canView = hasFeature(entRes.plan as Plan, "VIEW_PROFILE_VIEWERS_LIST");
       setCanViewViewers(canView);
 
       if (profileData) {
         const base = profileData as Record<string, unknown>;
-        const details = (base?.profile_details && typeof base.profile_details === "object")
-          ? (base.profile_details as Record<string, unknown>) : {};
+        const details =
+          base.profile_details && typeof base.profile_details === "object"
+            ? (base.profile_details as Record<string, unknown>)
+            : {};
         const full = { ...base, ...details };
         const { score } = computeProfileCompleteness(
           full as Parameters<typeof computeProfileCompleteness>[0],
@@ -172,7 +154,9 @@ export default function MyPage() {
       if (profileData?.id) {
         const [countRes, viewersRes, inquiryCountRes, claimsCountRes] = await Promise.all([
           getProfileViewsCount(profileData.id, 7),
-          canView ? getProfileViewers(profileData.id, { limit: 10 }) : { data: [], nextCursor: null, error: null },
+          canView
+            ? getProfileViewers(profileData.id, { limit: 10 })
+            : { data: [], nextCursor: null, error: null },
           getMyPriceInquiryCount(effectiveProfileId ?? undefined),
           getMyPendingClaimsCount(effectiveProfileId ?? undefined),
         ]);
@@ -182,9 +166,12 @@ export default function MyPage() {
         setPendingClaimsCount(claimsCountRes.data ?? 0);
         if (effectiveProfileId) {
           const { data: exData } = await listExhibitionsForProfile(profileData.id);
-          setExhibitions((exData ?? []).sort(
-            (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
-          ));
+          setExhibitions(
+            (exData ?? []).sort(
+              (a, b) =>
+                new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+            )
+          );
         } else {
           const [exProfileRes, exMineRes] = await Promise.all([
             listExhibitionsForProfile(profileData.id),
@@ -196,7 +183,8 @@ export default function MyPage() {
           for (const e of fromProfile) byId.set(e.id, e);
           for (const e of fromMine) if (!byId.has(e.id)) byId.set(e.id, e);
           const merged = Array.from(byId.values()).sort(
-            (a, b) => new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
+            (a, b) =>
+              new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
           );
           setExhibitions(merged);
         }
@@ -206,7 +194,7 @@ export default function MyPage() {
     } finally {
       setLoading(false);
     }
-  }, [actingAsProfileId]);
+  }, [actingAsProfileId, t]);
 
   useEffect(() => {
     fetchData();
@@ -227,66 +215,7 @@ export default function MyPage() {
     }
   }, [toast]);
 
-  function toggleSelect(id: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    if (selectedIds.size >= displayedArtworks.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(displayedArtworks.map((a) => a.id)));
-    }
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-  }
-
-  async function handleBulkDelete() {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    setDeleting(true);
-    setShowDeleteConfirm(false);
-    const { okIds, failed } = await deleteArtworksBatch(ids);
-    setDeleting(false);
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    await fetchData();
-    if (failed.length === 0) {
-      setToast(t("my.bulkDeleteSuccess").replace("{n}", String(okIds.length)));
-    } else if (okIds.length > 0) {
-      setToast(t("my.bulkDeletePartial").replace("{ok}", String(okIds.length)).replace("{fail}", String(failed.length)));
-    } else {
-      setToast(t("my.bulkDeleteFailed"));
-    }
-  }
-
-  const roles = (profile?.roles ?? []) as string[];
-  const allBuckets = useMemo(
-    () => (profile?.id ? getArtworksByAllBuckets(artworks, profile.id) : null),
-    [artworks, profile?.id]
-  );
-  const displayedArtworks = useMemo(() => {
-    if (personaTab === "exhibitions") return [];
-    if (!profile?.id) return artworks;
-    if (personaTab === "all" && allBuckets)
-      return [
-        ...allBuckets.created,
-        ...allBuckets.curated,
-        ...allBuckets.exhibited,
-        ...allBuckets.owns,
-      ];
-    return filterArtworksByPersona(artworks, profile.id, personaTab);
-  }, [artworks, profile?.id, personaTab, allBuckets]);
-  const showExhibitionsTab = exhibitions.length > 0;
-
-  const studioSignals: StudioSignal[] = (() => {
+  const studioSignals = useMemo<StudioSignal[]>(() => {
     if (!profile) return [];
     const out: StudioSignal[] = [];
     if (!actingAsProfileId) {
@@ -316,56 +245,108 @@ export default function MyPage() {
       tone: pendingClaimsCount > 0 ? "warning" : "default",
     });
     return out;
-  })();
+  }, [
+    profile,
+    actingAsProfileId,
+    canViewViewers,
+    profileViewsCount,
+    stats?.followersCount,
+    priceInquiryCount,
+    pendingClaimsCount,
+    t,
+  ]);
 
-  const studioActions = profile
-    ? computeStudioNextActions({
-        profileCompleteness: computedCompleteness,
-        artworkCount: artworks.length,
-        pendingClaimsCount,
-        priceInquiryCount,
-        unreadInbox: priceInquiryCount,
-        hasAvatar: !!profile.avatar_url,
-        hasRoles: hasAnyRole({ main_role: profile.main_role, roles: profile.roles }),
-        hasExhibitions: exhibitions.length > 0,
-        t,
-      })
-    : [];
+  const studioActions = useMemo(() => {
+    if (!profile) return [];
+    return computeStudioNextActions({
+      profileCompleteness: computedCompleteness,
+      artworkCount: artworks.length,
+      pendingClaimsCount,
+      priceInquiryCount,
+      unreadInbox: priceInquiryCount,
+      hasAvatar: !!profile.avatar_url,
+      hasRoles: hasAnyRole({ main_role: profile.main_role, roles: profile.roles }),
+      hasExhibitions: exhibitions.length > 0,
+      t,
+    });
+  }, [
+    profile,
+    computedCompleteness,
+    artworks.length,
+    pendingClaimsCount,
+    priceInquiryCount,
+    exhibitions.length,
+    t,
+  ]);
 
-  const studioSections: StudioSection[] = [
-    {
-      key: "portfolio",
-      labelKey: "studio.sections.portfolio",
-      href: "/my",
-      count: artworks.length,
-    },
-    {
-      key: "exhibitions",
-      labelKey: "studio.sections.exhibitions",
-      href: "/my?tab=exhibitions",
-      count: exhibitions.length,
-    },
-    {
-      key: "inbox",
-      labelKey: "studio.sections.inbox",
-      href: "/my/inquiries",
-      count: priceInquiryCount,
-      badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
-    },
-    {
-      key: "network",
-      labelKey: "studio.sections.network",
-      href: "/people",
-      count: stats?.followersCount ?? 0,
-    },
-    {
-      key: "operations",
-      labelKey: "studio.sections.operations",
-      href: "/my/claims",
-      count: pendingClaimsCount,
-      badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
-    },
-  ];
+  const studioSections = useMemo<StudioSection[]>(
+    () => [
+      {
+        key: "portfolio",
+        labelKey: "studio.sections.portfolio",
+        href: "/my",
+        count: artworks.length,
+      },
+      {
+        key: "exhibitions",
+        labelKey: "studio.sections.exhibitions",
+        href: "/my/exhibitions",
+        count: exhibitions.length,
+      },
+      {
+        key: "inbox",
+        labelKey: "studio.sections.inbox",
+        href: "/my/inquiries",
+        count: priceInquiryCount,
+        badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
+      },
+      {
+        key: "network",
+        labelKey: "studio.sections.network",
+        href: "/my/followers",
+        count: stats?.followersCount ?? 0,
+      },
+      {
+        key: "operations",
+        labelKey: "studio.sections.operations",
+        href: "/my/claims",
+        count: pendingClaimsCount,
+        badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
+      },
+    ],
+    [artworks.length, exhibitions.length, priceInquiryCount, stats?.followersCount, pendingClaimsCount]
+  );
+
+  const quickActions = useMemo<QuickAction[]>(() => {
+    if (!profile) return [];
+    const out: QuickAction[] = [
+      { key: "upload", label: t("studio.quickActions.upload"), href: "/upload", tone: "primary" },
+      { key: "exhibition", label: t("studio.quickActions.exhibition"), href: "/my/exhibitions" },
+    ];
+    if (!actingAsProfileId) {
+      out.push({ key: "library", label: t("studio.quickActions.library"), href: "/my/library" });
+    }
+    const roleSet = new Set(normalizeRoleList(profile.roles));
+    if (roleSet.has("curator") || roleSet.has("collector")) {
+      out.push({ key: "shortlists", label: t("studio.quickActions.shortlists"), href: "/my/shortlists" });
+      out.push({ key: "alerts", label: t("studio.quickActions.alerts"), href: "/my/alerts" });
+    }
+    out.push({ key: "people", label: t("studio.quickActions.findPeople"), href: "/people" });
+    if (profile.username) {
+      out.push({
+        key: "reorder",
+        label: t("studio.quickActions.reorder"),
+        href: `/u/${profile.username}?mode=reorder`,
+      });
+    } else {
+      out.push({
+        key: "complete",
+        label: t("studio.quickActions.completeProfile"),
+        href: "/onboarding",
+      });
+    }
+    return out;
+  }, [profile, actingAsProfileId, t]);
 
   return (
     <AuthGate>
@@ -380,642 +361,32 @@ export default function MyPage() {
             <StudioSignals signals={studioSignals} />
             <StudioNextActions actions={studioActions} />
             <StudioSectionNav sections={studioSections} />
-          </>
-        )}
-        {/* Header */}
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div className="flex flex-wrap items-start gap-4">
-            {profile?.avatar_url && (
-              <img
-                src={
-                  profile.avatar_url.startsWith("http")
-                    ? profile.avatar_url
-                    : getArtworkImageUrl(profile.avatar_url, "avatar")
-                }
-                alt=""
-                className="h-16 w-16 rounded-full object-cover"
-              />
-            )}
-            <div>
-              <h1 className="text-xl font-semibold text-zinc-900">
-                {profile?.display_name ?? profile?.username ?? t("nav.myProfile")}
-              </h1>
-              {profile?.username && (
-                <p className="text-sm text-zinc-500">@{profile.username}</p>
-              )}
-              {roles.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {roles.map((r) => (
-                    <span
-                      key={r}
-                      className="rounded-full bg-zinc-200 px-2.5 py-0.5 text-xs font-medium text-zinc-700"
-                    >
-                      {r}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-4">
-            {!actingAsProfileId && (
-              <>
-                {/* Compact completeness status - click → settings */}
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-400">
-                    {t("me.profileCompletenessTitle")}
-                  </span>
-                  <Link
-                    href="/settings"
-                    title={t("me.completenessHint")}
-                    className="flex items-center gap-2 rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-                  >
-                    <span className="flex h-1.5 w-12 overflow-hidden rounded-full bg-zinc-200">
-                      <span
-                        className="h-full bg-zinc-600 transition-all"
-                        style={{ width: `${loading || computedCompleteness == null || computedCompleteness === 0 ? 0 : computedCompleteness}%` }}
-                      />
-                    </span>
-                    <span>{loading ? "—" : (computedCompleteness != null && computedCompleteness > 0 ? `${computedCompleteness}/100` : "—")}</span>
-                  </Link>
-                </div>
-                <Link
-                  href="/settings"
-                  className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-                >
-                  {t("my.actions.editProfile")}
-                </Link>
-                <Link
-                  href="/my/delegations"
-                  className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {t("delegation.manageManagers")}
-                </Link>
-              </>
-            )}
-            {profile?.username && (
-              <>
-                <Link
-                  href={`/u/${profile.username}`}
-                  className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {t("my.actions.viewPublicProfile")}
-                </Link>
-                <Link
-                  href={`/u/${profile.username}?mode=reorder`}
-                  className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {t("me.reorderPortfolio")}
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* KPI row - 5 items, one line */}
-        <div className="mb-8 flex flex-nowrap gap-2 overflow-x-auto pb-1 md:gap-3">
-          <Link
-            href="/my/following"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
-          >
-            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
-              {stats?.followingCount ?? 0}
-            </p>
-            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.following")}</p>
-          </Link>
-          <Link
-            href="/my/followers"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
-          >
-            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
-              {stats?.followersCount ?? 0}
-            </p>
-            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.followers")}</p>
-          </Link>
-          <div className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 md:p-4">
-            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
-              {stats?.postsCount ?? 0}
-            </p>
-            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.posts")}</p>
-          </div>
-          <Link
-            href="/my/inquiries"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
-          >
-            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
-              {priceInquiryCount}
-            </p>
-            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.priceInquiries")}</p>
-          </Link>
-          <Link
-            href="/my/claims"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white p-3 hover:bg-zinc-50 md:p-4"
-          >
-            <p className="truncate text-xl font-semibold text-zinc-900 md:text-2xl">
-              {pendingClaimsCount}
-            </p>
-            <p className="truncate text-xs text-zinc-500 md:text-sm">{t("my.kpi.claimRequests")}</p>
-          </Link>
-        </div>
-
-        {/* Profile views insights */}
-        <div className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
-          <h3 className="mb-2 text-sm font-medium text-zinc-900">
-            {t("insights.profileViewsTitle")} ({t("insights.last7Days")})
-          </h3>
-          {profileViewsCount === null ? (
-            <p className="text-sm text-zinc-500">{t("common.loading")}</p>
-          ) : (
-            <>
-              <p className="text-2xl font-semibold text-zinc-900">{profileViewsCount}</p>
-              {canViewViewers ? (
-                <div className="mt-4">
-                  <p className="mb-2 text-sm font-medium text-zinc-700">
-                    {t("insights.recentViewers")}
-                  </p>
-                  {viewers.length === 0 ? (
-                    <p className="text-sm text-zinc-500">{t("insights.noViewsYet")}</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {viewers.map((row) => (
-                        <li key={row.id}>
-                          <Link
-                            href={`/u/${row.viewer_profile?.username ?? ""}`}
-                            className="flex items-center gap-3 text-sm text-zinc-700 hover:text-zinc-900"
-                          >
-                            {row.viewer_profile?.avatar_url ? (
-                              <img
-                                src={
-                                  row.viewer_profile.avatar_url.startsWith("http")
-                                    ? row.viewer_profile.avatar_url
-                                    : getArtworkImageUrl(row.viewer_profile.avatar_url, "avatar")
-                                }
-                                alt=""
-                                className="h-8 w-8 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
-                                {(row.viewer_profile?.display_name ?? row.viewer_profile?.username ?? "?").charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <span>
-                              {row.viewer_profile?.display_name ?? row.viewer_profile?.username ?? "—"}
-                            </span>
-                            {row.viewer_profile?.username && (
-                              <span className="text-zinc-500">@{row.viewer_profile.username}</span>
-                            )}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {viewers.length > 0 && !actingAsProfileId && (
-                    <Link
-                      href="/settings"
-                      className="mt-3 inline-block text-sm text-zinc-600 hover:text-zinc-900"
-                    >
-                      {t("insights.seeAll")}
-                    </Link>
-                  )}
-                </div>
-              ) : !actingAsProfileId ? (
-                <Link
-                  href="/settings"
-                  className="mt-3 inline-block rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {t("insights.upgradeToSeeViewers")}
-                </Link>
-              ) : null}
-            </>
-          )}
-        </div>
-
-        {/* Profile / Upload CTA: Upload, 전시 만들기 및 관리 (same style), 아티스트 찾기, Reorder... */}
-        <div className="mb-8 flex flex-wrap items-center gap-3">
-          {!profile?.username && (
-            <Link
-              href="/onboarding"
-              className="inline-block rounded border border-amber-300 px-4 py-2 text-sm font-medium text-amber-800 hover:bg-amber-50"
-            >
-              Complete profile →
-            </Link>
-          )}
-          <Link
-            href="/upload"
-            className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            {t("my.uploadNewWork")}
-          </Link>
-          {!actingAsProfileId && (
-            <Link
-              href="/my/library"
-              className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              {t("library.title")}
-            </Link>
-          )}
-          <Link
-            href="/my/exhibitions"
-            className="inline-block rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-          >
-            {t("exhibition.createAndManage")}
-          </Link>
-          <Link
-            href="/my/shortlists"
-            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Shortlists
-          </Link>
-          <Link
-            href="/my/alerts"
-            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            Alerts
-          </Link>
-          <Link
-            href="/people"
-            className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-          >
-            {t("feed.followingEmptyCta")}
-          </Link>
-          {profile?.username && (
-            <Link
-              href={`/u/${profile.username}?mode=reorder`}
-              className="inline-block rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              {t("me.reorderPortfolio")}
-            </Link>
-          )}
-        </div>
-
-        {/* Persona tabs: role-based order; user can reorder and save */}
-        {((artworks.length > 0) || showExhibitionsTab) && profile?.id && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-2">
-            {(() => {
-              const counts = getPersonaCounts(artworks, profile.id);
-              const rawSaved = profile?.profile_details?.tab_order;
-              const savedOrder = Array.isArray(rawSaved)
-                ? (rawSaved.filter((x): x is PersonaTab => typeof x === "string" && ["all", "exhibitions", "CREATED", "OWNS", "INVENTORY", "CURATED"].includes(x)) as PersonaTab[])
-                : undefined;
-              const ordered = getOrderedPersonaTabs(counts, exhibitions.length, {
-                main_role: profile.main_role ?? null,
-                roles: roles,
-              }, savedOrder);
-              const tabLabels: Record<PersonaTab, string> = {
-                all: t("profile.personaAll"),
-                exhibitions: t("exhibition.myExhibitions"),
-                CREATED: t("profile.personaWork"),
-                OWNS: t("profile.personaCollected"),
-                INVENTORY: t("profile.personaGallery"),
-                CURATED: t("profile.personaCurated"),
-              };
-              if (tabReorderMode) {
-                const list = tabOrderDraft.length > 0 ? tabOrderDraft : ordered;
-                return (
-                  <>
-                    {list.map(({ tab, count }, idx) => (
-                      <span key={tab} className="flex items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (idx <= 0) return;
-                            const next = [...list];
-                            [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                            setTabOrderDraft(next);
-                          }}
-                          className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
-                          disabled={idx === 0}
-                          aria-label={t("my.moveTabUp")}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (idx >= list.length - 1) return;
-                            const next = [...list];
-                            [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                            setTabOrderDraft(next);
-                          }}
-                          className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
-                          disabled={idx === list.length - 1}
-                          aria-label={t("my.moveTabDown")}
-                        >
-                          ↓
-                        </button>
-                        <span className="rounded bg-zinc-100 px-2 py-1 text-sm text-zinc-700">
-                          {tabLabels[tab]} ({count})
-                        </span>
-                      </span>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={tabOrderSaving}
-                      onClick={async () => {
-                        const order = (tabOrderDraft.length > 0 ? tabOrderDraft : ordered).map((o) => o.tab);
-                        setTabOrderSaving(true);
-                        const { error: err } = await updateMyProfileDetails({ tab_order: order }, null);
-                        setTabOrderSaving(false);
-                        if (err) {
-                          setToast(t("common.tryAgain"));
-                          return;
-                        }
-                        setTabReorderMode(false);
-                        setTabOrderDraft([]);
-                        await fetchData();
-                      }}
-                      className="rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-                    >
-                      {tabOrderSaving ? t("common.loading") : t("common.save")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setTabReorderMode(false);
-                        setTabOrderDraft([]);
-                      }}
-                      className="rounded border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                    >
-                      {t("common.cancel")}
-                    </button>
-                  </>
-                );
-              }
-              return (
-                <>
-                  {ordered.map(({ tab, count }) => (
-                    <button
-                      key={tab}
-                      type="button"
-                      onClick={() => setPersonaTab(tab)}
-                      className={`rounded px-3 py-1.5 text-sm font-medium ${
-                        personaTab === tab ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                      }`}
-                    >
-                      {tabLabels[tab]} ({count})
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTabOrderDraft(ordered);
-                      setTabReorderMode(true);
-                    }}
-                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
-                    title={t("my.reorderTabs")}
-                  >
-                    ↕
-                  </button>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* My posts or Exhibitions */}
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-zinc-900">
-            {personaTab === "exhibitions" ? t("exhibition.myExhibitions") : t("me.myArtworks")}
-          </h2>
-          {personaTab !== "exhibitions" && artworks.length > 0 && profile?.id && (
-            <div className="flex items-center gap-2">
-              {selectMode ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={selectAll}
-                    className="text-sm text-zinc-600 hover:text-zinc-900"
-                  >
-                    {selectedIds.size >= displayedArtworks.length ? t("my.bulkSelect.clear") : t("my.bulkSelect.selectAll")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearSelection}
-                    className="text-sm text-zinc-600 hover:text-zinc-900"
-                  >
-                    {t("my.bulkSelect.clear")}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedIds.size === 0 || deleting}
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="rounded border border-red-500 px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-                  >
-                    {t("my.bulkSelect.deleteSelected")} ({selectedIds.size})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectMode(false);
-                      setSelectedIds(new Set());
-                    }}
-                    className="text-sm text-zinc-600 hover:text-zinc-900"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setSelectMode(true)}
-                  className="text-sm text-zinc-600 hover:text-zinc-900"
-                >
-                  {t("my.bulkSelect.select")}
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        {personaTab === "exhibitions" ? (
-          <ul className="space-y-2">
-            {exhibitions.map((ex) => {
-              const firstCover = (ex.cover_image_paths ?? [])[0];
-              return (
-                <li key={ex.id}>
-                  <Link
-                    href={`/my/exhibitions/${ex.id}`}
-                    className="flex items-center gap-3 rounded-lg border border-zinc-200 bg-white p-2.5 shadow-sm transition hover:border-zinc-300 hover:shadow-md"
-                  >
-                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
-                      {firstCover ? (
-                        <Image
-                          src={getArtworkImageUrl(firstCover, "thumb")}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          sizes="56px"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-zinc-400">·</div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-zinc-900">{ex.title}</p>
-                      <p className="truncate text-xs text-zinc-500">
-                        {ex.start_date && ex.end_date ? `${ex.start_date} – ${ex.end_date}` : ex.start_date ?? ex.status}
-                        {" · "}
-                        {getExhibitionHostCuratorLabel(ex, t)}
-                      </p>
-                      <p className="text-[11px] text-zinc-400">{t("exhibition.works")} →</p>
-                    </div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        ) : personaTab === "all" && allBuckets ? (
-          (() => {
-            const { created, curated, exhibited, owns } = allBuckets;
-            const hasAny = created.length + curated.length + exhibited.length + owns.length > 0;
-            if (!hasAny) {
-              return (
-                <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
-                  <p className="text-zinc-600">{t("me.noWorks")}</p>
-                  <Link
-                    href="/upload"
-                    className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-                  >
-                    {t("me.uploadFirst")}
-                  </Link>
-                </div>
-              );
-            }
-            const renderCard = (artwork: ArtworkWithLikes) => (
-              <div key={artwork.id} className="relative">
-                {selectMode && (
-                  <div className="absolute left-2 top-2 z-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(artwork.id)}
-                      onChange={() => toggleSelect(artwork.id)}
-                      className="h-5 w-5 rounded border-zinc-300"
-                      aria-label={t("my.bulkSelect.select")}
-                    />
-                  </div>
-                )}
-                <ArtworkCard
-                  artwork={artwork}
-                  likesCount={artwork.likes_count ?? 0}
-                  showEdit={!selectMode && !!profile && canEditArtwork(artwork, profile.id)}
-                  showDelete={!selectMode}
-                  onDelete={async (id) => {
-                    const { okIds, failed } = await deleteArtworksBatch([id]);
-                    if (okIds.length > 0) {
-                      setToast(t("artwork.deleted"));
-                      await fetchData();
-                    } else if (failed.length > 0) {
-                      setToast(t("my.bulkDeleteFailed"));
-                    }
-                  }}
-                />
-              </div>
-            );
-            const sections = [
-              { key: "created", list: created, label: t("profile.personaWork") },
-              { key: "curated", list: curated, label: t("profile.personaCurated") },
-              { key: "exhibited", list: exhibited, label: t("profile.bucketExhibited") },
-              { key: "owns", list: owns, label: t("profile.personaCollected") },
-            ].filter((s) => s.list.length > 0);
-            return (
-              <>
-                <div className="space-y-8">
-                  {sections.map(({ key, list, label }) => (
-                    <section key={key}>
-                      <h3 className="mb-3 text-sm font-medium text-zinc-500">
-                        {label} ({list.length})
-                      </h3>
-                      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                        {list.map((a) => renderCard(a))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-                {toast && (
-                  <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-                    {toast}
-                  </div>
-                )}
-              </>
-            );
-          })()
-        ) : displayedArtworks.length === 0 ? (
-          <div className="flex flex-col items-center gap-4 rounded-lg border border-zinc-200 bg-zinc-50 py-12 text-center">
-            <p className="text-zinc-600">{t("me.noWorks")}</p>
-            <Link
-              href="/upload"
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
-            >
-              {t("me.uploadFirst")}
-            </Link>
-          </div>
-        ) : (
-          <>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {displayedArtworks.map((artwork) => (
-                <div key={artwork.id} className="relative">
-                  {selectMode && (
-                    <div className="absolute left-2 top-2 z-10">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(artwork.id)}
-                        onChange={() => toggleSelect(artwork.id)}
-                        className="h-5 w-5 rounded border-zinc-300"
-                        aria-label={t("my.bulkSelect.select")}
-                      />
-                    </div>
-                  )}
-                  <ArtworkCard
-                    artwork={artwork}
-                    likesCount={artwork.likes_count ?? 0}
-                    showEdit={!selectMode && !!profile && canEditArtwork(artwork, profile.id)}
-                    showDelete={!selectMode}
-                    onDelete={async (id) => {
-                      const { okIds, failed } = await deleteArtworksBatch([id]);
-                      if (okIds.length > 0) {
-                        setToast(t("artwork.deleted"));
-                        await fetchData();
-                      } else if (failed.length > 0) {
-                        setToast(t("my.bulkDeleteFailed"));
-                      }
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-            {toast && (
-              <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-                {toast}
-              </div>
-            )}
+            <StudioQuickActions actions={quickActions} />
+            <StudioViewsInsights
+              count={profileViewsCount}
+              canViewViewers={canViewViewers}
+              viewers={viewers}
+            />
           </>
         )}
 
-        {/* Delete confirm modal */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="max-w-sm rounded-lg bg-white p-6 shadow-lg">
-              <p className="mb-4 text-zinc-800">
-                {t("my.bulkSelect.confirmMessage").replace("{n}", String(selectedIds.size))}
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleBulkDelete}
-                  disabled={deleting}
-                  className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  {deleting ? t("common.loading") : t("common.delete")}
-                </button>
-              </div>
-            </div>
+        {profile && (
+          <StudioPortfolioPanel
+            profile={profile}
+            artworks={artworks}
+            exhibitions={exhibitions}
+            initialTab={initialTab}
+            canSaveTabOrder={!actingAsProfileId}
+            onRefresh={fetchData}
+            onToast={setToast}
+          />
+        )}
+
+        {profile && !actingAsProfileId && <StudioIntelligenceSurface />}
+
+        {toast && (
+          <div className="fixed bottom-4 right-4 rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
+            {toast}
           </div>
         )}
       </main>

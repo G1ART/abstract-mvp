@@ -11,6 +11,7 @@ import {
 } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
 import { formatDisplayName } from "@/lib/identity/format";
+import { EmptyState } from "@/components/ds/EmptyState";
 
 function notificationLabel(row: NotificationRow, t: (k: string) => string): string {
   const name = formatDisplayName(row.actor);
@@ -113,7 +114,7 @@ function NotificationsContent() {
         )}
       </div>
       {list.length === 0 ? (
-        <p className="mt-4 text-sm text-zinc-500">{t("notifications.empty")}</p>
+        <EmptyState title={t("notifications.empty")} size="sm" />
       ) : (
         <ul className="mt-4 divide-y divide-zinc-100">
           {list.map((row) => {

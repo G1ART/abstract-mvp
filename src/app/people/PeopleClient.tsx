@@ -7,12 +7,11 @@ import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import {
-  getPeopleRecs,
-  searchPeopleWithArtwork,
+  getPeopleRecommendations,
   ROLE_OPTIONS,
+  type PeopleLane,
   type PeopleRec,
-  type PeopleRecMode,
-} from "@/lib/supabase/peopleRecs";
+} from "@/lib/supabase/recommendations";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { AuthGate } from "@/components/AuthGate";
 import { FollowButton } from "@/components/FollowButton";
@@ -21,13 +20,15 @@ import {
   formatRoleChips,
 } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
+import { SectionFrame } from "@/components/ds/SectionFrame";
+import { Chip } from "@/components/ds/Chip";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
 const LOAD_MORE_LIMIT = 10;
 
 type LaneKey = "follow" | "likes" | "expand";
-const LANE_TO_MODE: Record<LaneKey, PeopleRecMode> = {
+const LANE_TO_CONTRACT: Record<LaneKey, PeopleLane> = {
   follow: "follow_graph",
   likes: "likes_based",
   expand: "expand",
@@ -143,45 +144,27 @@ export function PeopleClient() {
       const [followingRes] = await Promise.all([getFollowingIds()]);
       setFollowingIds(followingRes.data);
 
-      if (isSearchMode) {
-        if (!debouncedSearch.trim()) {
-          setLoading(false);
-          return;
+      const contractLane: PeopleLane = isSearchMode
+        ? "search"
+        : LANE_TO_CONTRACT[lane];
+      const res = await getPeopleRecommendations({
+        lane: contractLane,
+        q: isSearchMode ? debouncedSearch.trim() : undefined,
+        roles: rolesArr,
+        limit: INITIAL_LIMIT,
+        cursor: null,
+        searchVariant: isSearchMode ? "merged" : undefined,
+      });
+      if (res.error) {
+        if (process.env.NODE_ENV === "development") {
+          console.warn("[People] getPeopleRecommendations error:", res.error);
         }
-        const res = await searchPeopleWithArtwork({
-          q: debouncedSearch.trim(),
-          roles: rolesArr,
-          limit: INITIAL_LIMIT,
-        });
-        if (res.error) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn("[People] searchPeopleWithArtwork RPC error:", res.error);
-          }
-          setError(t("people.loadFailed"));
-          return;
-        }
-        setProfiles(res.data ?? []);
-        setNextCursor(res.nextCursor ?? null);
-        setSearchSuggestion(res.suggestion ?? null);
-      } else {
-        setSearchSuggestion(null);
-        const mode = LANE_TO_MODE[lane];
-        const res = await getPeopleRecs({
-          mode,
-          roles: rolesArr,
-          limit: INITIAL_LIMIT,
-          cursor: null,
-        });
-        if (res.error) {
-          if (process.env.NODE_ENV === "development") {
-            console.warn("[People] getPeopleRecs RPC error:", res.error);
-          }
-          setError(t("people.loadFailed"));
-          return;
-        }
-        setProfiles(res.data ?? []);
-        setNextCursor(res.nextCursor ?? null);
+        setError(t("people.loadFailed"));
+        return;
       }
+      setProfiles(res.data);
+      setNextCursor(res.nextCursor);
+      setSearchSuggestion(isSearchMode ? res.suggestion : null);
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[People] fetch error:", err);
@@ -200,31 +183,20 @@ export function PeopleClient() {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
     try {
-      if (isSearchMode) {
-        if (!nextCursor) {
-          setLoadingMore(false);
-          return;
-        }
-        const res = await searchPeopleWithArtwork({
-          q: debouncedSearch.trim(),
-          roles: rolesArr,
-          limit: LOAD_MORE_LIMIT,
-        });
-        if (res.error) return;
-        setProfiles((prev) => [...prev, ...res.data]);
-        setNextCursor(res.nextCursor);
-      } else {
-        const mode = LANE_TO_MODE[lane];
-        const res = await getPeopleRecs({
-          mode,
-          roles: rolesArr,
-          limit: LOAD_MORE_LIMIT,
-          cursor: nextCursor,
-        });
-        if (res.error) return;
-        setProfiles((prev) => [...prev, ...res.data]);
-        setNextCursor(res.nextCursor);
-      }
+      const contractLane: PeopleLane = isSearchMode
+        ? "search"
+        : LANE_TO_CONTRACT[lane];
+      const res = await getPeopleRecommendations({
+        lane: contractLane,
+        q: isSearchMode ? debouncedSearch.trim() : undefined,
+        roles: rolesArr,
+        limit: LOAD_MORE_LIMIT,
+        cursor: nextCursor,
+        searchVariant: isSearchMode ? "merged" : undefined,
+      });
+      if (res.error) return;
+      setProfiles((prev) => [...prev, ...res.data]);
+      setNextCursor(res.nextCursor);
     } finally {
       setLoadingMore(false);
     }
@@ -381,15 +353,15 @@ export function PeopleClient() {
                 {t("people.filterAll")}
               </button>
             </div>
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50/80 p-4 text-left">
+            <SectionFrame tone="muted" padding="md" noMargin className="text-left">
               <p className="mb-2 text-sm font-medium text-zinc-700">{t("people.inviteCta")}</p>
               <Link
                 href={`/people/invite?name=${encodeURIComponent(debouncedSearch.trim())}`}
-                className="inline-block rounded border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="inline-block rounded-lg border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
               >
                 {t("people.inviteCtaButton")}
               </Link>
-            </div>
+            </SectionFrame>
           </div>
         ) : (
           <>
@@ -419,7 +391,7 @@ export function PeopleClient() {
                         handleCardClick(username);
                       }
                     }}
-                    className="flex cursor-pointer items-center gap-4 rounded-lg border border-zinc-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400"
+                    className="flex cursor-pointer items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400"
                   >
                     <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-zinc-200">
                       {profile.avatar_url ? (
@@ -452,12 +424,9 @@ export function PeopleClient() {
                       )}
                       <div className="mt-1 flex flex-wrap gap-1">
                         {roleChips.map((chip) => (
-                          <span
-                            key={chip.key}
-                            className={`rounded-full px-2 py-0.5 text-xs ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"}`}
-                          >
+                          <Chip key={chip.key} tone={chip.isPrimary ? "accent" : "neutral"}>
                             {chip.label}
-                          </span>
+                          </Chip>
                         ))}
                       </div>
                       {reasonLine && (
@@ -465,11 +434,7 @@ export function PeopleClient() {
                           <span>
                             {t("people.whyRecommended")}: {reasonLine}
                           </span>
-                          {badge && (
-                            <span className="rounded bg-zinc-200 px-1.5 py-0.5 text-zinc-600">
-                              {badge}
-                            </span>
-                          )}
+                          {badge && <Chip tone="muted">{badge}</Chip>}
                         </p>
                       )}
                     </div>

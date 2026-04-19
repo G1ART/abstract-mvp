@@ -32,6 +32,7 @@ import { getExhibitionById } from "@/lib/supabase/exhibitions";
 import type { PublicProfile } from "@/lib/supabase/artists";
 import { getSession } from "@/lib/supabase/auth";
 import { setPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 type Participant = {
   id: string;
@@ -480,9 +481,9 @@ export default function AddWorkToExhibitionPage() {
                             }`}
                           >
                             <span className="truncate">
-                              {p.display_name || p.username || p.id}
+                              {formatDisplayName(p)}
                               {p.username && (
-                                <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                                <span className="ml-1 text-xs text-zinc-500">{formatUsername(p)}</span>
                               )}
                             </span>
                             {selected && (
@@ -510,7 +511,7 @@ export default function AddWorkToExhibitionPage() {
                       }
                       className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700 hover:bg-zinc-200"
                     >
-                      <span>{p.display_name || p.username || p.id}</span>
+                      <span>{formatDisplayName(p)}</span>
                       <span className="text-[10px] text-zinc-500">×</span>
                     </button>
                   ))}
@@ -665,7 +666,7 @@ export default function AddWorkToExhibitionPage() {
                     });
                     if (p.username) bulkQs.set("artistUsername", p.username);
                     if (p.display_name) bulkQs.set("artistName", p.display_name);
-                    const label = p.display_name || p.username || p.id;
+                    const label = formatDisplayName(p);
                     return (
                       <li key={bucketKey} className="rounded-xl border-2 border-zinc-200 bg-white p-4">
                         <p className="mb-3 font-medium text-zinc-900">{label}</p>
@@ -831,7 +832,7 @@ export default function AddWorkToExhibitionPage() {
                     key={p.id}
                     className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700"
                   >
-                    {p.display_name || p.username || p.id}
+                    {formatDisplayName(p)}
                   </span>
                 ))}
               </div>

@@ -1,6 +1,6 @@
 # Abstract — Design Spine
 
-Status: Mega Upgrade baseline (2026‑04)
+Status: Next Mega Upgrade baseline (2026‑04)
 
 This document is the single source of truth for how the Abstract product
 presents itself. Every new screen or component must be checked against it.
@@ -32,9 +32,16 @@ Order from top of viewport:
    upsell copy instead of a real value; they never fake a number.
 3. `StudioNextActions` — the priority engine turns the current state of
    the profile, inbox and ops into the next 1‑4 nudges.
-4. `StudioSectionNav` — deep links to Portfolio, Exhibitions, Inbox,
+4. `StudioQuickActions` — supplemental one‑line CTA rail (upload, new
+   exhibition, open public). It never duplicates the Next Actions.
+5. `StudioSectionNav` — deep links to Portfolio, Exhibitions, Inbox,
    Network, Operations. Each card shows a count and optional badge.
-5. Existing portfolio/tabs UI (unchanged while we migrate the sub pages).
+6. `StudioViewsInsights` — condensed last‑7‑day views + recent viewers
+   preview; the full experience lives under `/settings`.
+7. `StudioPortfolioPanel` — persona tabs, reorder mode, bulk delete.
+8. `StudioIntelligenceSurface` — **empty** structural container. The
+   shell exists so the upcoming AI layer has a home; it must never ship
+   placeholder or "coming soon" copy.
 
 Non‑negotiables:
 
@@ -67,6 +74,22 @@ Every label must pass through `roleLabel(key, t)` in
 `src/lib/identity/roles.ts` and the `role.*` keys in
 `src/lib/i18n/messages.ts`. No hard‑coded English strings.
 
+## 2.1 Shared UI primitives
+
+All section shells, card frames, empty states and role/status badges
+must come from `src/components/ds/*`:
+
+- `SectionFrame` — the rounded‑2xl bordered container used by every
+  Studio and sub‑page section (tones: `default`, `muted`, `dashed`).
+- `SectionTitle` — eyebrow + heading + optional trailing action.
+- `EmptyState` — single‑sentence empty state with optional primary /
+  secondary actions. Replaces ad‑hoc `py‑8 text‑center` paragraphs.
+- `Chip` — neutral / accent / warning / success / muted pill used for
+  role labels, status badges, reason tags.
+
+New surfaces must not hand‑roll `rounded-lg border border-zinc-200`
+card shells; reach for `SectionFrame` instead.
+
 ## 3. Cards
 
 ### 3.1 Artwork card
@@ -84,7 +107,11 @@ anchors the exhibition to its people first.
 
 Uses `formatIdentityPair` plus role chips. Recommendation reason goes
 through `reasonTagToI18n` so that `follow_graph`, `likes_based`, etc.
-become user‑facing sentences.
+become user‑facing sentences. All recommendation and search surfaces
+call `getPeopleRecommendations` in `src/lib/supabase/recommendations.ts`
+exclusively — `searchVariant: "merged"` gives the name + artwork merged
+lane, `"name_only"` keeps the legacy name search. Consumers do not
+import `getPeopleRecs` or `searchPeopleWithArtwork` directly.
 
 ## 4. Copy
 

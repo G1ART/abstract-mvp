@@ -2,6 +2,55 @@
 
 Last updated: 2026-04-18
 
+## 2026-04-18 — Abstract Next Mega Upgrade (Studio Slim-down + Design Spine + Reco Contract)
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "`/my`를 진짜 Studio 셸로 얇게, 공용 UI 골격을 제자리에, 신원·추천 계약은 하나로."
+
+### 1. 무엇이 달라졌나 (Before / After)
+
+| 축 | Before | After |
+|---|---|---|
+| `/my` 페이지 | 1,000+ 라인, 헤더/CTA/KPI/포트폴리오 중복 블록 | 395 라인 오케스트레이터. 대형 블록은 `StudioQuickActions` / `StudioViewsInsights` / `StudioPortfolioPanel` / `StudioIntelligenceSurface`로 분리 |
+| 디자인 골격 | 페이지마다 `rounded-lg border` 아드혹 카드·빈 상태 | `src/components/ds/*` 공유 프리미티브 (`SectionFrame`, `SectionTitle`, `EmptyState`, `Chip`)를 `/my`, `/people`, `/u`, `/e`, `/artwork`, `/notifications`, `/my/inquiries`에 적용 |
+| 신원 표기 | 업로드/전시/편집 폼에서 `p.display_name \|\| p.username \|\| p.id` 아드혹 표현 | 전 플로우에서 `formatIdentityPair` / `formatDisplayName` / `formatUsername` 경유 |
+| People 추천 | `getPeopleRecs` + `searchPeopleWithArtwork` 두 계약을 혼용 | `getPeopleRecommendations` 단일 계약 (+ `searchVariant: "merged" \| "name_only"`); `PeopleClient`, `FeedContent` 모두 이 계약만 호출 |
+| AI 삽입점 | 구조 없음 | `StudioIntelligenceSurface` 빈 컨테이너만 배치 (가짜 AI 문구 금지, `aria-hidden` 장식 슬롯) |
+
+### 2. 새/갱신된 표면
+
+```
+src/components/ds/
+  ├─ SectionFrame.tsx   (rounded-2xl / tone / padding)
+  ├─ SectionTitle.tsx   (eyebrow + heading + action)
+  ├─ EmptyState.tsx     (title / desc / primary·secondary action)
+  └─ Chip.tsx           (neutral/accent/warning/success/muted)
+
+src/components/studio/
+  ├─ StudioQuickActions.tsx     (Next Actions 보조 CTA 한 줄)
+  ├─ StudioViewsInsights.tsx    (7일 profile views + 최근 viewer 3, settings 딥링크)
+  ├─ StudioPortfolioPanel.tsx   (persona tabs, 재정렬, bulk delete)
+  └─ StudioIntelligenceSurface.tsx (AI 삽입용 정적 컨테이너)
+
+src/lib/supabase/recommendations.ts — getPeopleRecommendations + searchVariant
+```
+
+### 3. 정책 (SSOT 보강)
+
+- `/my` 및 프로필 기반 모든 surface는 카드·빈 상태·칩을 `src/components/ds/*`에서 가져온다. 페이지 레벨에서 `rounded-lg border …` 카드 shell을 재선언하지 않는다.
+- 사람 이름·핸들은 항상 `formatIdentityPair` / `formatDisplayName` / `formatUsername`를 통과한다. 검색 드롭다운·`Selected` 라벨·전시 칩도 예외가 아니다.
+- People 추천·검색은 `getPeopleRecommendations` 하나만 호출한다. `getPeopleRecs` / `searchPeopleWithArtwork`는 내부 구현 디테일이며 UI 경로에서 직접 사용하지 않는다.
+- AI 기능이 준비되기 전까지 `StudioIntelligenceSurface`는 문구 없는 구조적 슬롯으로만 존재한다. "곧 제공" 같은 약속 카피를 추가하지 않는다.
+
+### 4. 리스크 / 의도적 연기
+
+- `StudioPortfolioPanel` 안에 아직 legacy persona 탭/삭제 UX가 그대로 유지됨. 탭 레일과 카드 그리드를 더 얇게 만드는 작업은 후속 UI 패스에서 진행.
+- `StudioIntelligenceSurface`는 구조만 제공하고 실제 AI 컨텐츠는 후속 AI 패치로 연기. 이 패치에서는 텍스트·가짜 데이터 금지 원칙을 유지.
+- `/settings` 인사이트 패널은 기존 구현을 유지하며, `StudioViewsInsights`는 딥링크만 제공. 본격 인사이트 이동은 별도 과제.
+
 ## 2026-04-18 — Abstract Mega Upgrade (Identity + Trust + Profile-first UX + Proactive Portfolio)
 
 브랜치: `feature/abstract-mega-upgrade-profile-first`

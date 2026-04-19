@@ -21,6 +21,9 @@ import {
   type PriceInquiryMessageRow,
   type PriceInquiryRow,
 } from "@/lib/supabase/priceInquiries";
+import { EmptyState } from "@/components/ds/EmptyState";
+import { Chip } from "@/components/ds/Chip";
+import { formatIdentityPair } from "@/lib/identity/format";
 
 export default function MyInquiriesPage() {
   const { t } = useT();
@@ -248,7 +251,7 @@ export default function MyInquiriesPage() {
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
         ) : list.length === 0 ? (
-          <p className="text-zinc-600">{t("priceInquiry.empty")}</p>
+          <EmptyState title={t("priceInquiry.empty")} size="sm" />
         ) : (
           <ul className="space-y-4">
             {list.map((row) => {
@@ -257,7 +260,7 @@ export default function MyInquiriesPage() {
               return (
                 <li
                   key={row.id}
-                  className={`rounded-lg border bg-white p-4 ${
+                  className={`rounded-2xl border bg-white p-4 ${
                     row.artist_unread ? "border-amber-200 ring-1 ring-amber-100" : "border-zinc-200"
                   }`}
                 >
@@ -277,18 +280,19 @@ export default function MyInquiriesPage() {
                       {t("priceInquiry.viewArtwork")}
                     </Link>
                     {row.artist_unread && (
-                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-900">
-                        {t("priceInquiry.unread")}
-                      </span>
+                      <Chip tone="warning">{t("priceInquiry.unread")}</Chip>
                     )}
                   </div>
                   <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
-                    <span>
-                      {row.inquirer?.display_name?.trim() || row.inquirer?.username || "Someone"}
-                      {row.inquirer?.username && (
-                        <span className="text-zinc-400"> @{row.inquirer.username}</span>
-                      )}
-                    </span>
+                    {(() => {
+                      const { primary, secondary } = formatIdentityPair(row.inquirer);
+                      return (
+                        <span>
+                          {primary}
+                          {secondary && <span className="text-zinc-400"> {secondary}</span>}
+                        </span>
+                      );
+                    })()}
                     <span className="text-zinc-400">·</span>
                     <span className="text-xs text-zinc-500">
                       {row.last_message_at

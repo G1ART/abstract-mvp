@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
-import type { PeopleRec } from "@/lib/supabase/peopleRecs";
+import type { PeopleRec } from "@/lib/supabase/recommendations";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";

@@ -33,6 +33,7 @@ import {
   type ExhibitionWithCredits,
 } from "@/lib/supabase/exhibitions";
 import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -668,8 +669,8 @@ export default function BulkUploadPage() {
                           }}
                           className="w-full px-4 py-2 text-left text-sm hover:bg-zinc-50"
                         >
-                          {a.display_name || a.username || a.id}
-                          {a.username && <span className="ml-2 text-zinc-500">@{a.username}</span>}
+                          {formatDisplayName(a)}
+                          {a.username && <span className="ml-2 text-zinc-500">{formatUsername(a)}</span>}
                         </button>
                       </li>
                     ))}

@@ -24,6 +24,7 @@ import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
 import { parseSizeWithUnit } from "@/lib/size/format";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -714,9 +715,9 @@ function EditArtworkContent() {
                                 selectedArtist?.id === a.id ? "bg-zinc-100 font-medium" : ""
                               }`}
                             >
-                              {a.display_name || a.username || a.id}
+                              {formatDisplayName(a)}
                               {a.username && (
-                                <span className="ml-2 text-zinc-500">@{a.username}</span>
+                                <span className="ml-2 text-zinc-500">{formatUsername(a)}</span>
                               )}
                             </button>
                           </li>
@@ -725,7 +726,7 @@ function EditArtworkContent() {
                     )}
                     {selectedArtist && (
                       <p className="mt-2 text-sm text-zinc-600">
-                        Selected: {selectedArtist.display_name || selectedArtist.username}
+                        Selected: {formatDisplayName(selectedArtist)}
                       </p>
                     )}
                   </>

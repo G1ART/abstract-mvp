@@ -24,6 +24,7 @@ import { searchPeople } from "@/lib/supabase/artists";
 import type { PublicProfile } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -413,9 +414,9 @@ export default function EditExhibitionPage() {
                             }}
                             className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
                           >
-                            {p.display_name || p.username || p.id}
+                            {formatDisplayName(p)}
                             {p.username && (
-                              <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                              <span className="ml-1 text-xs text-zinc-500">{formatUsername(p)}</span>
                             )}
                           </button>
                         </li>
@@ -424,8 +425,7 @@ export default function EditExhibitionPage() {
                   )}
                   {curatorSelected && (
                     <p className="mt-1 text-xs text-zinc-600">
-                      {t("common.selected")}:{" "}
-                      {curatorSelected.display_name || curatorSelected.username || curatorSelected.id}
+                      {t("common.selected")}: {formatDisplayName(curatorSelected)}
                     </p>
                   )}
                 </div>
@@ -514,9 +514,9 @@ export default function EditExhibitionPage() {
                             }}
                             className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-zinc-50"
                           >
-                            {p.display_name || p.username || p.id}
+                            {formatDisplayName(p)}
                             {p.username && (
-                              <span className="ml-1 text-xs text-zinc-500">@{p.username}</span>
+                              <span className="ml-1 text-xs text-zinc-500">{formatUsername(p)}</span>
                             )}
                           </button>
                         </li>
@@ -527,8 +527,7 @@ export default function EditExhibitionPage() {
               )}
               {hostSelected && (
                 <p className="mt-1 text-xs text-zinc-600">
-                  {t("common.selected")}:{" "}
-                  {hostSelected.display_name || hostSelected.username || hostSelected.id}
+                  {t("common.selected")}: {formatDisplayName(hostSelected)}
                 </p>
               )}
             </div>

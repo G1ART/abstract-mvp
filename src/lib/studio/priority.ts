@@ -59,14 +59,14 @@ export function computeStudioNextActions(input: StudioPriorityInput): NextAction
     actions.push({
       key: "upload",
       label: t("studio.next.uploadFirstArtwork"),
-      href: "/my/artworks/new",
+      href: "/upload",
       priority: 40,
     });
   } else if (input.artworkCount < 3) {
     actions.push({
       key: "upload-more",
       label: t("studio.next.addMoreArtworks"),
-      href: "/my/artworks/new",
+      href: "/upload",
       priority: 50,
     });
   }
@@ -74,7 +74,7 @@ export function computeStudioNextActions(input: StudioPriorityInput): NextAction
     actions.push({
       key: "exhibition",
       label: t("studio.next.addExhibition"),
-      href: "/my?tab=exhibitions",
+      href: "/my/exhibitions",
       priority: 60,
     });
   }

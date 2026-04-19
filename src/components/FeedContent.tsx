@@ -21,7 +21,10 @@ import {
   type ExhibitionCursor,
 } from "@/lib/supabase/exhibitions";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
-import { getPeopleRecs, type PeopleRec } from "@/lib/supabase/peopleRecs";
+import {
+  getPeopleRecommendations,
+  type PeopleRec,
+} from "@/lib/supabase/recommendations";
 import { FeedArtworkCard } from "./FeedArtworkCard";
 import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
 import { FeedExhibitionCard } from "./FeedExhibitionCard";
@@ -129,8 +132,8 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     }
     if (!userId) return [];
     const [likesRes, followRes] = await Promise.all([
-      getPeopleRecs({ mode: "likes_based", limit: 10 }),
-      getPeopleRecs({ mode: "follow_graph", limit: 10 }),
+      getPeopleRecommendations({ lane: "likes_based", limit: 10 }),
+      getPeopleRecommendations({ lane: "follow_graph", limit: 10 }),
     ]);
     const seen = new Set<string>();
     const strong: PeopleRec[] = [];
