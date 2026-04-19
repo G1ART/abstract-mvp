@@ -6,8 +6,24 @@
 
 export type AiDegradation = {
   degraded?: boolean;
-  reason?: "no_key" | "timeout" | "cap" | "parse" | "error" | "unauthorized";
+  reason?:
+    | "no_key"
+    | "timeout"
+    | "cap"
+    | "parse"
+    | "error"
+    | "unauthorized"
+    | "invalid_input";
+  /**
+   * Row id of the `ai_events` record for this call. Clients send this back
+   * to `/api/ai/accept` when the user adopts the draft so the analytics row
+   * flips from `accepted IS NULL` → `accepted = true`. Absent on degraded
+   * or pre-request failures.
+   */
+  aiEventId?: string;
 };
+
+export type AiLocale = "en" | "ko";
 
 export type ProfileSuggestion = {
   id: string;

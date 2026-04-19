@@ -5,7 +5,7 @@ import { useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import type { StudioDigestResult } from "@/lib/ai/types";
 
@@ -87,12 +87,13 @@ export function WeeklyDigestCard({ digestInput }: Props) {
                     <li key={i}>
                       <Link
                         href={a.href}
-                        onClick={() =>
+                        onClick={() => {
+                          void acceptAiEvent(result?.aiEventId ?? null);
                           void logBetaEvent("ai_accepted", {
                             feature: "studio_digest",
                             action: a.label,
-                          })
-                        }
+                          });
+                        }}
                         className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
                       >
                         {a.label}

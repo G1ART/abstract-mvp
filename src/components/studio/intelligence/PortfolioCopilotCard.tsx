@@ -6,7 +6,7 @@ import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type {
@@ -96,12 +96,13 @@ export function PortfolioCopilotCard({ portfolioInput, artworkCount }: Props) {
                     <div className="mt-2">
                       <Link
                         href={s.actionHref}
-                        onClick={() =>
+                        onClick={() => {
+                          void acceptAiEvent(result?.aiEventId ?? null);
                           void logBetaEvent("ai_accepted", {
                             feature: "portfolio_copilot",
                             id: s.id,
-                          })
-                        }
+                          });
+                        }}
                         className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
                       >
                         {s.actionLabel || t("ai.action.apply")}

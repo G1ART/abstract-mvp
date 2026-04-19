@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { getPeopleRecommendations } from "@/lib/supabase/recommendations";
 import { formatIdentityPair } from "@/lib/identity/format";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import type { PeopleRec } from "@/lib/supabase/peopleRecs";
-import type { MatchmakerRationalesResult } from "@/lib/ai/types";
 
 type Props = {
   me: {
@@ -22,12 +21,13 @@ type Props = {
 };
 
 export function MatchmakerCard({ me }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [loading, setLoading] = useState(false);
   const [peers, setPeers] = useState<PeopleRec[]>([]);
   const [rationales, setRationales] = useState<Record<string, string>>({});
   const [degradedReason, setDegradedReason] = useState<string | null>(null);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [aiEventId, setAiEventId] = useState<string | null>(null);
 
   const trigger = useCallback(async () => {
     setLoading(true);
@@ -52,11 +52,12 @@ export function MatchmakerCard({ me }: Props) {
         sharedSignals: p.reason_tags ?? [],
       }));
       const res = await aiApi.matchmakerRationales({
-        matchmaker: { me, candidates },
+        matchmaker: { me, candidates, locale },
       });
       if (res.degraded) {
         setDegradedReason(res.reason ?? "error");
       }
+      setAiEventId(res.aiEventId ?? null);
       const map: Record<string, string> = {};
       for (const r of res.rationales ?? []) {
         if (r?.profileId && r.rationale) map[r.profileId] = r.rationale;
@@ -66,12 +67,7 @@ export function MatchmakerCard({ me }: Props) {
       setLoading(false);
       setHasLoaded(true);
     }
-  }, [me]);
-
-  useEffect(() => {
-    // Lazy auto-load on first mount; users still see a refresh button.
-    void trigger();
-  }, [trigger]);
+  }, [me, locale]);
 
   const errorKey =
     degradedReason === "cap"
@@ -101,6 +97,10 @@ export function MatchmakerCard({ me }: Props) {
         {t("ai.matchmaker.card.subtitle")}
       </SectionTitle>
 
+      {!hasLoaded && !loading && (
+        <p className="text-xs text-zinc-500">{t("ai.matchmaker.idle")}</p>
+      )}
+
       {hasLoaded && peers.length === 0 && (
         <p className="text-xs text-zinc-500">{t("ai.matchmaker.empty")}</p>
       )}
@@ -125,12 +125,13 @@ export function MatchmakerCard({ me }: Props) {
                   <div className="min-w-0">
                     <Link
                       href={href}
-                      onClick={() =>
+                      onClick={() => {
+                        void acceptAiEvent(aiEventId);
                         void logBetaEvent("ai_accepted", {
                           feature: "matchmaker_rationales",
                           profileId: p.id,
-                        })
-                      }
+                        });
+                      }}
                       className="truncate text-sm font-medium text-zinc-900 hover:underline"
                     >
                       {identity.primary}

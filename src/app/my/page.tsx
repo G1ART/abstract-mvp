@@ -19,6 +19,8 @@ import {
   type ArtworkWithLikes,
 } from "@/lib/supabase/artworks";
 import { computeProfileCompleteness } from "@/lib/profile/completeness";
+import { getProfileSurface, type ProfileSurface } from "@/lib/profile/surface";
+import type { Profile as FullProfile } from "@/lib/supabase/profiles";
 import {
   getProfileViewsCount,
   getProfileViewers,
@@ -49,17 +51,7 @@ import { computeStudioNextActions } from "@/lib/studio/priority";
 import { hasAnyRole, normalizeRoleList } from "@/lib/identity/roles";
 import type { PersonaTab } from "@/lib/provenance/personaTabs";
 
-type Profile = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  avatar_url: string | null;
-  main_role: string | null;
-  roles: string[] | null;
-  profile_completeness?: number | null;
-  profile_details?: Record<string, unknown> | null;
-  is_public?: boolean | null;
-};
+type Profile = FullProfile;
 
 export default function MyPage() {
   const { t } = useT();
@@ -136,17 +128,35 @@ export default function MyPage() {
       setCanViewViewers(canView);
 
       if (profileData) {
-        const base = profileData as Record<string, unknown>;
-        const details =
-          base.profile_details && typeof base.profile_details === "object"
-            ? (base.profile_details as Record<string, unknown>)
-            : {};
-        const full = { ...base, ...details };
-        const { score } = computeProfileCompleteness(
-          full as Parameters<typeof computeProfileCompleteness>[0],
-          { hasDetailsLoaded: true }
-        );
-        setComputedCompleteness(score);
+        const surface = getProfileSurface(profileData);
+        if (surface) {
+          const { score } = computeProfileCompleteness(
+            {
+              username: surface.username,
+              display_name: surface.displayName,
+              avatar_url: surface.avatarUrl,
+              bio: surface.bio,
+              main_role: surface.mainRole,
+              roles: [...surface.roles],
+              city: surface.details.city,
+              region: surface.details.region,
+              country: surface.details.country,
+              themes: [...surface.details.themes],
+              mediums: [...surface.details.mediums],
+              styles: [...surface.details.styles],
+              keywords: [...surface.details.keywords],
+              price_band: surface.details.price_band,
+              acquisition_channels: [...surface.details.acquisition_channels],
+              affiliation: surface.details.affiliation,
+              program_focus: [...surface.details.program_focus],
+              education: profileData.education ?? null,
+            },
+            { hasDetailsLoaded: true }
+          );
+          setComputedCompleteness(score);
+        } else {
+          setComputedCompleteness(null);
+        }
       } else {
         setComputedCompleteness(null);
       }
@@ -214,6 +224,11 @@ export default function MyPage() {
       return () => clearTimeout(tid);
     }
   }, [toast]);
+
+  const profileSurface = useMemo<ProfileSurface | null>(
+    () => getProfileSurface(profile),
+    [profile]
+  );
 
   const studioSignals = useMemo<StudioSignal[]>(() => {
     if (!profile) return [];
@@ -382,9 +397,9 @@ export default function MyPage() {
           />
         )}
 
-        {profile && !actingAsProfileId && (
+        {profileSurface && !actingAsProfileId && (
           <StudioIntelligenceSurface
-            profile={profile}
+            profileSurface={profileSurface}
             completeness={computedCompleteness}
             artworks={artworks}
             exhibitions={exhibitions}

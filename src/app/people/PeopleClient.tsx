@@ -24,6 +24,7 @@ import { SectionFrame } from "@/components/ds/SectionFrame";
 import { Chip } from "@/components/ds/Chip";
 import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
 import { getMyProfile } from "@/lib/supabase/me";
+import { getProfileSurface } from "@/lib/profile/surface";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
@@ -128,29 +129,14 @@ export function PeopleClient() {
     });
     getMyProfile().then(({ data }) => {
       if (!data) return;
-      const p = data as Record<string, unknown>;
-      const details =
-        p.profile_details && typeof p.profile_details === "object"
-          ? (p.profile_details as Record<string, unknown>)
-          : {};
-      const themes = Array.isArray(details.themes)
-        ? (details.themes as string[]).filter((x) => typeof x === "string")
-        : [];
-      const mediums = Array.isArray(details.mediums)
-        ? (details.mediums as string[]).filter((x) => typeof x === "string")
-        : [];
-      const city =
-        typeof details.city === "string"
-          ? (details.city as string)
-          : typeof p.city === "string"
-            ? (p.city as string)
-            : null;
+      const surface = getProfileSurface(data);
+      if (!surface) return;
       setMyProfile({
-        display_name: (p.display_name as string | null) ?? null,
-        main_role: (p.main_role as string | null) ?? null,
-        themes,
-        mediums,
-        city,
+        display_name: surface.displayName,
+        main_role: surface.mainRole,
+        themes: [...surface.details.themes],
+        mediums: [...surface.details.mediums],
+        city: surface.details.city,
       });
     });
   }, []);

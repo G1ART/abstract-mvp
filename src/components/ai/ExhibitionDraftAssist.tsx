@@ -4,7 +4,7 @@ import { useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { ExhibitionDraftResult } from "@/lib/ai/types";
@@ -40,7 +40,7 @@ export function ExhibitionDraftAssist({
   works,
   onApplyTitle,
 }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [activeKind, setActiveKind] = useState<Kind | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ExhibitionDraftResult | null>(null);
@@ -60,7 +60,7 @@ export function ExhibitionDraftAssist({
         venueLabel: venueLabel ?? null,
         curatorLabel: curatorLabel ?? null,
         hostLabel: hostLabel ?? null,
-        locale: "ko",
+        locale,
         works,
       },
     });
@@ -105,10 +105,13 @@ export function ExhibitionDraftAssist({
             loading={loading}
             degraded={result ?? undefined}
             drafts={result?.drafts ?? []}
+            currentValue={result?.kind === "title" ? title : ""}
+            applyMode={result?.kind === "title" ? "auto" : "link"}
             onApply={
               result?.kind === "title" && onApplyTitle
                 ? (text) => {
                     onApplyTitle(text);
+                    void acceptAiEvent(result?.aiEventId);
                     void logBetaEvent("ai_accepted", {
                       feature: "exhibition_draft",
                       kind: result.kind,
@@ -118,13 +121,15 @@ export function ExhibitionDraftAssist({
             }
             onCopy={(text) => {
               copyToClipboard(text);
+              void acceptAiEvent(result?.aiEventId);
               void logBetaEvent("ai_accepted", {
                 feature: "exhibition_draft",
                 kind: result?.kind ?? activeKind,
                 via: "copy",
               });
             }}
-            applyLabelKey="ai.exhibition.applyTitle"
+            onDismiss={() => setResult(null)}
+            applyLabelKey={result?.kind === "title" ? "ai.exhibition.applyTitle" : undefined}
             copyLabelKey="ai.exhibition.copy"
           />
         </div>

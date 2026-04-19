@@ -8,20 +8,21 @@ import {
   PORTFOLIO_COPILOT_SYSTEM,
 } from "@/lib/ai/prompts";
 import type { PortfolioSuggestionsResult } from "@/lib/ai/types";
+import { parsePortfolioBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
 
-type Body = { portfolio?: PortfolioContextInput };
-
 export async function POST(req: Request) {
-  return handleAiRoute<Body, PortfolioSuggestionsResult>(req, {
+  return handleAiRoute<PortfolioContextInput, PortfolioSuggestionsResult>(req, {
     feature: "portfolio_copilot",
+    validateBody: (raw) => {
+      const r = parsePortfolioBody(raw);
+      return r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
+    },
     async buildPromptInput({ body }) {
-      const portfolio = body?.portfolio ?? { artworks: [], exhibitions: [] };
-      const user = buildPortfolioCopilotContext(portfolio);
       return {
         system: PORTFOLIO_COPILOT_SYSTEM,
-        user,
+        user: buildPortfolioCopilotContext(body),
         schemaHint: PORTFOLIO_COPILOT_SCHEMA,
         fallback: () => ({ suggestions: [] }),
       };

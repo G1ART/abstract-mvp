@@ -409,6 +409,7 @@ export default function MyInquiriesPage() {
                                 : "owner") as "inquirer" | "owner",
                               text: m.body ?? "",
                             }))}
+                          currentReply={replyText[row.id] ?? ""}
                           onApply={(text) =>
                             setReplyText((prev) => ({ ...prev, [row.id]: text }))
                           }

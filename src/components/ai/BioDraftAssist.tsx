@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
+import { readTone, writeTone } from "@/lib/ai/tonePrefs";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { BioDraftResult } from "@/lib/ai/types";
 
 type Tone = "concise" | "warm" | "curatorial";
+const TONES: readonly Tone[] = ["concise", "warm", "curatorial"] as const;
 
 type Props = {
   currentBio: string;
@@ -31,10 +33,15 @@ export function BioDraftAssist({
   selectedArtworks,
   onApply,
 }: Props) {
-  const { t } = useT();
-  const [tone, setTone] = useState<Tone>("concise");
+  const { t, locale } = useT();
+  const [tone, setTone] = useState<Tone>(() => readTone<Tone>("bio", TONES, "concise"));
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BioDraftResult | null>(null);
+
+  const updateTone = (next: Tone) => {
+    setTone(next);
+    writeTone("bio", next);
+  };
 
   const weakContext = themes.length === 0 && mediums.length === 0 && !city;
 
@@ -49,7 +56,7 @@ export function BioDraftAssist({
         mediums,
         city,
         selectedArtworks,
-        locale: "ko",
+        locale,
       },
     });
     setResult(res);
@@ -57,15 +64,15 @@ export function BioDraftAssist({
   };
 
   const handleApply = (text: string) => {
-    if (currentBio.trim().length > 0) {
-      const ok =
-        typeof window === "undefined"
-          ? true
-          : window.confirm(t("ai.bio.warnOverwrite"));
-      if (!ok) return;
-    }
     onApply(text);
-    void logBetaEvent("ai_accepted", { feature: "bio_draft" });
+    void acceptAiEvent(result?.aiEventId);
+    void logBetaEvent("ai_accepted", { feature: "bio_draft", tone });
+  };
+
+  const handleCopy = (text: string) => {
+    copyToClipboard(text);
+    void acceptAiEvent(result?.aiEventId);
+    void logBetaEvent("ai_accepted", { feature: "bio_draft", tone, via: "copy" });
   };
 
   return (
@@ -74,27 +81,16 @@ export function BioDraftAssist({
         <span className="text-[11px] uppercase tracking-wide text-zinc-500">
           {t("ai.bio.panel.title")}
         </span>
-        <button
-          type="button"
-          onClick={() => setTone("concise")}
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone === "concise" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
-        >
-          {t("ai.bio.toneConcise")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setTone("warm")}
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone === "warm" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
-        >
-          {t("ai.bio.toneWarm")}
-        </button>
-        <button
-          type="button"
-          onClick={() => setTone("curatorial")}
-          className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone === "curatorial" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
-        >
-          {t("ai.bio.toneCuratorial")}
-        </button>
+        {TONES.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => updateTone(opt)}
+            className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone === opt ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
+          >
+            {t(`ai.bio.tone${opt.charAt(0).toUpperCase() + opt.slice(1)}` as never)}
+          </button>
+        ))}
         <button
           type="button"
           onClick={trigger}
@@ -123,8 +119,11 @@ export function BioDraftAssist({
           loading={loading}
           degraded={result ?? undefined}
           drafts={result?.drafts ?? []}
+          currentValue={currentBio}
+          applyMode="auto"
           onApply={handleApply}
-          onCopy={(text) => copyToClipboard(text)}
+          onCopy={handleCopy}
+          onDismiss={() => setResult(null)}
         />
       )}
     </div>

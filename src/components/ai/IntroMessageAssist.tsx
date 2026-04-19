@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { IntroMessageDraftResult } from "@/lib/ai/types";
@@ -15,7 +15,7 @@ type Props = {
 };
 
 export function IntroMessageAssist({ me, recipient, variant = "button" }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IntroMessageDraftResult | null>(null);
@@ -24,7 +24,7 @@ export function IntroMessageAssist({ me, recipient, variant = "button" }: Props)
     if (!open) setOpen(true);
     setLoading(true);
     const res = await aiApi.introMessageDraft({
-      intro: { me, recipient, locale: "ko" },
+      intro: { me, recipient, locale },
     });
     setResult(res);
     setLoading(false);
@@ -52,14 +52,19 @@ export function IntroMessageAssist({ me, recipient, variant = "button" }: Props)
           loading={loading}
           degraded={result ?? undefined}
           drafts={result?.drafts ?? []}
+          applyMode="link"
           onCopy={(text) => {
             copyToClipboard(text);
+            void acceptAiEvent(result?.aiEventId);
             void logBetaEvent("ai_accepted", {
               feature: "intro_message_draft",
               recipientId: recipient.id,
             });
           }}
-          onApply={undefined}
+          onDismiss={() => {
+            setResult(null);
+            setOpen(false);
+          }}
         />
       )}
       <button

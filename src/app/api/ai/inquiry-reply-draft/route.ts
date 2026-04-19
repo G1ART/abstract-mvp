@@ -5,24 +5,31 @@ import {
 } from "@/lib/ai/contexts";
 import { INQUIRY_REPLY_SCHEMA, INQUIRY_REPLY_SYSTEM } from "@/lib/ai/prompts";
 import type { InquiryReplyDraftResult } from "@/lib/ai/types";
+import { parseInquiryBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
 
-type Body = { inquiry?: InquiryReplyInput };
-
 export async function POST(req: Request) {
-  return handleAiRoute<Body, InquiryReplyDraftResult>(req, {
+  return handleAiRoute<InquiryReplyInput, InquiryReplyDraftResult>(req, {
     feature: "inquiry_reply_draft",
+    validateBody: (raw) => {
+      const r = parseInquiryBody(raw);
+      if (!r.ok) return { ok: false, reason: r.reason };
+      const { artwork, ...rest } = r.value;
+      const value: InquiryReplyInput = {
+        ...rest,
+        artwork: artwork ?? undefined,
+      };
+      return { ok: true, value };
+    },
     async buildPromptInput({ body }) {
-      const inquiry: InquiryReplyInput =
-        body?.inquiry ?? { tone: "warm", kind: "reply" };
       return {
         system: INQUIRY_REPLY_SYSTEM,
-        user: buildInquiryReplyContext(inquiry),
+        user: buildInquiryReplyContext(body),
         schemaHint: INQUIRY_REPLY_SCHEMA,
         fallback: () => ({
-          tone: inquiry.tone,
-          kind: inquiry.kind,
+          tone: body.tone,
+          kind: body.kind,
           drafts: [],
         }),
       };

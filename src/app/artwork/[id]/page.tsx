@@ -750,6 +750,7 @@ function ArtworkDetailContent() {
                                     : "owner") as "inquirer" | "owner",
                                   text: m.body ?? "",
                                 }))}
+                              currentReply={artistReplyText[row.id] ?? ""}
                               onApply={(text) =>
                                 setArtistReplyText((prev) => ({
                                   ...prev,

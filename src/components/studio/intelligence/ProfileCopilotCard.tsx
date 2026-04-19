@@ -5,7 +5,7 @@ import { useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi } from "@/lib/ai/browser";
+import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import type {
   ProfileSuggestionsResult,
@@ -28,6 +28,8 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
     setResult(res);
     setLoading(false);
   };
+
+  const aiEventId = result?.aiEventId ?? null;
 
   const reason = result?.degraded ? result.reason : null;
   const errorKey = reason
@@ -91,7 +93,7 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
               </p>
               <ul className="mt-2 flex flex-col gap-2">
                 {result.suggestions.map((s) => (
-                  <SuggestionRow key={s.id} suggestion={s} />
+                  <SuggestionRow key={s.id} suggestion={s} aiEventId={aiEventId} />
                 ))}
               </ul>
             </div>
@@ -107,9 +109,16 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
   );
 }
 
-function SuggestionRow({ suggestion }: { suggestion: ProfileSuggestion }) {
+function SuggestionRow({
+  suggestion,
+  aiEventId,
+}: {
+  suggestion: ProfileSuggestion;
+  aiEventId: string | null;
+}) {
   const { t } = useT();
   const onAccept = () => {
+    void acceptAiEvent(aiEventId);
     void logBetaEvent("ai_accepted", { feature: "profile_copilot", id: suggestion.id });
   };
   return (

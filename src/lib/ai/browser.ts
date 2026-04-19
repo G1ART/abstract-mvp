@@ -36,6 +36,41 @@ function degradedFallback<T extends AiDegradation>(
   return { ...(base as object), degraded: true, reason } as T;
 }
 
+async function getAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mark an AI event as "accepted" — this is the canonical truth for
+ * ai_events.accepted. Call this anywhere a user adopts a draft (insert /
+ * replace / append / copy / click an AI-proposed action). Fails silently —
+ * the draft must still be applied even if telemetry is unreachable.
+ */
+export async function acceptAiEvent(aiEventId: string | null | undefined): Promise<void> {
+  if (!aiEventId) return;
+  const token = await getAccessToken();
+  if (!token) return;
+  try {
+    await fetch("/api/ai/accept", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ aiEventId }),
+      cache: "no-store",
+      keepalive: true,
+    });
+  } catch {
+    // telemetry must never block UX
+  }
+}
+
 export async function callAi<T extends AiDegradation>(
   feature: AiFeatureKey,
   body: Record<string, unknown>,
@@ -43,13 +78,7 @@ export async function callAi<T extends AiDegradation>(
   opts?: CallAiOptions,
 ): Promise<T> {
   const path = FEATURE_TO_PATH[feature];
-  let token: string | null = null;
-  try {
-    const { data } = await supabase.auth.getSession();
-    token = data.session?.access_token ?? null;
-  } catch {
-    token = null;
-  }
+  const token = await getAccessToken();
   if (!token) return degradedFallback<T>("unauthorized", fallback);
 
   try {
@@ -63,11 +92,19 @@ export async function callAi<T extends AiDegradation>(
       signal: opts?.signal,
       cache: "no-store",
     });
+    if (resp.status === 400) {
+      return degradedFallback<T>("invalid_input", fallback);
+    }
     if (resp.status === 429) {
       return degradedFallback<T>("cap", fallback);
     }
     if (resp.status === 503) {
-      return degradedFallback<T>("no_key", fallback);
+      try {
+        const body = (await resp.json()) as T;
+        return body;
+      } catch {
+        return degradedFallback<T>("no_key", fallback);
+      }
     }
     if (!resp.ok) {
       return degradedFallback<T>("error", fallback);

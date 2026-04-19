@@ -2,6 +2,74 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — AI Wave 1 Hardening Patch
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "Wave 1 AI 레이어를 신뢰 경계·로케일·텔레메트리·SSOT·액션 어휘·라우트 하드닝 축에서 마감한다. 신규 기능 없음."
+
+### 1. 스코프 (7 트랙)
+
+| 트랙 | 내용 |
+|---|---|
+| A. Trust-boundary | `MatchmakerCard` 포함 모든 AI surface에서 마운트 자동 생성 제거. `Generate draft`를 명시적 CTA로 통일. `tests/ai-safety.mjs` (npm `test:ai-safety`)로 (1) AI 컴포넌트 `useEffect` 내 `trigger/fetch/callAi` 금지, (2) `/api/ai/*` 라우트가 메시지/알림/팔로우 같은 외부 부작용을 갖지 않음, (3) 코드베이스 어디에도 `locale: "ko"` 하드코드가 없음을 정적으로 보장. |
+| B. Locale correctness | `src/lib/i18n/useT.ts`의 `locale`을 모든 AI 컴포넌트/`StudioIntelligenceSurface`에 전달. 모든 `/api/ai/*` 요청 body에 실제 UI 로케일을 실어 보냄. 하드코드 `"ko"` 전량 제거. |
+| C. Acceptance telemetry | `logAiEvent`가 `ai_events.id`를 반환. 새 라우트 `POST /api/ai/accept`가 owner-RLS로 `accepted=true` 플립. 마이그레이션 `20260419150000_ai_events_accepted.sql`이 `ai_events_update_own` UPDATE 정책 추가. 클라이언트 `acceptAiEvent`를 모든 apply/copy/link 경로에 연결. |
+| D. Profile SSOT | `/my`, `StudioIntelligenceSurface`, `/people`에서 `profile_details` 직접 머지 중단. 모두 `getProfileSurface(profile)` 결과의 `ProfileSurface` 타입만 소비. |
+| E. Action vocabulary | `AiDraftPanel`에 `ApplyMode = "insert" \| "append" \| "replace" \| "link"` 정식 도입. `"auto"`는 `currentValue` 유무로 insert ↔ replace 결정. replace는 `window.confirm`. `onDismiss` 제공. `ai.action.*` i18n 키 추가. |
+| F. Route hardening | 신규 `src/lib/ai/validation.ts`로 8개 라우트마다 `parse*Body` 화이트리스트 검증 + 컨텍스트 크기 가드 (`LIMITS`). 검증 실패 시 400 `{degraded:true, reason:"invalid_input"}`. `handleAiRoute`는 성공·no_key·에러 어디서든 `aiEventId`를 일관되게 반환. |
+| G. Wave 2 readiness | `src/lib/ai/tonePrefs.ts`가 `localStorage` 기반으로 서페이스별 마지막 톤을 기억 (`ai.tone.bio`, `ai.tone.inquiry`). `AiDraftPanel`의 인서션 포인트(`currentValue` + `onApply(mode)`)를 안정화하여 Wave 2 액션 연결 지점 고정. |
+
+### 2. 핵심 파일
+
+```
+src/lib/ai/
+  ├─ types.ts          (AiDegradation에 aiEventId, "invalid_input" reason, AiLocale)
+  ├─ events.ts         (logAiEvent → Promise<string|null>, markAiEventAccepted 추가)
+  ├─ validation.ts     (신규, 라우트 body 스키마 + LIMITS)
+  ├─ route.ts          (validateBody 훅, degradedResponse 통일, aiEventId 응답)
+  ├─ browser.ts        (acceptAiEvent, getAccessToken, 400/503 처리)
+  └─ tonePrefs.ts      (신규, localStorage 톤 기억)
+
+src/app/api/ai/accept/route.ts   (신규)
+supabase/migrations/20260419150000_ai_events_accepted.sql  (신규)
+
+src/components/ai/
+  ├─ AiDraftPanel.tsx         (ApplyMode, Replace confirm, onDismiss)
+  ├─ BioDraftAssist.tsx       (useState lazy + tonePrefs + acceptAiEvent)
+  ├─ InquiryReplyAssist.tsx   (동일 + currentReply prop)
+  ├─ ExhibitionDraftAssist.tsx, IntroMessageAssist.tsx
+
+src/components/studio/
+  ├─ StudioIntelligenceSurface.tsx  (ProfileSurface prop, locale 플럼빙)
+  └─ intelligence/{Profile,Portfolio,WeeklyDigest,Matchmaker}Card.tsx
+
+src/app/my/page.tsx, src/app/people/PeopleClient.tsx (getProfileSurface 통일)
+
+tests/ai-safety.mjs  (신규)
+```
+
+### 3. RLS / DB 변경
+
+`ai_events_update_own` (owner UPDATE). 라우트는 `accepted` 외 컬럼을 쓰지 않는다 (API 레이어에서 보장, RLS는 소유권만 보장).
+
+### 4. 검증
+
+- `npx tsc --noEmit` — 통과.
+- `npm run test:ai-safety` — AI safety: all invariants hold.
+- `supabase db push` — 신규 마이그레이션 적용 완료.
+- 수동 QA (EN/KO, 8개 라우트, Studio 초기 진입 자동 생성 없음, apply 시 `ai_events.accepted=true` 확인) 는 `docs/QA_MEGA_UPGRADE.md`의 Wave 1 체크리스트를 재사용.
+
+### 5. 리스크 / 노트
+
+- `acceptAiEvent`는 best-effort. 네트워크 실패 시 사용자 흐름을 막지 않음. 집계상 `accepted_events / total_events` 가 아주 약간 과소계수될 수 있음.
+- `tonePrefs`는 오직 로컬. 계정 연동 아님.
+- `validation.LIMITS` 값(예: 포트폴리오 24작품, 바이오 8,000자)은 토큰 비용 기준 초기 추정치. `ai_events.context_size` 분포를 본 뒤 조정.
+
+---
+
 ## 2026-04-19 — AI-Native Studio Layer (Wave 1)
 
 브랜치: 현재 작업 브랜치.

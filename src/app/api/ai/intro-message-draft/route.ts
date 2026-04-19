@@ -5,20 +5,21 @@ import {
 } from "@/lib/ai/contexts";
 import { INTRO_MESSAGE_SCHEMA, INTRO_MESSAGE_SYSTEM } from "@/lib/ai/prompts";
 import type { IntroMessageDraftResult } from "@/lib/ai/types";
+import { parseIntroBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
 
-type Body = { intro?: IntroMessageInput };
-
 export async function POST(req: Request) {
-  return handleAiRoute<Body, IntroMessageDraftResult>(req, {
+  return handleAiRoute<IntroMessageInput, IntroMessageDraftResult>(req, {
     feature: "intro_message_draft",
+    validateBody: (raw) => {
+      const r = parseIntroBody(raw);
+      return r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
+    },
     async buildPromptInput({ body }) {
-      const intro: IntroMessageInput =
-        body?.intro ?? { me: {}, recipient: {} };
       return {
         system: INTRO_MESSAGE_SYSTEM,
-        user: buildIntroMessageContext(intro),
+        user: buildIntroMessageContext(body),
         schemaHint: INTRO_MESSAGE_SCHEMA,
         fallback: () => ({ drafts: [] }),
       };

@@ -8,17 +8,7 @@ import { WeeklyDigestCard } from "./intelligence/WeeklyDigestCard";
 import { MatchmakerCard } from "./intelligence/MatchmakerCard";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import type { ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
-
-type Profile = {
-  id: string;
-  username: string | null;
-  display_name: string | null;
-  main_role: string | null;
-  roles: string[] | null;
-  profile_completeness?: number | null;
-  profile_details?: Record<string, unknown> | null;
-  bio?: string | null;
-};
+import type { ProfileSurface } from "@/lib/profile/surface";
 
 type Stats = {
   artworkCount?: number | null;
@@ -27,7 +17,14 @@ type Stats = {
 };
 
 type Props = {
-  profile: Profile;
+  /**
+   * Typed profile surface (see `src/lib/profile/surface.ts`). The page owner
+   * is responsible for calling `getProfileSurface(profile)` once and passing
+   * the result here so this component never reaches into `profile_details`
+   * blobs directly. Intelligence consumers read ONLY from allow-listed
+   * surface fields — anything else lives in legacy JSON we do not surface.
+   */
+  profileSurface: ProfileSurface;
   completeness: number | null;
   artworks: ArtworkWithLikes[];
   exhibitions: ExhibitionWithCredits[];
@@ -35,18 +32,6 @@ type Props = {
   viewsCount7d: number | null;
   inquiries7d: number;
 };
-
-function toStringArray(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return [];
-  const out: string[] = [];
-  for (const v of raw) {
-    if (typeof v === "string") {
-      const s = v.trim();
-      if (s) out.push(s);
-    }
-  }
-  return out;
-}
 
 /**
  * Studio intelligence area. Composes ProfileCopilot, PortfolioCopilot,
@@ -56,7 +41,7 @@ function toStringArray(raw: unknown): string[] {
  * separate human confirmation.
  */
 export function StudioIntelligenceSurface({
-  profile,
+  profileSurface,
   completeness,
   artworks,
   exhibitions,
@@ -64,28 +49,22 @@ export function StudioIntelligenceSurface({
   viewsCount7d,
   inquiries7d,
 }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
 
-  const details = (profile.profile_details ?? {}) as Record<string, unknown>;
-  const themes = toStringArray(details.themes ?? (profile as Record<string, unknown>).themes);
-  const mediums = toStringArray(details.mediums ?? (profile as Record<string, unknown>).mediums);
-  const city =
-    typeof details.city === "string"
-      ? (details.city as string)
-      : typeof (profile as Record<string, unknown>).city === "string"
-        ? ((profile as Record<string, unknown>).city as string)
-        : null;
+  const themes = useMemo(() => [...profileSurface.details.themes], [profileSurface.details.themes]);
+  const mediums = useMemo(() => [...profileSurface.details.mediums], [profileSurface.details.mediums]);
+  const city = profileSurface.details.city;
 
   const profileInput = useMemo(
     () => ({
-      display_name: profile.display_name,
-      username: profile.username,
-      role: profile.main_role,
-      bio: profile.bio ?? (details.bio as string | undefined) ?? null,
+      display_name: profileSurface.displayName,
+      username: profileSurface.username,
+      role: profileSurface.mainRole,
+      bio: profileSurface.bio,
       themes,
       mediums,
       city,
-      locale: "ko",
+      locale,
       counts: {
         artworks: artworks.length,
         exhibitions: exhibitions.length,
@@ -93,12 +72,12 @@ export function StudioIntelligenceSurface({
         views7d: viewsCount7d ?? 0,
       },
     }),
-    [profile, details.bio, themes, mediums, city, artworks.length, exhibitions.length, stats?.followersCount, viewsCount7d],
+    [profileSurface, themes, mediums, city, artworks.length, exhibitions.length, stats?.followersCount, viewsCount7d, locale],
   );
 
   const portfolioInput = useMemo(
     () => ({
-      username: profile.username,
+      username: profileSurface.username,
       artworks: artworks.slice(0, 20).map((a) => ({
         id: a.id,
         title: a.title ?? null,
@@ -113,7 +92,7 @@ export function StudioIntelligenceSurface({
         venue: (e as Record<string, unknown>).venue as string | null | undefined ?? null,
       })),
     }),
-    [profile.username, artworks, exhibitions],
+    [profileSurface.username, artworks, exhibitions],
   );
 
   const digestInput = useMemo(
@@ -123,9 +102,9 @@ export function StudioIntelligenceSurface({
       recentExhibitions: exhibitions.slice(0, 3).map((e) => ({
         title: e.title ?? "",
       })),
-      locale: "ko",
+      locale,
     }),
-    [viewsCount7d, inquiries7d, exhibitions],
+    [viewsCount7d, inquiries7d, exhibitions, locale],
   );
 
   const matchmakerMe = useMemo(

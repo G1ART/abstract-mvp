@@ -8,18 +8,29 @@ import type { AiDegradation, AiFeatureKey } from "./types";
 
 export type RouteHandlerInput<TBody> = {
   feature: AiFeatureKey;
-  /** JSON body type. The caller is responsible for validating shape. */
   body: TBody;
   userId: string;
   supabase: SupabaseClient;
   accessToken: string;
 };
 
+export type PreparedPrompt<TResult extends AiDegradation> = {
+  system: string;
+  user: string;
+  schemaHint: string;
+  fallback: () => TResult;
+};
+
 export type RouteHandlerDefinition<TBody, TResult extends AiDegradation> = {
   feature: AiFeatureKey;
+  /**
+   * Validate and normalize the request body. Returning `{ ok: false, reason }`
+   * makes the route reply with `400 { degraded: true, reason: "invalid_input", validation }`.
+   */
+  validateBody?: (raw: unknown) => { ok: true; value: TBody } | { ok: false; reason: string };
   buildPromptInput: (
     input: RouteHandlerInput<TBody>,
-  ) => Promise<{ system: string; user: string; schemaHint: string; fallback: () => TResult } | NextResponse>;
+  ) => Promise<PreparedPrompt<TResult> | NextResponse>;
 };
 
 function buildSupabaseForToken(token: string): SupabaseClient | null {
@@ -32,6 +43,22 @@ function buildSupabaseForToken(token: string): SupabaseClient | null {
   });
 }
 
+/**
+ * Consistent error contract for every AI route: the body always carries
+ * `degraded: true` and a stable `reason` enum so the browser helper can
+ * surface the correct i18n fallback copy.
+ */
+function degradedResponse(
+  status: number,
+  reason: AiDegradation["reason"] | "invalid_input",
+  extra?: Record<string, unknown>,
+): NextResponse {
+  return NextResponse.json(
+    { degraded: true, reason, ...(extra ?? {}) },
+    { status },
+  );
+}
+
 export async function handleAiRoute<TBody, TResult extends AiDegradation>(
   req: Request,
   def: RouteHandlerDefinition<TBody, TResult>,
@@ -41,28 +68,33 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
 
     const authHeader = req.headers.get("authorization") || req.headers.get("Authorization");
     const token = authHeader?.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : "";
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!token) return degradedResponse(401, "unauthorized");
 
     const supabase = buildSupabaseForToken(token);
-    if (!supabase) {
-      return NextResponse.json({ error: "Server misconfigured" }, { status: 500 });
-    }
+    if (!supabase) return degradedResponse(500, "error", { error: "Server misconfigured" });
 
     const {
       data: { user },
       error: authErr,
     } = await supabase.auth.getUser();
-    if (authErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (authErr || !user) return degradedResponse(401, "unauthorized");
+
+    let rawBody: unknown = {};
+    try {
+      rawBody = await req.json();
+    } catch {
+      rawBody = {};
     }
 
     let body: TBody;
-    try {
-      body = (await req.json()) as TBody;
-    } catch {
-      body = {} as TBody;
+    if (def.validateBody) {
+      const parsed = def.validateBody(rawBody);
+      if (!parsed.ok) {
+        return degradedResponse(400, "invalid_input", { validation: parsed.reason });
+      }
+      body = parsed.value;
+    } else {
+      body = rawBody as TBody;
     }
 
     try {
@@ -74,10 +106,7 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
           feature_key: def.feature,
           error_code: "cap",
         });
-        return NextResponse.json(
-          { degraded: true, reason: "cap", error: "Soft cap reached" },
-          { status: 429 },
-        );
+        return degradedResponse(429, "cap", { error: "Soft cap reached" });
       }
       throw err;
     }
@@ -94,13 +123,18 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
 
     const hasKey = Boolean(process.env.OPENAI_API_KEY);
     if (!hasKey) {
-      await logAiEvent(supabase, {
+      const aiEventId = await logAiEvent(supabase, {
         user_id: user.id,
         feature_key: def.feature,
         error_code: "no_key",
       });
       return NextResponse.json(
-        { ...prepared.fallback(), degraded: true, reason: "no_key" },
+        {
+          ...prepared.fallback(),
+          degraded: true,
+          reason: "no_key",
+          ...(aiEventId ? { aiEventId } : {}),
+        },
         { status: 503 },
       );
     }
@@ -121,7 +155,7 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
       clearTimeout(timeout);
     }
 
-    await logAiEvent(supabase, {
+    const aiEventId = await logAiEvent(supabase, {
       user_id: user.id,
       feature_key: def.feature,
       context_size: result.meta.contextSize,
@@ -130,13 +164,15 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
       error_code: result.meta.errorCode,
     });
 
-    return NextResponse.json(result.data, { status: 200 });
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[ai/route] unexpected", err);
     return NextResponse.json(
-      { degraded: true, reason: "error", error: "Unexpected error" },
-      { status: 500 },
+      {
+        ...result.data,
+        ...(aiEventId ? { aiEventId } : {}),
+      },
+      { status: 200 },
     );
+  } catch (err) {
+    console.error("[ai/route] unexpected", err);
+    return degradedResponse(500, "error", { error: "Unexpected error" });
   }
 }

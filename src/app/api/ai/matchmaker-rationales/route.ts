@@ -8,20 +8,21 @@ import {
   MATCHMAKER_RATIONALES_SYSTEM,
 } from "@/lib/ai/prompts";
 import type { MatchmakerRationalesResult } from "@/lib/ai/types";
+import { parseMatchmakerBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
 
-type Body = { matchmaker?: MatchmakerRationaleInput };
-
 export async function POST(req: Request) {
-  return handleAiRoute<Body, MatchmakerRationalesResult>(req, {
+  return handleAiRoute<MatchmakerRationaleInput, MatchmakerRationalesResult>(req, {
     feature: "matchmaker_rationales",
+    validateBody: (raw) => {
+      const r = parseMatchmakerBody(raw);
+      return r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
+    },
     async buildPromptInput({ body }) {
-      const matchmaker: MatchmakerRationaleInput =
-        body?.matchmaker ?? { me: {}, candidates: [] };
       return {
         system: MATCHMAKER_RATIONALES_SYSTEM,
-        user: buildMatchmakerRationaleContext(matchmaker),
+        user: buildMatchmakerRationaleContext(body),
         schemaHint: MATCHMAKER_RATIONALES_SCHEMA,
         fallback: () => ({ rationales: [] }),
       };

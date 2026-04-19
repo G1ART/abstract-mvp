@@ -4,24 +4,62 @@ import { useT } from "@/lib/i18n/useT";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import type { AiDegradation } from "@/lib/ai/types";
 
+/**
+ * How adopting a single draft text should behave relative to the host
+ * field the draft will end up in.
+ *
+ * - `insert`: field is empty (or append-to-empty); one-click apply.
+ * - `append`: field has content; draft is concatenated with a separator.
+ * - `replace`: field has content; we ask for explicit confirmation before
+ *   overwriting.
+ *
+ * When the caller isn't a text field (e.g. Studio suggestion link,
+ * copy-only intro draft) use `mode: "link"` and provide only `onCopy`.
+ */
+export type ApplyMode = "insert" | "append" | "replace" | "link";
+
 type Props = {
   title?: string;
   hint?: string;
   loading?: boolean;
   degraded?: AiDegradation;
   drafts: string[];
-  onApply?: (text: string) => void;
+  /**
+   * Runs when the user adopts a single draft as their new value. The panel
+   * handles the Replace confirmation internally before invoking it. The
+   * callback receives the composed text (already merged for `append`).
+   */
+  onApply?: (text: string, mode: Exclude<ApplyMode, "link">) => void;
   onCopy?: (text: string) => void;
+  onDismiss?: () => void;
+  /**
+   * Current value of the text field the draft would land in. Used to pick
+   * between Insert / Replace / Append when applyMode is `auto`.
+   */
+  currentValue?: string;
+  /** Default: `auto`, which picks `insert` when the field is empty else `replace`. */
+  applyMode?: ApplyMode | "auto";
+  /** Optional custom label override for the primary apply button. */
   applyLabelKey?: string;
   copyLabelKey?: string;
   emptyKey?: string;
 };
 
-/**
- * Shared preview panel for textual AI drafts. Renders each draft as an
- * editable-copy block with an "apply" and "copy" affordance. The caller
- * decides what apply does (insert into a textarea, replace field, etc.).
- */
+const MODE_LABEL: Record<Exclude<ApplyMode, "link">, string> = {
+  insert: "ai.action.insert",
+  append: "ai.action.append",
+  replace: "ai.action.replace",
+};
+
+function resolveMode(
+  preferred: ApplyMode | "auto" | undefined,
+  currentValue: string | undefined,
+): Exclude<ApplyMode, "link"> | "link" {
+  if (preferred === "link") return "link";
+  if (preferred && preferred !== "auto") return preferred;
+  return (currentValue ?? "").trim().length === 0 ? "insert" : "replace";
+}
+
 export function AiDraftPanel({
   title,
   hint,
@@ -30,7 +68,10 @@ export function AiDraftPanel({
   drafts,
   onApply,
   onCopy,
-  applyLabelKey = "ai.action.apply",
+  onDismiss,
+  currentValue,
+  applyMode,
+  applyLabelKey,
   copyLabelKey = "ai.action.copy",
   emptyKey = "ai.state.empty",
 }: Props) {
@@ -42,19 +83,61 @@ export function AiDraftPanel({
       ? "ai.error.softCap"
       : reason === "no_key"
         ? "ai.error.unavailable"
-        : "ai.error.tryLater"
+        : reason === "invalid_input"
+          ? "ai.error.invalidInput"
+          : "ai.error.tryLater"
     : null;
+
+  const mode = resolveMode(applyMode, currentValue);
+
+  const handleApply = (draft: string) => {
+    if (!onApply || mode === "link") return;
+    if (mode === "replace") {
+      if (typeof window !== "undefined") {
+        const ok = window.confirm(t("ai.action.confirmReplace"));
+        if (!ok) return;
+      }
+      onApply(draft, "replace");
+      return;
+    }
+    if (mode === "append") {
+      const base = (currentValue ?? "").trimEnd();
+      const next = base.length ? `${base}\n\n${draft}` : draft;
+      onApply(next, "append");
+      return;
+    }
+    onApply(draft, "insert");
+  };
+
+  const primaryLabel = applyLabelKey
+    ? t(applyLabelKey)
+    : mode === "link"
+      ? t("ai.action.apply")
+      : t(MODE_LABEL[mode]);
 
   return (
     <SectionFrame tone="muted" padding="sm" noMargin>
-      {title && (
-        <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-          {title}
-        </p>
-      )}
-      {hint && (
-        <p className="mt-1 text-xs text-zinc-500">{hint}</p>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {title && (
+            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              {title}
+            </p>
+          )}
+          {hint && (
+            <p className="mt-1 text-xs text-zinc-500">{hint}</p>
+          )}
+        </div>
+        {onDismiss && !loading && (drafts.length > 0 || errorKey) && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] font-medium text-zinc-600 hover:border-zinc-400"
+          >
+            {t("ai.action.dismiss")}
+          </button>
+        )}
+      </div>
       {loading && (
         <p className="mt-3 text-xs text-zinc-500">{t("ai.state.loading")}</p>
       )}
@@ -73,13 +156,13 @@ export function AiDraftPanel({
             >
               <p className="whitespace-pre-wrap text-sm text-zinc-800">{d}</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                {onApply && (
+                {onApply && mode !== "link" && (
                   <button
                     type="button"
-                    onClick={() => onApply(d)}
+                    onClick={() => handleApply(d)}
                     className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
                   >
-                    {t(applyLabelKey)}
+                    {primaryLabel}
                   </button>
                 )}
                 {onCopy && (
