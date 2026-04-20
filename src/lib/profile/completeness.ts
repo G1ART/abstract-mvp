@@ -154,3 +154,23 @@ export function computeProfileCompleteness(
 
   return { score, confidence: "high", missingRecommendations: missing };
 }
+
+/**
+ * Single display source for profile completeness across Studio (/my) and
+ * Settings. Prefer the server-persisted `profile_completeness` (written on
+ * save) so the hero bar matches the settings card; fall back to a fresh
+ * client recompute when the column is still null.
+ */
+export function resolveDisplayedProfileCompleteness(
+  profile: { profile_completeness?: number | null },
+  recomputed: number | null | undefined
+): number | null {
+  const db = profile.profile_completeness;
+  if (db != null && Number.isFinite(db)) {
+    return Math.max(0, Math.min(100, Math.round(db)));
+  }
+  if (recomputed != null && Number.isFinite(recomputed)) {
+    return Math.max(0, Math.min(100, Math.round(recomputed)));
+  }
+  return null;
+}

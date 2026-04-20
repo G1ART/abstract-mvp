@@ -1,6 +1,17 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-19
+Last updated: 2026-04-20
+
+## 2026-04-20 — Login EN subtitle, completeness SSOT, upload claim copy
+
+- **`/login` (EN)**: 서브타이틀에서 `[text-wrap:balance]`·`max-w-[32ch]` 제거, 헤더 전체 너비 사용. 두 문장은 각각 블록이지만 영어 2번째 줄이 "Enter your email and" 에서 끊기지 않고 한 줄로 읽히도록 함. KO 는 기존 좁은 measure + balance 유지.
+- **프로필 완성도 불일치 (/my 67% vs 설정 92/100)**:
+  - **원인 1**: Studio(`/my`) 가 `profile_completeness` DB 컬럼을 무시하고 클라이언트 재계산만 표시. 설정은 저장 시 기록된 DB 값을 우선 표시.
+  - **원인 2**: `getProfileSurface` 가 설정과 달리 `profile_details.collector_price_band` / `collector_acquisition_channels` 를 읽지 않아 콜렉터 모듈 점수가 재계산에서 낮게 나옴.
+  - **조치**: `resolveDisplayedProfileCompleteness()` 로 **DB 값 우선, 없으면 재계산**을 `/my`·설정 카드에 통일. `surface.ts` 에서 collector_* 레거시 키를 `price_band` / `acquisition_channels` 와 동일 우선순위로 정규화.
+- **업로드 클레임 버튼 카피**: KO/EN 모두 "~만 사용/only" 톤 제거 → `내 작품 (아티스트)`, `소장 작품 (콜렉터)` 등 페르소나 꼬리표만 부드럽게 표기.
+
+---
 
 ## 2026-04-19 — Onboarding Sign-off Hardening Patch (v2)
 

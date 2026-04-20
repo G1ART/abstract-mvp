@@ -11,7 +11,10 @@ import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { profileDetailsFromProfile } from "@/lib/supabase/profileDetails";
-import { computeProfileCompleteness } from "@/lib/profile/completeness";
+import {
+  computeProfileCompleteness,
+  resolveDisplayedProfileCompleteness,
+} from "@/lib/profile/completeness";
 import { makePatch } from "@/lib/profile/diffPatch";
 import {
   normalizeProfileBase,
@@ -407,6 +410,11 @@ export default function SettingsPage() {
     { hasDetailsLoaded: true }
   );
 
+  const profileCompletenessForDisplay = resolveDisplayedProfileCompleteness(
+    { profile_completeness: dbProfileCompleteness },
+    completeness
+  );
+
   function toggleRole(role: string) {
     setRoles((prev) =>
       prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
@@ -794,12 +802,15 @@ export default function SettingsPage() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
               <p className="mb-2 text-sm font-medium text-zinc-700">
-                {t("profile.completeness")}: {dbProfileCompleteness != null && dbProfileCompleteness > 0 ? `${dbProfileCompleteness}/100` : (completeness != null && completeness > 0 ? `${completeness}/100` : "—")}
+                {t("profile.completeness")}:{" "}
+                {profileCompletenessForDisplay != null
+                  ? `${profileCompletenessForDisplay}/100`
+                  : "—"}
               </p>
               <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-200">
                 <div
                   className="h-full bg-zinc-900 transition-all"
-                  style={{ width: `${(dbProfileCompleteness != null && dbProfileCompleteness > 0) || (completeness != null && completeness > 0) ? (dbProfileCompleteness ?? completeness ?? 0) : 0}%` }}
+                  style={{ width: `${profileCompletenessForDisplay ?? 0}%` }}
                 />
               </div>
               <p className="mt-2 text-xs text-zinc-500">{t("profile.completenessHint")}</p>

@@ -18,7 +18,10 @@ import {
   listPublicArtworksListedByProfileId,
   type ArtworkWithLikes,
 } from "@/lib/supabase/artworks";
-import { computeProfileCompleteness } from "@/lib/profile/completeness";
+import {
+  computeProfileCompleteness,
+  resolveDisplayedProfileCompleteness,
+} from "@/lib/profile/completeness";
 import { getProfileSurface, type ProfileSurface } from "@/lib/profile/surface";
 import type { Profile as FullProfile } from "@/lib/supabase/profiles";
 import {
@@ -153,7 +156,9 @@ export default function MyPage() {
             },
             { hasDetailsLoaded: true }
           );
-          setComputedCompleteness(score);
+          setComputedCompleteness(
+            resolveDisplayedProfileCompleteness(profileData, score)
+          );
         } else {
           setComputedCompleteness(null);
         }

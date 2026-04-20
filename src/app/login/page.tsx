@@ -43,7 +43,7 @@ function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = safeNextPath(searchParams.get("next"));
-  const { t } = useT();
+  const { t, locale } = useT();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -128,11 +128,16 @@ function LoginInner() {
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4 py-12">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold text-zinc-900">{t("login.title")}</h1>
-        {/* Sentence-aware subtitle: each clause renders on its own line so
-            the block reads as a calm two-beat greeting rather than an
-            arbitrary text-wrap. `text-wrap: balance` still keeps each
-            line visually centered on narrow viewports. */}
-        <p className="mt-2 max-w-[32ch] text-sm leading-relaxed text-zinc-600 [text-wrap:balance]">
+        {/* KO: narrow measure + balanced wrapping. EN: full header width so
+            "Enter your email and password to continue." stays one line on
+            typical phones (no awkward break after "and"). */}
+        <p
+          className={
+            locale === "ko"
+              ? "mt-2 max-w-[32ch] text-sm leading-relaxed text-zinc-600 [text-wrap:balance]"
+              : "mt-2 w-full min-w-0 text-sm leading-relaxed text-zinc-600"
+          }
+        >
           <span className="block">{t("login.welcomeBackTitle")}</span>
           <span className="block">{t("login.welcomeBackHint")}</span>
         </p>

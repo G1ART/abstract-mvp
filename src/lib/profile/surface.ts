@@ -26,7 +26,8 @@ export type ProfileSurfaceDetails = {
   mediums: readonly string[];
   styles: readonly string[];
   keywords: readonly string[];
-  price_band: string | null;
+  /** Normalized for completeness + UI; may be a single band or list (collector). */
+  price_band: string | string[] | null;
   acquisition_channels: readonly string[];
   affiliation: string | null;
   program_focus: readonly string[];
@@ -72,6 +73,37 @@ function unknownArray(v: unknown): readonly unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
+/**
+ * Align with settings: collector fields often live only under
+ * `profile_details.collector_price_band` / `collector_acquisition_channels`.
+ */
+function normalizePriceBandField(profile: Profile, legacy: Record<string, unknown> | null): string | string[] | null {
+  const top = profile.price_band;
+  const fromLegacyBand = legacy?.price_band;
+  const fromCollector = legacy?.collector_price_band;
+  const raw = top ?? fromCollector ?? fromLegacyBand;
+  if (raw == null) return null;
+  if (Array.isArray(raw)) {
+    const arr = stringArrayOrEmpty(raw);
+    return arr.length ? [...arr] : null;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed.length ? raw : null;
+  }
+  return null;
+}
+
+function normalizeAcquisitionChannels(profile: Profile, legacy: Record<string, unknown> | null): readonly string[] {
+  const top = profile.acquisition_channels;
+  if (Array.isArray(top) && top.length > 0) return stringArrayOrEmpty(top);
+  const leg = legacy?.acquisition_channels;
+  if (Array.isArray(leg) && leg.length > 0) return stringArrayOrEmpty(leg);
+  const coll = legacy?.collector_acquisition_channels;
+  if (Array.isArray(coll)) return stringArrayOrEmpty(coll);
+  return [];
+}
+
 function pickDetail<T>(
   top: unknown,
   legacy: Record<string, unknown> | null,
@@ -106,13 +138,8 @@ export function getProfileSurface(profile: Profile | null | undefined): ProfileS
     mediums: pickDetail(profile.mediums, legacy, "mediums", stringArrayOrEmpty),
     styles: pickDetail(profile.styles, legacy, "styles", stringArrayOrEmpty),
     keywords: pickDetail(profile.keywords, legacy, "keywords", stringArrayOrEmpty),
-    price_band: pickDetail(profile.price_band, legacy, "price_band", stringOrNull),
-    acquisition_channels: pickDetail(
-      profile.acquisition_channels,
-      legacy,
-      "acquisition_channels",
-      stringArrayOrEmpty
-    ),
+    price_band: normalizePriceBandField(profile, legacy),
+    acquisition_channels: normalizeAcquisitionChannels(profile, legacy),
     affiliation: pickDetail(profile.affiliation, legacy, "affiliation", stringOrNull),
     program_focus: pickDetail(
       profile.program_focus,
