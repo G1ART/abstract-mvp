@@ -126,25 +126,24 @@ AS $$
 DECLARE
   v_uid        uuid := auth.uid();
   v_normalized text := lower(btrim(COALESCE(p_username, '')));
-  v_owner_id   uuid;
 BEGIN
   IF v_normalized = '' THEN
-    RETURN QUERY SELECT false, 'empty';
+    RETURN QUERY SELECT false AS available, 'empty'::text AS reason;
     RETURN;
   END IF;
 
   IF length(v_normalized) < 3 OR length(v_normalized) > 20 THEN
-    RETURN QUERY SELECT false, 'invalid';
+    RETURN QUERY SELECT false AS available, 'invalid'::text AS reason;
     RETURN;
   END IF;
 
   IF v_normalized !~ '^[a-z0-9_]+$' THEN
-    RETURN QUERY SELECT false, 'invalid';
+    RETURN QUERY SELECT false AS available, 'invalid'::text AS reason;
     RETURN;
   END IF;
 
   IF public.is_placeholder_username(v_normalized) THEN
-    RETURN QUERY SELECT false, 'reserved';
+    RETURN QUERY SELECT false AS available, 'reserved'::text AS reason;
     RETURN;
   END IF;
 
@@ -153,26 +152,30 @@ BEGIN
     'abstract', 'official', 'api', 'me', 'my', 'anon',
     'system', 'null', 'undefined'
   ) THEN
-    RETURN QUERY SELECT false, 'reserved';
+    RETURN QUERY SELECT false AS available, 'reserved'::text AS reason;
     RETURN;
   END IF;
 
-  SELECT p.id INTO v_owner_id
-    FROM public.profiles p
-   WHERE p.username = v_normalized
-   LIMIT 1;
-
-  IF v_owner_id IS NULL THEN
-    RETURN QUERY SELECT true, 'available';
+  -- Already owned by current user → allow (idempotent save).
+  IF v_uid IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.profiles p
+     WHERE p.username = v_normalized
+       AND p.id = v_uid
+  ) THEN
+    RETURN QUERY SELECT true AS available, 'self'::text AS reason;
     RETURN;
   END IF;
 
-  IF v_uid IS NOT NULL AND v_owner_id = v_uid THEN
-    RETURN QUERY SELECT true, 'self';
+  -- Taken by someone else.
+  IF EXISTS (
+    SELECT 1 FROM public.profiles p
+     WHERE p.username = v_normalized
+  ) THEN
+    RETURN QUERY SELECT false AS available, 'taken'::text AS reason;
     RETURN;
   END IF;
 
-  RETURN QUERY SELECT false, 'taken';
+  RETURN QUERY SELECT true AS available, 'available'::text AS reason;
 END;
 $$;
 
