@@ -2,6 +2,57 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — Onboarding Smoothness Follow-up Patch
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "가입은 이메일·비밀번호만으로 가볍게. 모든 공개 identity 는 `/onboarding/identity` 한 곳에서. 모든 signup flavor(password / magic-link / invite)는 동일한 identity gate 로 수렴."
+
+### 1. Front door 리셰이프
+- `/onboarding`: 신규 유저 가입 전용 surface 로 축소. 수집 항목은 `email` + `password` + `password confirmation` 뿐. 역할/사용자명/표시 이름/공개 범위는 모두 제거.
+  - `signUpWithPassword(email, password)` 를 metadata 없이 호출 → 백엔드 trigger 가 minimal profile row 를 만들 때 placeholder 로 들어와도 gate 가 `/onboarding/identity` 로 회수한다.
+  - 세션이 있는 방문자는 `routeByAuthState(..., { sessionPresent: true })` 로 즉시 재라우팅 되어 이 페이지가 보이지 않음.
+- `/onboarding/identity`: 2단계 identity-finish surface 로 톤다운 개선.
+  - "Step 2 of 2" eyebrow + 섹션 3개 (`You` / `Role` / `Visibility`) 분리. 첫 역할 선택 시 primary 가 자동 지정되어 "역할을 골랐는데 primary 가 비어있음" 혼란 제거.
+  - sticky primary CTA ("Continue to Abstract") + 차분한 one-time setup 카피.
+  - 여전히 live username availability, 추천, preview, destination restore, public/private, role 선택 유지.
+- `src/lib/i18n/messages.ts`: 폐기된 signup-시절 키 (labelUsername/labelRoles/privacyTitle/…) 모두 제거, 새 키 (`onboarding.stepEyebrow`, `onboarding.passwordHint`, `onboarding.nextStepHint`, `identity.finish.stepEyebrow`, `identity.finish.section*`, `identity.finish.displayNameHint`, `identity.finish.rolesHint`) 추가.
+
+### 2. 하나의 identity gate
+- 모든 entry (`/`, `/login`, `/auth/callback`, `/onboarding`, `/onboarding/identity`) 에서 `routeByAuthState(...)` 호출 시 세션이 이미 확인된 경우 **반드시** `sessionPresent: true` 를 넘긴다. 이 규칙을 `tests/onboarding-smoke.mjs` 의 invariant 3 이 강제한다.
+- AuthGate: 세션이 있는데 `get_my_auth_state()` 가 null 을 반환한 경우 `/login` 으로 튕기지 않고 페이지를 그대로 렌더(이미 Identity Overhaul 에서 적용, 재확인).
+- Header "My Profile": placeholder username 이거나 profile 이 없으면 `/onboarding/identity` 로 (Identity Overhaul 유지).
+- `/invites/delegation` 의 "Sign up" 링크는 `next` 를 항상 보존해서 초대 가입도 identity-finish 를 거쳐 초대 페이지로 다시 돌아온다.
+
+### 3. Runtime smoke (`tests/onboarding-smoke.mjs`)
+정적 grep 수준의 회귀 테스트지만 "대문이 다시 무거워지거나 session-present 가 빠진 commit" 을 즉시 차단한다.
+
+1. `/onboarding` 에 `setUsername` / `setDisplayName` / `setMainRole` / `checkUsernameAvailability` / `saveProfileUnified` / 구 i18n 라벨이 다시 들어오면 실패.
+2. `checkUsernameAvailability` / `check_username_availability` 는 identity-finish page + `UsernameField` + RPC wrapper + suggestion 로직에서만 허용. 그 외 파일에서 호출하면 실패.
+3. 주요 entry 5개 파일 모두 `routeByAuthState(...)` 를 호출해야 하고, 그 호출 인자에 `sessionPresent: true` 가 있어야 함.
+4. Header 는 `isPlaceholderUsername(...)` 을 여전히 호출하며 `/onboarding/identity` 로 링크해야 함.
+5. `/invites/delegation` 는 `/onboarding?next=` 형태로 링크해야 함.
+
+실행: `npm run test:onboarding-smoke`.
+
+### 4. 검증
+- `npx tsc --noEmit` pass.
+- `npx eslint src/app/onboarding src/components/ds src/components/onboarding src/lib/identity` clean.
+- `node tests/ai-safety.mjs` pass.
+- `node tests/onboarding-smoke.mjs` pass.
+
+### 5. 수동 QA 매트릭스
+1. 비회원 → `/onboarding`: 이메일/비밀번호 3개 필드만 보이는지.
+2. 비회원 → `/onboarding?next=/invites/delegation?token=abc`: 가입 성공 후 `/onboarding/identity?next=...` 로 넘어가고, identity 완성 뒤 delegation 페이지로 복귀하는지.
+3. 매직링크 로그인 → placeholder 상태로 복귀: `/auth/callback` 이 `/onboarding/identity` 로 보내는지.
+4. 정상 계정 로그인: `/onboarding/identity` 를 건너뛰고 destination 으로 바로 이동하는지.
+5. Placeholder 계정으로 Header "My Profile" 클릭: `/onboarding/identity` 로 이동하는지.
+6. Identity 완성 후 section 3개가 모두 정렬되어 보이고, 역할 첫 선택이 자동으로 primary 가 되는지.
+
+---
+
 ## 2026-04-19 — Onboarding Identity Overhaul Patch
 
 브랜치: 현재 작업 브랜치.

@@ -1,21 +1,24 @@
 "use client";
 
 /**
- * Identity-finish surface (Onboarding Identity Overhaul, Track E/F).
+ * Identity-finish surface (Onboarding Identity Overhaul + Smoothness
+ * Follow-up, Track D).
  *
- * Single-column, premium-copy page that forces a concrete identity
- * (display_name + non-placeholder username + main_role + roles) before
- * the user can reach product surfaces. Entry is enforced by
- * `routeByAuthState` at `/`, `/login`, `/auth/callback`, `AuthGate`,
- * and post-password sign-in.
+ * Single authoritative source for public identity completion. All
+ * signup flavors (password, magic-link, invite) are routed here by
+ * `routeByAuthState` whenever `needs_identity_setup` is true.
  *
- * Field scope (intentionally narrow — brief Track F):
- *   - display_name
- *   - username
- *   - main_role (primary)
- *   - roles   (additional, including primary)
- *   - is_public
- * Bio / website / themes / etc. are delegated to Studio follow-through.
+ * Visual rhythm:
+ *   - "Step 2 of 2" eyebrow frames this as a finite, one-time setup
+ *   - Grouped sections separate the three intents: identity, role,
+ *     visibility
+ *   - Live preview collapses the mental model of "how will this look"
+ *
+ * Field scope (intentionally narrow):
+ *   - display_name, username  → identity
+ *   - main_role, roles        → role
+ *   - is_public               → visibility (optional)
+ * Everything else (bio, website, themes, cover) is left to Studio.
  */
 
 import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -25,15 +28,12 @@ import { ensureFreeEntitlement } from "@/lib/entitlements";
 import { getMyProfile, updateMyProfileBase } from "@/lib/supabase/profiles";
 import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { useT } from "@/lib/i18n/useT";
-import {
-  routeByAuthState,
-  safeNextPath,
-  LOGIN_PATH,
-} from "@/lib/identity/routing";
+import { routeByAuthState, safeNextPath, LOGIN_PATH } from "@/lib/identity/routing";
 import { ROLE_KEYS, type RoleKey } from "@/lib/identity/roles";
 import { isPlaceholderUsername } from "@/lib/identity/placeholder";
 import { UsernameField } from "@/components/onboarding/UsernameField";
 import { IdentityPreview } from "@/components/onboarding/IdentityPreview";
+import { SectionFrame, SectionTitle } from "@/components/ds";
 
 const MAIN_ROLES = ROLE_KEYS;
 const USERNAME_REGEX = /^[a-z0-9_]{3,20}$/;
@@ -73,18 +73,16 @@ function IdentityInner() {
       const state = await getMyAuthState();
       if (cancelled) return;
 
-      // If the user is already fine, short-circuit via the shared gate.
+      // Already complete: short-circuit through the shared gate.
       if (state && !state.needs_identity_setup && !state.needs_onboarding) {
         setLoadState("redirecting");
-        const { to } = routeByAuthState(state, { nextPath });
+        const { to } = routeByAuthState(state, { nextPath, sessionPresent: true });
         router.replace(to);
         return;
       }
 
       setUserEmail(session.user.email ?? null);
 
-      // Prefill from whatever is on the profile today (placeholder
-      // username becomes an empty input so the field isn't pre-dirty).
       const { data: profile } = await getMyProfile();
       if (cancelled) return;
       const prof = profile as
@@ -108,8 +106,8 @@ function IdentityInner() {
         );
         if (typeof prof.is_public === "boolean") setIsPublic(prof.is_public);
       } else {
-        // No profile row yet: seed from auth user_metadata (signup form
-        // may have passed username/roles through).
+        // First render with no profile row yet — seed what we can from
+        // auth user_metadata so the user isn't facing a blank form.
         const meta = session.user.user_metadata as
           | {
               username?: string | null;
@@ -118,11 +116,11 @@ function IdentityInner() {
               roles?: string[] | null;
             }
           | undefined;
-        if (meta?.username)
-          setUsername(String(meta.username).toLowerCase());
+        if (meta?.username) setUsername(String(meta.username).toLowerCase());
         if (meta?.display_name) setDisplayName(String(meta.display_name));
         if (meta?.main_role) setMainRole(String(meta.main_role));
-        if (Array.isArray(meta?.roles)) setRoles(meta.roles.filter((r): r is string => typeof r === "string"));
+        if (Array.isArray(meta?.roles))
+          setRoles(meta.roles.filter((r): r is string => typeof r === "string"));
       }
       setLoadState("ready");
     })();
@@ -141,9 +139,14 @@ function IdentityInner() {
   }, []);
 
   function toggleRole(role: string) {
-    setRoles((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
-    );
+    setRoles((prev) => {
+      const next = prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role];
+      // Pick the first selected role as primary if none is chosen yet —
+      // this removes the "I picked a role but the primary is still
+      // blank" confusion without stealing a deliberate choice.
+      if (!mainRole && !prev.includes(role)) setMainRole(role);
+      return next;
+    });
   }
 
   const normalizedUsername = username.trim().toLowerCase();
@@ -183,9 +186,9 @@ function IdentityInner() {
       return;
     }
 
-    // Username writes go through the unified save (username is not in
-    // updateMyProfileBase's whitelist). Base fields then go through the
-    // standard updateMyProfileBase path so existing validators apply.
+    // Username goes through the unified save (username is outside
+    // updateMyProfileBase's whitelist); the remaining fields go
+    // through the standard base update so existing validators apply.
     const usernameRes = await saveProfileUnified({
       basePatch: { username: normalizedUsername },
       detailsPatch: {},
@@ -216,7 +219,7 @@ function IdentityInner() {
     await ensureFreeEntitlement(session.user.id);
     const freshState = await getMyAuthState();
     setSaving(false);
-    const { to } = routeByAuthState(freshState, { nextPath });
+    const { to } = routeByAuthState(freshState, { nextPath, sessionPresent: true });
     router.replace(to);
   }
 
@@ -232,15 +235,14 @@ function IdentityInner() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-lg px-4 py-10">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-zinc-900">
+        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+          {t("identity.finish.stepEyebrow")}
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold text-zinc-900">
           {t("identity.finish.title")}
         </h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          {t("identity.finish.subtitle")}
-        </p>
-        <p className="mt-2 text-xs text-zinc-500">
-          {t("identity.finish.oneTime")}
-        </p>
+        <p className="mt-2 text-sm text-zinc-600">{t("identity.finish.subtitle")}</p>
+        <p className="mt-1 text-xs text-zinc-500">{t("identity.finish.oneTime")}</p>
       </header>
 
       <div className="mb-6">
@@ -253,91 +255,129 @@ function IdentityInner() {
         />
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-5">
-        <div className="space-y-2">
-          <label
-            htmlFor="identity-display-name"
-            className="block text-sm font-medium text-zinc-900"
+      <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+        <SectionFrame padding="md" noMargin>
+          <SectionTitle
+            eyebrow={t("identity.finish.sectionYouEyebrow")}
+            size="sm"
           >
-            {t("identity.finish.labelDisplayName")}
-          </label>
-          <input
-            id="identity-display-name"
-            type="text"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder={t("identity.finish.placeholderDisplayName")}
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
-            autoComplete="name"
-            maxLength={80}
-            required
-          />
-        </div>
+            {t("identity.finish.sectionYou")}
+          </SectionTitle>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label
+                htmlFor="identity-display-name"
+                className="block text-sm font-medium text-zinc-900"
+              >
+                {t("identity.finish.labelDisplayName")}
+              </label>
+              <input
+                id="identity-display-name"
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder={t("identity.finish.placeholderDisplayName")}
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                autoComplete="name"
+                maxLength={80}
+                required
+              />
+              <p className="text-xs text-zinc-500">
+                {t("identity.finish.displayNameHint")}
+              </p>
+            </div>
 
-        <UsernameField
-          value={username}
-          onChange={setUsername}
-          suggestionInput={suggestionInput}
-          onValidityChange={handleUsernameValidity}
-          inputId="identity-username"
-        />
-
-        <div className="space-y-2">
-          <label
-            htmlFor="identity-main-role"
-            className="block text-sm font-medium text-zinc-900"
-          >
-            {t("identity.finish.labelPrimaryRole")}
-          </label>
-          <select
-            id="identity-main-role"
-            value={mainRole}
-            onChange={(e) => {
-              const next = e.target.value;
-              setMainRole(next);
-              if (next && !roles.includes(next)) {
-                setRoles((prev) => [...prev, next]);
-              }
-            }}
-            className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
-            required
-          >
-            <option value="">{t("common.selectOption")}</option>
-            {MAIN_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {t(`role.${r}`)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <span className="block text-sm font-medium text-zinc-900">
-            {t("identity.finish.labelRoles")}
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {MAIN_ROLES.map((r: RoleKey) => {
-              const active = roles.includes(r);
-              return (
-                <button
-                  type="button"
-                  key={r}
-                  onClick={() => toggleRole(r)}
-                  aria-pressed={active}
-                  className={`rounded-full border px-3 py-1 text-xs transition-colors ${
-                    active
-                      ? "border-zinc-900 bg-zinc-900 text-white"
-                      : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
-                  }`}
-                >
-                  {t(`role.${r}`)}
-                </button>
-              );
-            })}
+            <UsernameField
+              value={username}
+              onChange={setUsername}
+              suggestionInput={suggestionInput}
+              onValidityChange={handleUsernameValidity}
+              inputId="identity-username"
+            />
           </div>
-        </div>
+        </SectionFrame>
 
-        <div className="rounded-md border border-zinc-200 bg-white p-3">
+        <SectionFrame padding="md" noMargin>
+          <SectionTitle
+            eyebrow={t("identity.finish.sectionRoleEyebrow")}
+            size="sm"
+          >
+            {t("identity.finish.sectionRole")}
+          </SectionTitle>
+          <div className="space-y-4">
+            <div className="space-y-1">
+              <label
+                htmlFor="identity-main-role"
+                className="block text-sm font-medium text-zinc-900"
+              >
+                {t("identity.finish.labelPrimaryRole")}
+              </label>
+              <select
+                id="identity-main-role"
+                value={mainRole}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setMainRole(next);
+                  if (next && !roles.includes(next)) {
+                    setRoles((prev) => [...prev, next]);
+                  }
+                }}
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-900"
+                required
+              >
+                <option value="">{t("common.selectOption")}</option>
+                {MAIN_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`role.${r}`)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <span className="block text-sm font-medium text-zinc-900">
+                {t("identity.finish.labelRoles")}
+              </span>
+              <p className="text-xs text-zinc-500">
+                {t("identity.finish.rolesHint")}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {MAIN_ROLES.map((r: RoleKey) => {
+                  const active = roles.includes(r);
+                  const isPrimary = mainRole === r;
+                  return (
+                    <button
+                      type="button"
+                      key={r}
+                      onClick={() => toggleRole(r)}
+                      aria-pressed={active}
+                      className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                        active
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 bg-white text-zinc-700 hover:border-zinc-400"
+                      }`}
+                    >
+                      {t(`role.${r}`)}
+                      {isPrimary && (
+                        <span className="ml-1.5 rounded bg-white/20 px-1 text-[10px] font-semibold uppercase tracking-wide">
+                          {t("role.primarySuffix")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </SectionFrame>
+
+        <SectionFrame padding="md" tone="muted" noMargin>
+          <SectionTitle
+            eyebrow={t("identity.finish.sectionVisibilityEyebrow")}
+            size="sm"
+          >
+            {t("identity.finish.sectionVisibility")}
+          </SectionTitle>
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-medium text-zinc-900">
@@ -353,6 +393,7 @@ function IdentityInner() {
               type="button"
               role="switch"
               aria-checked={isPublic}
+              aria-label={t("identity.finish.labelPublic")}
               onClick={() => setIsPublic((v) => !v)}
               className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
                 isPublic ? "bg-emerald-500" : "bg-zinc-300"
@@ -365,21 +406,26 @@ function IdentityInner() {
               />
             </button>
           </div>
+        </SectionFrame>
+
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
+
+        <div className="sticky bottom-0 -mx-4 border-t border-zinc-100 bg-white/95 px-4 py-3 backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+          <button
+            type="submit"
+            disabled={!canSubmit}
+            className="w-full rounded-md bg-zinc-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {saving ? t("identity.finish.saving") : t("identity.finish.primaryCta")}
+          </button>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">
+            {t("identity.finish.studioNext")}
+          </p>
         </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={!canSubmit}
-          className="w-full rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {saving ? t("identity.finish.saving") : t("identity.finish.primaryCta")}
-        </button>
-
-        <p className="text-center text-xs text-zinc-500">
-          {t("identity.finish.studioNext")}
-        </p>
       </form>
     </main>
   );
