@@ -25,7 +25,13 @@ function AuthCallbackInner() {
       }
       const state = await getMyAuthState();
       if (cancelled) return;
-      const { to } = routeByAuthState(state, { nextPath: nextParam });
+      // Session was just verified above — pass `sessionPresent` so a
+      // transient RPC failure does not bounce us back to `/` (which
+      // would then forward to /login, producing a loop).
+      const { to } = routeByAuthState(state, {
+        nextPath: nextParam,
+        sessionPresent: true,
+      });
       router.replace(to);
     })();
     return () => {

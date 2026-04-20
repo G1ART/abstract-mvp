@@ -47,7 +47,7 @@ function LoginInner() {
       if (cancelled || !session) return;
       const state = await getMyAuthState();
       if (cancelled) return;
-      const { to } = routeByAuthState(state, { nextPath });
+      const { to } = routeByAuthState(state, { nextPath, sessionPresent: true });
       router.replace(to);
     })();
     return () => {
@@ -91,10 +91,14 @@ function LoginInner() {
     }
     // Password login: route through the identity gate exactly like
     // magic-link / auth-callback so placeholder users never leak into
-    // the product (Onboarding Identity Overhaul, Track D/J).
+    // the product (Onboarding Identity Overhaul, Track D/J). Because
+    // signInWithPassword just succeeded, the session is definitely
+    // present — pass `sessionPresent` so a transient RPC failure falls
+    // through to the default destination instead of bouncing us back
+    // to /login in a loop.
     const state = await getMyAuthState();
     setLoading(false);
-    const { to } = routeByAuthState(state, { nextPath });
+    const { to } = routeByAuthState(state, { nextPath, sessionPresent: true });
     router.replace(to);
   }
 

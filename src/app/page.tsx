@@ -23,7 +23,10 @@ export default function Home() {
       }
       const state = await getMyAuthState();
       if (cancelled) return;
-      const { to } = routeByAuthState(state);
+      // Session was just verified above. If the RPC is transiently
+      // unhappy, route the user to the default destination rather
+      // than kicking them back to login.
+      const { to } = routeByAuthState(state, { sessionPresent: true });
       router.replace(to);
     })();
     return () => {

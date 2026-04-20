@@ -54,14 +54,28 @@ export type RouteDecision = { to: string };
 
 /**
  * Decide where a signed-in user with the given auth state should
- * land. Pass `state = null` (RPC failure / no session) to send them
- * back to login.
+ * land.
+ *
+ * `state = null` happens in two very different situations:
+ *   (a) no session at all → user must go to /login.
+ *   (b) session exists, but the `get_my_auth_state` RPC failed
+ *       transiently (schema-cache mismatch after migration, network
+ *       blip, etc.).
+ *
+ * Callers that already confirmed a session is present should pass
+ * `opts.sessionPresent = true`. In that case we fall back to the
+ * default destination instead of bouncing the user to /login — that
+ * bounce would otherwise loop forever whenever the RPC is temporarily
+ * unhappy (the login page would just re-route them back again).
  */
 export function routeByAuthState(
   state: MyAuthState | null,
-  opts?: RouteOpts
+  opts?: RouteOpts & { sessionPresent?: boolean }
 ): RouteDecision {
-  if (!state) return { to: loginUrlWithNext(opts) };
+  if (!state) {
+    if (opts?.sessionPresent) return { to: pickNext(opts) };
+    return { to: loginUrlWithNext(opts) };
+  }
 
   if (state.needs_identity_setup) {
     return { to: identityFinishUrl(opts) };

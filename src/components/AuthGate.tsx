@@ -52,7 +52,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       const state = await getMyAuthState();
       if (cancelled) return;
       if (!state) {
-        router.replace(LOGIN_PATH);
+        // Session exists (verified above) but the auth-state RPC
+        // failed transiently. Render the page in place rather than
+        // bouncing to /login — /login would just forward us back
+        // here on next tick, creating a loop. A follow-up nav will
+        // re-hit the RPC anyway.
+        setReady(true);
         return;
       }
 
