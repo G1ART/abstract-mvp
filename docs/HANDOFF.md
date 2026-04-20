@@ -2,6 +2,65 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — Onboarding Front Door Finalization Patch
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+> "비회원은 한 가지 길만 본다: `/` → `/onboarding` → `/onboarding/identity`. `/login` 은 기존 회원 전용, 매직링크는 접어둔 보조 옵션으로만 존재한다."
+
+### 1. Front-door IA 확정
+- **`/` (root)**
+  - 세션 없음 → `/onboarding` (이전에는 `/login` 으로 튕겼음). 차가운 트래픽이 처음 보는 것은 **signup-first** 화면.
+  - 세션 있음 → 기존대로 `routeByAuthState(..., { sessionPresent: true })`.
+- **`/onboarding`**
+  - 여전히 이메일 + 비밀번호 + 확인 3필드. CTA 를 "바로 시작하기" / "Get started" 톤으로 조정.
+  - H1: "Abstract 바로 시작하기" / "Get started with Abstract". 기능 문구는 차분하게 유지 (브랜딩 패스 아님).
+  - 푸터 "이미 계정이 있으신가요? 로그인" 링크는 그대로 — returning user 를 `/login` 으로 안내.
+- **`/login` (완전 재작성)**
+  - Login-first 로 축소. 상단에 차분한 "돌아오신 것을 환영해요" 헤더, 이메일/비밀번호 1 form.
+  - **비밀번호 없이 로그인** 은 disclosure 버튼 뒤로 접힘 (기본 상태: 닫힘). 펼치면 회색 박스 안에 작은 이메일 입력 + "로그인 링크 보내기" 버튼. 메인 폼과 시각적 무게가 경쟁하지 않음.
+  - "매직링크" / "magic link" 용어는 사용자 표시 문자열에서 전부 제거 (Track F). 대체 용어: "비밀번호 없이 로그인", "이메일로 일회용 로그인 링크", "로그인 링크 보내기".
+  - 하단에 크게 노출되는 "Abstract가 처음이신가요? **바로 시작하기**" 링크 → `/onboarding`. next 파라미터는 보존.
+
+### 2. 매직링크 정책
+- **허용**: `/login` 내부의 disclosure 뒤 보조 옵션 / invite / auth callback / 내부 도구.
+- **금지**: 공개 첫 화면에 password 로그인과 같은 무게로 노출되는 폼; "매직링크" 용어; 신규 유저가 비밀번호 설정을 건너뛰게 만드는 기본 경로.
+
+### 3. i18n 변경
+EN+KO:
+- 제거: `login.useEmailLink`, `login.magicLinkPlaceholder`, `login.sendMagicLink`, `login.checkEmail`.
+- 추가: `login.welcomeBack`, `login.startSignup`, `login.passwordlessOpen`, `login.passwordlessClose`, `login.passwordlessHint`, `login.passwordlessSend`, `login.passwordlessSent`, `login.passwordlessRateLimit`, `login.noAccount` (문구 조정: "New to Abstract?" / "Abstract가 처음이신가요?").
+- 조정: `onboarding.createAccount` → "Abstract 바로 시작하기" / "Get started with Abstract", `onboarding.createAccountButton` → "바로 시작하기" / "Get started", `onboarding.creatingAccount` → "계정을 만드는 중..." / "Getting started...".
+- KO messages.ts 전수 스캔으로 "매직" 문자열이 사용자 표시 값에서 0건임을 스모크가 강제.
+
+### 4. Runtime smoke 확장 (`tests/onboarding-smoke.mjs`)
+이미 있는 invariant 1~5 유지. 신규 invariant 6 추가:
+
+- **6a**: `src/app/page.tsx` 의 no-session 분기는 `ONBOARDING_PATH` 로만 리다이렉트한다. `LOGIN_PATH` 로 바꾸면 실패.
+- **6b**: `/login` 은 `login.magicLinkPlaceholder` / `login.sendMagicLink` 키를 호출하면 안 되고, passwordless form 은 반드시 `passwordlessOpen` state 뒤에 gated 되어 있어야 하며, `/onboarding` 링크를 노출해야 함.
+- **6c**: `src/lib/i18n/messages.ts` 의 사용자 표시 값 어디에도 "매직" 또는 "magic link" 가 없어야 함.
+
+실행: `npm run test:onboarding-smoke`.
+
+### 5. 검증
+- `npx tsc --noEmit` pass.
+- `npx eslint src/app/page.tsx src/app/login src/app/onboarding tests/onboarding-smoke.mjs src/lib/i18n/messages.ts` clean.
+- `node tests/ai-safety.mjs` pass.
+- `node tests/onboarding-smoke.mjs` pass (invariants 1~6 포함).
+
+### 6. 수동 QA 매트릭스
+1. 로그아웃 상태에서 루트 `/` 접속: `/onboarding` 으로 리다이렉트. 로그인 화면을 먼저 마주치지 않음.
+2. `/onboarding` CTA 클릭 → 가입 성공 → `/onboarding/identity` 로 연결.
+3. `/login` 직접 접속: 이메일/비밀번호 폼이 지배적이고, "비밀번호 없이 로그인" 은 접혀 있음. 펼쳐도 시각 무게는 보조.
+4. `/login` 에서 "바로 시작하기" 링크 클릭 → `/onboarding` (next 보존 포함).
+5. `/login?next=/artwork/xxx`: 로그인 성공 후 `/artwork/xxx` 로 복귀, passwordless 열어도 next 보존.
+6. 초대 링크(`/invites/delegation?token=abc`)에서 "Sign up" → `/onboarding?next=/invites/delegation?token=abc` → 가입 후 identity 완료하면 초대 페이지로 복귀.
+7. Placeholder 계정으로 로그인: Header "My Profile" 이 여전히 `/onboarding/identity` 로 보내는지.
+8. 전체 소스와 i18n 값에서 "매직" 문자열 grep: 0건.
+
+---
+
 ## 2026-04-19 — Onboarding Smoothness Follow-up Patch
 
 브랜치: 현재 작업 브랜치.

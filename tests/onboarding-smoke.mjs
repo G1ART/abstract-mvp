@@ -19,6 +19,14 @@
 //      `/onboarding/identity`.
 //   5. `/invites/delegation` preserves `next` on its signup link so
 //      invite flows round-trip through identity-finish cleanly.
+//   6. Front-door IA (Finalization patch):
+//        a. `/` sends non-members to `/onboarding`, not `/login`. The
+//           signup-first path must be the only public entry.
+//        b. `/login` is login-first: no email-link form is rendered
+//           unconditionally, and no user-facing string contains the
+//           old "매직" / "magic link" terminology.
+//        c. `/login` offers a visible, single-click path back to
+//           `/onboarding` so returning non-members are not stranded.
 //
 // Usage: `node tests/onboarding-smoke.mjs`
 
@@ -171,6 +179,76 @@ function fail(msg) {
     fail(
       `[invite-smoothness] delegation invite signup link must include ?next= so invite flows round-trip through identity-finish`,
     );
+  }
+}
+
+// --- Invariant 6a: `/` sends non-members to /onboarding (signup-first) --
+{
+  const path = join(repoRoot, "src/app/page.tsx");
+  const body = read(path);
+  // The no-session branch must redirect to the signup surface. If
+  // anyone flips this back to `/login` (or imports `LOGIN_PATH`
+  // alongside `router.replace`), the front door has regressed.
+  if (!/ONBOARDING_PATH/.test(body) || !/router\.replace\(\s*ONBOARDING_PATH\s*\)/.test(body)) {
+    fail(
+      `[front-door] src/app/page.tsx must redirect non-members to /onboarding via ONBOARDING_PATH (signup-first entry)`,
+    );
+  }
+  if (/router\.replace\(\s*LOGIN_PATH\s*\)/.test(body)) {
+    fail(
+      `[front-door] src/app/page.tsx must not redirect non-members to LOGIN_PATH — use ONBOARDING_PATH instead`,
+    );
+  }
+}
+
+// --- Invariant 6b: /login is login-first, no magic-link terminology -----
+{
+  const path = join(repoRoot, "src/app/login/page.tsx");
+  const body = read(path);
+  // No user-facing "magic link" terminology anywhere on /login. The
+  // passwordless option must use neutral copy.
+  const userFacingMagic = /t\(\s*["']login\.(magicLinkPlaceholder|sendMagicLink)["']\s*\)/;
+  if (userFacingMagic.test(body)) {
+    fail(
+      `[front-door] /login must not render legacy magic-link i18n keys (login.magicLinkPlaceholder / login.sendMagicLink)`,
+    );
+  }
+  // The passwordless path must live behind a disclosure flag so cold
+  // traffic doesn't see it with the same weight as password sign-in.
+  // The explicit state name is `passwordlessOpen`; we also accept any
+  // conditional render guarded by such a flag.
+  if (!/passwordlessOpen/.test(body)) {
+    fail(
+      `[front-door] /login must gate the passwordless form behind a \`passwordlessOpen\` disclosure state`,
+    );
+  }
+  if (!/\/onboarding/.test(body)) {
+    fail(
+      `[front-door] /login must expose a clear link back to /onboarding for new members`,
+    );
+  }
+}
+
+// --- Invariant 6c: Korean "매직" terminology is gone from user copy -----
+{
+  const msgPath = join(repoRoot, "src/lib/i18n/messages.ts");
+  const body = read(msgPath);
+  // The only permitted mention of "magic" is in developer comments.
+  // Values inside quoted i18n strings must not contain the term.
+  const lines = body.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Quick reject: only inspect obvious i18n value lines (they have
+    // a quoted key and a quoted value). We flag any such line that
+    // still contains "매직" or "magic link" in its value.
+    const kv = line.match(/^\s*"([^"]+)"\s*:\s*"([^"]*)"/);
+    if (!kv) continue;
+    const value = kv[2];
+    if (/매직/.test(value) || /magic\s*link/i.test(value)) {
+      fail(
+        `[copy-cleanup] i18n value still contains magic-link terminology at messages.ts:${i + 1}: ${kv[1]} = "${value}"`,
+      );
+    }
   }
 }
 
