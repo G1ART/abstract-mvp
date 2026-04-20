@@ -10,17 +10,7 @@ import {
   sendMagicLink,
   signInWithPassword,
 } from "@/lib/supabase/auth";
-import {
-  isRandomUsername,
-  RANDOM_USERNAME_PROMPTED_KEY,
-} from "@/lib/profile/randomUsername";
-
-function safeNext(next: string | null): string | null {
-  if (!next || typeof next !== "string") return null;
-  const t = next.trim();
-  if (!t.startsWith("/") || t.startsWith("//")) return null;
-  return t;
-}
+import { routeByAuthState, safeNextPath } from "@/lib/identity/routing";
 
 const EMAIL_COOLDOWN_SEC = 30;
 const RATE_LIMIT_PATTERNS = [
@@ -39,7 +29,7 @@ function isRateLimitError(message: string): boolean {
 function LoginInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = safeNext(searchParams.get("next"));
+  const nextPath = safeNextPath(searchParams.get("next"));
   const { t } = useT();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -57,25 +47,8 @@ function LoginInner() {
       if (cancelled || !session) return;
       const state = await getMyAuthState();
       if (cancelled) return;
-      if (!state || state.needs_onboarding) {
-        router.replace("/onboarding");
-        return;
-      }
-      if (
-        typeof window !== "undefined" &&
-        isRandomUsername(state.username) &&
-        window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
-      ) {
-        window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
-        const target = nextPath || "/feed?tab=all&sort=latest";
-        router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
-        return;
-      }
-      if (!state.has_password) {
-        router.replace(nextPath || "/set-password");
-        return;
-      }
-      router.replace(nextPath || "/feed?tab=all&sort=latest");
+      const { to } = routeByAuthState(state, { nextPath });
+      router.replace(to);
     })();
     return () => {
       cancelled = true;
@@ -111,12 +84,18 @@ function LoginInner() {
     setLoading(true);
     setError(null);
     const { error: err } = await signInWithPassword(email, password);
-    setLoading(false);
     if (err) {
+      setLoading(false);
       setError(err.message);
       return;
     }
-    router.replace(nextPath || "/");
+    // Password login: route through the identity gate exactly like
+    // magic-link / auth-callback so placeholder users never leak into
+    // the product (Onboarding Identity Overhaul, Track D/J).
+    const state = await getMyAuthState();
+    setLoading(false);
+    const { to } = routeByAuthState(state, { nextPath });
+    router.replace(to);
   }
 
   return (

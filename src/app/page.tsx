@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, getMyAuthState } from "@/lib/supabase/auth";
+import { routeByAuthState, LOGIN_PATH } from "@/lib/identity/routing";
 import { useT } from "@/lib/i18n/useT";
 
 export default function Home() {
@@ -17,20 +18,13 @@ export default function Home() {
       } = await getSession();
       if (cancelled) return;
       if (!session) {
-        router.replace("/login");
+        router.replace(LOGIN_PATH);
         return;
       }
       const state = await getMyAuthState();
       if (cancelled) return;
-      if (!state || state.needs_onboarding) {
-        router.replace("/onboarding");
-        return;
-      }
-      if (!state.has_password) {
-        router.replace("/set-password");
-        return;
-      }
-      router.replace("/feed?tab=all&sort=latest");
+      const { to } = routeByAuthState(state);
+      router.replace(to);
     })();
     return () => {
       cancelled = true;

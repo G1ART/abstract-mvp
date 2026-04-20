@@ -300,7 +300,7 @@ export default function MyInquiriesPage() {
                   </div>
                   <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
                     {(() => {
-                      const { primary, secondary } = formatIdentityPair(row.inquirer);
+                      const { primary, secondary } = formatIdentityPair(row.inquirer, t);
                       return (
                         <span>
                           {primary}

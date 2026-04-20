@@ -202,7 +202,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
     }
   }, []);
 
-  const { primary: displayName, secondary: usernameHandle } = formatIdentityPair(profile);
+  const { primary: displayName, secondary: usernameHandle } = formatIdentityPair(profile, t);
   const avatarUrl = getAvatarUrl(profile.avatar_url);
   const roleChips = formatRoleChips(profile, t, { max: 6 });
 

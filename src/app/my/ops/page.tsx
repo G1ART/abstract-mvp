@@ -18,17 +18,30 @@ type OpsRow = {
   delegation_count: number;
 };
 
+type RescueStats = {
+  placeholder_total: number | null;
+  placeholder_created_7d: number | null;
+  placeholder_created_30d: number | null;
+  rescued_7d: number | null;
+  rescued_30d: number | null;
+};
+
 function OpsContent() {
   const { t } = useT();
   const [rows, setRows] = useState<OpsRow[]>([]);
+  const [rescue, setRescue] = useState<RescueStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "random_username" | "no_uploads" | "with_delegations" | "recent_7d">("all");
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data, error } = await supabase.rpc("ops_onboarding_summary");
-    if (!error && data) setRows(data as OpsRow[]);
+    const [summary, rescueRes] = await Promise.all([
+      supabase.rpc("ops_onboarding_summary"),
+      supabase.from("v_identity_rescue_stats").select("*").maybeSingle(),
+    ]);
+    if (!summary.error && summary.data) setRows(summary.data as OpsRow[]);
+    if (!rescueRes.error && rescueRes.data) setRescue(rescueRes.data as RescueStats);
     setLoading(false);
   }, []);
 
@@ -90,7 +103,7 @@ function OpsContent() {
         </div>
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-center">
           <p className="text-2xl font-bold text-amber-700">{stats.randomUsername}</p>
-          <p className="text-xs text-zinc-500">Random ID</p>
+          <p className="text-xs text-zinc-500">Placeholder ID</p>
         </div>
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-center">
           <p className="text-2xl font-bold text-red-700">{stats.noUploads}</p>
@@ -106,6 +119,35 @@ function OpsContent() {
         </div>
       </div>
 
+      {rescue && (
+        <section className="mb-6 rounded-lg border border-zinc-200 bg-white p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-zinc-800">Identity rescue</h2>
+            <span className="text-xs text-zinc-400">v_identity_rescue_stats</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div>
+              <p className="text-lg font-semibold text-zinc-900">{rescue.placeholder_total ?? 0}</p>
+              <p className="text-xs text-zinc-500">Still placeholder</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-zinc-900">
+                {rescue.placeholder_created_7d ?? 0} / {rescue.placeholder_created_30d ?? 0}
+              </p>
+              <p className="text-xs text-zinc-500">New placeholder 7d / 30d</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-zinc-900">{rescue.rescued_7d ?? 0}</p>
+              <p className="text-xs text-zinc-500">Rescued last 7d</p>
+            </div>
+            <div>
+              <p className="text-lg font-semibold text-zinc-900">{rescue.rescued_30d ?? 0}</p>
+              <p className="text-xs text-zinc-500">Rescued last 30d</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
           value={filter}
@@ -113,7 +155,7 @@ function OpsContent() {
           className="rounded border border-zinc-300 px-3 py-2 text-sm"
         >
           <option value="all">All ({stats.total})</option>
-          <option value="random_username">Random username ({stats.randomUsername})</option>
+          <option value="random_username">Placeholder username ({stats.randomUsername})</option>
           <option value="no_uploads">No uploads ({stats.noUploads})</option>
           <option value="with_delegations">With delegations ({stats.withDelegations})</option>
           <option value="recent_7d">Joined last 7d ({stats.recent7d})</option>
@@ -146,7 +188,7 @@ function OpsContent() {
             <tbody className="divide-y divide-zinc-100">
               {filtered.map((r) => {
                 const profileUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/u/${r.username ?? ""}`;
-                const usernameFix = `${typeof window !== "undefined" ? window.location.origin : ""}/username-fix`;
+                const identityFix = `${typeof window !== "undefined" ? window.location.origin : ""}/onboarding/identity`;
                 return (
                   <tr key={r.profile_id} className="hover:bg-zinc-50">
                     <td className="py-2 pr-3">
@@ -160,7 +202,7 @@ function OpsContent() {
                     <td className="py-2 pr-3 text-right">{r.delegation_count}</td>
                     <td className="py-2 pr-3">
                       <div className="flex flex-wrap gap-1">
-                        {r.has_random_username && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">random id</span>}
+                        {r.has_random_username && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">placeholder id</span>}
                         {r.artwork_count === 0 && <span className="rounded bg-red-100 px-1.5 py-0.5 text-xs text-red-800">no uploads</span>}
                       </div>
                     </td>
@@ -177,10 +219,10 @@ function OpsContent() {
                         {r.has_random_username && (
                           <button
                             type="button"
-                            onClick={() => copyToClipboard(usernameFix, `u-${r.profile_id}`)}
+                            onClick={() => copyToClipboard(identityFix, `u-${r.profile_id}`)}
                             className="rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-700 hover:bg-amber-200"
                           >
-                            {copiedId === `u-${r.profile_id}` ? "✓" : "Username fix"}
+                            {copiedId === `u-${r.profile_id}` ? "✓" : "Identity fix"}
                           </button>
                         )}
                       </div>

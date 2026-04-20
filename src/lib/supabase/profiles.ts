@@ -102,6 +102,48 @@ export async function checkUsernameExists(
   return { exists, error: null };
 }
 
+/**
+ * Username availability via the `check_username_availability` RPC
+ * (Onboarding Identity Overhaul, Track G). The RPC is authoritative
+ * because it reuses the same `is_placeholder_username` SQL helper as
+ * the auth-state RPC and knows about reserved names.
+ *
+ * Returns a small union so UI can render a precise message. On a
+ * network / RPC error we return `"error"` instead of silently
+ * treating the handle as available.
+ */
+export type UsernameAvailabilityReason =
+  | "available"
+  | "self"
+  | "taken"
+  | "invalid"
+  | "reserved"
+  | "empty"
+  | "error";
+
+export async function checkUsernameAvailability(
+  username: string
+): Promise<{ available: boolean; reason: UsernameAvailabilityReason }> {
+  const normalized = (username ?? "").trim().toLowerCase();
+  if (!normalized) return { available: false, reason: "empty" };
+  const { data, error } = await supabase.rpc("check_username_availability", {
+    p_username: normalized,
+  });
+  if (error) return { available: false, reason: "error" };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row || typeof row !== "object") {
+    return { available: false, reason: "error" };
+  }
+  const r = row as { available?: unknown; reason?: unknown };
+  const reasonStr = typeof r.reason === "string" ? r.reason : "error";
+  const reason: UsernameAvailabilityReason = (
+    ["available", "self", "taken", "invalid", "reserved", "empty", "error"] as const
+  ).includes(reasonStr as UsernameAvailabilityReason)
+    ? (reasonStr as UsernameAvailabilityReason)
+    : "error";
+  return { available: !!r.available, reason };
+}
+
 export async function getMyProfile(): Promise<{
   data: Profile | null;
   error: unknown;

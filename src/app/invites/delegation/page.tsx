@@ -120,7 +120,9 @@ function InvitesDelegationInner() {
   const projectTitle = info.scope_type === "project" && info.project?.title ? ` "${info.project.title}"` : "";
 
   if (!hasSession) {
-    const loginUrl = `/login?next=${encodeURIComponent(`/invites/delegation?token=${token}`)}`;
+    const nextTarget = `/invites/delegation?token=${token}`;
+    const loginUrl = `/login?next=${encodeURIComponent(nextTarget)}`;
+    const signUpUrl = `/onboarding?next=${encodeURIComponent(nextTarget)}`;
     return (
       <div className="mx-auto max-w-md px-4 py-12">
         <h1 className="mb-4 text-xl font-semibold">{t("delegation.inviteTitle")}</h1>
@@ -137,7 +139,7 @@ function InvitesDelegationInner() {
             {t("delegation.logIn")}
           </Link>
           <Link
-            href="/onboarding"
+            href={signUpUrl}
             className="rounded border border-zinc-300 px-4 py-2 hover:bg-zinc-50"
           >
             {t("delegation.signUp")}

@@ -14,6 +14,10 @@ import {
 import type { ClaimType } from "@/lib/provenance/types";
 import { claimTypeToLabel, claimTypeToByPhrase } from "@/lib/provenance/rpc";
 import { useT } from "@/lib/i18n/useT";
+import {
+  formatUsername,
+  hasPublicLinkableUsername,
+} from "@/lib/identity/format";
 import { LikeButton } from "./LikeButton";
 import { ArtworkProvenanceBlock } from "./ArtworkProvenanceBlock";
 
@@ -43,11 +47,15 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
   const firstImage = sortedImages[0];
   const imageUrl = firstImage ? getArtworkImageUrl(firstImage.storage_path, "thumb") : null;
   const { label: artistLabel, profileUsername } = getArtworkArtistLabel(artwork);
-  const username = profileUsername ?? "";
+  const usernameHandle = formatUsername({ username: profileUsername });
+  const usernameLinkable = hasPublicLinkableUsername({ username: profileUsername });
+  const username = usernameLinkable ? (profileUsername ?? "") : "";
   const primaryClaim = getPrimaryClaim(artwork);
   const listerProf = primaryClaim?.profiles;
+  const listerHandle = listerProf ? formatUsername(listerProf) : "";
+  const listerLinkable = listerProf ? hasPublicLinkableUsername(listerProf) : false;
   const listerLabel = listerProf
-    ? (listerProf.display_name?.trim() || (listerProf.username ? "@" + listerProf.username : null))
+    ? (listerProf.display_name?.trim() || (listerHandle ? listerHandle : null))
     : null;
   const claimLabel = primaryClaim
     ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
@@ -122,7 +130,7 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
               {listerLabel && byPhrase && (
                 <span>
                   {byPhrase}{" "}
-                  {listerProf?.username ? (
+                  {listerLinkable && listerProf?.username ? (
                     <Link
                       href={`/u/${listerProf.username}`}
                       onClick={(e) => e.stopPropagation()}
@@ -148,13 +156,13 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
           )}
           <div className="mt-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {username ? (
+              {username && usernameHandle ? (
                 <Link
                   href={`/u/${username}`}
                   onClick={(e) => e.stopPropagation()}
                   className="text-sm text-zinc-500 hover:text-zinc-900"
                 >
-                  @{username}
+                  {usernameHandle}
                 </Link>
               ) : (
                 <span />

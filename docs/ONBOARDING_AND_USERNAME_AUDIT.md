@@ -182,3 +182,55 @@ where p.is_public = true
      - 배너는 닫기 가능하며, 닫은 경우 `localStorage`에 저장해 재노출하지 않음 (`RandomIdBanner`).
 
 이 문서는 코드와 마이그레이션을 기준으로 한 감사 결과이며, 실제 수정 시에는 RLS·트리거·클라이언트 호출 순서를 함께 점검하는 것이 좋다.
+
+---
+
+## 8. 2026-04-19 Onboarding Identity Overhaul — 최종 상태
+
+베타 피드백(「로그인했는데 id 가 `user_xxxxxxxx` 로 떠 있다」 「온보딩이 언제 끝났는지 모르겠다」)을 반영해 **identity 완성도를 DB SSOT 로 옮기고 모든 entry 를 하나의 gate 로 수렴**시킨 패치. 본 문서 §5·§6 의 권장 방향을 다음과 같이 확정했다.
+
+### 8.1 SSOT 는 `get_my_auth_state()`
+
+- `needs_identity_setup` 플래그가 프로필의 존재 여부가 아니라 **placeholder / 빈 display_name / 누락 roles / 누락 main_role** 중 하나라도 해당되면 true. 클라이언트는 이 단일 플래그로 routing 결정.
+- placeholder 기준은 SQL 헬퍼 `public.is_placeholder_username(text)` 와 클라이언트 `src/lib/identity/placeholder.ts` 가 동일한 `^user_[a-f0-9]{6,16}$` regex 를 공유.
+
+### 8.2 ProfileBootstrap skip 경로 확정
+
+- `/onboarding`, `/onboarding/identity`, `/username-fix`, `/set-password`, `/auth/*` 에서는 `ensure_my_profile()` 을 호출하지 않는다. (이전 "매직링크 클릭 후 아무 경로나 열면 placeholder 가 자동 생성되던" 갭이 사라진다.)
+
+### 8.3 Identity-finish 전용 surface
+
+- `/onboarding/identity` 가 신규·복귀 placeholder 유저 모두의 단일 landing. `UsernameField` 가 debounce 300ms 로 `check_username_availability` 를 호출하고, `fetchUsernameSuggestions` 가 display_name/이메일에서 후보를 뽑아 availability 까지 붙여준다. `IdentityPreview` 가 입력 중인 프로필 헤더를 실시간 미리보기로 보여준다.
+- `/username-fix` 는 shim 으로 축소 — `sessionStorage` 잔재를 비우고 `/onboarding/identity?next=...` 로 `router.replace`.
+- `/onboarding` 의 기존 "profile 모드"는 제거. 세션이 있으면 즉시 `routeByAuthState` 로 위임해 identity-finish 로 보낸다.
+
+### 8.4 Routing gate 통일
+
+- `src/lib/identity/routing.ts` 의 `routeByAuthState(state, { nextPath })` 가 모든 entry(`/`, `/login`, `/auth/callback`, `AuthGate`, `/onboarding`) 의 유일한 결정 함수. 우선순위는 `needs_identity_setup > needs_onboarding > !has_password > next`.
+- `AuthGate` 는 **실제 gap 이 있을 때만** redirect (쿼리 파라미터 손상·무한 루프 방지).
+
+### 8.5 Public surface placeholder 억제
+
+- `formatUsername / formatDisplayName / formatIdentityPair` 가 placeholder 는 `@handle` 대신 i18n 중립 라벨(`identity.incompletePlaceholder`) 로 마스킹.
+- `hasPublicLinkableUsername` 이 false 이면 외부에서 프로필 링크를 생성하지 않는다 — 카드·피드·People·Inquiry 소비자 모두 이 헬퍼로 통일.
+- People 리스트는 placeholder 자체를 필터링해 공개 surface 노출을 원천 차단.
+
+### 8.6 Banner / Header 정비
+
+- `RandomIdBanner` CTA 가 `/onboarding/identity` 로 변경, i18n 키는 `banner.identityFinish.*`.
+- Header "My Profile" 링크가 placeholder 유저에게는 `/onboarding/identity` 를 가리키고, 아바타 fallback 글자는 `user_xxx` 의 'u' 대신 `?` 로 마스킹.
+
+### 8.7 초대 / 로그인 smoothing
+
+- `/invites/delegation` 의 "Sign up" 버튼이 `next=/invites/delegation?token=...` 를 보존해 가입 완료 후 invite 로 자연스럽게 복귀한다.
+- `delegation-invite-email` 라우트가 vercel.com 거부 + non-https 거부(localhost 예외) 로 강화돼 misconfig 이메일이 깨지는 링크로 나가지 않는다.
+- 비밀번호 로그인 경로도 `routeByAuthState` 로 수렴 — placeholder 유저는 로그인 직후 자동으로 identity-finish 로 이동.
+
+### 8.8 Ops
+
+- `/my/ops` 라벨이 "Random ID" → "Placeholder ID", "Username fix" → "Identity fix" 로 갱신. `v_identity_rescue_stats` 를 상단 4-칸 요약(Still placeholder / New placeholder 7d·30d / Rescued 7d / Rescued 30d) 으로 노출해 베타 기간 오퍼레이터가 rescue 진도를 바로 볼 수 있다.
+
+### 8.9 i18n
+
+- `identity.finish.*`, `identity.username.live.*`, `identity.username.suggestions.*`, `identity.preview.*`, `identity.incompletePlaceholder`, `banner.identityFinish.*` 신규 키가 en/ko 양쪽에 동기화돼 있다.
+

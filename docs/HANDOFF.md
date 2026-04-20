@@ -2,6 +2,72 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — Onboarding Identity Overhaul Patch
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "로그인 ≠ 신원 완성. 플레이스홀더 유저는 절대 공개 surface 에 정상처럼 보이면 안 된다. Identity 완성 여부는 `get_my_auth_state()` 한 곳에서 결정되고, 모든 entry 가 동일한 `routeByAuthState` gate 로 수렴된다."
+
+### 1. Identity SSOT (DB)
+
+- `supabase/migrations/20260421120000_identity_completeness.sql`
+  - `public.is_placeholder_username(text)` — `^user_[a-f0-9]{6,16}$` 정규식을 DB 공용 헬퍼로 고정.
+  - `public.get_my_auth_state()` 확장(additive): `display_name`, `is_placeholder_username`, `needs_identity_setup` 추가. `needs_identity_setup` 은 (a) 프로필 미존재, (b) username 이 placeholder, (c) display_name 빈값, (d) roles 누락, (e) main_role 누락 중 하나라도 해당되면 true.
+  - `public.check_username_availability(text)` 신규 RPC — reason: `ok` / `invalid` / `reserved` / `placeholder` / `taken` / `self`.
+  - `public.ops_onboarding_summary()` — placeholder 판정을 새 헬퍼로 교체.
+  - `public.v_identity_rescue_stats` (security_invoker) — 오퍼레이터용 placeholder/rescue 카운트.
+
+### 2. Routing Gate 수렴
+
+- `src/lib/identity/routing.ts` — `routeByAuthState(state, { nextPath })` 가 **유일한** 경로 결정 함수. 우선순위: `needs_identity_setup` → `/onboarding/identity` → `needs_onboarding` → `/onboarding` → `!has_password` → `/set-password` → `next`.
+- `src/app/page.tsx`, `src/app/login/page.tsx`, `src/app/auth/callback/page.tsx`, `src/components/AuthGate.tsx`, `src/app/onboarding/page.tsx` 전부 이 헬퍼로 통일. AuthGate 는 gap 이 실제로 있을 때만 `router.replace` (루프 방지).
+- `src/components/ProfileBootstrap.tsx` — `/onboarding`, `/onboarding/identity`, `/username-fix`, `/set-password`, `/auth/*` 에서는 `ensure_my_profile` 호출 skip (placeholder 재생산 차단).
+
+### 3. Identity-finish 전용 페이지
+
+- `src/app/onboarding/identity/page.tsx` — 단일 surface. display_name → UsernameField → main_role → roles → public/private → 저장. 저장 후 `routeByAuthState` 로 복귀.
+- `src/components/onboarding/UsernameField.tsx` — debounce 300ms `check_username_availability` RPC, 제안 chip tap-to-fill.
+- `src/components/onboarding/IdentityPreview.tsx` — 실시간 미니 프로필 헤더. placeholder 인 동안엔 `@handle` 대신 중립 라벨.
+- `src/lib/identity/suggestions.ts` — display_name/email 에서 후보 생성 → RPC 로 availability 확인.
+- `src/app/username-fix/page.tsx` — legacy shim. `sessionStorage` 잔재 정리 후 `/onboarding/identity?next=...` 로 replace.
+- `src/app/onboarding/page.tsx` — 로그인된 placeholder 유저가 들어오면 즉시 `routeByAuthState` 로 위임(이전의 "profile 모드"는 제거).
+
+### 4. Public surface 억제
+
+- `src/lib/identity/placeholder.ts` — 클라이언트 canonical regex. `src/lib/profile/randomUsername.ts` 는 deprecated alias.
+- `src/lib/identity/format.ts`
+  - `formatUsername(profile)` → placeholder 면 `null`.
+  - `formatDisplayName(profile, t?)` → display_name 없고 placeholder 면 `identity.incompletePlaceholder`.
+  - `formatIdentityPair(profile, t?)` → 같은 기준, primary 는 중립 라벨, secondary 는 빈값.
+  - `hasPublicLinkableUsername(profile)` → placeholder 가 아닐 때만 true. 공개 링크 보호용.
+- 소비자 업데이트: `FeedArtworkCard`, `ArtworkCard`, `FeedDiscoveryBlock`, `PeopleClient` (placeholder 자체를 리스트에서 제외), `UserProfileContent`, `my/inquiries`.
+- `src/components/RandomIdBanner.tsx` — CTA 를 `/onboarding/identity` 로 변경, i18n 키(`banner.identityFinish.*`) 사용.
+- `src/components/Header.tsx` — `myHref` 가 placeholder 이면 `/onboarding/identity`, 아바타 fallback 글자도 `user_...` 대신 `?` 로 마스킹.
+
+### 5. Invite / login smoothing
+
+- `src/app/invites/delegation/page.tsx` — 미로그인 상태 signup 버튼이 `/onboarding?next=/invites/delegation?token=...` 으로 `next` 보존.
+- `src/app/api/delegation-invite-email/route.ts` — base URL 검증 강화: vercel.com 거부에 더해 non-https 거부(localhost 예외), 경로 정규화.
+- `src/app/login/page.tsx` — password 로그인 경로도 `routeByAuthState` 로 수렴(placeholder 유저는 자동으로 identity-finish 로 라우팅).
+
+### 6. Ops
+
+- `src/app/my/ops/page.tsx` — 라벨 "Random ID" → "Placeholder ID", legacy "Username fix" 버튼은 `/onboarding/identity` 복사로 교체. 상단에 `v_identity_rescue_stats` 4-칸 요약 섹션(Still placeholder / New placeholder 7d·30d / Rescued 7d / Rescued 30d).
+
+### 7. i18n
+
+- `src/lib/i18n/messages.ts` 확장: `identity.finish.*`, `identity.username.live.*`, `identity.username.suggestions.*`, `identity.preview.*`, `identity.incompletePlaceholder`, `banner.identityFinish.*` (en/ko).
+
+### 8. 검증
+
+- `npx tsc --noEmit` pass.
+- `npm run lint` pass.
+- QA 매트릭스: (a) 신규 이메일+비밀번호 가입 (b) magic-link 가입 (c) 기존 비밀번호 유저 (d) 위임 초대 수락 (e) placeholder 유저가 `/feed` 접근 → gate 가 `/onboarding/identity` 로 라우팅 (f) identity-complete 유저 → 기존 경로 유지 (g) 직접 `/username-fix` 진입 → 새 surface 로 redirect.
+
+---
+
 ## 2026-04-19 — AI Wave 2 Actionful Studio Patch
 
 브랜치: 현재 작업 브랜치.

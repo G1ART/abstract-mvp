@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   getSession,
@@ -14,6 +14,7 @@ import { saveProfileUnified } from "@/lib/supabase/profileSaveUnified";
 import { useT } from "@/lib/i18n/useT";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ROLE_KEYS, type RoleKey } from "@/lib/identity/roles";
+import { routeByAuthState, safeNextPath, IDENTITY_FINISH_PATH } from "@/lib/identity/routing";
 
 const MAIN_ROLES = ROLE_KEYS;
 const ROLES = [...MAIN_ROLES];
@@ -34,8 +35,10 @@ type UserMetadata = {
   roles?: string[] | null;
 };
 
-export default function OnboardingPage() {
+function OnboardingInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get("next"));
   const { t } = useT();
   const [mode, setMode] = useState<"check" | "signup" | "profile">("check");
 
@@ -57,26 +60,39 @@ export default function OnboardingPage() {
   const checkSeqRef = useRef(0);
 
   useEffect(() => {
-    getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        const { data: profile } = await getMyProfile();
-        if (profile) {
-          await ensureFreeEntitlement(session.user.id);
-          router.replace("/feed?tab=all&sort=latest");
-          return;
-        }
-        setUserEmail(session.user.email ?? null);
-        const meta = session.user.user_metadata as UserMetadata | undefined;
-        if (meta?.username) setUsername(String(meta.username).toLowerCase());
-        if (meta?.display_name) setDisplayName(String(meta.display_name));
-        if (meta?.main_role) setMainRole(String(meta.main_role));
-        if (Array.isArray(meta?.roles) && meta.roles.length) setRoles(meta.roles);
-        setMode("profile");
-      } else {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { session },
+      } = await getSession();
+      if (cancelled) return;
+      if (!session) {
         setMode("signup");
+        return;
       }
-    });
-  }, [router]);
+      // Signed-in arrivals are handled by the unified gate. Anyone who
+      // needs identity completion (missing row, placeholder username,
+      // empty display_name, or empty roles) is forwarded to the polished
+      // identity-finish surface; anyone already complete goes to `next`.
+      const state = await getMyAuthState();
+      if (cancelled) return;
+
+      if (state && (state.needs_identity_setup || state.needs_onboarding)) {
+        await ensureFreeEntitlement(session.user.id);
+        const qs = nextPath ? `?next=${encodeURIComponent(nextPath)}` : "";
+        router.replace(`${IDENTITY_FINISH_PATH}${qs}`);
+        return;
+      }
+
+      // Fully complete: honor the gate's decision (next, set-password, etc.)
+      await ensureFreeEntitlement(session.user.id);
+      const { to } = routeByAuthState(state, { nextPath });
+      router.replace(to);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, nextPath]);
 
   function toggleRole(role: string) {
     setRoles((prev) =>
@@ -188,7 +204,12 @@ export default function OnboardingPage() {
         return;
       }
       await ensureFreeEntitlement(data.session.user.id);
-      router.replace("/feed?tab=all&sort=latest");
+      // Route through the unified gate: signup with immediate session
+      // typically lands on set-password next, identity-finish if the
+      // profile save somehow skipped a required field, or `next`.
+      const state = await getMyAuthState();
+      const { to } = routeByAuthState(state, { nextPath });
+      router.replace(to);
     }
   }
 
@@ -242,11 +263,8 @@ export default function OnboardingPage() {
 
     await ensureFreeEntitlement(session.user.id);
     const state = await getMyAuthState();
-    if (state && !state.has_password) {
-      router.replace("/set-password");
-    } else {
-      router.replace("/feed?tab=all&sort=latest");
-    }
+    const { to } = routeByAuthState(state, { nextPath });
+    router.replace(to);
   }
 
   if (mode === "check") {
@@ -589,5 +607,20 @@ export default function OnboardingPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen flex-col items-center justify-center gap-3">
+          <p className="text-lg font-semibold text-zinc-900">Abstract</p>
+          <p className="text-zinc-600">Loading...</p>
+        </div>
+      }
+    >
+      <OnboardingInner />
+    </Suspense>
   );
 }

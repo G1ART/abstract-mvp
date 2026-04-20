@@ -12,6 +12,7 @@ import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { getUnreadCount } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
 import { useActingAs } from "@/context/ActingAsContext";
+import { isPlaceholderUsername } from "@/lib/identity/placeholder";
 
 const MAIN_NAV = [
   { href: "/feed?tab=all&sort=latest", key: "nav.feed" },
@@ -28,6 +29,8 @@ export function Header() {
   const [session, setSession] = useState<Session | null>(null);
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
+  const isPlaceholderProfile = isPlaceholderUsername(profileUsername);
+  const myHref = !profileUsername || isPlaceholderProfile ? "/onboarding/identity" : "/my";
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
@@ -146,7 +149,7 @@ export function Header() {
         {/* My Profile | EN/KR | Avatar */}
         {ready && loggedIn && (
           <>
-            <Link href={profileUsername ? "/my" : "/onboarding"} className={linkClass}>
+            <Link href={myHref} className={linkClass}>
               {t("nav.myProfile")}
             </Link>
             <span className="flex gap-1 text-xs text-zinc-500">
@@ -183,7 +186,9 @@ export function Header() {
                   />
                 ) : (
                   <span className="text-sm font-medium text-zinc-600">
-                    {(profileUsername ?? "?").charAt(0).toUpperCase()}
+                    {isPlaceholderProfile || !profileUsername
+                      ? "?"
+                      : profileUsername.charAt(0).toUpperCase()}
                   </span>
                 )}
                 {unreadCount > 0 && (
@@ -298,7 +303,7 @@ export function Header() {
               </Link>
             ))}
             <Link
-              href={profileUsername ? "/my" : "/onboarding"}
+              href={myHref}
               className={`${linkClass} py-2 px-1`}
               onClick={closeMobile}
             >

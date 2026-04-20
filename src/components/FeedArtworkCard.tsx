@@ -18,6 +18,7 @@ import {
   formatDisplayName,
   formatIdentityPair,
   formatRoleChips,
+  hasPublicLinkableUsername,
 } from "@/lib/identity/format";
 import { LikeButton } from "./LikeButton";
 
@@ -67,9 +68,11 @@ export function FeedArtworkCard({
     ? { display_name: externalName, username: null }
     : artistProfile;
   const { primary: artistName, secondary: artistHandle } =
-    formatIdentityPair(artistIdentityInput);
+    formatIdentityPair(artistIdentityInput, t);
   const artistRoleChips = formatRoleChips(artistIdentityInput, t, { max: 1 });
-  const artistUsername = artistProfile?.username ?? "";
+  const artistUsername = hasPublicLinkableUsername(artistProfile)
+    ? artistProfile?.username ?? ""
+    : "";
   const claimLabel = primaryClaim
     ? claimTypeToLabel(primaryClaim.claim_type as ClaimType)
     : "Work";
@@ -141,7 +144,7 @@ export function FeedArtworkCard({
             </Link>
           ) : (
             <span className="font-semibold text-zinc-900">
-              {formatDisplayName(artistIdentityInput)}
+              {formatDisplayName(artistIdentityInput, t)}
             </span>
           )}
           {artistHandle && (

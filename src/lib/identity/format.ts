@@ -10,6 +10,7 @@
 
 import type { RoleKey } from "./roles";
 import { normalizeRoleList, roleLabel } from "./roles";
+import { isPlaceholderUsername } from "./placeholder";
 
 export type IdentityInput = {
   id?: string | null;
@@ -21,44 +22,84 @@ export type IdentityInput = {
 
 /** Anything we render for unknown users. Never throws, never returns ''. */
 const UNKNOWN = "알 수 없는 사용자";
+/** Public-surface stand-in for users with placeholder handles and no display name.
+ *  Callers that have a `t()` handle in scope should pass it so this is
+ *  localized through `identity.incompletePlaceholder`. */
+const PLACEHOLDER_NEUTRAL_KO = "설정 중인 프로필";
+
+type Translator = (key: string) => string;
+
+function placeholderNeutralLabel(t?: Translator): string {
+  if (!t) return PLACEHOLDER_NEUTRAL_KO;
+  const out = t("identity.incompletePlaceholder");
+  return out && out !== "identity.incompletePlaceholder" ? out : PLACEHOLDER_NEUTRAL_KO;
+}
 
 function cleanStr(v: unknown): string {
   if (typeof v !== "string") return "";
   return v.trim();
 }
 
-/** Returns "@username" or "" when there is no username. */
+/** Returns "@username" or "" when there is no username, or empty when
+ *  the handle is a canonical placeholder (`user_xxxxxxxx`). Placeholder
+ *  handles must never be shown on public surfaces — see Onboarding
+ *  Identity Overhaul (Track I). */
 export function formatUsername(profile: IdentityInput | null | undefined): string {
   const u = cleanStr(profile?.username);
   if (!u) return "";
+  if (isPlaceholderUsername(u)) return "";
   return `@${u.replace(/^@+/, "")}`;
 }
 
 /** The single line to show as the person's primary name.
- *  Preference order: display_name → @username → fallback. */
-export function formatDisplayName(profile: IdentityInput | null | undefined): string {
+ *  Preference order: display_name → @username (suppressing placeholder) → neutral label.
+ *  Pass `t` to localize the placeholder / unknown fallback via
+ *  `identity.incompletePlaceholder`. */
+export function formatDisplayName(
+  profile: IdentityInput | null | undefined,
+  t?: Translator
+): string {
   const dn = cleanStr(profile?.display_name);
   if (dn) return dn;
   const u = formatUsername(profile);
   if (u) return u;
+  if (isPlaceholderUsername(cleanStr(profile?.username))) {
+    return placeholderNeutralLabel(t);
+  }
   return UNKNOWN;
 }
 
 /**
  * Primary + secondary identity pair for hero/card layouts.
- *   primary   = display_name (falls back to @handle)
+ *   primary   = display_name (falls back to @handle, suppresses placeholders)
  *   secondary = @handle (only if we already used display_name as primary)
- * If we only have a handle we collapse to `{primary: '@handle', secondary: ''}`.
+ * Placeholder usernames never appear in either slot. Pass `t` to
+ * localize the neutral placeholder label.
  */
 export function formatIdentityPair(
-  profile: IdentityInput | null | undefined
+  profile: IdentityInput | null | undefined,
+  t?: Translator
 ): { primary: string; secondary: string } {
   const dn = cleanStr(profile?.display_name);
   const handle = formatUsername(profile);
   if (dn && handle) return { primary: dn, secondary: handle };
   if (dn) return { primary: dn, secondary: "" };
   if (handle) return { primary: handle, secondary: "" };
+  if (isPlaceholderUsername(cleanStr(profile?.username))) {
+    return { primary: placeholderNeutralLabel(t), secondary: "" };
+  }
   return { primary: UNKNOWN, secondary: "" };
+}
+
+/** Small helper: `true` if this profile should not expose its `/u/<username>` link
+ *  in public listings (placeholder handle). Intended for contexts where
+ *  we want to show the person but not link to a broken profile URL. */
+export function hasPublicLinkableUsername(
+  profile: IdentityInput | null | undefined
+): boolean {
+  const u = cleanStr(profile?.username);
+  if (!u) return false;
+  return !isPlaceholderUsername(u);
 }
 
 export type IdentityRoleChip = {

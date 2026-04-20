@@ -23,14 +23,31 @@ function setBootstrapDone(): void {
   }
 }
 
-/** Skip profile creation on onboarding so the user can set username/display_name first (no random ID). */
-function isOnboardingPath(pathname: string | null): boolean {
-  return pathname === "/onboarding";
+/**
+ * Paths on which we must NOT auto-create a profile row. These are the
+ * surfaces where the user is actively choosing their identity, finishing
+ * auth, or where an injected placeholder would defeat the gate (Onboarding
+ * Identity Overhaul, Track C).
+ */
+const BOOTSTRAP_SKIP_PREFIXES = [
+  "/onboarding",
+  "/username-fix",
+  "/set-password",
+  "/auth/",
+];
+
+function isBootstrapSkipped(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return BOOTSTRAP_SKIP_PREFIXES.some((raw) => {
+    const prefix = raw.replace(/\/$/, "");
+    if (pathname === prefix) return true;
+    return pathname.startsWith(`${prefix}/`);
+  });
 }
 
 function doEnsure(session: { user: { id: string } } | null, pathname: string | null) {
   if (!session?.user?.id) return;
-  if (isOnboardingPath(pathname)) return;
+  if (isBootstrapSkipped(pathname)) return;
   if (getBootstrapDone()) return;
 
   void (async () => {

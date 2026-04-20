@@ -64,13 +64,24 @@ export async function getSession() {
 
 /** Server-authoritative auth/onboarding state. Reads auth.users via SECURITY
  *  DEFINER RPC so the client cannot lie (unlike the old localStorage
- *  HAS_PASSWORD_KEY gate that used to be here).                                */
+ *  HAS_PASSWORD_KEY gate that used to be here).
+ *
+ *  New fields (Onboarding Identity Overhaul, 2026-04-21):
+ *  - `display_name`: current profiles.display_name (null if row missing).
+ *  - `is_placeholder_username`: DB-side canonical placeholder check.
+ *  - `needs_identity_setup`: `true` whenever the user is missing a row,
+ *    still holds a placeholder username, has no display_name, or is
+ *    missing roles/main_role. This is the single gate the app routes on.
+ */
 export type MyAuthState = {
   user_id: string;
   has_password: boolean;
   is_email_confirmed: boolean;
   needs_onboarding: boolean;
   username: string | null;
+  display_name: string | null;
+  is_placeholder_username: boolean;
+  needs_identity_setup: boolean;
 };
 
 export async function getMyAuthState(): Promise<MyAuthState | null> {
@@ -80,11 +91,26 @@ export async function getMyAuthState(): Promise<MyAuthState | null> {
   if (!row || typeof row !== "object") return null;
   const r = row as Record<string, unknown>;
   if (!r.user_id) return null;
+  const username = r.username == null ? null : String(r.username);
+  const displayName = r.display_name == null ? null : String(r.display_name);
+  const needsOnboarding = !!r.needs_onboarding;
+  // Server may return the new fields; if an older migration is live
+  // (pre-2026-04-21), fall back to safe client defaults so the routing
+  // gate still behaves.
+  const hasServerIdentityFlag = typeof r.needs_identity_setup === "boolean";
+  const hasServerPlaceholderFlag = typeof r.is_placeholder_username === "boolean";
   return {
     user_id: String(r.user_id),
     has_password: !!r.has_password,
     is_email_confirmed: !!r.is_email_confirmed,
-    needs_onboarding: !!r.needs_onboarding,
-    username: r.username == null ? null : String(r.username),
+    needs_onboarding: needsOnboarding,
+    username,
+    display_name: displayName,
+    is_placeholder_username: hasServerPlaceholderFlag
+      ? !!r.is_placeholder_username
+      : false,
+    needs_identity_setup: hasServerIdentityFlag
+      ? !!r.needs_identity_setup
+      : needsOnboarding,
   };
 }

@@ -1,11 +1,21 @@
 "use client";
 
+/**
+ * Top-of-page banner that nudges placeholder-username users to finish
+ * identity setup (Onboarding Identity Overhaul, Track I).
+ *
+ * The server-authoritative routing gate already forces the user to
+ * `/onboarding/identity` on their next navigation; this banner is a
+ * soft in-session reminder for as long as we still render shell UI.
+ */
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
-import { isRandomUsername } from "@/lib/profile/randomUsername";
+import { isPlaceholderUsername } from "@/lib/identity/placeholder";
+import { IDENTITY_FINISH_PATH } from "@/lib/identity/routing";
 
 const DISMISS_KEY = "ab_random_id_banner_dismissed";
 
@@ -33,7 +43,7 @@ export function RandomIdBanner() {
       getMyProfile().then(({ data }) => {
         if (cancelled) return;
         const username = (data as { username?: string | null } | null)?.username ?? null;
-        setShow(isRandomUsername(username));
+        setShow(isPlaceholderUsername(username));
       });
     });
     return () => {
@@ -55,23 +65,23 @@ export function RandomIdBanner() {
   return (
     <div
       role="banner"
-      className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-4 py-2 text-sm text-amber-900"
+      className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-900"
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="font-medium">{t("banner.randomIdTitle")}</span>
-        <span className="text-amber-800">{t("banner.randomIdCta")}</span>
+        <span className="font-medium">{t("banner.identityFinish.title")}</span>
+        <span className="text-zinc-700">{t("banner.identityFinish.cta")}</span>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Link
-          href="/settings"
-          className="rounded bg-amber-200 px-2 py-1 text-xs font-medium text-amber-900 hover:bg-amber-300"
+          href={IDENTITY_FINISH_PATH}
+          className="rounded bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-800"
         >
-          {t("banner.randomIdLink")}
+          {t("banner.identityFinish.link")}
         </Link>
         <button
           type="button"
           onClick={dismiss}
-          className="rounded p-1 text-amber-700 hover:bg-amber-200"
+          className="rounded p-1 text-zinc-500 hover:bg-zinc-200"
           aria-label="Dismiss"
         >
           ×

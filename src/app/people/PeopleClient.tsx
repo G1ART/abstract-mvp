@@ -18,6 +18,7 @@ import { FollowButton } from "@/components/FollowButton";
 import {
   formatIdentityPair,
   formatRoleChips,
+  hasPublicLinkableUsername,
 } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { SectionFrame } from "@/components/ds/SectionFrame";
@@ -391,6 +392,10 @@ export function PeopleClient() {
               {profiles.map((profile) => {
                 const username = profile.username ?? "";
                 if (!username) return null;
+                // Suppress placeholder (user_xxxxxxxx) identities from
+                // public people lanes — see Onboarding Identity Overhaul,
+                // Track I.
+                if (!hasPublicLinkableUsername(profile)) return null;
                 const isSelf = userId === profile.id;
                 const initialFollowing = followingIds.has(profile.id);
                 const reasonLine =
@@ -398,7 +403,7 @@ export function PeopleClient() {
                     ? formatReasonLine(profile, t)
                     : null;
                 const badge = !isSearchMode ? getScoreBadge(profile, t) : null;
-                const identity = formatIdentityPair(profile);
+                const identity = formatIdentityPair(profile, t);
                 const roleChips = formatRoleChips(profile, t, { max: 3 });
 
                 return (

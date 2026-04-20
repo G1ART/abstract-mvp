@@ -3,24 +3,13 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSession, getMyAuthState } from "@/lib/supabase/auth";
+import { routeByAuthState, safeNextPath } from "@/lib/identity/routing";
 import { useT } from "@/lib/i18n/useT";
-import {
-  isRandomUsername,
-  RANDOM_USERNAME_PROMPTED_KEY,
-} from "@/lib/profile/randomUsername";
-
-/** Only allow relative paths to avoid open redirect. */
-function safeNext(next: string | null): string | null {
-  if (!next || typeof next !== "string") return null;
-  const trimmed = next.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
-  return trimmed;
-}
 
 function AuthCallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextParam = safeNext(searchParams.get("next"));
+  const nextParam = safeNextPath(searchParams.get("next"));
   const { t } = useT();
 
   useEffect(() => {
@@ -36,25 +25,8 @@ function AuthCallbackInner() {
       }
       const state = await getMyAuthState();
       if (cancelled) return;
-      if (!state || state.needs_onboarding) {
-        router.replace("/onboarding");
-        return;
-      }
-      if (
-        typeof window !== "undefined" &&
-        isRandomUsername(state.username) &&
-        window.sessionStorage.getItem(RANDOM_USERNAME_PROMPTED_KEY) !== "1"
-      ) {
-        window.sessionStorage.setItem(RANDOM_USERNAME_PROMPTED_KEY, "1");
-        const target = nextParam || "/feed?tab=all&sort=latest";
-        router.replace(`/username-fix?next=${encodeURIComponent(target)}`);
-        return;
-      }
-      if (!state.has_password) {
-        router.replace(nextParam || "/set-password");
-        return;
-      }
-      router.replace(nextParam || "/feed?tab=all&sort=latest");
+      const { to } = routeByAuthState(state, { nextPath: nextParam });
+      router.replace(to);
     })();
     return () => {
       cancelled = true;
