@@ -139,8 +139,20 @@ function IdentityInner() {
   }, []);
 
   function toggleRole(role: string) {
+    const isRemoving = roles.includes(role);
+    // Invariant: main_role must always be a member of roles. The only
+    // way to lose the current primary is to promote another role from
+    // the <select> above. Blocking the chip here is less noisy than
+    // auto-clearing main_role behind the user's back.
+    if (isRemoving && role === mainRole) {
+      setError(t("identity.finish.primaryLockHint"));
+      return;
+    }
+    setError((prev) =>
+      prev === t("identity.finish.primaryLockHint") ? null : prev
+    );
     setRoles((prev) => {
-      const next = prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role];
+      const next = isRemoving ? prev.filter((r) => r !== role) : [...prev, role];
       // Pick the first selected role as primary if none is chosen yet —
       // this removes the "I picked a role but the primary is still
       // blank" confusion without stealing a deliberate choice.
@@ -169,6 +181,13 @@ function IdentityInner() {
     }
     if (roles.length < 1 || !mainRole) {
       setError(t("identity.finish.missingRoles"));
+      return;
+    }
+    // Defensive last line of defense: even if toggleRole is somehow
+    // bypassed (race, keyboard, future refactor), the payload must not
+    // ship a primary that isn't one of the selected roles.
+    if (!roles.includes(mainRole)) {
+      setError(t("identity.finish.primaryDesync"));
       return;
     }
     if (!USERNAME_REGEX.test(normalizedUsername) || isPlaceholderUsername(normalizedUsername)) {
@@ -351,6 +370,7 @@ function IdentityInner() {
                       key={r}
                       onClick={() => toggleRole(r)}
                       aria-pressed={active}
+                      title={isPrimary ? t("identity.finish.primaryLockHint") : undefined}
                       className={`rounded-full border px-3 py-1 text-xs transition-colors ${
                         active
                           ? "border-zinc-900 bg-zinc-900 text-white"

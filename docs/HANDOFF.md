@@ -2,6 +2,95 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — Onboarding Sign-off Hardening Patch (v2)
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+> "온보딩 front door 베타 sign-off 전 마지막 hardening 패스. 역할/대표역할 desync 차단, 실제 routing 동작을 검증하는 runtime 스모크, 로그인 서브타이틀 polish, dev 환경 SQL 누락 감지."
+
+### 1. Track 1 — primary-role / roles 동기화 불변식
+**문제**: 기존 identity-finish 에서 `main_role` 을 지정한 뒤 같은 역할 chip 을 해제하면 `main_role ∉ roles` 상태가 생겨, 서버에 저장될 경우 탐색/검색 일관성이 깨졌음.
+
+**해결**:
+- `src/app/onboarding/identity/page.tsx`: `toggleRole()` 이 현재 `main_role` chip 의 제거를 차단. 대신 인라인 힌트(`identity.finish.primaryLockHint`) 를 표시하여 "위 메뉴에서 다른 대표 역할을 먼저 고르라" 고 안내. 제거를 허용하려면 `<select>` 에서 primary 를 다른 값으로 바꾼 뒤 해제하면 됨.
+- `handleSubmit()` 제출 전 최종 방어선: `roles.includes(mainRole)` 이 false 면 저장 차단 + `identity.finish.primaryDesync` 오류 노출.
+- primary chip 에 `title` 속성으로 설명 노출.
+
+**불변식**: 저장 payload 에서 `main_role ∉ roles` 는 불가능.
+
+### 2. Track 2 — Runtime routing 스모크 신설
+기존 `tests/onboarding-smoke.mjs` 는 grep 수준 static check. Beta sign-off 에는 부족.
+
+**추가**: `tests/onboarding-routing-runtime.mjs` — Node 24 의 `--experimental-strip-types` 로 `src/lib/identity/routing.ts` 를 직접 import 해 실제 `routeByAuthState()` 를 구동.
+
+**시나리오 (9종)**:
+1. 비밀번호 회원가입 직후 (`needs_identity_setup`) → `/onboarding/identity?next=...`
+2. 매직링크 1-hop placeholder (세션 + placeholder username) → identity-finish
+3. 완료 유저 → `next` 또는 `/feed`
+4a. 초대 회원가입 + `next=/invites/delegation?token=abc` → identity-finish 이 `next` 보존
+4b. identity 완료 후 동일 state → 원래 초대 페이지로 복귀
+5. 세션 없음 → `/login` (+ `next`)
+6. 세션은 있으나 RPC state=null (과거 로그인 루프 버그) → default destination, never `/login`
+7. 비밀번호 미설정 계정 → `/set-password`
+8. `needs_onboarding` 만 true → `/onboarding`
+9. `safeNextPath` 가 `//evil.com`, `https://evil.com` 거부
+
+**실행**: `npm run test:onboarding-runtime` (package.json 에 스크립트 추가).
+
+### 3. Track 3 — Dev-only SQL 누락 감지
+**문제**: `supabase/migrations/20260421120000_identity_completeness.sql` 이 staging/dev 에 미적용이면 `get_my_auth_state()` 가 새 컬럼 없는 구버전 스키마를 반환 → 프런트엔드는 legacy fallback 으로 내려가 "겉보기엔 멀쩡하지만 실은 gate 가 동작하지 않는" 상태가 생김.
+
+**해결**: `src/lib/supabase/auth.ts` 의 `getMyAuthState()` 가 응답에서 `needs_identity_setup` / `is_placeholder_username` 이 누락된 것을 감지하면 `NODE_ENV !== "production"` 에서만 한 번 `console.warn` 을 띄워 어떤 마이그레이션이 필요한지 명시. Production 에서는 완전 무음.
+
+### 4. Track 5 — 로그인 서브타이틀 polish
+**문제**: `/login` 서브타이틀 "Welcome back. Enter your email and password to continue." / "돌아오신 것을 환영해요. 이메일과 비밀번호로 이어서 사용하세요." 가 좁은 viewport 에서 어색하게 2 줄로 깨져 온보딩 다른 surface 대비 품질감이 떨어짐.
+
+**해결**:
+- i18n: `login.welcomeBack` 제거 → `login.welcomeBackTitle` ("Welcome back." / "돌아오신 것을 환영해요.") + `login.welcomeBackHint` ("Enter your email and password to continue." / "이메일과 비밀번호로 이어서 사용하세요.") 로 분할.
+- `src/app/login/page.tsx`: 두 문장을 각각 `<span className="block">` 으로 렌더, `max-w-[32ch]` + `[text-wrap:balance]` + `leading-relaxed` 로 의도적 2-line 블록 구성. EN/KO 둘 다 균형 있게 읽힘.
+
+### 5. Track 4 — 경로 정리 재확인
+placeholder / signed-in 유저가 다음 surface 를 통과할 때 루프 없음 재확인 (Runtime 스모크가 이를 런타임으로도 검증):
+- `/` → signup-first
+- `/login` → 기존 유저 전용, 완료 후 `routeByAuthState(..., { sessionPresent: true })`
+- `/auth/callback` → `sessionPresent: true`
+- `/onboarding` → signed-in 은 즉시 `routeByAuthState`
+- `/onboarding/identity` → 완료된 state 는 gate 를 통해 우회
+- `AuthGate` → RPC state=null 이면 현재 페이지 유지 (루프 방지)
+- Header "My Profile" → placeholder 유저는 `/onboarding/identity`
+- `/invites/delegation` → 가입 링크에 `next` 보존
+
+### 6. i18n 세부 변경
+EN+KO 양쪽:
+- 제거: `login.welcomeBack`.
+- 추가: `login.welcomeBackTitle`, `login.welcomeBackHint`, `identity.finish.primaryLockHint`, `identity.finish.primaryDesync`.
+
+### 7. "벌크" → "일괄" 한국어 통일 (사용자 요청)
+업로드 화면과 하부 버튼 메뉴의 "벌크" 한글 표기를 "일괄" 로 교체. 영어 문자열 (`bulk.*` 키 값 중 "Bulk") 은 손대지 않음.
+- `src/lib/i18n/messages.ts`: `exhibition.uploadBulkWorks`, `exhibition.dropImagesHere` (KO), `upload.tabBulk` (KO) 에서 "벌크" → "일괄".
+- `src/app/my/exhibitions/[id]/page.tsx`: 버킷 업로드 버튼 2곳 `"(벌크)"` → `"(일괄)"`.
+- `src/app/my/exhibitions/[id]/add/page.tsx`: 코드 주석 한 줄 동반 교체.
+
+### 8. Acceptance 재확인
+- [x] `main_role` / `roles` 절대 desync 되지 않음 (UI + submit 가드 이중 보호).
+- [x] Runtime onboarding smokes 9종 모두 pass.
+- [x] Dev 환경에서 SQL 누락 즉시 감지 가능.
+- [x] Placeholder 유저 경로 루프 없음.
+- [x] Invite round-trip 유지.
+- [x] 로그인 서브타이틀 KO/EN 의도된 2-line 블록.
+- [x] `npx tsc --noEmit` 통과, 패치 대상 파일 lint-clean (기존 이슈는 범위 외).
+
+### 9. 실행 명령
+```bash
+npm run test:ai-safety
+npm run test:onboarding-smoke
+npm run test:onboarding-runtime
+npx tsc --noEmit
+```
+
+---
+
 ## 2026-04-19 — Onboarding Front Door Finalization Patch
 
 브랜치: 현재 작업 브랜치.

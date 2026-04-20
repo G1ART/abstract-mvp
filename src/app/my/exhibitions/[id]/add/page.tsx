@@ -645,7 +645,7 @@ export default function AddWorkToExhibitionPage() {
           </section>
         ) : (
           <section>
-            {/* 작가 단위 버킷: 드롭 존 + 단일/벌크 버튼 */}
+            {/* 작가 단위 버킷: 드롭 존 + 단일/일괄 버튼 */}
             <div className="mb-6 space-y-4">
               <p className="text-sm font-semibold text-zinc-800">{t("exhibition.addWorksByArtist")}</p>
               {(participants.length > 0 || externalRows.some((r) => r.name.trim())) ? (

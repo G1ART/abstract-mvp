@@ -10,7 +10,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:ai-safety": "node tests/ai-safety.mjs",
-    "test:onboarding-smoke": "node tests/onboarding-smoke.mjs"
+    "test:onboarding-smoke": "node tests/onboarding-smoke.mjs",
+    "test:onboarding-runtime": "node --experimental-strip-types --no-warnings tests/onboarding-routing-runtime.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

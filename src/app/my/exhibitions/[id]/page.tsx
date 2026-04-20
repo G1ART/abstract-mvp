@@ -701,7 +701,7 @@ export default function ExhibitionDetailPage() {
                     }}
                   />
                   <span className="inline-block cursor-pointer rounded border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50">
-                    {t("exhibition.addPhoto")} (벌크)
+                    {t("exhibition.addPhoto")} (일괄)
                   </span>
                 </label>
               </section>
@@ -741,7 +741,7 @@ export default function ExhibitionDetailPage() {
                     }}
                   />
                   <span className="inline-block cursor-pointer rounded bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700">
-                    {t("exhibition.addPhoto")} (벌크)
+                    {t("exhibition.addPhoto")} (일괄)
                   </span>
                 </label>
               </div>

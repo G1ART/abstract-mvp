@@ -128,7 +128,14 @@ function LoginInner() {
     <main className="mx-auto flex min-h-screen w-full max-w-sm flex-col justify-center px-4 py-12">
       <header className="mb-8">
         <h1 className="text-2xl font-semibold text-zinc-900">{t("login.title")}</h1>
-        <p className="mt-2 text-sm text-zinc-600">{t("login.welcomeBack")}</p>
+        {/* Sentence-aware subtitle: each clause renders on its own line so
+            the block reads as a calm two-beat greeting rather than an
+            arbitrary text-wrap. `text-wrap: balance` still keeps each
+            line visually centered on narrow viewports. */}
+        <p className="mt-2 max-w-[32ch] text-sm leading-relaxed text-zinc-600 [text-wrap:balance]">
+          <span className="block">{t("login.welcomeBackTitle")}</span>
+          <span className="block">{t("login.welcomeBackHint")}</span>
+        </p>
       </header>
 
       <form onSubmit={handlePasswordSignIn} className="space-y-3" noValidate>

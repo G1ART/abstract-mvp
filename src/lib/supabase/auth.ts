@@ -84,6 +84,27 @@ export type MyAuthState = {
   needs_identity_setup: boolean;
 };
 
+let _identitySqlWarningShown = false;
+
+function warnMissingIdentitySql(row: Record<string, unknown>) {
+  if (_identitySqlWarningShown) return;
+  _identitySqlWarningShown = true;
+  // Only noisy during development/staging. Production builds stay
+  // silent on purpose because this is a "setup accident" detector,
+  // not an end-user concern.
+  const env =
+    typeof process !== "undefined" ? process.env?.NODE_ENV : undefined;
+  if (env === "production") return;
+  const have = Object.keys(row).sort().join(", ");
+  console.warn(
+    "%c[Abstract] get_my_auth_state() is missing `needs_identity_setup` / `is_placeholder_username`.",
+    "color:#b45309;font-weight:600",
+    "\nApply supabase/migrations/20260421120000_identity_completeness.sql before testing onboarding.",
+    "\nReturned columns:",
+    have
+  );
+}
+
 export async function getMyAuthState(): Promise<MyAuthState | null> {
   const { data, error } = await supabase.rpc("get_my_auth_state");
   if (error) return null;
@@ -99,6 +120,9 @@ export async function getMyAuthState(): Promise<MyAuthState | null> {
   // gate still behaves.
   const hasServerIdentityFlag = typeof r.needs_identity_setup === "boolean";
   const hasServerPlaceholderFlag = typeof r.is_placeholder_username === "boolean";
+  if (!hasServerIdentityFlag || !hasServerPlaceholderFlag) {
+    warnMissingIdentitySql(r);
+  }
   return {
     user_id: String(r.user_id),
     has_password: !!r.has_password,
