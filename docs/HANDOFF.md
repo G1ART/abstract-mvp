@@ -2,6 +2,54 @@
 
 Last updated: 2026-04-19
 
+## 2026-04-19 — AI Wave 2 Actionful Studio Patch
+
+브랜치: 현재 작업 브랜치.
+
+### 0. 한 줄 요약
+
+> "Wave 2는 AI preview 레이어를 '정말 쓰이는' Studio/워크플로우 레이어로 전환한다. 스키마 확장은 관측용 뷰(`v_ai_events_summary`)뿐이며, 신뢰 경계는 Wave 1을 유지한다."
+
+### 1. Track 0 — Cleanup
+
+- **0.A Confirm primitive**: `src/components/ds/ConfirmActionDialog.tsx` 신설 (focus trap, Esc/backdrop cancel, body scroll lock). `AiDraftPanel` replace, 작품 삭제, shortlist 파괴적 액션(토큰 회전·제거·컬래버레이터)을 전부 DS 모달로 이식. `window.confirm` 잔존 0건 (AI 경로).
+- **0.B Acceptance SSOT**: `src/lib/ai/accept.ts` 의 `markAiAccepted(aiEventId, {feature, via})` 를 모든 소비자 경로가 사용. Inquiry는 **send-after-edit** 규칙 — apply/copy 시점이 아니라 `/api/messages/reply` 성공 직후에만 accepted 플립.
+- **0.C Path drift**: `/api/ai/accept` 주석과 `src/lib/ai/browser.ts` 주석이 canonical helper 를 `src/lib/ai/accept.ts` 로 지칭.
+- **0.D 4카드 표준화**: `src/components/studio/intelligence/aiCardState.ts` (`aiErrorKey`) 로 degradation → i18n 매핑 통일. Profile/Portfolio/Digest/Matchmaker 모두 idle/loading/degraded/empty/dismiss 상태를 같은 골격으로 렌더.
+
+### 2. Track A–G — 기능 확장
+
+| Track | 핵심 변경 |
+|---|---|
+| A. Profile Copilot | `bioDrafts`/`headlineDrafts`/`discoverabilityRationale` 확장. 프롬프트 `PROFILE_COPILOT_SYSTEM` 에 username/role/public 변경 금지 footer. 클라이언트 후처리에서도 해당 패턴 필터. |
+| B. Portfolio Copilot | 제안을 kind (`reorder`/`feature`/`highlight`/`gap`)로 그룹, `artworkIds` 딥링크 칩, `ordering` 섹션은 "Copy checklist"로 제공. 개별 "Mark reviewed" 상태. |
+| C. Exhibition Post Producer Lite | non-title draft 에 `ai.exhibition.previewOnly` 힌트. 직접 DB 업데이트 없음. |
+| D. Inquiry Concierge v2 | `lengthPreference` (`short`/`medium`/`long`) 토글 + `tonePrefs` 보존. 프롬프트에 가격·소유권 조작 금지 footer. |
+| E. Matchmaker | `suggestedAction` (`follow_back`/`intro_note`/`share_exhibition`/`save_for_later`) 와 `suggestedArtworkIds` 렌더. `intro_note` 는 `IntroMessageAssist` 를 인라인으로 오픈. `me.artworks` 컨텍스트 전달. |
+| F. Weekly Studio Digest | `recentUploads` 컨텍스트, sparse-signal 규칙 시스템 프롬프트. |
+| G. Action 어휘 | `ai.action.useAsBio`, `ai.action.useAsReply` 등 task-oriented 라벨. `AiDraftPanel.applyLabelKey` prop. |
+
+### 3. Track H — 관측/베타 컨트롤
+
+- 마이그레이션 `supabase/migrations/20260420120000_v_ai_events_summary.sql`: `v_ai_events_summary` (security_invoker) — feature 별 total/accepted/degraded, 7d 카운트, avg/p95 latency.
+- `/dev/ai-metrics` (개발 환경 + `NEXT_PUBLIC_AI_METRICS=1`) 개발자 게이티드 페이지.
+- `src/lib/ai/route.ts` 비-프로덕션에서 `console.debug` 로 prompt/response 크기 + latency 출력.
+
+### 4. 검증
+
+- `npx tsc --noEmit` pass.
+- `node tests/ai-safety.mjs` pass. 신규 invariant:
+  - #4 `src/components/ai/**` 에서 `window.confirm` 금지.
+  - #5 `PROFILE_COPILOT_SYSTEM` 의 username/role/public 변경 금지 안내 및 `INQUIRY_REPLY_SYSTEM` 의 가격·소유권 조작 금지 안내 필수.
+- `npm run lint` — 본 패치 범위 경고 0건 (기존 잔존 경고는 무관).
+
+### 5. 데이터/운영 노트
+
+- Supabase: `20260420120000_v_ai_events_summary.sql` 적용 필요. RLS 는 기저 `ai_events` 의 owner-only 정책을 그대로 상속.
+- 신규 테이블/인덱스 없음. `ai_events` 의 기존 스키마(Wave 1) 재사용.
+
+---
+
 ## 2026-04-19 — AI Wave 1 Hardening Patch
 
 브랜치: 현재 작업 브랜치.

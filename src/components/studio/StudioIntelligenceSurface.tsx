@@ -97,20 +97,43 @@ export function StudioIntelligenceSurface({
 
   const digestInput = useMemo(
     () => ({
+      username: profileSurface.username,
       views7d: viewsCount7d ?? 0,
       inquiries7d,
       recentExhibitions: exhibitions.slice(0, 3).map((e) => ({
         title: e.title ?? "",
       })),
+      recentUploads: artworks.slice(0, 3).map((a) => ({
+        id: a.id,
+        title: a.title ?? null,
+        createdAt:
+          (a as Record<string, unknown>).created_at as string | null | undefined ?? null,
+      })),
       locale,
     }),
-    [viewsCount7d, inquiries7d, exhibitions, locale],
+    [profileSurface.username, viewsCount7d, inquiries7d, exhibitions, artworks, locale],
   );
 
   const matchmakerMe = useMemo(
-    () => ({ themes, mediums, city }),
-    [themes, mediums, city],
+    () => ({
+      themes,
+      mediums,
+      city,
+      artworks: artworks.slice(0, 10).map((a) => ({
+        id: a.id,
+        title: a.title ?? null,
+      })),
+    }),
+    [themes, mediums, city, artworks],
   );
+
+  const artworkTitles = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const a of artworks) {
+      if (a.id && a.title) map[a.id] = a.title;
+    }
+    return map;
+  }, [artworks]);
 
   return (
     <section
@@ -139,9 +162,10 @@ export function StudioIntelligenceSurface({
       <PortfolioCopilotCard
         portfolioInput={portfolioInput}
         artworkCount={artworks.length}
+        artworkTitles={artworkTitles}
       />
       <WeeklyDigestCard digestInput={digestInput} />
-      <MatchmakerCard me={matchmakerMe} />
+      <MatchmakerCard me={matchmakerMe} myArtworkTitles={artworkTitles} />
     </section>
   );
 }

@@ -8,7 +8,7 @@
  * collide with other product state.
  */
 
-type Surface = "bio" | "inquiry";
+type Surface = "bio" | "inquiry" | "inquiryLength";
 
 function storageKey(surface: Surface): string {
   return `ai.tone.${surface}`;

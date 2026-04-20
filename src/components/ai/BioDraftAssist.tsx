@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
-import { logBetaEvent } from "@/lib/beta/logEvent";
+import { aiApi } from "@/lib/ai/browser";
+import { markAiAccepted } from "@/lib/ai/accept";
 import { readTone, writeTone } from "@/lib/ai/tonePrefs";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { BioDraftResult } from "@/lib/ai/types";
@@ -65,14 +65,12 @@ export function BioDraftAssist({
 
   const handleApply = (text: string) => {
     onApply(text);
-    void acceptAiEvent(result?.aiEventId);
-    void logBetaEvent("ai_accepted", { feature: "bio_draft", tone });
+    markAiAccepted(result?.aiEventId, { feature: "bio_draft", via: "apply" });
   };
 
   const handleCopy = (text: string) => {
     copyToClipboard(text);
-    void acceptAiEvent(result?.aiEventId);
-    void logBetaEvent("ai_accepted", { feature: "bio_draft", tone, via: "copy" });
+    markAiAccepted(result?.aiEventId, { feature: "bio_draft", via: "copy" });
   };
 
   return (
@@ -121,6 +119,7 @@ export function BioDraftAssist({
           drafts={result?.drafts ?? []}
           currentValue={currentBio}
           applyMode="auto"
+          applyLabelKey="ai.action.useAsBio"
           onApply={handleApply}
           onCopy={handleCopy}
           onDismiss={() => setResult(null)}

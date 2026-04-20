@@ -46,6 +46,7 @@ const LOCALE_VALUES: readonly AiLocale[] = ["en", "ko"] as const;
 const BIO_TONES = ["concise", "warm", "curatorial"] as const;
 const INQUIRY_TONES = ["concise", "warm", "curatorial"] as const;
 const INQUIRY_KINDS = ["reply", "followup"] as const;
+const INQUIRY_LENGTHS = ["short", "long"] as const;
 const EXHIBITION_KINDS = ["title", "description", "wall_text", "invite_blurb"] as const;
 
 /** Hard guards to keep prompt size bounded across all AI routes. */
@@ -219,6 +220,8 @@ export function parseDigestBody(raw: unknown): ValidationResult<{
   followsDelta7d: number;
   shortlistEvents7d: number;
   recentExhibitions: Array<{ title: string; year?: string | number }>;
+  recentUploads: Array<{ title: string; createdAt?: string }>;
+  username: string | null;
   locale: AiLocale;
 }> {
   if (!isRecord(raw) || !isRecord(raw.digest)) return { ok: false, reason: "missing_digest" };
@@ -232,6 +235,15 @@ export function parseDigestBody(raw: unknown): ValidationResult<{
     const year = stringOrYearOrNull(item.year);
     recent.push(year != null ? { title, year } : { title });
   }
+  const up = Array.isArray(d.recentUploads) ? d.recentUploads : [];
+  const uploads: Array<{ title: string; createdAt?: string }> = [];
+  for (const item of up.slice(0, 3)) {
+    if (!isRecord(item)) continue;
+    const title = trimOrNull(item.title, LIMITS.titleMax);
+    if (!title) continue;
+    const createdAt = trimOrNull(item.createdAt, 40);
+    uploads.push(createdAt ? { title, createdAt } : { title });
+  }
   return {
     ok: true,
     value: {
@@ -241,6 +253,8 @@ export function parseDigestBody(raw: unknown): ValidationResult<{
       followsDelta7d: numberOrNull(d.followsDelta7d) ?? 0,
       shortlistEvents7d: numberOrNull(d.shortlistEvents7d) ?? 0,
       recentExhibitions: recent,
+      recentUploads: uploads,
+      username: trimOrNull(d.username, 64),
       locale: parseLocale(d.locale),
     },
   };
@@ -311,6 +325,7 @@ export function parseExhibitionBody(raw: unknown): ValidationResult<{
 export function parseInquiryBody(raw: unknown): ValidationResult<{
   tone: (typeof INQUIRY_TONES)[number];
   kind: (typeof INQUIRY_KINDS)[number];
+  lengthPreference: (typeof INQUIRY_LENGTHS)[number];
   artwork: {
     title: string | null;
     year: string | number | null;
@@ -330,6 +345,9 @@ export function parseInquiryBody(raw: unknown): ValidationResult<{
   const kind = (INQUIRY_KINDS as readonly string[]).includes(i.kind as string)
     ? (i.kind as (typeof INQUIRY_KINDS)[number])
     : "reply";
+  const lengthPreference = (INQUIRY_LENGTHS as readonly string[]).includes(i.lengthPreference as string)
+    ? (i.lengthPreference as (typeof INQUIRY_LENGTHS)[number])
+    : "short";
   const artworkRaw = isRecord(i.artwork) ? i.artwork : null;
   const artwork = artworkRaw
     ? {
@@ -354,6 +372,7 @@ export function parseInquiryBody(raw: unknown): ValidationResult<{
     value: {
       tone,
       kind,
+      lengthPreference,
       artwork,
       exhibitionTitle: trimOrNull(i.exhibitionTitle, LIMITS.titleMax),
       thread,
@@ -374,13 +393,21 @@ function parsePersonSummary(v: unknown): PersonSummaryParsed {
 }
 
 export function parseIntroBody(raw: unknown): ValidationResult<{
-  me: PersonSummaryParsed;
+  me: PersonSummaryParsed & { artworks: Array<{ title: string }> };
   recipient: PersonSummaryParsed & { sharedSignals: string[] };
   locale: AiLocale;
 }> {
   if (!isRecord(raw) || !isRecord(raw.intro)) return { ok: false, reason: "missing_intro" };
   const x = raw.intro;
-  const me = parsePersonSummary(x.me);
+  const meBase = parsePersonSummary(x.me);
+  const meRaw = isRecord(x.me) ? x.me : null;
+  const artworksRaw = meRaw && Array.isArray(meRaw.artworks) ? meRaw.artworks : [];
+  const artworks: Array<{ title: string }> = [];
+  for (const a of artworksRaw.slice(0, 3)) {
+    if (!isRecord(a)) continue;
+    const title = trimOrNull(a.title, LIMITS.titleMax);
+    if (title) artworks.push({ title });
+  }
   const recipientBase = parsePersonSummary(x.recipient);
   const sharedSignals = isRecord(x.recipient)
     ? trimArray(x.recipient.sharedSignals, LIMITS.keywordCount, LIMITS.keywordItem)
@@ -388,7 +415,7 @@ export function parseIntroBody(raw: unknown): ValidationResult<{
   return {
     ok: true,
     value: {
-      me,
+      me: { ...meBase, artworks },
       recipient: { ...recipientBase, sharedSignals },
       locale: parseLocale(x.locale),
     },
@@ -396,7 +423,12 @@ export function parseIntroBody(raw: unknown): ValidationResult<{
 }
 
 export function parseMatchmakerBody(raw: unknown): ValidationResult<{
-  me: { themes: string[]; mediums: string[]; city: string | null };
+  me: {
+    themes: string[];
+    mediums: string[];
+    city: string | null;
+    artworks: Array<{ id: string; title: string | null }>;
+  };
   candidates: MatchmakerCandidateParsed[];
   locale: AiLocale;
 }> {
@@ -420,6 +452,14 @@ export function parseMatchmakerBody(raw: unknown): ValidationResult<{
       sharedSignals: trimArray(c.sharedSignals, LIMITS.keywordCount, LIMITS.keywordItem),
     });
   }
+  const artworksRaw = Array.isArray(me.artworks) ? me.artworks : [];
+  const artworks: Array<{ id: string; title: string | null }> = [];
+  for (const a of artworksRaw.slice(0, LIMITS.selectedArtworksMax)) {
+    if (!isRecord(a)) continue;
+    const id = typeof a.id === "string" && a.id.trim() ? a.id.trim().slice(0, 64) : null;
+    if (!id) continue;
+    artworks.push({ id, title: trimOrNull(a.title, LIMITS.titleMax) });
+  }
   return {
     ok: true,
     value: {
@@ -427,6 +467,7 @@ export function parseMatchmakerBody(raw: unknown): ValidationResult<{
         themes: trimArray(me.themes, LIMITS.themesMax, LIMITS.keywordItem),
         mediums: trimArray(me.mediums, LIMITS.mediumsMax, LIMITS.keywordItem),
         city: trimOrNull(me.city, 80),
+        artworks,
       },
       candidates,
       locale: parseLocale(m.locale),

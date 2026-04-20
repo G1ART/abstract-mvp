@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
+import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import { useT } from "@/lib/i18n/useT";
 import {
   createShortlist,
@@ -17,6 +18,8 @@ function ShortlistsContent() {
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -42,14 +45,14 @@ function ShortlistsContent() {
     }
   }, [newTitle, creating, refresh]);
 
-  const handleDelete = useCallback(
-    async (id: string) => {
-      if (!confirm("Delete this shortlist?")) return;
-      await deleteShortlist(id);
-      void refresh();
-    },
-    [refresh]
-  );
+  const handleConfirmDelete = useCallback(async () => {
+    if (!pendingDeleteId || deleting) return;
+    setDeleting(true);
+    await deleteShortlist(pendingDeleteId);
+    setDeleting(false);
+    setPendingDeleteId(null);
+    void refresh();
+  }, [pendingDeleteId, deleting, refresh]);
 
   const copyShareLink = useCallback((token: string) => {
     const url = `${window.location.origin}/room/${token}`;
@@ -113,7 +116,7 @@ function ShortlistsContent() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => void handleDelete(sl.id)}
+                    onClick={() => setPendingDeleteId(sl.id)}
                     className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50"
                   >
                     Delete
@@ -124,6 +127,17 @@ function ShortlistsContent() {
           ))}
         </ul>
       )}
+      <ConfirmActionDialog
+        open={pendingDeleteId !== null}
+        title={t("shortlist.deleteConfirm.title")}
+        description={t("shortlist.deleteConfirm.desc")}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        tone="destructive"
+        busy={deleting}
+        onConfirm={() => void handleConfirmDelete()}
+        onCancel={() => setPendingDeleteId(null)}
+      />
     </main>
   );
 }

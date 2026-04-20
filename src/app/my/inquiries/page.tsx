@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/ds/EmptyState";
 import { Chip } from "@/components/ds/Chip";
 import { formatIdentityPair } from "@/lib/identity/format";
 import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
+import { markAiAccepted } from "@/lib/ai/accept";
 
 export default function MyInquiriesPage() {
   const { t } = useT();
@@ -34,6 +35,7 @@ export default function MyInquiriesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [replyAiEventId, setReplyAiEventId] = useState<Record<string, string>>({});
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<InquiryStatus | "all">("all");
@@ -127,6 +129,7 @@ export default function MyInquiriesPage() {
     async (inquiryId: string) => {
       const text = replyText[inquiryId]?.trim();
       if (!text) return;
+      const adoptedAiEventId = replyAiEventId[inquiryId] ?? null;
       setReplyingId(inquiryId);
       const { error } = await replyToPriceInquiry(inquiryId, text);
       setReplyingId(null);
@@ -134,7 +137,18 @@ export default function MyInquiriesPage() {
         setToast(t("common.replyFailed"));
         return;
       }
+      if (adoptedAiEventId) {
+        markAiAccepted(adoptedAiEventId, {
+          feature: "inquiry_reply_draft",
+          via: "send",
+        });
+      }
       setReplyText((prev) => {
+        const next = { ...prev };
+        delete next[inquiryId];
+        return next;
+      });
+      setReplyAiEventId((prev) => {
         const next = { ...prev };
         delete next[inquiryId];
         return next;
@@ -144,7 +158,7 @@ export default function MyInquiriesPage() {
       await fetchFirstPage();
       setToast(t("common.replySent"));
     },
-    [replyText, fetchFirstPage, t]
+    [replyText, replyAiEventId, fetchFirstPage, t]
   );
 
   const handleStatusChange = useCallback(
@@ -383,9 +397,17 @@ export default function MyInquiriesPage() {
                         <textarea
                           placeholder={t("priceInquiry.replyPlaceholder")}
                           value={replyText[row.id] ?? ""}
-                          onChange={(e) =>
-                            setReplyText((prev) => ({ ...prev, [row.id]: e.target.value }))
-                          }
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setReplyText((prev) => ({ ...prev, [row.id]: next }));
+                            if (!next.trim()) {
+                              setReplyAiEventId((prev) => {
+                                const copy = { ...prev };
+                                delete copy[row.id];
+                                return copy;
+                              });
+                            }
+                          }}
                           className="w-full rounded border border-zinc-300 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
                           rows={3}
                         />
@@ -410,9 +432,15 @@ export default function MyInquiriesPage() {
                               text: m.body ?? "",
                             }))}
                           currentReply={replyText[row.id] ?? ""}
-                          onApply={(text) =>
-                            setReplyText((prev) => ({ ...prev, [row.id]: text }))
-                          }
+                          onApply={(text, aiEventId) => {
+                            setReplyText((prev) => ({ ...prev, [row.id]: text }));
+                            setReplyAiEventId((prev) => {
+                              const next = { ...prev };
+                              if (aiEventId) next[row.id] = aiEventId;
+                              else delete next[row.id];
+                              return next;
+                            });
+                          }}
                         />
                       </div>
 

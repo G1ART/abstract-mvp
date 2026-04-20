@@ -37,19 +37,49 @@ export type ProfileSuggestionsResult = AiDegradation & {
   completeness: number; // 0-100 (may be computed client-side if degraded)
   missing: string[]; // short bullet points describing what's weak
   suggestions: ProfileSuggestion[];
+  /**
+   * Wave 2: 1–3 alternative bios the artist can adopt wholesale. Abstract
+   * does not store these server-side; adoption happens through the
+   * settings page.
+   */
+  bioDrafts?: string[];
+  /**
+   * Wave 2: 1–2 short one-liners (≤ 90 chars) the artist can use on
+   * portfolios, exhibition invites, or external bios.
+   */
+  headlineDrafts?: string[];
+  /**
+   * Wave 2: short paragraph explaining why the suggested changes would
+   * improve discoverability (themes, mediums, locale density, etc.).
+   */
+  discoverabilityRationale?: string;
 };
 
 export type PortfolioSuggestion = {
   id: string;
-  kind: "reorder" | "series" | "metadata" | "exhibition_link";
+  kind: "reorder" | "series" | "metadata" | "exhibition_link" | "feature";
   title: string;
   detail: string;
   actionLabel?: string;
   actionHref?: string;
+  /**
+   * Wave 2: ids the artist's own works referenced by this suggestion
+   * (series grouping, featured picks, exhibition links). UI renders
+   * per-artwork deep links instead of free-form prose.
+   */
+  artworkIds?: string[];
 };
 
 export type PortfolioSuggestionsResult = AiDegradation & {
   suggestions: PortfolioSuggestion[];
+  /**
+   * Wave 2: optional ordering hint. Abstract never auto-reorders — the
+   * UI shows the rationale and links, and the artist still chooses.
+   */
+  ordering?: {
+    rationale: string;
+    artworkIds: string[];
+  };
 };
 
 export type StudioDigestResult = AiDegradation & {
@@ -74,19 +104,48 @@ export type ExhibitionDraftResult = AiDegradation & {
   drafts: string[]; // 1–3 alternatives
 };
 
+export type InquiryReplyDraftLength = "short" | "long";
+
+export type InquiryReplyDraft = {
+  body: string;
+  length?: InquiryReplyDraftLength;
+};
+
 export type InquiryReplyDraftResult = AiDegradation & {
   tone: "concise" | "warm" | "curatorial";
   kind: "reply" | "followup";
-  drafts: string[]; // 1–3 alternatives
+  /**
+   * Wave 2: drafts are objects carrying an optional length badge. Until
+   * the model adopts the new shape everywhere we keep the UI layer
+   * tolerant of bare strings via a normalizer (see InquiryReplyAssist).
+   */
+  drafts: InquiryReplyDraft[];
 };
 
 export type IntroMessageDraftResult = AiDegradation & {
   drafts: string[]; // 1–3 alternatives
 };
 
+export type MatchmakerSuggestedAction =
+  | "follow"
+  | "intro_note"
+  | "exhibition_share"
+  | "save_for_later";
+
 export type MatchmakerRationale = {
   profileId: string;
   rationale: string;
+  /**
+   * Wave 2: the single action most relevant to this peer. The card
+   * renders a matching 2nd-tier chip button; auto-sending is never
+   * permitted — everything is copy / inline drafts / local saves.
+   */
+  suggestedAction?: MatchmakerSuggestedAction;
+  /**
+   * Wave 2: up to 3 of the *viewer's* own artwork ids that would make
+   * a natural mention in the outreach note.
+   */
+  suggestedArtworkIds?: string[];
 };
 
 export type MatchmakerRationalesResult = AiDegradation & {

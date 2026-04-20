@@ -5,8 +5,9 @@ import { useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
-import { logBetaEvent } from "@/lib/beta/logEvent";
+import { aiApi } from "@/lib/ai/browser";
+import { markAiAccepted } from "@/lib/ai/accept";
+import { aiErrorKey } from "./aiCardState";
 import type { StudioDigestResult } from "@/lib/ai/types";
 
 type Props = {
@@ -25,29 +26,33 @@ export function WeeklyDigestCard({ digestInput }: Props) {
     setLoading(false);
   };
 
-  const reason = result?.degraded ? result.reason : null;
-  const errorKey = reason
-    ? reason === "cap"
-      ? "ai.error.softCap"
-      : reason === "no_key"
-        ? "ai.error.unavailable"
-        : "ai.error.tryLater"
-    : null;
+  const errorKey = aiErrorKey(result);
 
   return (
     <SectionFrame padding="md" noMargin>
       <SectionTitle
         eyebrow={t("ai.digest.card.title")}
         action={
-          <button
-            type="button"
-            onClick={trigger}
-            disabled={loading}
-            className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
-            title={t("ai.disclosure.tooltip")}
-          >
-            {loading ? t("ai.state.loading") : t("ai.digest.cta")}
-          </button>
+          <div className="flex items-center gap-2">
+            {result && (
+              <button
+                type="button"
+                onClick={() => setResult(null)}
+                className="rounded-lg border border-transparent px-2 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-800"
+              >
+                {t("ai.action.dismiss")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={trigger}
+              disabled={loading}
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
+              title={t("ai.disclosure.tooltip")}
+            >
+              {loading ? t("ai.state.loading") : t("ai.digest.cta")}
+            </button>
+          </div>
         }
       >
         {t("ai.digest.card.subtitle")}
@@ -55,8 +60,8 @@ export function WeeklyDigestCard({ digestInput }: Props) {
 
       {errorKey && <p className="text-xs text-amber-700">{t(errorKey)}</p>}
 
-      {!result && !errorKey && (
-        <p className="text-xs text-zinc-500">{t("ai.digest.empty")}</p>
+      {!result && !errorKey && !loading && (
+        <p className="text-xs text-zinc-500">{t("ai.digest.idle")}</p>
       )}
 
       {result && !errorKey && (
@@ -88,10 +93,9 @@ export function WeeklyDigestCard({ digestInput }: Props) {
                       <Link
                         href={a.href}
                         onClick={() => {
-                          void acceptAiEvent(result?.aiEventId ?? null);
-                          void logBetaEvent("ai_accepted", {
+                          markAiAccepted(result?.aiEventId ?? null, {
                             feature: "studio_digest",
-                            action: a.label,
+                            via: "link",
                           });
                         }}
                         className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"

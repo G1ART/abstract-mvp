@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
-import { logBetaEvent } from "@/lib/beta/logEvent";
+import { aiApi } from "@/lib/ai/browser";
+import { markAiAccepted } from "@/lib/ai/accept";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { IntroMessageDraftResult } from "@/lib/ai/types";
 import type { IntroMessageInput } from "@/lib/ai/contexts";
@@ -12,11 +12,16 @@ type Props = {
   me: IntroMessageInput["me"];
   recipient: IntroMessageInput["recipient"] & { id?: string };
   variant?: "button" | "inline";
+  /**
+   * Wave 2: when the user opens the inline draft from a Matchmaker
+   * suggestion we open immediately without waiting for the button press.
+   */
+  autoOpen?: boolean;
 };
 
-export function IntroMessageAssist({ me, recipient, variant = "button" }: Props) {
+export function IntroMessageAssist({ me, recipient, variant = "button", autoOpen = false }: Props) {
   const { t, locale } = useT();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IntroMessageDraftResult | null>(null);
 
@@ -55,10 +60,9 @@ export function IntroMessageAssist({ me, recipient, variant = "button" }: Props)
           applyMode="link"
           onCopy={(text) => {
             copyToClipboard(text);
-            void acceptAiEvent(result?.aiEventId);
-            void logBetaEvent("ai_accepted", {
+            markAiAccepted(result?.aiEventId, {
               feature: "intro_message_draft",
-              recipientId: recipient.id,
+              via: "copy",
             });
           }}
           onDismiss={() => {

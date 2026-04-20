@@ -4,8 +4,8 @@ import { useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
-import { logBetaEvent } from "@/lib/beta/logEvent";
+import { aiApi } from "@/lib/ai/browser";
+import { markAiAccepted } from "@/lib/ai/accept";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { ExhibitionDraftResult } from "@/lib/ai/types";
 import type { ExhibitionDraftInput } from "@/lib/ai/contexts";
@@ -99,6 +99,12 @@ export function ExhibitionDraftAssist({
         </p>
       )}
 
+      {result && result.kind !== "title" && !result.degraded && (result.drafts?.length ?? 0) > 0 && (
+        <p className="mt-2 text-[11px] text-zinc-500">
+          {t("ai.exhibition.previewOnly")}
+        </p>
+      )}
+
       {(loading || result) && (
         <div className="mt-3">
           <AiDraftPanel
@@ -111,20 +117,17 @@ export function ExhibitionDraftAssist({
               result?.kind === "title" && onApplyTitle
                 ? (text) => {
                     onApplyTitle(text);
-                    void acceptAiEvent(result?.aiEventId);
-                    void logBetaEvent("ai_accepted", {
+                    markAiAccepted(result?.aiEventId, {
                       feature: "exhibition_draft",
-                      kind: result.kind,
+                      via: "apply",
                     });
                   }
                 : undefined
             }
             onCopy={(text) => {
               copyToClipboard(text);
-              void acceptAiEvent(result?.aiEventId);
-              void logBetaEvent("ai_accepted", {
+              markAiAccepted(result?.aiEventId, {
                 feature: "exhibition_draft",
-                kind: result?.kind ?? activeKind,
                 via: "copy",
               });
             }}

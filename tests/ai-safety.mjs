@@ -105,6 +105,45 @@ function fail(message) {
   }
 }
 
+// --- Invariant 4: AI surfaces must not call window.confirm -------------
+//
+// Wave 2 replaces the legacy `window.confirm` in AI surfaces with the
+// `ConfirmActionDialog` design-system primitive. The rule is scoped to
+// `src/components/ai/**` so non-AI pages can keep their own confirm UI
+// until we migrate them individually.
+{
+  const aiDir = join(repoRoot, "src/components/ai");
+  const files = readAll(aiDir, (p) => p.endsWith(".tsx") || p.endsWith(".ts"));
+  const re = /window\.confirm\s*\(/;
+  for (const { path, body } of files) {
+    if (re.test(body)) {
+      fail(`[confirm] window.confirm() in AI surface ${relative(repoRoot, path)}`);
+    }
+  }
+}
+
+// --- Invariant 5: AI prompts carry their safety footers ----------------
+//
+// Wave 2 extends the prompt safety policy. We grep for specific phrases
+// that must stay inside the system prompts so a future refactor can't
+// silently drop them.
+{
+  const promptsPath = join(repoRoot, "src/lib/ai/prompts/index.ts");
+  const body = readFileSync(promptsPath, "utf8");
+  const required = [
+    // Profile Copilot must never propose identity changes.
+    { key: "PROFILE_COPILOT_SYSTEM", phrase: /do not (?:suggest|propose) changes to (?:username|role|public)/i },
+    // Inquiry Reply must never invent price or ownership.
+    { key: "INQUIRY_REPLY_SYSTEM", phrase: /do not invent (?:price|ownership|provenance)/i },
+  ];
+  for (const { key, phrase } of required) {
+    const block = body.split(key)[1] ?? "";
+    if (!phrase.test(block)) {
+      fail(`[prompt-safety] ${key} missing required phrase ${phrase}`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error("AI safety regressions:");
   for (const f of failures) console.error("  - " + f);

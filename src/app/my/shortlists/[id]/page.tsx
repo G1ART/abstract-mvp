@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import { useT } from "@/lib/i18n/useT";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
@@ -39,6 +40,9 @@ function ShortlistDetailContent() {
   const [collabRole, setCollabRole] = useState<"viewer" | "editor">("viewer");
   const [showCollabPanel, setShowCollabPanel] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [pendingRotate, setPendingRotate] = useState(false);
+  const [pendingRemoveItemId, setPendingRemoveItemId] = useState<string | null>(null);
+  const [pendingRemoveCollabId, setPendingRemoveCollabId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!id) return;
@@ -67,10 +71,13 @@ function ShortlistDetailContent() {
     void refresh();
   }, [id, titleDraft, descDraft, refresh]);
 
-  const handleRemoveItem = useCallback(async (itemId: string) => {
-    await removeShortlistItem(itemId);
-    setItems((prev) => prev.filter((i) => i.id !== itemId));
-  }, []);
+  const handleConfirmRemoveItem = useCallback(async () => {
+    if (!pendingRemoveItemId) return;
+    const target = pendingRemoveItemId;
+    setPendingRemoveItemId(null);
+    await removeShortlistItem(target);
+    setItems((prev) => prev.filter((i) => i.id !== target));
+  }, [pendingRemoveItemId]);
 
   const copyShareLink = useCallback(() => {
     if (!shortlist) return;
@@ -81,8 +88,9 @@ function ShortlistDetailContent() {
     setTimeout(() => setLinkCopied(false), 2000);
   }, [shortlist, id]);
 
-  const handleRotateToken = useCallback(async () => {
-    if (!id || !confirm("Rotate token? Old links will stop working.")) return;
+  const handleConfirmRotateToken = useCallback(async () => {
+    if (!id) return;
+    setPendingRotate(false);
     const { data: newToken } = await rotateShareToken(id);
     if (newToken) {
       setShortlist((prev) => prev ? { ...prev, share_token: newToken } : prev);
@@ -114,10 +122,13 @@ function ShortlistDetailContent() {
     }
   }, [id, collabRole, refresh]);
 
-  const handleRemoveCollaborator = useCallback(async (collabId: string) => {
-    await removeCollaborator(collabId);
-    setCollaborators((prev) => prev.filter((c) => c.id !== collabId));
-  }, []);
+  const handleConfirmRemoveCollaborator = useCallback(async () => {
+    if (!pendingRemoveCollabId) return;
+    const target = pendingRemoveCollabId;
+    setPendingRemoveCollabId(null);
+    await removeCollaborator(target);
+    setCollaborators((prev) => prev.filter((c) => c.id !== target));
+  }, [pendingRemoveCollabId]);
 
   if (loading) {
     return (
@@ -172,7 +183,7 @@ function ShortlistDetailContent() {
         <button type="button" onClick={() => void handleToggleRoom()} className={`rounded border px-3 py-1.5 text-sm ${roomActive ? "border-zinc-300 text-zinc-700" : "border-zinc-200 text-zinc-400"}`}>
           {roomActive ? "Link active" : "Link disabled"}
         </button>
-        <button type="button" onClick={handleRotateToken} className="text-xs text-zinc-400 hover:text-zinc-600">
+        <button type="button" onClick={() => setPendingRotate(true)} className="text-xs text-zinc-400 hover:text-zinc-600">
           Reset link
         </button>
       </div>
@@ -211,7 +222,7 @@ function ShortlistDetailContent() {
                       {c.profile?.display_name ?? c.profile?.username ?? c.profile_id.slice(0, 8)}
                       <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-500">{c.role}</span>
                     </span>
-                    <button type="button" onClick={() => void handleRemoveCollaborator(c.id)} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                    <button type="button" onClick={() => setPendingRemoveCollabId(c.id)} className="text-xs text-red-500 hover:text-red-700">Remove</button>
                   </li>
                 ))}
               </ul>
@@ -240,11 +251,41 @@ function ShortlistDetailContent() {
                 </Link>
               ) : null}
               {item.note && <p className="mt-0.5 text-xs text-zinc-500">{item.note}</p>}
-              <button type="button" onClick={() => void handleRemoveItem(item.id)} className="absolute right-1 top-1 hidden rounded bg-white/80 px-1.5 py-0.5 text-xs text-red-500 hover:bg-red-50 group-hover:block">×</button>
+              <button type="button" onClick={() => setPendingRemoveItemId(item.id)} className="absolute right-1 top-1 hidden rounded bg-white/80 px-1.5 py-0.5 text-xs text-red-500 hover:bg-red-50 group-hover:block">×</button>
             </div>
           ))}
         </div>
       )}
+      <ConfirmActionDialog
+        open={pendingRotate}
+        title={t("shortlist.rotate.title")}
+        description={t("shortlist.rotate.desc")}
+        confirmLabel={t("shortlist.rotate.confirm")}
+        cancelLabel={t("common.cancel")}
+        tone="destructive"
+        onConfirm={() => void handleConfirmRotateToken()}
+        onCancel={() => setPendingRotate(false)}
+      />
+      <ConfirmActionDialog
+        open={pendingRemoveItemId !== null}
+        title={t("shortlist.removeItem.title")}
+        description={t("shortlist.removeItem.desc")}
+        confirmLabel={t("shortlist.removeItem.confirm")}
+        cancelLabel={t("common.cancel")}
+        tone="destructive"
+        onConfirm={() => void handleConfirmRemoveItem()}
+        onCancel={() => setPendingRemoveItemId(null)}
+      />
+      <ConfirmActionDialog
+        open={pendingRemoveCollabId !== null}
+        title={t("shortlist.removeCollab.title")}
+        description={t("shortlist.removeCollab.desc")}
+        confirmLabel={t("shortlist.removeCollab.confirm")}
+        cancelLabel={t("common.cancel")}
+        tone="destructive"
+        onConfirm={() => void handleConfirmRemoveCollaborator()}
+        onCancel={() => setPendingRemoveCollabId(null)}
+      />
     </main>
   );
 }

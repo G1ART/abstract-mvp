@@ -22,7 +22,13 @@ export async function POST(req: Request) {
         system: PROFILE_COPILOT_SYSTEM,
         user,
         schemaHint: PROFILE_COPILOT_SCHEMA,
-        fallback: () => ({ completeness: 0, missing: [], suggestions: [] }),
+        fallback: () => ({
+        completeness: 0,
+        missing: [],
+        suggestions: [],
+        bioDrafts: [],
+        headlineDrafts: [],
+      }),
       };
     },
   });

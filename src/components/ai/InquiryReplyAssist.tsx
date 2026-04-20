@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
-import { aiApi, acceptAiEvent } from "@/lib/ai/browser";
-import { logBetaEvent } from "@/lib/beta/logEvent";
+import { aiApi } from "@/lib/ai/browser";
 import { readTone, writeTone } from "@/lib/ai/tonePrefs";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
 import type { InquiryReplyDraftResult } from "@/lib/ai/types";
@@ -11,6 +10,9 @@ import type { InquiryReplyInput } from "@/lib/ai/contexts";
 
 type Tone = "concise" | "warm" | "curatorial";
 const TONES: readonly Tone[] = ["concise", "warm", "curatorial"] as const;
+
+type LengthPref = "short" | "long";
+const LENGTHS: readonly LengthPref[] = ["short", "long"] as const;
 
 type Props = {
   artwork?: {
@@ -24,7 +26,13 @@ type Props = {
   thread?: Array<{ from: "inquirer" | "owner"; text: string }>;
   /** Current textarea value — lets the panel decide Insert vs Replace. */
   currentReply?: string;
-  onApply: (text: string) => void;
+  /**
+   * Wave 2: inquiry acceptance is "send-after-edit" — the parent receives
+   * the aiEventId of the draft the user just adopted so it can call
+   * `markAiAccepted(..., { via: "send" })` **after** the reply actually
+   * leaves the inbox. We never mark accepted on apply/copy for inquiries.
+   */
+  onApply: (text: string, aiEventId: string | null) => void;
 };
 
 export function InquiryReplyAssist({
@@ -36,6 +44,9 @@ export function InquiryReplyAssist({
 }: Props) {
   const { t, locale } = useT();
   const [tone, setTone] = useState<Tone>(() => readTone<Tone>("inquiry", TONES, "warm"));
+  const [lengthPref, setLengthPref] = useState<LengthPref>(
+    () => readTone<LengthPref>("inquiryLength", LENGTHS, "short"),
+  );
   const [followup, setFollowup] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<InquiryReplyDraftResult | null>(null);
@@ -43,6 +54,11 @@ export function InquiryReplyAssist({
   const updateTone = (next: Tone) => {
     setTone(next);
     writeTone("inquiry", next);
+  };
+
+  const updateLength = (next: LengthPref) => {
+    setLengthPref(next);
+    writeTone("inquiryLength", next);
   };
 
   const trigger = async () => {
@@ -54,11 +70,22 @@ export function InquiryReplyAssist({
       artwork,
       exhibitionTitle,
       thread,
+      lengthPreference: lengthPref,
     };
     const res = await aiApi.inquiryReplyDraft({ inquiry: body });
     setResult(res);
     setLoading(false);
   };
+
+  const draftBodies = (result?.drafts ?? []).map((d) =>
+    typeof d === "string" ? d : d.body,
+  );
+  const draftLabels = (result?.drafts ?? []).map((d) => {
+    if (typeof d === "string") return null;
+    if (d.length === "short") return t("ai.inquiry.length.short");
+    if (d.length === "long") return t("ai.inquiry.length.long");
+    return null;
+  });
 
   return (
     <div className="mt-2 flex flex-col gap-2">
@@ -76,6 +103,18 @@ export function InquiryReplyAssist({
             {t(`ai.inquiry.tone${opt.charAt(0).toUpperCase() + opt.slice(1)}` as never)}
           </button>
         ))}
+        <span className="ml-1 inline-flex overflow-hidden rounded-full border border-zinc-200 text-[11px]">
+          {LENGTHS.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={() => updateLength(opt)}
+              className={`px-2 py-0.5 font-medium ${lengthPref === opt ? "bg-zinc-900 text-white" : "bg-white text-zinc-600"}`}
+            >
+              {t(`ai.inquiry.length.${opt}` as never)}
+            </button>
+          ))}
+        </span>
         <label className="flex items-center gap-1 text-[11px] text-zinc-600">
           <input
             type="checkbox"
@@ -103,26 +142,16 @@ export function InquiryReplyAssist({
           hint={t("ai.inquiry.panel.hint")}
           loading={loading}
           degraded={result ?? undefined}
-          drafts={result?.drafts ?? []}
+          drafts={draftBodies}
+          draftLabels={draftLabels}
           currentValue={currentReply}
           applyMode="auto"
+          applyLabelKey="ai.action.useAsReply"
           onApply={(text) => {
-            onApply(text);
-            void acceptAiEvent(result?.aiEventId);
-            void logBetaEvent("ai_accepted", {
-              feature: "inquiry_reply_draft",
-              kind: result?.kind ?? (followup ? "followup" : "reply"),
-              tone,
-            });
+            onApply(text, result?.aiEventId ?? null);
           }}
           onCopy={(text) => {
             copyToClipboard(text);
-            void acceptAiEvent(result?.aiEventId);
-            void logBetaEvent("ai_accepted", {
-              feature: "inquiry_reply_draft",
-              via: "copy",
-              tone,
-            });
           }}
           onDismiss={() => setResult(null)}
         />

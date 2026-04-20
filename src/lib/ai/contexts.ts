@@ -83,18 +83,35 @@ export type StudioDigestInput = {
   inquiries7d?: number;
   shortlistEvents7d?: number;
   recentExhibitions?: Array<{ title: string; year?: string | number }>;
+  /**
+   * Wave 2: up to 3 of the artist's most recent uploads so the digest
+   * can mention "your new work from this week" without inventing titles.
+   */
+  recentUploads?: Array<{ id?: string; title?: string | null; createdAt?: string | null }>;
+  /**
+   * Wave 2: artist's username so nextActions can deep-link to their
+   * public profile (reorder / share) without the prompt guessing.
+   */
+  username?: string | null;
   locale?: string | null;
 };
 
 export function buildStudioDigestContext(input: StudioDigestInput): string {
   return [
     `locale: ${input.locale ?? "ko"}`,
+    `username: ${input.username ?? ""}`,
     `views7d: ${input.views7d ?? 0}`,
     `views30d: ${input.views30d ?? 0}`,
     `followsDelta7d: ${input.followsDelta7d ?? 0}`,
     `inquiries7d: ${input.inquiries7d ?? 0}`,
     `shortlistEvents7d: ${input.shortlistEvents7d ?? 0}`,
     `recentExhibitions: ${JSON.stringify((input.recentExhibitions ?? []).slice(0, 5))}`,
+    `recentUploads: ${JSON.stringify(
+      (input.recentUploads ?? []).slice(0, 3).map((u) => ({
+        title: u.title ?? "",
+        createdAt: u.createdAt ?? "",
+      })),
+    )}`,
   ].join("\n");
 }
 
@@ -162,6 +179,8 @@ export type InquiryReplyInput = {
   tone: "concise" | "warm" | "curatorial";
   kind: "reply" | "followup";
   locale?: string | null;
+  /** Wave 2: caller-selected length preference. "short" keeps drafts ~2 sentences; "long" ~4–6. */
+  lengthPreference?: "short" | "long";
   artwork?: {
     title?: string | null;
     year?: string | number | null;
@@ -181,6 +200,7 @@ export function buildInquiryReplyContext(input: InquiryReplyInput): string {
   return [
     `tone: ${input.tone}`,
     `kind: ${input.kind}`,
+    `lengthPreference: ${input.lengthPreference ?? "short"}`,
     `locale: ${input.locale ?? "ko"}`,
     `artwork: ${JSON.stringify(input.artwork ?? {})}`,
     `exhibition: ${input.exhibitionTitle ?? ""}`,
@@ -196,6 +216,12 @@ export type IntroMessageInput = {
     themes?: string[] | null;
     mediums?: string[] | null;
     city?: string | null;
+    /**
+     * Wave 2: optional list of the sender's own works the user wants
+     * referenced in the intro note. Only title is used — ids are kept
+     * client-side for deep-link rendering.
+     */
+    artworks?: Array<{ title: string }> | null;
   };
   recipient: {
     display_name?: string | null;
@@ -216,6 +242,7 @@ export function buildIntroMessageContext(input: IntroMessageInput): string {
       themes: (input.me.themes ?? []).slice(0, 6),
       mediums: (input.me.mediums ?? []).slice(0, 6),
       city: input.me.city ?? "",
+      artworks: (input.me.artworks ?? []).slice(0, 3).map((a) => a.title),
     })}`,
     `recipient: ${JSON.stringify({
       display_name: input.recipient.display_name ?? "",
@@ -244,6 +271,12 @@ export type MatchmakerRationaleInput = {
     themes?: string[] | null;
     mediums?: string[] | null;
     city?: string | null;
+    /**
+     * Wave 2: the viewer's own artworks — used so the rationales and
+     * `suggestedArtworkIds` can pull from a concrete set instead of
+     * hallucinating titles.
+     */
+    artworks?: Array<{ id: string; title?: string | null }> | null;
   };
   candidates: MatchmakerRationaleCandidate[];
 };
@@ -260,12 +293,17 @@ export function buildMatchmakerRationaleContext(
     city: c.city ?? "",
     sharedSignals: (c.sharedSignals ?? []).slice(0, 4),
   }));
+  const myArtworks = (input.me.artworks ?? []).slice(0, 6).map((a) => ({
+    id: a.id,
+    title: a.title ?? "",
+  }));
   return [
     `locale: ${input.locale ?? "ko"}`,
     `me: ${JSON.stringify({
       themes: (input.me.themes ?? []).slice(0, 6),
       mediums: (input.me.mediums ?? []).slice(0, 6),
       city: input.me.city ?? "",
+      artworks: myArtworks,
     })}`,
     `candidates: ${JSON.stringify(candidates)}`,
   ].join("\n");

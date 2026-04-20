@@ -55,6 +55,8 @@ import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
+import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
+import { markAiAccepted } from "@/lib/ai/accept";
 
 
 function ArtworkDetailContent() {
@@ -97,6 +99,7 @@ function ArtworkDetailContent() {
   const [replyingInquiryId, setReplyingInquiryId] = useState<string | null>(null);
   const [resendingNotificationInquiryId, setResendingNotificationInquiryId] = useState<string | null>(null);
   const [artistReplyText, setArtistReplyText] = useState<Record<string, string>>({});
+  const [artistReplyAiEventId, setArtistReplyAiEventId] = useState<Record<string, string>>({});
   const [myInquiryMessages, setMyInquiryMessages] = useState<PriceInquiryMessageRow[]>([]);
   const [inquirerReplyText, setInquirerReplyText] = useState("");
   const [inquirerReplying, setInquirerReplying] = useState(false);
@@ -344,6 +347,7 @@ function ArtworkDetailContent() {
   async function handleArtistReply(inquiryId: string) {
     const text = artistReplyText[inquiryId]?.trim();
     if (!text) return;
+    const adoptedAiEventId = artistReplyAiEventId[inquiryId] ?? null;
     setReplyingInquiryId(inquiryId);
     const { error: err } = await replyToPriceInquiry(inquiryId, text);
     setReplyingInquiryId(null);
@@ -352,7 +356,18 @@ function ArtworkDetailContent() {
       setError(formatSupabaseError(err, "Failed to send reply"));
       return;
     }
+    if (adoptedAiEventId) {
+      markAiAccepted(adoptedAiEventId, {
+        feature: "inquiry_reply_draft",
+        via: "send",
+      });
+    }
     setArtistReplyText((prev) => {
+      const next = { ...prev };
+      delete next[inquiryId];
+      return next;
+    });
+    setArtistReplyAiEventId((prev) => {
       const next = { ...prev };
       delete next[inquiryId];
       return next;
@@ -722,9 +737,17 @@ function ArtworkDetailContent() {
                             <textarea
                               placeholder={t("priceInquiry.replyPlaceholder")}
                               value={artistReplyText[row.id] ?? ""}
-                              onChange={(e) =>
-                                setArtistReplyText((prev) => ({ ...prev, [row.id]: e.target.value }))
-                              }
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setArtistReplyText((prev) => ({ ...prev, [row.id]: next }));
+                                if (!next.trim()) {
+                                  setArtistReplyAiEventId((prev) => {
+                                    const copy = { ...prev };
+                                    delete copy[row.id];
+                                    return copy;
+                                  });
+                                }
+                              }}
                               rows={2}
                               className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
                             />
@@ -751,12 +774,18 @@ function ArtworkDetailContent() {
                                   text: m.body ?? "",
                                 }))}
                               currentReply={artistReplyText[row.id] ?? ""}
-                              onApply={(text) =>
+                              onApply={(text, aiEventId) => {
                                 setArtistReplyText((prev) => ({
                                   ...prev,
                                   [row.id]: text,
-                                }))
-                              }
+                                }));
+                                setArtistReplyAiEventId((prev) => {
+                                  const next = { ...prev };
+                                  if (aiEventId) next[row.id] = aiEventId;
+                                  else delete next[row.id];
+                                  return next;
+                                });
+                              }}
                             />
                           </div>
                         )}
@@ -1046,30 +1075,17 @@ function ArtworkDetailContent() {
             )}
           </div>
         </div>
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="mx-4 w-full max-w-sm rounded-lg bg-white p-6 shadow-lg">
-              <p className="mb-4 text-sm text-zinc-700">{t("common.confirmDelete")}</p>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="rounded border border-zinc-300 px-4 py-2 text-sm"
-                >
-                  {t("common.cancel")}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                >
-                  {t("common.delete")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        <ConfirmActionDialog
+          open={showDeleteConfirm}
+          title={t("common.confirmDeleteShort")}
+          description={t("common.confirmDelete")}
+          confirmLabel={t("common.delete")}
+          cancelLabel={t("common.cancel")}
+          tone="destructive"
+          busy={deleting}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
         {artwork.story && (
           <p className="text-sm text-zinc-600">{artwork.story}</p>
         )}

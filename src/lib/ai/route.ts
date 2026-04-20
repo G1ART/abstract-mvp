@@ -155,6 +155,23 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
       clearTimeout(timeout);
     }
 
+    if (process.env.NODE_ENV !== "production") {
+      const promptBytes =
+        (prepared.system?.length ?? 0) +
+        (prepared.user?.length ?? 0) +
+        (prepared.schemaHint?.length ?? 0);
+      let responseBytes = 0;
+      try {
+        responseBytes = JSON.stringify(result.data ?? {}).length;
+      } catch {
+        responseBytes = 0;
+      }
+      console.debug(
+        `[ai/${def.feature}] prompt≈${promptBytes}B response≈${responseBytes}B latency=${result.meta.latencyMs ?? "?"}ms` +
+          (result.meta.errorCode ? ` degraded=${result.meta.errorCode}` : ""),
+      );
+    }
+
     const aiEventId = await logAiEvent(supabase, {
       user_id: user.id,
       feature_key: def.feature,

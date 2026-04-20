@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { SectionFrame } from "@/components/ds/SectionFrame";
+import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import type { AiDegradation } from "@/lib/ai/types";
 
 /**
@@ -43,6 +45,11 @@ type Props = {
   applyLabelKey?: string;
   copyLabelKey?: string;
   emptyKey?: string;
+  /**
+   * Optional badge labels rendered above each draft (1-to-1 with `drafts`).
+   * Used by surfaces like Inquiry Reply to show the "Short / Long" variant.
+   */
+  draftLabels?: Array<string | null>;
 };
 
 const MODE_LABEL: Record<Exclude<ApplyMode, "link">, string> = {
@@ -74,6 +81,7 @@ export function AiDraftPanel({
   applyLabelKey,
   copyLabelKey = "ai.action.copy",
   emptyKey = "ai.state.empty",
+  draftLabels,
 }: Props) {
   const { t } = useT();
 
@@ -89,15 +97,12 @@ export function AiDraftPanel({
     : null;
 
   const mode = resolveMode(applyMode, currentValue);
+  const [pendingReplace, setPendingReplace] = useState<string | null>(null);
 
   const handleApply = (draft: string) => {
     if (!onApply || mode === "link") return;
     if (mode === "replace") {
-      if (typeof window !== "undefined") {
-        const ok = window.confirm(t("ai.action.confirmReplace"));
-        if (!ok) return;
-      }
-      onApply(draft, "replace");
+      setPendingReplace(draft);
       return;
     }
     if (mode === "append") {
@@ -108,6 +113,14 @@ export function AiDraftPanel({
     }
     onApply(draft, "insert");
   };
+
+  const confirmReplace = () => {
+    if (pendingReplace == null || !onApply) return;
+    onApply(pendingReplace, "replace");
+    setPendingReplace(null);
+  };
+
+  const cancelReplace = () => setPendingReplace(null);
 
   const primaryLabel = applyLabelKey
     ? t(applyLabelKey)
@@ -154,6 +167,11 @@ export function AiDraftPanel({
               key={idx}
               className="rounded-xl border border-zinc-200 bg-white p-3"
             >
+              {draftLabels?.[idx] && (
+                <span className="mb-1 inline-block rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+                  {draftLabels[idx]}
+                </span>
+              )}
               <p className="whitespace-pre-wrap text-sm text-zinc-800">{d}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {onApply && mode !== "link" && (
@@ -179,6 +197,16 @@ export function AiDraftPanel({
           ))}
         </ul>
       )}
+      <ConfirmActionDialog
+        open={pendingReplace !== null}
+        title={t("ai.action.confirmReplace")}
+        description={t("ai.action.confirmReplaceHint")}
+        confirmLabel={t("ai.action.replace")}
+        cancelLabel={t("ai.action.cancel")}
+        tone="destructive"
+        onConfirm={confirmReplace}
+        onCancel={cancelReplace}
+      />
     </SectionFrame>
   );
 }

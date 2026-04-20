@@ -7,11 +7,15 @@ export const runtime = "nodejs";
 /**
  * Flip `ai_events.accepted = true` on an owner's own row.
  *
- * This is the canonical "user adopted the draft" signal for Wave 1. Call it
- * when the user inserts / replaces / appends / copies a draft, when they
- * click an AI-suggested action link, or when they send-after-edit. The
- * client helper (`src/lib/ai/accept.ts`) is the only place that hits this
- * route so the beta analytics stay side-by-side.
+ * This is the canonical "user adopted the draft" signal. Every AI surface
+ * should go through the centralized helper at `src/lib/ai/accept.ts`
+ * (`markAiAccepted`) instead of calling this route directly — the helper
+ * also emits the sibling `logBetaEvent("ai_accepted", {...})` so the
+ * telemetry view and the beta dashboard stay in sync.
+ *
+ * The helper in `src/lib/ai/browser.ts` (`acceptAiEvent`) is the low-level
+ * fetch wrapper; it is still exported so existing integrations work, but
+ * new call sites should use `markAiAccepted` in `src/lib/ai/accept.ts`.
  *
  * Safety notes:
  *   - Bearer-JWT path is identical to every other `/api/ai/*` route.

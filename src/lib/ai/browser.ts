@@ -46,10 +46,12 @@ async function getAccessToken(): Promise<string | null> {
 }
 
 /**
- * Mark an AI event as "accepted" — this is the canonical truth for
- * ai_events.accepted. Call this anywhere a user adopts a draft (insert /
- * replace / append / copy / click an AI-proposed action). Fails silently —
- * the draft must still be applied even if telemetry is unreachable.
+ * Low-level wrapper that flips `ai_events.accepted = true` via
+ * `/api/ai/accept`. Prefer `markAiAccepted` from `src/lib/ai/accept.ts`
+ * in new code — it co-locates the analytics ("ai_accepted" beta event)
+ * with the DB flip so the two signals never drift. This helper stays
+ * exported for existing integrations and to keep `markAiAccepted`'s
+ * implementation simple. Fails silently so telemetry never blocks UX.
  */
 export async function acceptAiEvent(aiEventId: string | null | undefined): Promise<void> {
   if (!aiEventId) return;
@@ -162,7 +164,7 @@ export const aiApi = {
       {
         tone: (body.tone as InquiryReplyDraftResult["tone"]) || "warm",
         kind: (body.kind as InquiryReplyDraftResult["kind"]) || "reply",
-        drafts: [],
+        drafts: [] as InquiryReplyDraftResult["drafts"],
       },
       opts,
     ),
