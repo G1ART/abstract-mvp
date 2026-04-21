@@ -1,5 +1,14 @@
 import { supabase } from "./client";
 
+/** Returns the canonical app origin (NEXT_PUBLIC_APP_URL) for auth redirect URLs.
+ *  Falls back to window.location.origin only in local dev (no env set).
+ *  This prevents Vercel preview URLs from leaking into confirmation/magic-link emails. */
+function getAuthOrigin(): string {
+  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "");
+  if (configured) return configured;
+  return typeof window !== "undefined" ? window.location.origin : "";
+}
+
 export async function signInWithPassword(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
@@ -16,8 +25,7 @@ export async function signUpWithPassword(
   password: string,
   metadata?: SignUpMetadata
 ) {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const emailRedirectTo = `${origin}/auth/callback`;
+  const emailRedirectTo = `${getAuthOrigin()}/auth/callback`;
   return supabase.auth.signUp({
     email,
     password,
@@ -39,9 +47,7 @@ export async function signUpWithPassword(
 
 /** @param redirectTo - Optional path (or full URL) to redirect after auth (e.g. /invites/delegation?token=...) */
 export async function sendMagicLink(email: string, redirectTo?: string) {
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "";
-  let url = `${origin}/auth/callback`;
+  let url = `${getAuthOrigin()}/auth/callback`;
   if (redirectTo && typeof redirectTo === "string" && redirectTo.startsWith("/")) {
     url += "?next=" + encodeURIComponent(redirectTo);
   }
@@ -52,10 +58,8 @@ export async function sendMagicLink(email: string, redirectTo?: string) {
 }
 
 export async function sendPasswordReset(email: string) {
-  const origin =
-    typeof window !== "undefined" ? window.location.origin : "";
   return supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${origin}/auth/reset`,
+    redirectTo: `${getAuthOrigin()}/auth/reset`,
   });
 }
 
