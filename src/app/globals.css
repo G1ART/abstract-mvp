@@ -5,6 +5,40 @@
   --foreground: #171717;
 }
 
+/* ─── Sheet / overlay entrance animations ─── */
+@keyframes sheet-slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sheet-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes sheet-backdrop-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@theme inline {
+  --animate-sheet-slide-up: sheet-slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-sheet-fade-scale: sheet-fade-scale 0.22s ease-out;
+  --animate-sheet-backdrop: sheet-backdrop-in 0.18s ease-out;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
