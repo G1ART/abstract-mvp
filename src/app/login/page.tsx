@@ -92,15 +92,20 @@ function LoginInner() {
     setLoading(true);
     setError(null);
     const { error: err } = await signInWithPassword(email, password);
+    setLoading(false);
     if (err) {
-      setLoading(false);
       setError(err.message);
       return;
     }
-    const state = await getMyAuthState();
-    setLoading(false);
-    const { to } = routeByAuthState(state, { nextPath, sessionPresent: true });
-    router.replace(to);
+    // Route through /auth/callback — same path as email link & magic link.
+    // Calling getMyAuthState() immediately after signInWithPassword races
+    // against the session being written to storage and returns null, which
+    // falls back to /feed. /auth/callback loads with the session already
+    // stored and makes the RPC call in a stable context.
+    const callbackUrl = nextPath
+      ? `/auth/callback?next=${encodeURIComponent(nextPath)}`
+      : `/auth/callback`;
+    router.replace(callbackUrl);
   }
 
   async function handlePasswordlessLink(e: FormEvent) {

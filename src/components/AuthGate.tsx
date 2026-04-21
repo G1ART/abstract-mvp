@@ -59,8 +59,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         // users are never silently let through into product surfaces.
         const { data: profile } = await getMyProfile();
         if (cancelled) return;
-        const username = (profile as { username?: string | null } | null)?.username ?? null;
-        if (isPlaceholderUsername(username)) {
+        const p = profile as { username?: string | null; display_name?: string | null; roles?: string[] | null } | null;
+        const username = p?.username ?? null;
+        const needsSetup =
+          !username ||
+          isPlaceholderUsername(username) ||
+          !p?.display_name?.trim() ||
+          !p?.roles?.length;
+        if (needsSetup) {
           const next = currentPathWithQuery();
           const isAlreadyFinish =
             pathname === IDENTITY_FINISH_PATH ||

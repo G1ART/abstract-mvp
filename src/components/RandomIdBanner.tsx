@@ -34,8 +34,17 @@ export function RandomIdBanner() {
       }
       getMyProfile().then(({ data }) => {
         if (cancelled) return;
-        const username = (data as { username?: string | null } | null)?.username ?? null;
-        setShow(isPlaceholderUsername(username));
+        const profile = data as { username?: string | null; display_name?: string | null; roles?: string[] | null } | null;
+        const username = profile?.username ?? null;
+        const displayName = profile?.display_name ?? null;
+        const roles = profile?.roles ?? null;
+        // Show banner when username is null/empty, placeholder, or identity is incomplete
+        const needsSetup =
+          !username ||
+          isPlaceholderUsername(username) ||
+          !displayName?.trim() ||
+          !roles?.length;
+        setShow(needsSetup);
       });
     });
     return () => {
