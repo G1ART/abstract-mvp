@@ -1,12 +1,10 @@
 "use client";
 
 /**
- * Top-of-page banner that nudges placeholder-username users to finish
- * identity setup (Onboarding Identity Overhaul, Track I).
- *
- * The server-authoritative routing gate already forces the user to
- * `/onboarding/identity` on their next navigation; this banner is a
- * soft in-session reminder for as long as we still render shell UI.
+ * Top-of-page banner for placeholder-username users.
+ * Non-dismissable: AuthGate provides the hard redirect, but this banner
+ * acts as a persistent, visible call-to-action even on pages that load
+ * before the gate fires.
  */
 
 import Link from "next/link";
@@ -16,8 +14,6 @@ import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
 import { isPlaceholderUsername } from "@/lib/identity/placeholder";
 import { IDENTITY_FINISH_PATH } from "@/lib/identity/routing";
-
-const DISMISS_KEY = "ab_random_id_banner_dismissed";
 
 export function RandomIdBanner() {
   const { t } = useT();
@@ -30,10 +26,6 @@ export function RandomIdBanner() {
 
   useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
-    if (window.localStorage.getItem(DISMISS_KEY) === "1") {
-      setShow(false);
-      return;
-    }
     let cancelled = false;
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (cancelled || !session?.user?.id) {
@@ -51,42 +43,25 @@ export function RandomIdBanner() {
     };
   }, [mounted]);
 
-  function dismiss() {
-    try {
-      window.localStorage.setItem(DISMISS_KEY, "1");
-    } catch {
-      /* ignore */
-    }
-    setShow(false);
-  }
-
   if (!show) return null;
 
   return (
     <div
-      role="banner"
-      className="flex items-center justify-between gap-3 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-900"
+      role="alert"
+      className="flex items-center justify-between gap-3 border-b-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <span className="font-medium">{t("banner.identityFinish.title")}</span>
-        <span className="text-zinc-700">{t("banner.identityFinish.cta")}</span>
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+        <span className="font-semibold text-amber-900">
+          {t("banner.identityFinish.title")}
+        </span>
+        <span className="text-amber-800">{t("banner.identityFinish.cta")}</span>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Link
-          href={IDENTITY_FINISH_PATH}
-          className="rounded bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-800"
-        >
-          {t("banner.identityFinish.link")}
-        </Link>
-        <button
-          type="button"
-          onClick={dismiss}
-          className="rounded p-1 text-zinc-500 hover:bg-zinc-200"
-          aria-label="Dismiss"
-        >
-          ×
-        </button>
-      </div>
+      <Link
+        href={IDENTITY_FINISH_PATH}
+        className="shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600"
+      >
+        {t("banner.identityFinish.link")} →
+      </Link>
     </div>
   );
 }

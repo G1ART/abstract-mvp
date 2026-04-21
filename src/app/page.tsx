@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getSession, getMyAuthState } from "@/lib/supabase/auth";
-import { routeByAuthState, ONBOARDING_PATH } from "@/lib/identity/routing";
+import { routeByAuthState, LOGIN_PATH } from "@/lib/identity/routing";
 import { useT } from "@/lib/i18n/useT";
 
 export default function Home() {
@@ -18,11 +18,7 @@ export default function Home() {
       } = await getSession();
       if (cancelled) return;
       if (!session) {
-        // Front-door finalization: non-members land on the signup-
-        // first surface, not on /login. Cold visitors only see one
-        // clear path ("바로 시작하기"). Existing users can still
-        // reach /login from the footer of /onboarding.
-        router.replace(ONBOARDING_PATH);
+        router.replace(LOGIN_PATH);
         return;
       }
       const state = await getMyAuthState();

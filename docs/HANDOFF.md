@@ -2,6 +2,15 @@
 
 Last updated: 2026-04-20
 
+## 2026-04-20 — 온보딩 라우팅 3개 버그 수정
+
+- **루트(`/`) 비로그인 라우팅**: 기존 `/onboarding`(가입) 대신 `/login`으로 변경. 돌아오는 기존 사용자가 가입 폼이 아닌 로그인 폼을 보게 됨. (신규 유저는 로그인 하단 "바로 시작하기" 링크로 진입)
+- **AuthGate RPC 폴백**: `getMyAuthState()` RPC 일시 실패 시 기존엔 그냥 통과(→ 피드). 이제 `getMyProfile()` + 클라이언트 `isPlaceholderUsername` 으로 2차 체크, 난수 유저네임이면 `/onboarding/identity` 강제 리디렉트.
+- **RandomIdBanner**: dismiss 버튼 제거, amber 배경 + 굵은 텍스트로 눈에 잘 띄는 디자인으로 변경. `role="alert"` 적용.
+- Supabase SQL: `20260421120000_identity_completeness.sql` 적용 필요 (이전 패치에서 동일).
+
+---
+
 ## 2026-04-20 — 가입 확인 이메일 링크 → /onboarding/identity 정상 라우팅
 
 - **문제**: `signUpWithPassword`에 `emailRedirectTo`가 없어 Supabase가 대시보드 Site URL(루트 `/`)로 인증 링크를 보냄. 그 결과 이메일 링크를 누르면 `/auth/callback`을 거치지 않고 바로 피드로 떨어져, `routeByAuthState` → `/onboarding/identity` 흐름이 완전히 우회됨.

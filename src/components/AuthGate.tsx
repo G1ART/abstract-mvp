@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSession, getMyAuthState } from "@/lib/supabase/auth";
+import { getMyProfile } from "@/lib/supabase/profiles";
+import { isPlaceholderUsername } from "@/lib/identity/placeholder";
 import {
   IDENTITY_FINISH_PATH,
   ONBOARDING_PATH,
@@ -52,11 +54,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       const state = await getMyAuthState();
       if (cancelled) return;
       if (!state) {
-        // Session exists (verified above) but the auth-state RPC
-        // failed transiently. Render the page in place rather than
-        // bouncing to /login — /login would just forward us back
-        // here on next tick, creating a loop. A follow-up nav will
-        // re-hit the RPC anyway.
+        // RPC failed transiently (schema cache miss, migration lag, etc.).
+        // Fall back to a client-side profile check so placeholder-username
+        // users are never silently let through into product surfaces.
+        const { data: profile } = await getMyProfile();
+        if (cancelled) return;
+        const username = (profile as { username?: string | null } | null)?.username ?? null;
+        if (isPlaceholderUsername(username)) {
+          const next = currentPathWithQuery();
+          const isAlreadyFinish =
+            pathname === IDENTITY_FINISH_PATH ||
+            (pathname?.startsWith(`${IDENTITY_FINISH_PATH}/`) ?? false);
+          if (!isAlreadyFinish) {
+            const q = next ? `?next=${encodeURIComponent(next)}` : "";
+            router.replace(`${IDENTITY_FINISH_PATH}${q}`);
+            return;
+          }
+        }
         setReady(true);
         return;
       }
