@@ -2,6 +2,28 @@
 
 Last updated: 2026-04-20
 
+## 2026-04-20 — 이메일 링크 redirect URL NEXT_PUBLIC_APP_URL 고정 + vercel.com 이동 원인 정리
+
+### 코드 수정
+- `src/lib/supabase/auth.ts`: `getAuthOrigin()` 헬퍼 추가. `signUpWithPassword`, `sendMagicLink`, `sendPasswordReset` 세 곳 모두 `window.location.origin` 대신 `NEXT_PUBLIC_APP_URL` 우선 사용. Vercel Preview URL(`henry-kims-projects-*.vercel.app`)이 이메일 링크에 박히는 문제 해결.
+
+### Supabase 대시보드 필수 설정 (코드만으로는 안 됨)
+
+이메일 링크가 `vercel.com`으로 가는 현상의 원인:
+- Supabase는 `emailRedirectTo`로 넘긴 URL이 **Redirect URLs 허용 목록에 없으면 무시**하고 **Site URL로 폴백**함
+- Vercel ↔ Supabase 자동 통합 시 Site URL이 `vercel.com` 계열로 잘못 설정되는 경우 발생
+
+**Supabase Dashboard → Authentication → URL Configuration에서 반드시 확인:**
+
+| 항목 | 올바른 값 |
+|------|-----------|
+| Site URL | `https://abstract-mvp-dxfn.vercel.app` |
+| Redirect URLs | `https://abstract-mvp-dxfn.vercel.app/auth/callback` 포함 |
+
+Redirect URLs에 없으면 `emailRedirectTo`가 무시되고 Site URL로 떨어짐 → vercel.com 이동 현상.
+
+---
+
 ## 2026-04-20 — 온보딩 라우팅 3개 버그 수정
 
 - **루트(`/`) 비로그인 라우팅**: 기존 `/onboarding`(가입) 대신 `/login`으로 변경. 돌아오는 기존 사용자가 가입 폼이 아닌 로그인 폼을 보게 됨. (신규 유저는 로그인 하단 "바로 시작하기" 링크로 진입)
