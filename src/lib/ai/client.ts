@@ -2,8 +2,16 @@ import OpenAI from "openai";
 import type { AiFeatureKey, AiDegradation } from "./types";
 import { SAFETY_FOOTER, assertSafePrompt } from "./safety";
 
-export const DEFAULT_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+const CONFIGURED_MODEL = (process.env.OPENAI_MODEL ?? "").trim();
+export const DEFAULT_MODEL = CONFIGURED_MODEL || "gpt-4o-mini";
 export const GENERATE_TIMEOUT_MS = 8_000;
+
+// Log the model in use on first module load so Vercel Function logs always
+// show which model is active. Helps catch misconfigurations (e.g. typos in
+// OPENAI_MODEL env var) without requiring a failed request.
+if (process.env.OPENAI_API_KEY) {
+  console.info("[ai/client] model=%s (env=%s)", DEFAULT_MODEL, CONFIGURED_MODEL || "(default)");
+}
 
 let client: OpenAI | null = null;
 
@@ -123,12 +131,22 @@ export async function generateJSON<T extends object>(
         },
       };
     } catch (err: unknown) {
-      const anyErr = err as { name?: string; status?: number };
+      const anyErr = err as { name?: string; status?: number; message?: string };
       const name = String(anyErr?.name ?? "");
       if (name === "APIUserAbortError" || name === "AbortError") {
         lastError = "timeout";
         break;
       }
+      // Always log the raw OpenAI error so Vercel Function logs expose the
+      // real failure cause (invalid model name, expired key, quota, etc.).
+      console.error("[ai/client] OpenAI call failed", {
+        feature: opts.feature,
+        model: DEFAULT_MODEL,
+        attempt,
+        status: anyErr?.status,
+        name: anyErr?.name,
+        message: anyErr?.message,
+      });
       lastError = "error";
       if (attempt === 0 && (anyErr?.status ?? 0) >= 500) continue;
       break;
