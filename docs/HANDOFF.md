@@ -2,6 +2,14 @@
 
 Last updated: 2026-04-20
 
+## 2026-04-20 — 가입 확인 이메일 링크 → /onboarding/identity 정상 라우팅
+
+- **문제**: `signUpWithPassword`에 `emailRedirectTo`가 없어 Supabase가 대시보드 Site URL(루트 `/`)로 인증 링크를 보냄. 그 결과 이메일 링크를 누르면 `/auth/callback`을 거치지 않고 바로 피드로 떨어져, `routeByAuthState` → `/onboarding/identity` 흐름이 완전히 우회됨.
+- **수정**: `src/lib/supabase/auth.ts` — `signUpWithPassword`에 `emailRedirectTo: ${origin}/auth/callback` 추가. 이제 확인 링크 클릭 → `/auth/callback` → `routeByAuthState` → `needs_identity_setup`이면 `/onboarding/identity`로 정상 이동.
+- Supabase SQL 돌려야 할 것: 없음.
+
+---
+
 ## 2026-04-20 — Login EN subtitle, completeness SSOT, upload claim copy
 
 - **`/login` (EN)**: 서브타이틀에서 `[text-wrap:balance]`·`max-w-[32ch]` 제거, 헤더 전체 너비 사용. 두 문장은 각각 블록이지만 영어 2번째 줄이 "Enter your email and" 에서 끊기지 않고 한 줄로 읽히도록 함. KO 는 기존 좁은 measure + balance 유지.

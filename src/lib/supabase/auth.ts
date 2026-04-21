@@ -16,19 +16,24 @@ export async function signUpWithPassword(
   password: string,
   metadata?: SignUpMetadata
 ) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const emailRedirectTo = `${origin}/auth/callback`;
   return supabase.auth.signUp({
     email,
     password,
-    options: metadata
-      ? {
-          data: {
-            username: metadata.username?.trim().toLowerCase(),
-            display_name: metadata.display_name?.trim() || null,
-            main_role: metadata.main_role || null,
-            roles: Array.isArray(metadata.roles) ? metadata.roles : null,
-          },
-        }
-      : undefined,
+    options: {
+      emailRedirectTo,
+      ...(metadata
+        ? {
+            data: {
+              username: metadata.username?.trim().toLowerCase(),
+              display_name: metadata.display_name?.trim() || null,
+              main_role: metadata.main_role || null,
+              roles: Array.isArray(metadata.roles) ? metadata.roles : null,
+            },
+          }
+        : {}),
+    },
   });
 }
 
