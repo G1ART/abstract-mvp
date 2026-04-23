@@ -9,7 +9,9 @@ export type NotificationType =
   | "price_inquiry"
   | "price_inquiry_reply"
   | "new_work"
-  | "connection_message";
+  | "connection_message"
+  | "board_save"
+  | "board_public";
 
 export type NotificationRow = {
   id: string;

@@ -429,3 +429,30 @@ export async function removeExhibitionFromShortlist(
     .eq("exhibition_id", exhibitionId);
   return { error };
 }
+
+// ── Artist-side aggregate signal ──────────────────────────────
+/**
+ * Returns aggregate-only counts: how many distinct boards contain the
+ * authenticated user's works, and how many distinct other users have
+ * saved them. No per-board detail is exposed — this protects curator
+ * scouting privacy. Per-save events are delivered via `board_save`
+ * notifications with actor + artwork only.
+ */
+export type BoardSaveSignal = { boards_count: number; savers_count: number };
+
+export async function getBoardSaveSignals(): Promise<{ data: BoardSaveSignal; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: { boards_count: 0, savers_count: 0 }, error: null };
+  const { data, error } = await supabase.rpc("get_board_save_signals");
+  if (error) return { data: { boards_count: 0, savers_count: 0 }, error };
+  const obj = (data ?? {}) as Partial<BoardSaveSignal>;
+  return {
+    data: {
+      boards_count: Number(obj.boards_count ?? 0),
+      savers_count: Number(obj.savers_count ?? 0),
+    },
+    error: null,
+  };
+}

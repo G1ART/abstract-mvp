@@ -12,8 +12,13 @@ import {
 import { useT } from "@/lib/i18n/useT";
 import { formatDisplayName } from "@/lib/identity/format";
 import { EmptyState } from "@/components/ds/EmptyState";
+import { getMyEntitlements, hasFeature } from "@/lib/entitlements";
 
-function notificationLabel(row: NotificationRow, t: (k: string) => string): string {
+function notificationLabel(
+  row: NotificationRow,
+  t: (k: string) => string,
+  entitlements: { canSeeBoardSaver: boolean; canSeeBoardPublicActor: boolean }
+): string {
   const name = formatDisplayName(row.actor);
   const title = row.artwork?.title || "Untitled";
   switch (row.type) {
@@ -39,12 +44,34 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
     }
     case "connection_message":
       return t("notifications.connectionMessageText").replace("{name}", name);
+    case "board_save": {
+      // Free tier: anonymized nudge. Paid tier: reveal actor identity.
+      const key = entitlements.canSeeBoardSaver
+        ? "notifications.boardSaveTextPaid"
+        : "notifications.boardSaveText";
+      return t(key).replace("{name}", name).replace("{title}", title);
+    }
+    case "board_public": {
+      const shortlistTitle = (row.payload?.shortlist_title as string | undefined) ?? "";
+      // Free tier: "a board featuring your work is public" without actor/title.
+      // Paid tier: full reveal including board owner name + board title.
+      const key = entitlements.canSeeBoardPublicActor
+        ? "notifications.boardPublicTextPaid"
+        : "notifications.boardPublicText";
+      return t(key)
+        .replace("{name}", name)
+        .replace("{shortlistTitle}", shortlistTitle)
+        .replace("{title}", title);
+    }
     default:
       return "";
   }
 }
 
-function notificationLink(row: NotificationRow): string | null {
+function notificationLink(
+  row: NotificationRow,
+  entitlements: { canSeeBoardSaver: boolean; canSeeBoardPublicActor: boolean }
+): string | null {
   if (row.type === "price_inquiry" || row.type === "price_inquiry_reply") {
     return "/my/inquiries";
   }
@@ -55,6 +82,22 @@ function notificationLink(row: NotificationRow): string | null {
     const u = row.actor?.username;
     return u ? `/u/${u}` : null;
   }
+  if (row.type === "board_public") {
+    // Paid: deep-link to the shareable room. Free: keep them on their own
+    // artwork page — the upgrade prompt is the curiosity gap.
+    if (entitlements.canSeeBoardPublicActor) {
+      const token = row.payload?.share_token as string | undefined;
+      if (token) return `/room/${token}`;
+    }
+    if (row.artwork_id) return `/artwork/${row.artwork_id}`;
+    return null;
+  }
+  if (row.type === "board_save") {
+    // Always route to the artist's artwork page. Board is (potentially)
+    // private, so we never link to it directly regardless of plan.
+    if (row.artwork_id) return `/artwork/${row.artwork_id}`;
+    return null;
+  }
   if (row.artwork_id) return `/artwork/${row.artwork_id}`;
   return null;
 }
@@ -64,6 +107,10 @@ function NotificationsContent() {
   const [list, setList] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
+  const [entitlements, setEntitlements] = useState<{
+    canSeeBoardSaver: boolean;
+    canSeeBoardPublicActor: boolean;
+  }>({ canSeeBoardSaver: false, canSeeBoardPublicActor: false });
 
   const refresh = useCallback(() => {
     listNotifications({ limit: 50 }).then(({ data }) => {
@@ -78,6 +125,20 @@ function NotificationsContent() {
     });
     return () => cancelAnimationFrame(t);
   }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMyEntitlements().then((ent) => {
+      if (cancelled) return;
+      setEntitlements({
+        canSeeBoardSaver: hasFeature(ent.plan, "SEE_BOARD_SAVER_IDENTITY"),
+        canSeeBoardPublicActor: hasFeature(ent.plan, "SEE_BOARD_PUBLIC_ACTOR_DETAILS"),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleMarkAll = useCallback(async () => {
     setMarkingAll(true);
@@ -123,8 +184,8 @@ function NotificationsContent() {
       ) : (
         <ul className="mt-4 divide-y divide-zinc-100">
           {list.map((row) => {
-            const href = notificationLink(row);
-            const label = notificationLabel(row, t);
+            const href = notificationLink(row, entitlements);
+            const label = notificationLabel(row, t, entitlements);
             const unread = row.read_at == null;
             const content = (
               <span className="block py-3 text-sm text-zinc-700">

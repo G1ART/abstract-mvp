@@ -38,6 +38,7 @@ import {
   type ExhibitionWithCredits,
 } from "@/lib/supabase/exhibitions";
 import { getProfileById } from "@/lib/supabase/profiles";
+import { getBoardSaveSignals, type BoardSaveSignal } from "@/lib/supabase/shortlists";
 import {
   StudioHero,
   StudioSignals,
@@ -71,6 +72,7 @@ export default function MyPage() {
   const [priceInquiryCount, setPriceInquiryCount] = useState(0);
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [boardSaveSignal, setBoardSaveSignal] = useState<BoardSaveSignal | null>(null);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
   const [, setLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -169,7 +171,7 @@ export default function MyPage() {
       }
 
       if (profileData?.id) {
-        const [countRes, viewersRes, inquiryCountRes, claimsCountRes, messagesUnread] =
+        const [countRes, viewersRes, inquiryCountRes, claimsCountRes, messagesUnread, boardSignalRes] =
           await Promise.all([
             getProfileViewsCount(profileData.id, 7),
             canView
@@ -178,12 +180,19 @@ export default function MyPage() {
             getMyPriceInquiryCount(effectiveProfileId ?? undefined),
             getMyPendingClaimsCount(effectiveProfileId ?? undefined),
             effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
+            // Only meaningful for the authenticated user's own artwork set.
+            // When acting-as a gallery, suppress to avoid leaking wrong
+            // scope; the signal is scoped to auth.uid()'s works regardless.
+            effectiveProfileId
+              ? Promise.resolve({ data: { boards_count: 0, savers_count: 0 }, error: null })
+              : getBoardSaveSignals(),
           ]);
         setProfileViewsCount(countRes.data);
         setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
         setUnreadMessagesCount(messagesUnread ?? 0);
+        setBoardSaveSignal(boardSignalRes.data ?? null);
         if (effectiveProfileId) {
           const { data: exData } = await listExhibitionsForProfile(profileData.id);
           setExhibitions(
@@ -269,6 +278,23 @@ export default function MyPage() {
       value: pendingClaimsCount,
       tone: pendingClaimsCount > 0 ? "warning" : "default",
     });
+    // Artist-side "who's collecting my works" signal. Only surfaced when
+    // someone has actually saved at least once — keeps the 4-tile grid
+    // visually clean for new accounts and only surfaces real signal.
+    if (
+      !actingAsProfileId &&
+      artworks.length > 0 &&
+      boardSaveSignal &&
+      boardSaveSignal.boards_count > 0
+    ) {
+      const { boards_count, savers_count } = boardSaveSignal;
+      out.push({
+        key: "boards_saved_in",
+        label: t("studio.signals.boardsSavedIn"),
+        value: boards_count,
+        hint: t("studio.signals.boardsSavedInHint").replace("{n}", String(savers_count)),
+      });
+    }
     return out;
   }, [
     profile,
@@ -278,6 +304,8 @@ export default function MyPage() {
     stats?.followersCount,
     priceInquiryCount,
     pendingClaimsCount,
+    boardSaveSignal,
+    artworks.length,
     t,
   ]);
 

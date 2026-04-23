@@ -1,6 +1,83 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
+
+## 2026-04-23 — 보드 담기 알림 + 아티스트 시그널 + 프리미엄 레이어
+
+### 왜 필요했나
+
+아티스트 입장에서 누군가 자기 작품을 보드에 담는 행위는, 특히 신진이고 대외 인지도가 낮을수록 강한 관심 시그널이다. 이걸 아무 피드백 없이 누락시키는 건 제품 취지와 안 맞음. 동시에 큐레이터의 스카우팅 프라이버시도 보호해야 하므로, 노출 깊이를 플랜으로 게이팅하는 구조를 도입.
+
+### DB 변경 — `supabase/migrations/20260423100000_board_save_notifications.sql`
+
+- `notifications_type_check` CHECK 제약 확장: `board_save`, `board_public` 추가.
+- 트리거 `on_board_save_notify` — `shortlist_items` INSERT 시 작품의 `artist_id`에게 알림.
+  - Self-save 스킵 (작가 == 보드 오너).
+  - 같은 `(artist, actor, artwork)` 조합이 7일 내 이미 알림을 받았다면 dedup. 큐레이터가 작품을 다른 보드로 옮기는 것만으로는 다시 알리지 않음.
+  - Payload에는 `shortlist_id`, `is_private`만 담음. **보드 제목·내용은 넣지 않음** (프라이버시).
+- 트리거 `on_shortlist_public_transition` — `shortlists.is_private true → false` 전환 시, 보드에 포함된 **모든 아티스트**(보드 오너 제외)에게 알림.
+  - WHEN절 `(old.is_private = true and new.is_private = false)`로 실제 전환만 포착.
+  - 공개된 정보이므로 Payload에 `shortlist_title`, `share_token` 노출.
+  - 비공개↔공개 토글을 반복하면 전환마다 재발행(의도).
+- RPC `get_board_save_signals()` — SECURITY DEFINER, 반환 `{boards_count, savers_count}`.
+  - `auth.uid()`의 작품이 담긴 **고유 보드 수**와 **고유 저장자 수**만 반환.
+  - `s.owner_id <> auth.uid()` 조건으로 self-curation은 카운트에서 제외.
+  - 개별 보드·큐레이터 신원은 절대 노출 안 함(집계 전용).
+
+### 프론트 변경
+
+- `src/lib/supabase/notifications.ts` — `NotificationType`에 `board_save`, `board_public` 추가.
+- `src/lib/supabase/shortlists.ts` — `getBoardSaveSignals()` RPC wrapper.
+- `src/app/notifications/page.tsx` — 두 타입 렌더링 + plan 기반 문구 분기.
+  - `board_save` 링크는 항상 `/artwork/{artwork_id}` (비공개 보드일 수 있으므로 보드 자체로는 링크 X).
+  - `board_public` 링크는 **유료만** `/room/{token}`, 무료는 `/artwork/{artwork_id}` (큐리오시티 갭 → 업그레이드 훅).
+- `src/app/my/page.tsx` — `StudioSignals`에 "내 작품이 담긴 보드 N개" 타일 (`boards_count > 0`일 때만; acting-as-gallery 중엔 숨김).
+- `src/lib/i18n/messages.ts` — 한/영 문구 8개 키.
+
+### 문구 (한국어)
+
+| 이벤트 | 무료/기본 | 유료 |
+|---|---|---|
+| `board_save` | 누군가 회원님의 작품 〈{title}〉을(를) 보드에 담았어요 | {name}님이 회원님의 작품 〈{title}〉을(를) 보드에 담았어요 |
+| `board_public` | 회원님의 작품 〈{title}〉이(가) 담긴 보드가 공개되었어요 | 회원님의 작품 〈{title}〉이(가) 담겨 있는 {name}님의 보드 〈{shortlistTitle}〉이(가) 공개되었어요 |
+
+### 프리미엄 레이어 — `src/lib/entitlements.ts`
+
+- `BETA_ALL_PAID = true` 플래그 추가. 베타 기간 동안 온보딩된 모든 유저를 유료 취급 → `hasFeature()`가 선언된 기능 전부 true 반환. 유료 런칭 시점에 `false`로 플립하면 실제 플랜 매트릭스가 즉시 적용됨.
+- 신규 feature 키:
+  - `SEE_BOARD_SAVER_IDENTITY` → `artist_pro` 전용. 보드 담기 알림에서 담은 사람 이름 공개.
+  - `SEE_BOARD_PUBLIC_ACTOR_DETAILS` → `artist_pro` 전용. 공개 전환 알림에서 보드 주인·제목·룸 링크 공개.
+
+### 유료화 로드맵 메모
+
+유료 런칭 시 플립할 지점을 미리 박아둠:
+
+- **아티스트 측 (artist_pro)**
+  - `SEE_BOARD_SAVER_IDENTITY` — 누가 담았는지 보기
+  - `SEE_BOARD_PUBLIC_ACTOR_DETAILS` — 공개 보드 상세 직접 링크
+  - (기존) `VIEW_PROFILE_VIEWERS_LIST`, `VIEW_ARTWORK_VIEWERS_LIST` — 방문자 로그
+  - 향후 후보: "내 작품이 담긴 공개 보드 전용 뷰"(`/my/featured-in`), "Collector Pulse" 집계 인사이트(최근 30일 저장자 추이 등)
+- **큐레이터/콜렉터 측 (collector_pro)**
+  - 후보: 보드 수 쿼터(무료 N개 초과 시 유료). `shortlists` 테이블에서 `owner_id` count만 보면 돼서 구현 간단.
+  - 후보: 공유 룸 애널리틱스(조회·체류시간), 공개 보드 만료일 세팅, 공동 편집자 수 제한 해제.
+- **공용 (pro 전반)**
+  - 후보: AI 전시 기획 초안(`ExhibitionDraftAssist`) 사용량 상한, 프로파일 커스터마이징(도메인·테마), 향후 노출 부스트.
+
+각 후보는 지금은 "베타 ALL_PAID"에 묻혀 보이지 않지만 `FEATURE_PLANS` 매트릭스에 등록하는 순간 무료 티어에서는 자동 차단됨. 추가 시엔 반드시 feature 키를 `FEATURE_PLANS`에 등록하고 UI 콜사이트에서 `hasFeature(plan, KEY)`로 감싸는 패턴 유지.
+
+### 추후 작업 (별도 패치로 메모)
+
+- **"내 작품이 담긴 공개 보드" 전용 뷰**: 현재는 알림 클릭으로만 도달. 아티스트의 `/my/shortlists` 상단 보조 섹션 혹은 `/my/featured-in` 페이지로 `board_public` 이력을 누적 표시하면 UX 연속성이 생김. 보드 오너십 의미(`내 보드`)와 혼동되지 않도록 별도 탭/섹션으로 분리 필수.
+- **알림 dedup 윈도우 튜닝**: 현재 7일. 실사용 피드백 보고 1–14일 사이에서 조정.
+- **`board_public` 반복 토글 스팸 가드**: 동일 보드를 하루에 5번 토글하는 큐레이터가 생기면 `OLD.is_private = TRUE AND NEW.is_private = FALSE AND 최근 24h 알림 없음`으로 강화 가능. 지금은 의도적 단순함 유지.
+
+### 검증
+
+- 트리거: `board_save` cross-board dedup=1, self-save=0, `board_public` 첫 전환=1, 재토글=2 (의도).
+- RPC: self-curation 제외 후 `boards_count=1, savers_count=1` 확인.
+- `tsc --noEmit` clean, lint clean.
+
+---
 
 ## 2026-04-22 — Boards RLS 재귀 버그 핫픽스 + 보드 → 전시 게시물 진화 경로
 
