@@ -56,7 +56,7 @@ export function StudioHero({
   const isPublic = profile.is_public !== false;
 
   return (
-    <section className="mb-6 rounded-2xl border border-zinc-200 bg-white p-6">
+    <section className="h-full rounded-2xl border border-zinc-200 bg-white p-6">
       <div className="flex items-start gap-4">
         <div className="h-16 w-16 shrink-0 overflow-hidden rounded-full bg-zinc-200">
           {avatar ? (
@@ -106,7 +106,7 @@ export function StudioHero({
           {(followersCount != null || followingCount != null) && (
             <div className="mt-2 flex items-center gap-3 text-sm">
               <Link
-                href="/my/followers"
+                href="/my/network?tab=followers"
                 className="group inline-flex items-baseline gap-1 text-zinc-500 transition-colors hover:text-zinc-900"
               >
                 <span className="font-semibold text-zinc-900 tabular-nums group-hover:underline">
@@ -118,7 +118,7 @@ export function StudioHero({
                 ·
               </span>
               <Link
-                href="/my/following"
+                href="/my/network?tab=following"
                 className="group inline-flex items-baseline gap-1 text-zinc-500 transition-colors hover:text-zinc-900"
               >
                 <span className="font-semibold text-zinc-900 tabular-nums group-hover:underline">

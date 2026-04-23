@@ -8,6 +8,12 @@ export type FollowProfileRow = {
   bio: string | null;
   main_role: string | null;
   roles: string[] | null;
+  /**
+   * Timestamp of the follow edge (follows.created_at). Surfaced for the
+   * Network page "최신순" sort. Never null for rows returned by the
+   * `getMyFollowers` / `getMyFollowing` helpers.
+   */
+  followed_at?: string | null;
 };
 
 const PROFILE_SELECT = "id, username, display_name, avatar_url, bio, main_role, roles";
@@ -40,9 +46,13 @@ export async function getMyFollowers(options: { limit?: number; cursor?: string 
   const list = hasMore ? raw.slice(0, limit) : raw;
   const nextCursor = hasMore ? String(offset + limit) : null;
 
-  const profiles = list
-    .map((r) => (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles))
-    .filter((p): p is FollowProfileRow => p != null && typeof (p as FollowProfileRow).id === "string");
+  const profiles: FollowProfileRow[] = list
+    .map((r): FollowProfileRow | null => {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+      if (!p || typeof (p as FollowProfileRow).id !== "string") return null;
+      return { ...(p as FollowProfileRow), followed_at: r.created_at ?? null };
+    })
+    .filter((p): p is FollowProfileRow => p !== null);
 
   return { data: profiles, nextCursor, error: null };
 }
@@ -75,9 +85,13 @@ export async function getMyFollowing(options: { limit?: number; cursor?: string 
   const list = hasMore ? raw.slice(0, limit) : raw;
   const nextCursor = hasMore ? String(offset + limit) : null;
 
-  const profiles = list
-    .map((r) => (Array.isArray(r.profiles) ? r.profiles[0] : r.profiles))
-    .filter((p): p is FollowProfileRow => p != null && typeof (p as FollowProfileRow).id === "string");
+  const profiles: FollowProfileRow[] = list
+    .map((r): FollowProfileRow | null => {
+      const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
+      if (!p || typeof (p as FollowProfileRow).id !== "string") return null;
+      return { ...(p as FollowProfileRow), followed_at: r.created_at ?? null };
+    })
+    .filter((p): p is FollowProfileRow => p !== null);
 
   return { data: profiles, nextCursor, error: null };
 }

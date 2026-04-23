@@ -25,11 +25,7 @@ import {
 } from "@/lib/profile/completeness";
 import { getProfileSurface, type ProfileSurface } from "@/lib/profile/surface";
 import type { Profile as FullProfile } from "@/lib/supabase/profiles";
-import {
-  getProfileViewsCount,
-  getProfileViewers,
-  type ProfileViewerRow,
-} from "@/lib/supabase/profileViews";
+import { getProfileViewsCount } from "@/lib/supabase/profileViews";
 import { resolveEntitlementFor } from "@/lib/entitlements";
 import { supabase } from "@/lib/supabase/client";
 import { useActingAs } from "@/context/ActingAsContext";
@@ -42,15 +38,13 @@ import { getProfileById } from "@/lib/supabase/profiles";
 import { getBoardSaveSignals, type BoardSaveSignal } from "@/lib/supabase/shortlists";
 import {
   StudioHero,
-  StudioSignals,
-  StudioNextActions,
-  StudioSectionNav,
+  StudioHeroPanel,
+  StudioNextStepsRail,
+  StudioOperationGrid,
   StudioQuickActions,
-  StudioViewsInsights,
   StudioPortfolioPanel,
   StudioIntelligenceSurface,
-  type StudioSignal,
-  type StudioSection,
+  type OperationTile,
   type QuickAction,
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
@@ -68,7 +62,6 @@ export default function MyPage() {
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [exhibitions, setExhibitions] = useState<ExhibitionWithCredits[]>([]);
   const [profileViewsCount, setProfileViewsCount] = useState<number | null>(null);
-  const [viewers, setViewers] = useState<ProfileViewerRow[]>([]);
   const [canViewViewers, setCanViewViewers] = useState(false);
   const [priceInquiryCount, setPriceInquiryCount] = useState(0);
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
@@ -183,12 +176,9 @@ export default function MyPage() {
       }
 
       if (profileData?.id) {
-        const [countRes, viewersRes, inquiryCountRes, claimsCountRes, messagesUnread, boardSignalRes] =
+        const [countRes, inquiryCountRes, claimsCountRes, messagesUnread, boardSignalRes] =
           await Promise.all([
             getProfileViewsCount(profileData.id, 7),
-            canView
-              ? getProfileViewers(profileData.id, { limit: 10 })
-              : { data: [], nextCursor: null, error: null },
             getMyPriceInquiryCount(effectiveProfileId ?? undefined),
             getMyPendingClaimsCount(effectiveProfileId ?? undefined),
             effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
@@ -200,7 +190,6 @@ export default function MyPage() {
               : getBoardSaveSignals(),
           ]);
         setProfileViewsCount(countRes.data);
-        setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
         setUnreadMessagesCount(messagesUnread ?? 0);
@@ -261,66 +250,6 @@ export default function MyPage() {
     [profile]
   );
 
-  const studioSignals = useMemo<StudioSignal[]>(() => {
-    if (!profile) return [];
-    const out: StudioSignal[] = [];
-    if (!actingAsProfileId) {
-      out.push({
-        key: "views",
-        label: t("studio.signals.views7d"),
-        value: canViewViewers && profileViewsCount != null ? profileViewsCount : "—",
-        tone: canViewViewers ? "default" : "locked",
-        hint: canViewViewers ? null : t("studio.signals.lockedUpsell"),
-      });
-    }
-    out.push({
-      key: "followers",
-      label: t("studio.signals.followers"),
-      value: stats?.followersCount ?? 0,
-    });
-    out.push({
-      key: "inquiries",
-      label: t("studio.signals.unreadInquiries"),
-      value: priceInquiryCount,
-      tone: priceInquiryCount > 0 ? "warning" : "default",
-    });
-    out.push({
-      key: "claims",
-      label: t("studio.signals.pendingClaims"),
-      value: pendingClaimsCount,
-      tone: pendingClaimsCount > 0 ? "warning" : "default",
-    });
-    // Artist-side "who's collecting my works" signal. Only surfaced when
-    // someone has actually saved at least once — keeps the 4-tile grid
-    // visually clean for new accounts and only surfaces real signal.
-    if (
-      !actingAsProfileId &&
-      artworks.length > 0 &&
-      boardSaveSignal &&
-      boardSaveSignal.boards_count > 0
-    ) {
-      const { boards_count, savers_count } = boardSaveSignal;
-      out.push({
-        key: "boards_saved_in",
-        label: t("studio.signals.boardsSavedIn"),
-        value: boards_count,
-        hint: t("studio.signals.boardsSavedInHint").replace("{n}", String(savers_count)),
-      });
-    }
-    return out;
-  }, [
-    profile,
-    actingAsProfileId,
-    canViewViewers,
-    profileViewsCount,
-    stats?.followersCount,
-    priceInquiryCount,
-    pendingClaimsCount,
-    boardSaveSignal,
-    artworks.length,
-    t,
-  ]);
-
   const studioActions = useMemo(() => {
     if (!profile) return [];
     return computeStudioNextActions({
@@ -344,68 +273,99 @@ export default function MyPage() {
     t,
   ]);
 
-  const studioSections = useMemo<StudioSection[]>(
-    () => [
-      {
-        key: "workshop",
-        labelKey: "studio.sections.workshop",
-        descKey: "studio.sections.workshopDesc",
-        href: "/my/library",
-        count: artworks.length,
-      },
+  // Brief §3 Section 2 — 8 tiles in a strict 2×4 layout.
+  //   Row 1 (creation / curation / active operation): 전시 · 작업실 · 보드 · 메시지
+  //   Row 2 (relationship / requests / verification / visibility): 문의 · 소유권 · 네트워크 · 프로필 조회
+  const operationTiles = useMemo<OperationTile[]>(() => {
+    const boardsCount = boardSaveSignal?.boards_count ?? null;
+    const tiles: OperationTile[] = [
       {
         key: "exhibitions",
         labelKey: "studio.sections.exhibitions",
         descKey: "studio.sections.exhibitionsDesc",
         href: "/my/exhibitions",
-        count: exhibitions.length,
+        value: exhibitions.length,
+        dataTour: "studio-card-exhibitions",
       },
       {
-        key: "inbox",
-        labelKey: "studio.sections.inbox",
-        descKey: "studio.sections.inboxDesc",
-        href: "/my/inquiries",
-        count: priceInquiryCount,
-        badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
-      },
-      {
-        key: "messages",
-        labelKey: "studio.sections.messages",
-        descKey: "studio.sections.messagesDesc",
-        href: "/my/messages",
-        count: unreadMessagesCount,
-        badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : null,
-      },
-      {
-        key: "network",
-        labelKey: "studio.sections.network",
-        descKey: "studio.sections.networkDesc",
-        href: "/my/followers",
-        count: stats?.followersCount ?? 0,
-      },
-      {
-        key: "operations",
-        labelKey: "studio.sections.operations",
-        descKey: "studio.sections.operationsDesc",
-        href: "/my/claims",
-        count: pendingClaimsCount,
-        badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
+        key: "workshop",
+        labelKey: "studio.sections.workshop",
+        descKey: "studio.sections.workshopDesc",
+        href: "/my/library",
+        value: artworks.length,
+        dataTour: "studio-card-workshop",
       },
       {
         key: "boards",
         labelKey: "studio.sections.boards",
         descKey: "studio.sections.boardsDesc",
         href: "/my/shortlists",
-        count: null,
+        value: boardsCount,
+        valueLabel: boardsCount == null ? "—" : undefined,
+        dataTour: "studio-card-boards",
       },
-    ],
-    [artworks.length, exhibitions.length, priceInquiryCount, unreadMessagesCount, stats?.followersCount, pendingClaimsCount]
-  );
+      {
+        key: "messages",
+        labelKey: "studio.sections.messages",
+        descKey: "studio.sections.messagesDesc",
+        href: "/my/messages",
+        value: unreadMessagesCount,
+        badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : null,
+        dataTour: "studio-card-messages",
+      },
+      {
+        key: "inbox",
+        labelKey: "studio.sections.inbox",
+        descKey: "studio.sections.inboxDesc",
+        href: "/my/inquiries",
+        value: priceInquiryCount,
+        badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
+      },
+      {
+        key: "operations",
+        labelKey: "studio.sections.operations",
+        descKey: "studio.sections.operationsDesc",
+        href: "/my/claims",
+        value: pendingClaimsCount,
+        badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
+      },
+      {
+        key: "network",
+        labelKey: "studio.sections.network",
+        descKey: "studio.sections.networkDesc",
+        href: "/my/network",
+        value: stats?.followersCount ?? 0,
+      },
+      {
+        key: "views",
+        labelKey: "studio.sections.views",
+        descKey: "studio.sections.viewsDesc",
+        // The settings page hosts the full viewer roster today; keeping
+        // the tile clickable preserves the action-oriented intent of the
+        // grid even when the viewer identity is entitlement-locked.
+        href: "/settings",
+        value: canViewViewers ? profileViewsCount : null,
+        valueLabel: canViewViewers ? undefined : "—",
+        locked: !canViewViewers,
+      },
+    ];
+    return tiles;
+  }, [
+    artworks.length,
+    exhibitions.length,
+    priceInquiryCount,
+    unreadMessagesCount,
+    stats?.followersCount,
+    pendingClaimsCount,
+    boardSaveSignal,
+    canViewViewers,
+    profileViewsCount,
+  ]);
 
-  // Quick actions follow a strict 3-tier hierarchy (see StudioQuickActions):
-  //   primary   — one filled CTA
+  // Quick actions strip — Brief §3 Section 3. Deliberately compact:
+  //   primary   — one filled CTA (upload)
   //   secondary — 2-3 outlined high-frequency destinations
-  //   tertiary  — hidden under "더 보기"
+  //   tertiary  — hidden under "더 보기" (lower-frequency tools)
   const quickActions = useMemo<QuickAction[]>(() => {
     if (!profile) return [];
     const out: QuickAction[] = [
@@ -414,12 +374,6 @@ export default function MyPage() {
       { key: "editProfile", label: t("studio.quickActions.editProfile"), href: "/settings", tone: "secondary" },
       { key: "people", label: t("studio.quickActions.findPeople"), href: "/people", tone: "secondary" },
     ];
-    // Tertiary (overflow). These duplicate some section-nav entries by design:
-    // section nav explains "where things live", the overflow gives fast access.
-    if (!actingAsProfileId) {
-      out.push({ key: "library", label: t("studio.quickActions.library"), href: "/my/library", tone: "tertiary" });
-      out.push({ key: "shortlists", label: t("studio.quickActions.shortlists"), href: "/my/shortlists", tone: "tertiary" });
-    }
     const roleSet = new Set(normalizeRoleList(profile.roles));
     if (roleSet.has("curator") || roleSet.has("collector")) {
       out.push({ key: "alerts", label: t("studio.quickActions.alerts"), href: "/my/alerts", tone: "tertiary" });
@@ -440,34 +394,35 @@ export default function MyPage() {
       });
     }
     return out;
-  }, [profile, actingAsProfileId, t]);
+  }, [profile, t]);
 
   return (
     <AuthGate>
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="mx-auto max-w-5xl px-4 py-8">
         {profile && !actingAsProfileId && (
           <>
-            <StudioHero
-              profile={profile}
-              completeness={computedCompleteness}
-              publicHref={profile.username ? `/u/${profile.username}` : null}
-              followersCount={stats?.followersCount ?? 0}
-              followingCount={stats?.followingCount ?? 0}
+            <StudioHeroPanel
+              hero={
+                <StudioHero
+                  profile={profile}
+                  completeness={computedCompleteness}
+                  publicHref={profile.username ? `/u/${profile.username}` : null}
+                  followersCount={stats?.followersCount ?? 0}
+                  followingCount={stats?.followingCount ?? 0}
+                />
+              }
+              rail={<StudioNextStepsRail actions={studioActions} />}
             />
-            <StudioSignals signals={studioSignals} />
-            <StudioNextActions actions={studioActions} />
-            <StudioSectionNav sections={studioSections} />
+            <StudioOperationGrid tiles={operationTiles} />
             <StudioQuickActions actions={quickActions} />
-            <StudioViewsInsights
-              count={profileViewsCount}
-              canViewViewers={canViewViewers}
-              viewers={viewers}
-            />
           </>
         )}
 
         {profile && !actingAsProfileId && (
-          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-4 py-3">
+          <div
+            data-tour="studio-public-works"
+            className="mb-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-4 py-3"
+          >
             <div className="min-w-0">
               <p className="text-sm font-medium text-zinc-800">
                 {t("studio.portfolioHelper.title")}

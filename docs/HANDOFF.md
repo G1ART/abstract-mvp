@@ -2,6 +2,95 @@
 
 Last updated: 2026-04-24
 
+## 2026-04-24 — Studio/Profile UX Reset + Network Page Upgrade
+
+### 왜 필요했나
+
+`/my`가 계정 페이지에서 "스튜디오 대시보드"로 격상되면서, 기존 구조는 패시브 정보(7일 조회수/팔로워 카운트/미처리 문의 카운트의 큰 카드 행)가 최상단을 차지하고, `다음에 할 일`이 너무 컸으며, 8개에 가까운 비슷한 중량의 액션이 경쟁하고 있었다. 네트워크 버튼도 단순 `/my/followers` 목록으로만 연결되어 관계 관리 용도로 부족했다.
+
+이번 패치는 (가이드 투어 패치 이전에) **IA와 dashboard UX를 먼저 안정화**하고, **`네트워크` destination을 진짜 관계 관리 페이지로 격상**한다. 패치 Brief: `Abstract_Patch_Brief_Studio_Profile_UX_Reset_Plus_Network_2026-04-23.md`.
+
+### 스튜디오(/my) 레이아웃 변경
+
+Before → After:
+
+| Before | After |
+|---|---|
+| `StudioHero`(풀 폭) → `StudioSignals`(4칸 패시브 stat 로우) → `StudioNextActions`(풀 폭) → `StudioSectionNav`(7칸 혼합 그리드) → `StudioQuickActions` → `StudioViewsInsights`(프로필 조회 로우) | `StudioHeroPanel`(Hero + 우측 `StudioNextStepsRail` 사이드레일) → `StudioOperationGrid`(2×4 8타일) → `StudioQuickActions`(컴팩트 유지) |
+
+변경 요약:
+- 큰 passive stat 로우 제거. 각 카운트는 8타일 중 해당 타일로 흡수. 프로필 조회는 "프로필 조회" 타일로 흡수(entitlement locked 시 `—` 표시 + 점선 보더).
+- `StudioNextActions`(풀 폭)는 제거하고, 동일한 `computeStudioNextActions` priority engine 결과를 `StudioNextStepsRail`이 읽어 Hero 옆 사이드레일로 렌더. 데스크톱 `lg:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]`로 나란히, 그 이하 뷰포트는 자연스럽게 스택.
+- 타일 그룹핑(Brief §4.4 엄수):
+  - Row 1 (창작/큐레이션/운영): `전시 · 작업실 · 보드 · 메시지`
+  - Row 2 (관계/요청/검증/가시성): `문의 · 소유권 · 네트워크 · 프로필 조회`
+- `/my/page.tsx` 폭 `max-w-4xl` → `max-w-5xl` (사이드레일 수용).
+- `StudioIntelligenceSurface`는 그대로 포트폴리오 하단에 시각적으로 demote된 상태 유지.
+
+### 신규 컴포넌트
+
+- `src/components/studio/StudioHeroPanel.tsx` — 히어로 + 사이드레일 그리드 래퍼. `data-tour="studio-hero"`.
+- `src/components/studio/StudioNextStepsRail.tsx` — 우측 컴팩트 모듈(2–4 items). `data-tour="studio-next-steps"`.
+- `src/components/studio/StudioOperationGrid.tsx` — 8타일(2×4) 그리드. `data-tour="studio-operating-grid"` + 타일별 `data-tour="studio-card-*"`.
+- `StudioHero`는 자체 `mb-6` 제거, 폼 팔로워/팔로잉 링크를 `/my/network?tab=followers|following`로 이관. `suppress-*` 기타 prop 변경 없음.
+
+기존 `StudioSignals`, `StudioSectionNav`, `StudioViewsInsights`, `StudioNextActions`는 **barrel에서 여전히 export**하되 신규 페이지에서는 사용하지 않는다. 호환/복원 용도로 남김.
+
+### 네트워크 페이지 신설
+
+- 신규 라우트 `src/app/my/network/page.tsx`.
+- 탭(URL `?tab=followers|following`으로 동기화 — deep link + shallow `router.replace`), 검색(이름/핸들/bio), 정렬(`최신순` / `이름순`).
+- `lib/supabase/follows.ts` `getMyFollowers` / `getMyFollowing` 반환값에 `followed_at` 추가(follow row `created_at`). `FollowProfileRow.followed_at?: string | null`. 기존 호출부(`/my/followers`, `/my/following`, `connectionMessages.sender`)는 optional 필드라 breaking change 없음.
+- 정렬 "최신순" = `followed_at desc` (값 없으면 이름순 fallback). 이름순 = `localeCompare`.
+- 각 로우: 아바타 / 이름 / `@handle` · bio 한 줄 / `FollowButton`. Row 클릭 시 공개 프로필로 이동(`/u/:username`).
+- 빈 상태 3종: no followers / no following / no search result.
+- `data-tour="network-tabs" | "network-search" | "network-sort" | "network-list"`.
+- 기존 `/my/followers`, `/my/following` 페이지는 **백워드 컴팩트용으로 그대로 남김**(알림/북마크 링크 보호). Hero/OperationGrid의 링크는 모두 `/my/network`로 갱신.
+
+### i18n
+
+신규 키(KR/EN 양쪽): `studio.nextSteps.title|empty`, `studio.operationGrid.title`, `studio.sections.views|viewsDesc`, `network.*` 전체 블록.
+
+### data-tour 앵커 (후속 가이드 투어 패치용 안정 셀렉터)
+
+- `studio-hero`, `studio-next-steps`, `studio-operating-grid`
+- `studio-card-exhibitions`, `studio-card-workshop`, `studio-card-boards`, `studio-card-messages`
+- `studio-public-works`
+- `network-tabs`, `network-search`, `network-sort`, `network-list`
+
+### 데이터/엔티타이틀먼트 영향도
+
+- `insights.profile_viewer_identity` 해석 로직과 entitlement 호출 경로 유지. 단, `/my`에서 viewer 리스트를 더 이상 상단에 펼치지 않으므로 `getProfileViewers` 호출이 제거되어 해당 경로의 RLS 히트가 소폭 감소.
+- `getMyStats`, `getProfileViewsCount`, `getBoardSaveSignals`, `getMyPriceInquiryCount`, `getMyPendingClaimsCount`, `getUnreadConnectionMessageCount` 호출은 그대로. 이들이 반환한 값은 모두 8타일에 분배되어 소비된다.
+- 액팅 모드(`actingAsProfileId`)일 때는 타일/쾌속작업이 non-owner context이므로 기존 논리대로 히든 유지(변화 없음).
+
+### 회귀 체크 (이미 수행)
+
+- `tsc --noEmit` 통과.
+- 수정 파일에 한해 `eslint` 통과(프로젝트 기존 pre-existing 오류는 이번 스코프 외).
+- 팔로워/팔로잉 기존 라우트(/my/followers, /my/following) 유지 → 기존 알림 CTA 깨짐 없음.
+- `connectionMessages.sender` 타입 호환(optional followed_at).
+
+### 알려진 잔여 아이템 / 후속 과제
+
+- `/my/followers`, `/my/following`는 장기적으로 `/my/network?tab=...`으로 redirect 처리 가능(이번 스코프 외). 즉시 제거 시 기존 알림 링크가 404가 될 수 있어 유지.
+- `프로필 조회` 타일은 `/settings`로 라우팅(방문자 전체 보기가 거기 있음). 추후 전용 `/my/views` 페이지로 승격 가능.
+- 네트워크 "관련순"은 **구현하지 않음**. 랭킹 데이터 없음(Brief §5 D에 명시된 지침 그대로). 현재 정렬은 `최신순`/`이름순` 2종.
+
+### 터치한 파일
+
+- `src/app/my/page.tsx` — 재구성.
+- `src/app/my/network/page.tsx` — **신설**.
+- `src/components/studio/StudioHero.tsx` — mb 제거, 링크 재타깃.
+- `src/components/studio/StudioHeroPanel.tsx` — **신설**.
+- `src/components/studio/StudioNextStepsRail.tsx` — **신설**.
+- `src/components/studio/StudioOperationGrid.tsx` — **신설**.
+- `src/components/studio/index.ts` — 신규 export 추가.
+- `src/lib/supabase/follows.ts` — `followed_at` 부착.
+- `src/lib/i18n/messages.ts` — `studio.nextSteps.*`, `studio.operationGrid.*`, `studio.sections.views*`, `network.*` KR/EN 추가.
+
+---
+
 ## 2026-04-24 — Monetization Readiness Spine Patch
 
 ### 왜 필요했나
