@@ -156,20 +156,10 @@ function DraftItem({
 }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
-
-  // Auto-size the textarea to its content when the draft becomes editable
-  // or the text changes — avoids an internal scrollbar on short drafts.
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el || !editable) return;
-    el.style.height = "0px";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [editable, text]);
 
   const handleCopy = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
@@ -214,15 +204,26 @@ function DraftItem({
       )}
 
       {showEditor ? (
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => onChange?.(e.target.value)}
-          rows={1}
-          spellCheck={false}
-          className="block w-full resize-none bg-transparent pl-6 text-sm leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400"
-          aria-label="소개 메시지 초안 편집"
-        />
+        // CSS-grid mirror trick: the hidden <div> takes the intrinsic
+        // height of the wrapped text, and the <textarea> occupies the
+        // exact same grid cell. No scrollHeight measurement, no timing
+        // race on mount — the editor always matches the full content.
+        <div className="grid pl-6">
+          <div
+            aria-hidden="true"
+            className="invisible col-start-1 row-start-1 text-sm leading-relaxed text-zinc-900 whitespace-pre-wrap break-words"
+          >
+            {text + "\u200B"}
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => onChange?.(e.target.value)}
+            rows={1}
+            spellCheck={false}
+            className="col-start-1 row-start-1 block w-full resize-none overflow-hidden bg-transparent text-sm leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400"
+            aria-label="소개 메시지 초안 편집"
+          />
+        </div>
       ) : (
         <p
           className={`text-sm leading-relaxed text-zinc-800 whitespace-pre-wrap ${selectable ? "pl-6" : ""}`}
