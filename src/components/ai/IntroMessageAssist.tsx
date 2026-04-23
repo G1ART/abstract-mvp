@@ -278,12 +278,25 @@ type SendState =
 
 // ─── Portal sheet ─────────────────────────────────────────────────────────────
 
+/**
+ * Entry mode determines the primary-intent framing of the sheet.
+ *  - "message-first":  opened via the "Draft an intro" button. User's intent
+ *                      is to write/send a message. Primary CTA is send-first
+ *                      ("보내면서 팔로우하기" / "보내기").
+ *  - "follow-first":   opened immediately after a successful Follow. User's
+ *                      intent was to follow, so the message is optional — we
+ *                      expose an explicit "skip for now" affordance and frame
+ *                      the sheet as a follow-up prompt.
+ */
+type EntryMode = "message-first" | "follow-first";
+
 type SheetProps = {
   loading: boolean;
   result: IntroMessageDraftResult | null;
   recipientName: string | null | undefined;
   recipientId: string | null | undefined;
   isFollowing: boolean;
+  entryMode: EntryMode;
   onRefresh: () => void;
   onClose: () => void;
   onSent?: () => void;
@@ -296,6 +309,7 @@ function IntroSheet({
   recipientName,
   recipientId,
   isFollowing,
+  entryMode,
   onRefresh,
   onClose,
   onSent,
@@ -364,9 +378,21 @@ function IntroSheet({
     effectiveSelectedIdx !== null &&
     selectedText.length > 0 &&
     !loading;
+  // CTA label is driven by two orthogonal axes:
+  //   • entryMode: which verb comes first ("send" or "follow")
+  //   • isFollowing: whether the follow action is still pending
+  //
+  // message-first (user came here to write a message):
+  //   - already following → "보내기"
+  //   - not following yet → "보내면서 팔로우하기" (send verb leads)
+  // follow-first (post-follow prompt, already followed by design):
+  //   - always following at this point → "보내기"
+  //   - (fallback if somehow not following → "팔로우하며 보내기")
   const sendLabel = isFollowing
     ? t("connection.sendOnly")
-    : t("connection.sendCta");
+    : entryMode === "message-first"
+      ? t("connection.sendAndFollow")
+      : t("connection.sendCta");
 
   const handleSend = async () => {
     if (!recipientId || effectiveSelectedIdx === null) return;
@@ -434,9 +460,19 @@ function IntroSheet({
               <SparkleIcon />
             </div>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-zinc-900 leading-tight">
-                {t("ai.intro.panel.title")}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-semibold text-zinc-900 leading-tight">
+                  {entryMode === "follow-first"
+                    ? t("connection.postFollow.title")
+                    : t("ai.intro.panel.title")}
+                </p>
+                {entryMode === "follow-first" && (
+                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
+                    <CheckIcon />
+                    {t("connection.followedBadge")}
+                  </span>
+                )}
+              </div>
               {recipientName && (
                 <p className="text-xs text-zinc-400 truncate mt-0.5">
                   {recipientName}
@@ -456,7 +492,9 @@ function IntroSheet({
         </div>
 
         <p className="px-5 pb-3 text-xs text-zinc-400">
-          {t("ai.intro.panel.hint")}
+          {entryMode === "follow-first"
+            ? t("connection.postFollow.body")
+            : t("ai.intro.panel.hint")}
         </p>
 
         <div className="h-px bg-zinc-100" />
@@ -524,32 +562,44 @@ function IntroSheet({
           </button>
 
           {recipientId ? (
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={!canSend || sending || sent}
-              className={[
-                "flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
-                sent
-                  ? "bg-emerald-600 text-white"
-                  : "bg-zinc-900 text-white hover:bg-zinc-800",
-                (!canSend || sending) && !sent ? "opacity-40 cursor-not-allowed" : "",
-              ].join(" ")}
-            >
-              {sent ? (
-                <>
-                  <CheckIcon />
-                  {t("connection.sent")}
-                </>
-              ) : sending ? (
-                t("connection.sending")
-              ) : (
-                <>
-                  <SendIcon />
-                  {sendLabel}
-                </>
+            <div className="flex shrink-0 items-center gap-2">
+              {entryMode === "follow-first" && !sent && (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={sending}
+                  className="rounded-lg px-3 py-2 text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 transition-colors disabled:opacity-40"
+                >
+                  {t("connection.skipForNow")}
+                </button>
               )}
-            </button>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!canSend || sending || sent}
+                className={[
+                  "flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors",
+                  sent
+                    ? "bg-emerald-600 text-white"
+                    : "bg-zinc-900 text-white hover:bg-zinc-800",
+                  (!canSend || sending) && !sent ? "opacity-40 cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                {sent ? (
+                  <>
+                    <CheckIcon />
+                    {t("connection.sent")}
+                  </>
+                ) : sending ? (
+                  t("connection.sending")
+                ) : (
+                  <>
+                    <SendIcon />
+                    {sendLabel}
+                  </>
+                )}
+              </button>
+            </div>
           ) : (
             <p className="text-[11px] text-zinc-400 leading-tight max-w-[220px]">
               AI 생성 초안 · 전송 전 내용을 꼭 확인해 주세요.
@@ -664,6 +714,9 @@ export function IntroMessageAssist({
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<IntroMessageDraftResult | null>(null);
   const [mounted, setMounted] = useState(false);
+  // Tracks which entry path opened the sheet so the CTA framing matches
+  // user intent. See EntryMode docs on the SheetProps type.
+  const [entryMode, setEntryMode] = useState<EntryMode>("message-first");
   const lastOpenSignal = useRef<number | undefined>(openSignal);
 
   useEffect(() => {
@@ -687,12 +740,14 @@ export function IntroMessageAssist({
 
   // React to an incrementing `openSignal` from the parent — used by the
   // post-follow affordance so it can open the sheet without us exposing a
-  // ref.
+  // ref. Opens in "follow-first" mode because the parent only increments
+  // the signal after a successful follow.
   useEffect(() => {
     if (openSignal === undefined) return;
     if (lastOpenSignal.current === openSignal) return;
     lastOpenSignal.current = openSignal;
     if (variant !== "button") return;
+    setEntryMode("follow-first");
     setOpen(true);
     void trigger();
   }, [openSignal, variant, trigger]);
@@ -722,6 +777,7 @@ export function IntroMessageAssist({
             close();
             return;
           }
+          setEntryMode("message-first");
           setOpen(true);
           void trigger();
         }}
@@ -740,6 +796,7 @@ export function IntroMessageAssist({
             recipientName={displayName}
             recipientId={recipientId ?? null}
             isFollowing={isFollowing}
+            entryMode={entryMode}
             onRefresh={trigger}
             onClose={close}
             onSent={onSent}
