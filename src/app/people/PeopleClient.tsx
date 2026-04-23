@@ -91,6 +91,10 @@ export function PeopleClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  // Per-profile counter that the Follow button increments after a successful
+  // follow. Each IntroMessageAssist watches its own value via `openSignal`
+  // and opens its sheet when the counter changes — see IntroMessageAssist.
+  const [introOpenSignal, setIntroOpenSignal] = useState<Record<string, number>>({});
   const [userId, setUserId] = useState<string | null>(null);
   const [myProfile, setMyProfile] = useState<{
     display_name: string | null;
@@ -475,6 +479,18 @@ export function PeopleClient() {
                           targetProfileId={profile.id}
                           initialFollowing={initialFollowing}
                           size="sm"
+                          onFollowed={() => {
+                            setFollowingIds((prev) => {
+                              if (prev.has(profile.id)) return prev;
+                              const next = new Set(prev);
+                              next.add(profile.id);
+                              return next;
+                            });
+                            setIntroOpenSignal((prev) => ({
+                              ...prev,
+                              [profile.id]: (prev[profile.id] ?? 0) + 1,
+                            }));
+                          }}
                         />
                         {userId && (
                           <IntroMessageAssist
@@ -490,6 +506,17 @@ export function PeopleClient() {
                               display_name: profile.display_name,
                               role: profile.main_role,
                               sharedSignals: profile.reason_tags ?? [],
+                            }}
+                            recipientId={profile.id}
+                            isFollowing={initialFollowing}
+                            openSignal={introOpenSignal[profile.id]}
+                            onFollowed={() => {
+                              setFollowingIds((prev) => {
+                                if (prev.has(profile.id)) return prev;
+                                const next = new Set(prev);
+                                next.add(profile.id);
+                                return next;
+                              });
                             }}
                           />
                         )}

@@ -37,6 +37,8 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
       }
       return `${name} uploaded a new work: ${title}`;
     }
+    case "connection_message":
+      return t("notifications.connectionMessageText").replace("{name}", name);
     default:
       return "";
   }
@@ -45,6 +47,9 @@ function notificationLabel(row: NotificationRow, t: (k: string) => string): stri
 function notificationLink(row: NotificationRow): string | null {
   if (row.type === "price_inquiry" || row.type === "price_inquiry_reply") {
     return "/my/inquiries";
+  }
+  if (row.type === "connection_message") {
+    return "/my/messages";
   }
   if (row.type === "follow" && row.actor_id) {
     const u = row.actor?.username;

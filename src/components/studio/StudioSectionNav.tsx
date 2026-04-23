@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 
 export type StudioSection = {
-  key: "portfolio" | "exhibitions" | "inbox" | "network" | "operations";
+  key: "portfolio" | "exhibitions" | "inbox" | "messages" | "network" | "operations";
   labelKey: string;
   href: string;
   count?: number | null;

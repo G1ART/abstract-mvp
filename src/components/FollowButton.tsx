@@ -8,6 +8,13 @@ type Props = {
   targetProfileId: string;
   initialFollowing: boolean;
   size?: "sm" | "md";
+  /**
+   * Fires after the follow insert succeeds. Parents use this to open the
+   * Connection Messages intro sheet so users can optionally send a short
+   * note — see `/people` PeopleClient. Never fires on unfollow so the
+   * unfollow flow keeps its existing behaviour unchanged.
+   */
+  onFollowed?: () => void;
 };
 
 function getIsTouch(): boolean {
@@ -22,6 +29,7 @@ export function FollowButton({
   targetProfileId,
   initialFollowing,
   size = "md",
+  onFollowed,
 }: Props) {
   const [isFollowing, setIsFollowing] = useState(initialFollowing);
   const [hovered, setHovered] = useState(false);
@@ -39,8 +47,12 @@ export function FollowButton({
     if (!isFollowing) {
       setIsFollowing(true);
       const { error } = await follow(targetProfileId);
-      if (error) setIsFollowing(false);
-      else logBetaEventSync("profile_followed", { profile_id: targetProfileId });
+      if (error) {
+        setIsFollowing(false);
+      } else {
+        logBetaEventSync("profile_followed", { profile_id: targetProfileId });
+        onFollowed?.();
+      }
       return;
     }
 
@@ -60,7 +72,7 @@ export function FollowButton({
         await unfollow(targetProfileId);
       }
     }
-  }, [isFollowing, isTouch, hovered, targetProfileId]);
+  }, [isFollowing, isTouch, hovered, targetProfileId, onFollowed]);
 
   const label =
     !isFollowing

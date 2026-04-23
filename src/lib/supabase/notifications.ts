@@ -8,7 +8,8 @@ export type NotificationType =
   | "claim_rejected"
   | "price_inquiry"
   | "price_inquiry_reply"
-  | "new_work";
+  | "new_work"
+  | "connection_message";
 
 export type NotificationRow = {
   id: string;

@@ -13,6 +13,7 @@ import {
   type MyStats,
 } from "@/lib/supabase/me";
 import { getMyPriceInquiryCount } from "@/lib/supabase/priceInquiries";
+import { getUnreadConnectionMessageCount } from "@/lib/supabase/connectionMessages";
 import {
   listPublicArtworksForProfile,
   listPublicArtworksListedByProfileId,
@@ -69,6 +70,7 @@ export default function MyPage() {
   const [canViewViewers, setCanViewViewers] = useState(false);
   const [priceInquiryCount, setPriceInquiryCount] = useState(0);
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
   const [, setLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -167,18 +169,21 @@ export default function MyPage() {
       }
 
       if (profileData?.id) {
-        const [countRes, viewersRes, inquiryCountRes, claimsCountRes] = await Promise.all([
-          getProfileViewsCount(profileData.id, 7),
-          canView
-            ? getProfileViewers(profileData.id, { limit: 10 })
-            : { data: [], nextCursor: null, error: null },
-          getMyPriceInquiryCount(effectiveProfileId ?? undefined),
-          getMyPendingClaimsCount(effectiveProfileId ?? undefined),
-        ]);
+        const [countRes, viewersRes, inquiryCountRes, claimsCountRes, messagesUnread] =
+          await Promise.all([
+            getProfileViewsCount(profileData.id, 7),
+            canView
+              ? getProfileViewers(profileData.id, { limit: 10 })
+              : { data: [], nextCursor: null, error: null },
+            getMyPriceInquiryCount(effectiveProfileId ?? undefined),
+            getMyPendingClaimsCount(effectiveProfileId ?? undefined),
+            effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
+          ]);
         setProfileViewsCount(countRes.data);
         setViewers(Array.isArray(viewersRes.data) ? viewersRes.data : []);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
+        setUnreadMessagesCount(messagesUnread ?? 0);
         if (effectiveProfileId) {
           const { data: exData } = await listExhibitionsForProfile(profileData.id);
           setExhibitions(
@@ -321,6 +326,13 @@ export default function MyPage() {
         badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
       },
       {
+        key: "messages",
+        labelKey: "connection.inbox.title",
+        href: "/my/messages",
+        count: unreadMessagesCount,
+        badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : null,
+      },
+      {
         key: "network",
         labelKey: "studio.sections.network",
         href: "/my/followers",
@@ -334,7 +346,7 @@ export default function MyPage() {
         badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
       },
     ],
-    [artworks.length, exhibitions.length, priceInquiryCount, stats?.followersCount, pendingClaimsCount]
+    [artworks.length, exhibitions.length, priceInquiryCount, unreadMessagesCount, stats?.followersCount, pendingClaimsCount]
   );
 
   const quickActions = useMemo<QuickAction[]>(() => {
