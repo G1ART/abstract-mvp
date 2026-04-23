@@ -91,9 +91,12 @@ export function PeopleClient() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
-  // Per-profile counter that the Follow button increments after a successful
-  // follow. Each IntroMessageAssist watches its own value via `openSignal`
-  // and opens its sheet when the counter changes — see IntroMessageAssist.
+  // Per-profile counter that opens the Connection Messages intro sheet.
+  // In the "follow-first" flow we now intercept the Follow click *before*
+  // committing any DB write — the sheet becomes the review surface and
+  // commits the follow itself (via handleSend or handleFollowOnly inside
+  // IntroMessageAssist). Each IntroMessageAssist watches its own counter
+  // via `openSignal` and opens its sheet when the counter changes.
   const [introOpenSignal, setIntroOpenSignal] = useState<Record<string, number>>({});
   const [userId, setUserId] = useState<string | null>(null);
   const [myProfile, setMyProfile] = useState<{
@@ -479,13 +482,13 @@ export function PeopleClient() {
                           targetProfileId={profile.id}
                           initialFollowing={initialFollowing}
                           size="sm"
-                          onFollowed={() => {
-                            setFollowingIds((prev) => {
-                              if (prev.has(profile.id)) return prev;
-                              const next = new Set(prev);
-                              next.add(profile.id);
-                              return next;
-                            });
+                          interceptFollow={() => {
+                            // Don't commit the follow here — open the
+                            // intro sheet as a review surface. The sheet
+                            // itself commits the follow via either
+                            // handleSend (send + follow) or
+                            // handleFollowOnly (follow only). If the user
+                            // dismisses the sheet, nothing is written.
                             setIntroOpenSignal((prev) => ({
                               ...prev,
                               [profile.id]: (prev[profile.id] ?? 0) + 1,

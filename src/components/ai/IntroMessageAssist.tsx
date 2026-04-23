@@ -283,10 +283,13 @@ type SendState =
  *  - "message-first":  opened via the "Draft an intro" button. User's intent
  *                      is to write/send a message. Primary CTA is send-first
  *                      ("보내면서 팔로우하기" / "보내기").
- *  - "follow-first":   opened immediately after a successful Follow. User's
- *                      intent was to follow, so the message is optional — we
- *                      expose an explicit "skip for now" affordance and frame
- *                      the sheet as a follow-up prompt.
+ *  - "follow-first":   opened when the user clicked Follow but we intercepted
+ *                      the click to propose "send + follow" first. The follow
+ *                      has NOT been committed yet — the sheet is the review
+ *                      surface. CTAs:
+ *                        • primary   — "보내면서 팔로우하기" (send + follow)
+ *                        • secondary — "메시지 없이 팔로우만" (follow only)
+ *                        • X / Esc   — true cancel (no follow, no message)
  */
 type EntryMode = "message-first" | "follow-first";
 
@@ -435,6 +438,26 @@ function IntroSheet({
     return () => clearTimeout(tid);
   };
 
+  // Follow-only path (follow-first entry). Commits the follow without
+  // sending any message, then closes. Used when the user reviews the
+  // AI-suggested draft but decides not to send it.
+  const handleFollowOnly = async () => {
+    if (!recipientId || isFollowing) {
+      onClose();
+      return;
+    }
+    setSendState({ kind: "sending" });
+    const { error } = await followUser(recipientId);
+    if (error) {
+      setSendState({ kind: "error", message: t("connection.sendError") });
+      return;
+    }
+    logBetaEventSync("profile_followed", { profile_id: recipientId });
+    onFollowed?.();
+    setSendState({ kind: "idle" });
+    onClose();
+  };
+
   const sending = sendState.kind === "sending";
   const sent = sendState.kind === "sent";
 
@@ -466,12 +489,6 @@ function IntroSheet({
                     ? t("connection.postFollow.title")
                     : t("ai.intro.panel.title")}
                 </p>
-                {entryMode === "follow-first" && (
-                  <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700 ring-1 ring-emerald-200">
-                    <CheckIcon />
-                    {t("connection.followedBadge")}
-                  </span>
-                )}
               </div>
               {recipientName && (
                 <p className="text-xs text-zinc-400 truncate mt-0.5">
@@ -563,14 +580,14 @@ function IntroSheet({
 
           {recipientId ? (
             <div className="flex shrink-0 items-center gap-2">
-              {entryMode === "follow-first" && !sent && (
+              {entryMode === "follow-first" && !sent && !isFollowing && (
                 <button
                   type="button"
-                  onClick={onClose}
+                  onClick={handleFollowOnly}
                   disabled={sending}
                   className="rounded-lg px-3 py-2 text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 transition-colors disabled:opacity-40"
                 >
-                  {t("connection.skipForNow")}
+                  {t("connection.followOnly")}
                 </button>
               )}
               <button

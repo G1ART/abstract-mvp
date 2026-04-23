@@ -15,6 +15,18 @@ type Props = {
    * unfollow flow keeps its existing behaviour unchanged.
    */
   onFollowed?: () => void;
+  /**
+   * Opt-in: defer the follow insert to the parent. When provided, clicking
+   * the (not-yet-following) button simply calls this handler instead of
+   * executing `follow()`. The parent is then responsible for eventually
+   * committing the follow (e.g. after a confirmation sheet) and updating
+   * `initialFollowing`.
+   *
+   * Unfollow flow is untouched — hover-to-unfollow still works as before.
+   * Pages that don't pass this prop keep the original "click → immediate
+   * follow" behaviour.
+   */
+  interceptFollow?: () => void;
 };
 
 function getIsTouch(): boolean {
@@ -30,6 +42,7 @@ export function FollowButton({
   initialFollowing,
   size = "md",
   onFollowed,
+  interceptFollow,
 }: Props) {
   const [isFollowing, setIsFollowing] = useState(initialFollowing);
   const [hovered, setHovered] = useState(false);
@@ -45,6 +58,14 @@ export function FollowButton({
 
   const handleClick = useCallback(async () => {
     if (!isFollowing) {
+      // Parent wants to intercept (e.g. show a confirmation sheet before
+      // committing). We delegate entirely — no optimistic state, no
+      // follow() call. Parent will commit follow and bump initialFollowing
+      // via its own state (synced by the effect above).
+      if (interceptFollow) {
+        interceptFollow();
+        return;
+      }
       setIsFollowing(true);
       const { error } = await follow(targetProfileId);
       if (error) {
@@ -72,7 +93,7 @@ export function FollowButton({
         await unfollow(targetProfileId);
       }
     }
-  }, [isFollowing, isTouch, hovered, targetProfileId, onFollowed]);
+  }, [isFollowing, isTouch, hovered, targetProfileId, onFollowed, interceptFollow]);
 
   const label =
     !isFollowing
