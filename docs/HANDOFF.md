@@ -1,6 +1,82 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-20
+Last updated: 2026-04-22
+
+## 2026-04-22 — Workshop/Boards IA 재정비 + /my Studio UI/UX 업그레이드
+
+두 개의 패치 브리프를 묶어 한 번에 반영:
+- `Abstract_Patch_Brief_Workshop_Boards_2026-04-22.md` — 라이브러리/쇼트리스트 IA/네이밍/UX 복구
+- `Abstract_UIUX_Upgrade_Patch_Brief_2026-04-22.md` — `/my`(스튜디오) 대시보드 구조·계층 정비
+
+### 네이밍 맵 (UI 레이블만 변경, 라우트 경로는 유지)
+
+| 기존 UI | 변경 UI (KO) | 변경 UI (EN) | 라우트 (불변) |
+|---------|--------------|--------------|---------------|
+| 라이브러리 | 작업실 | Workshop | `/my/library` |
+| 쇼트리스트 | 보드 | Boards | `/my/shortlists` |
+| 쇼트리스트에 담기 | 보드에 담기 | Save to board | `SaveToShortlistModal` |
+| 새 쇼트리스트 | 새 보드 | New board | `/my/shortlists` |
+| 전시 만들기 | 전시 게시물 만들기 | Create exhibition post | `/my/exhibitions/new`, `/upload/exhibition` |
+| 내 프로필 | 내 스튜디오 | My studio | `/my` |
+
+경로는 바꾸지 않음. 북마크/딥링크/앱 라우팅이 깨지지 않도록 UI 레이블만 교체. 향후 `/my/workshop`·`/my/boards`로 옮길지는 트래픽/리디렉트 계획과 함께 별도 판단.
+
+### /my 스튜디오 구조 변경
+
+- **페이지 타이틀**: "내 프로필" → "내 스튜디오" (+ 부제: "작품·전시·연락을 운영하는 나만의 대시보드").
+- **StudioHero**: 역할 칩 아래 `팔로워 · 팔로잉` 인라인 카운트(클릭 가능) 추가.
+- **StudioSignals**: 팔로워 라벨 통일(`studio.signals.followers` 사용; 델타 전용 키와 분리).
+- **StudioQuickActions**: 3단 계층으로 재편
+  - Primary(1): 작품 올리기
+  - Secondary(2~3): 전시 게시물 만들기 · 프로필 편집 · 사람 찾기
+  - Tertiary(오버플로 `더 보기`): 작업실/보드/저장된 검색/포트폴리오 정렬/프로필 완성
+- **StudioSectionNav**: `grid-cols-1 sm:2 lg:4`로 변경, 카드마다 1줄 설명(`descKey`) 추가. `portfolio` 섹션 제거(상단 스튜디오 프레임으로 흡수), 대신 `workshop`·`boards` 엔트리 노출.
+- **공개 작품 섹션**: 포트폴리오 패널 위에 "공개 작품 · 내부 작업은 작업실에서" helper + 작업실 링크.
+
+### /my/exhibitions/new 프레이밍
+
+- 타이틀: "전시 게시물 만들기" + 부제 "이미 진행했거나, 현재 진행 중이거나, 곧 진행할 전시의 정보를 정리해 공개하는 페이지를 만듭니다."
+- AI 문안 도우미는 제목 입력 이후에만 등장하는 접힘 패널(`선택 사항`)로 강등. 기본은 접힘.
+- `/upload/exhibition` 탭 라벨도 "전시 게시물 만들기"로 통일 (리다이렉트 경로는 동일).
+
+### Boards (구 Shortlists) 기능 복구
+
+- **생성 흐름**: 에러 피드백(`boards.createFailed`) + 성공 토스트(`boards.createSuccess`) + 300ms 후 상세 페이지로 라우팅.
+- **목록/상세**: 모든 하드코딩 문자열을 `boards.*` 네임스페이스로 이전. 공유 링크 복사 성공 피드백 추가.
+- **썸네일 버그**: `listShortlistItems`가 `artwork.image_path`를 읽도록 확장. 상세에서 `getArtworkImageUrl(image_path, "thumb")` 사용. 이미지 없는 작품에 대한 폴백 박스.
+- **SaveToShortlistModal (보드에 담기)**: 완전 i18n화. 전시도 아트워크와 동일한 중복 감지/해제 지원(`getShortlistIdsForExhibition`, `removeExhibitionFromShortlist` 신규). 모달 하단 `모든 보드 보기` 링크 추가.
+- **updated_at 일관성**: `addExhibitionToShortlist`도 부모 `shortlists.updated_at`을 갱신해 최근순 정렬 정합성 확보.
+
+### i18n
+
+- `src/lib/i18n/messages.ts`에 다음 네임스페이스 확장/추가:
+  - `studio.pageTitle`, `studio.pageSubtitle`, `studio.hero.followers`, `studio.hero.following`, `studio.sections.*Desc`, `studio.quickActions.*`, `studio.portfolioHelper.*`
+  - `library.*` (Workshop 레이블), `exhibition.createSubtitle`, `upload.tabExhibition` 재작성
+  - `boards.*` (Boards 전체), `boards.save.*` (모달), `common.close`, `common.cancel`
+  - `ai.assist.introLabel`, `ai.assist.optional`
+- KO/EN 양쪽 모두 동기화.
+
+### 의도적 연기(deferred)
+
+- 라우트 경로 실제 이동 (`/my/library` → `/my/workshop`, `/my/shortlists` → `/my/boards`): 리디렉트·SEO·외부 공유 링크 영향 검토 후 별도 패치.
+- `StudioNextActions` 비주얼 재설계: 이번 패치 범위 밖. 기존 구조 유지.
+- 아트워크/전시 상세 페이지 Save 버튼 시각 재설계: 라벨만 `보드에 담기`로 통일(기능/스타일 변경 없음).
+
+### 영향 범위 (touched files)
+
+- `src/app/my/page.tsx`, `src/app/my/library/page.tsx`, `src/app/my/shortlists/page.tsx`, `src/app/my/shortlists/[id]/page.tsx`, `src/app/my/exhibitions/new/page.tsx`
+- `src/components/studio/StudioHero.tsx`, `StudioQuickActions.tsx`, `StudioSectionNav.tsx`
+- `src/components/SaveToShortlistModal.tsx`
+- `src/lib/supabase/shortlists.ts` (타입/쿼리 확장 + 신규 함수)
+- `src/lib/i18n/messages.ts` (KO/EN)
+- `src/app/artwork/[id]/page.tsx`, `src/app/e/[id]/page.tsx` (Save 버튼 라벨만)
+
+### 검증
+
+- `npx tsc --noEmit` — clean.
+- `npm run lint`로 변경 파일만 스코핑 — 신규 error 0, 기존 warning 1(이미지 태그, 기존 패턴).
+
+---
 
 ## 2026-04-20 — 이메일 링크 redirect URL NEXT_PUBLIC_APP_URL 고정 + vercel.com 이동 원인 정리
 

@@ -254,7 +254,7 @@ export default function MyPage() {
     }
     out.push({
       key: "followers",
-      label: t("studio.signals.followerDelta"),
+      label: t("studio.signals.followers"),
       value: stats?.followersCount ?? 0,
     });
     out.push({
@@ -307,27 +307,31 @@ export default function MyPage() {
   const studioSections = useMemo<StudioSection[]>(
     () => [
       {
-        key: "portfolio",
-        labelKey: "studio.sections.portfolio",
-        href: "/my",
+        key: "workshop",
+        labelKey: "studio.sections.workshop",
+        descKey: "studio.sections.workshopDesc",
+        href: "/my/library",
         count: artworks.length,
       },
       {
         key: "exhibitions",
         labelKey: "studio.sections.exhibitions",
+        descKey: "studio.sections.exhibitionsDesc",
         href: "/my/exhibitions",
         count: exhibitions.length,
       },
       {
         key: "inbox",
         labelKey: "studio.sections.inbox",
+        descKey: "studio.sections.inboxDesc",
         href: "/my/inquiries",
         count: priceInquiryCount,
         badge: priceInquiryCount > 0 ? String(priceInquiryCount) : null,
       },
       {
         key: "messages",
-        labelKey: "connection.inbox.title",
+        labelKey: "studio.sections.messages",
+        descKey: "studio.sections.messagesDesc",
         href: "/my/messages",
         count: unreadMessagesCount,
         badge: unreadMessagesCount > 0 ? String(unreadMessagesCount) : null,
@@ -335,46 +339,64 @@ export default function MyPage() {
       {
         key: "network",
         labelKey: "studio.sections.network",
+        descKey: "studio.sections.networkDesc",
         href: "/my/followers",
         count: stats?.followersCount ?? 0,
       },
       {
         key: "operations",
         labelKey: "studio.sections.operations",
+        descKey: "studio.sections.operationsDesc",
         href: "/my/claims",
         count: pendingClaimsCount,
         badge: pendingClaimsCount > 0 ? String(pendingClaimsCount) : null,
+      },
+      {
+        key: "boards",
+        labelKey: "studio.sections.boards",
+        descKey: "studio.sections.boardsDesc",
+        href: "/my/shortlists",
+        count: null,
       },
     ],
     [artworks.length, exhibitions.length, priceInquiryCount, unreadMessagesCount, stats?.followersCount, pendingClaimsCount]
   );
 
+  // Quick actions follow a strict 3-tier hierarchy (see StudioQuickActions):
+  //   primary   — one filled CTA
+  //   secondary — 2-3 outlined high-frequency destinations
+  //   tertiary  — hidden under "더 보기"
   const quickActions = useMemo<QuickAction[]>(() => {
     if (!profile) return [];
     const out: QuickAction[] = [
       { key: "upload", label: t("studio.quickActions.upload"), href: "/upload", tone: "primary" },
-      { key: "exhibition", label: t("studio.quickActions.exhibition"), href: "/my/exhibitions" },
+      { key: "exhibition", label: t("studio.quickActions.exhibition"), href: "/my/exhibitions/new", tone: "secondary" },
+      { key: "editProfile", label: t("studio.quickActions.editProfile"), href: "/settings", tone: "secondary" },
+      { key: "people", label: t("studio.quickActions.findPeople"), href: "/people", tone: "secondary" },
     ];
+    // Tertiary (overflow). These duplicate some section-nav entries by design:
+    // section nav explains "where things live", the overflow gives fast access.
     if (!actingAsProfileId) {
-      out.push({ key: "library", label: t("studio.quickActions.library"), href: "/my/library" });
+      out.push({ key: "library", label: t("studio.quickActions.library"), href: "/my/library", tone: "tertiary" });
+      out.push({ key: "shortlists", label: t("studio.quickActions.shortlists"), href: "/my/shortlists", tone: "tertiary" });
     }
     const roleSet = new Set(normalizeRoleList(profile.roles));
     if (roleSet.has("curator") || roleSet.has("collector")) {
-      out.push({ key: "shortlists", label: t("studio.quickActions.shortlists"), href: "/my/shortlists" });
-      out.push({ key: "alerts", label: t("studio.quickActions.alerts"), href: "/my/alerts" });
+      out.push({ key: "alerts", label: t("studio.quickActions.alerts"), href: "/my/alerts", tone: "tertiary" });
     }
-    out.push({ key: "people", label: t("studio.quickActions.findPeople"), href: "/people" });
     if (profile.username) {
       out.push({
         key: "reorder",
         label: t("studio.quickActions.reorder"),
         href: `/u/${profile.username}?mode=reorder`,
+        tone: "tertiary",
       });
     } else {
       out.push({
         key: "complete",
         label: t("studio.quickActions.completeProfile"),
         href: "/onboarding",
+        tone: "tertiary",
       });
     }
     return out;
@@ -389,6 +411,8 @@ export default function MyPage() {
               profile={profile}
               completeness={computedCompleteness}
               publicHref={profile.username ? `/u/${profile.username}` : null}
+              followersCount={stats?.followersCount ?? 0}
+              followingCount={stats?.followingCount ?? 0}
             />
             <StudioSignals signals={studioSignals} />
             <StudioNextActions actions={studioActions} />
@@ -400,6 +424,25 @@ export default function MyPage() {
               viewers={viewers}
             />
           </>
+        )}
+
+        {profile && !actingAsProfileId && (
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-zinc-800">
+                {t("studio.portfolioHelper.title")}
+              </p>
+              <p className="mt-0.5 text-xs text-zinc-500">
+                {t("studio.portfolioHelper.desc")}
+              </p>
+            </div>
+            <a
+              href="/my/library"
+              className="shrink-0 text-xs font-medium text-zinc-700 underline-offset-2 hover:text-zinc-900 hover:underline"
+            >
+              {t("studio.portfolioHelper.workshopLink")}
+            </a>
+          </div>
         )}
 
         {profile && (

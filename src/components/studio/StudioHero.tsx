@@ -18,6 +18,14 @@ type Props = {
   };
   completeness?: number | null;
   publicHref?: string | null;
+  /**
+   * Social graph counts surfaced inline in the hero. When `null` or absent,
+   * the social row is hidden. Both values are rendered as clickable Links
+   * into `/my/followers` and `/my/following` respectively — per Brief 2
+   * these are profile-native, not dashboard-secondary.
+   */
+  followersCount?: number | null;
+  followingCount?: number | null;
 };
 
 function avatarUrl(v: string | null | undefined): string | null {
@@ -33,7 +41,13 @@ function avatarUrl(v: string | null | undefined): string | null {
  * profile card, with edit + preview-public affordances. Provides the
  * completeness bar that drives the Next Actions priority.
  */
-export function StudioHero({ profile, completeness, publicHref }: Props) {
+export function StudioHero({
+  profile,
+  completeness,
+  publicHref,
+  followersCount,
+  followingCount,
+}: Props) {
   const { t } = useT();
   const identity = formatIdentityPair(profile);
   const roleChips = formatRoleChips(profile, t, { max: 3 });
@@ -88,6 +102,31 @@ export function StudioHero({ profile, completeness, publicHref }: Props) {
                 </span>
               ))}
             </p>
+          )}
+          {(followersCount != null || followingCount != null) && (
+            <div className="mt-2 flex items-center gap-3 text-sm">
+              <Link
+                href="/my/followers"
+                className="group inline-flex items-baseline gap-1 text-zinc-500 transition-colors hover:text-zinc-900"
+              >
+                <span className="font-semibold text-zinc-900 tabular-nums group-hover:underline">
+                  {followersCount ?? 0}
+                </span>
+                <span className="text-xs">{t("studio.hero.followers")}</span>
+              </Link>
+              <span aria-hidden className="text-zinc-300">
+                ·
+              </span>
+              <Link
+                href="/my/following"
+                className="group inline-flex items-baseline gap-1 text-zinc-500 transition-colors hover:text-zinc-900"
+              >
+                <span className="font-semibold text-zinc-900 tabular-nums group-hover:underline">
+                  {followingCount ?? 0}
+                </span>
+                <span className="text-xs">{t("studio.hero.following")}</span>
+              </Link>
+            </div>
           )}
           <div className="mt-3">
             <div className="flex items-center justify-between text-xs text-zinc-500">

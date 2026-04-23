@@ -46,6 +46,7 @@ export default function NewExhibitionPage() {
   const [hostSearching, setHostSearching] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDraftAssist, setShowDraftAssist] = useState(false);
 
   const effectiveProfileId = actingAsProfileId ?? myProfileId;
 
@@ -147,9 +148,14 @@ export default function NewExhibitionPage() {
           </Link>
         </div>
 
-        <h1 className="mb-6 text-xl font-semibold text-zinc-900">
-          {t("exhibition.create")}
-        </h1>
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-zinc-900">
+            {t("exhibition.create")}
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            {t("exhibition.createSubtitle")}
+          </p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
@@ -166,27 +172,6 @@ export default function NewExhibitionPage() {
               className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               required
             />
-            <div className="mt-3">
-              <ExhibitionDraftAssist
-                title={title}
-                startDate={startDate}
-                endDate={endDate}
-                curatorLabel={
-                  curatorMe
-                    ? t("exhibition.curatorMe")
-                    : curatorSelected
-                      ? formatDisplayName(curatorSelected)
-                      : null
-                }
-                hostLabel={
-                  hostSelected
-                    ? formatDisplayName(hostSelected)
-                    : hostName || null
-                }
-                works={[]}
-                onApplyTitle={(text) => setTitle(text)}
-              />
-            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -405,6 +390,63 @@ export default function NewExhibitionPage() {
             )}
           </div>
 
+          {title.trim().length > 0 && (
+            <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/60">
+              <button
+                type="button"
+                onClick={() => setShowDraftAssist((v) => !v)}
+                aria-expanded={showDraftAssist}
+                className="flex w-full items-center justify-between px-4 py-3 text-left text-sm text-zinc-700 hover:text-zinc-900"
+              >
+                <span>
+                  <span className="font-medium">{t("ai.assist.introLabel")}</span>
+                  <span className="ml-2 text-xs text-zinc-500">
+                    {t("ai.assist.optional")}
+                  </span>
+                </span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  className={`transition-transform ${showDraftAssist ? "rotate-180" : ""}`}
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2.5 4.5L6 8l3.5-3.5"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              {showDraftAssist && (
+                <div className="border-t border-zinc-200 px-4 py-3">
+                  <ExhibitionDraftAssist
+                    title={title}
+                    startDate={startDate}
+                    endDate={endDate}
+                    curatorLabel={
+                      curatorMe
+                        ? t("exhibition.curatorMe")
+                        : curatorSelected
+                          ? formatDisplayName(curatorSelected)
+                          : null
+                    }
+                    hostLabel={
+                      hostSelected
+                        ? formatDisplayName(hostSelected)
+                        : hostName || null
+                    }
+                    works={[]}
+                    onApplyTitle={(text) => setTitle(text)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button
               type="submit"
@@ -415,7 +457,7 @@ export default function NewExhibitionPage() {
               }
               className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
-              {submitting ? "..." : t("exhibition.create")}
+              {submitting ? t("common.loading") : t("exhibition.create")}
             </button>
             <Link
               href="/my/exhibitions"

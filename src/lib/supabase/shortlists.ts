@@ -22,7 +22,12 @@ export type ShortlistItemRow = {
   note: string | null;
   position: number;
   created_at: string;
-  artwork?: { id: string; title: string | null; artist_id: string } | null;
+  artwork?: {
+    id: string;
+    title: string | null;
+    artist_id: string;
+    image_path: string | null;
+  } | null;
   exhibition?: { id: string; title: string | null } | null;
 };
 
@@ -134,7 +139,7 @@ export async function listShortlistItems(
 ): Promise<{ data: ShortlistItemRow[]; error: unknown }> {
   const { data, error } = await supabase
     .from("shortlist_items")
-    .select("*, artworks!artwork_id(id, title, artist_id), projects!exhibition_id(id, title)")
+    .select("*, artworks!artwork_id(id, title, artist_id, image_path), projects!exhibition_id(id, title)")
     .eq("shortlist_id", shortlistId)
     .order("position")
     .order("created_at");
@@ -178,6 +183,13 @@ export async function addExhibitionToShortlist(
     exhibition_id: exhibitionId,
     note: note ?? null,
   });
+  if (!error) {
+    // Keep parent timestamp fresh so sort-by-recent surfaces match intent.
+    await supabase
+      .from("shortlists")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", shortlistId);
+  }
   return { error };
 }
 
@@ -352,5 +364,43 @@ export async function removeArtworkFromShortlist(
     .delete()
     .eq("shortlist_id", shortlistId)
     .eq("artwork_id", artworkId);
+  return { error };
+}
+
+/**
+ * Exhibition counterpart of `getShortlistIdsForArtwork`. Needed so the
+ * Save modal can show accurate "already in this board" state for
+ * exhibitions too (previously only artworks were de-duped).
+ */
+export async function getShortlistIdsForExhibition(
+  exhibitionId: string
+): Promise<{ data: string[]; error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { data: [], error: null };
+  const { data, error } = await supabase
+    .from("shortlist_items")
+    .select("shortlist_id, shortlists!shortlist_id(owner_id)")
+    .eq("exhibition_id", exhibitionId);
+  if (error) return { data: [], error };
+  const ids = (data ?? [])
+    .filter((r: Record<string, unknown>) => {
+      const sl = r.shortlists;
+      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === session.user.id;
+    })
+    .map((r: Record<string, unknown>) => r.shortlist_id as string);
+  return { data: ids, error: null };
+}
+
+export async function removeExhibitionFromShortlist(
+  shortlistId: string,
+  exhibitionId: string
+): Promise<{ error: unknown }> {
+  const { error } = await supabase
+    .from("shortlist_items")
+    .delete()
+    .eq("shortlist_id", shortlistId)
+    .eq("exhibition_id", exhibitionId);
   return { error };
 }
