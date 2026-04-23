@@ -137,16 +137,41 @@ export async function deleteShortlist(id: string): Promise<{ error: unknown }> {
 export async function listShortlistItems(
   shortlistId: string
 ): Promise<{ data: ShortlistItemRow[]; error: unknown }> {
+  // NOTE: `artworks` has no `image_path` column. Thumbnails live in the
+  // separate `artwork_images` table (storage_path, sort_order). We embed it
+  // and expose the first image path as `artwork.image_path` for callers.
   const { data, error } = await supabase
     .from("shortlist_items")
-    .select("*, artworks!artwork_id(id, title, artist_id, image_path), projects!exhibition_id(id, title)")
+    .select(
+      "*, artworks!artwork_id(id, title, artist_id, artwork_images(storage_path, sort_order)), projects!exhibition_id(id, title)"
+    )
     .eq("shortlist_id", shortlistId)
     .order("position")
     .order("created_at");
   if (error) return { data: [], error };
   const rows = (data ?? []).map((r: Record<string, unknown>) => {
-    const aw = r.artworks;
-    const artwork = aw && typeof aw === "object" && !Array.isArray(aw) ? aw as ShortlistItemRow["artwork"] : null;
+    const aw = r.artworks as
+      | {
+          id: string;
+          title: string | null;
+          artist_id: string;
+          artwork_images?: { storage_path: string | null; sort_order: number | null }[] | null;
+        }
+      | null;
+    let artwork: ShortlistItemRow["artwork"] = null;
+    if (aw && typeof aw === "object" && !Array.isArray(aw)) {
+      const imgs = Array.isArray(aw.artwork_images) ? [...aw.artwork_images] : [];
+      imgs.sort(
+        (a, b) =>
+          (a?.sort_order ?? 0) - (b?.sort_order ?? 0)
+      );
+      artwork = {
+        id: aw.id,
+        title: aw.title,
+        artist_id: aw.artist_id,
+        image_path: imgs[0]?.storage_path ?? null,
+      };
+    }
     const pr = r.projects;
     const exhibition = pr && typeof pr === "object" && !Array.isArray(pr) ? pr as ShortlistItemRow["exhibition"] : null;
     return { ...r, artwork, exhibition } as ShortlistItemRow;
