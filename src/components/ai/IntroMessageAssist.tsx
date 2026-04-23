@@ -126,7 +126,14 @@ function SendIcon() {
   );
 }
 
-// ─── Draft item (selectable, with copy button) ───────────────────────────────
+// ─── Draft item (selectable, editable, with copy button) ────────────────────
+//
+// When `selectable` is true (sheet variant) the card acts as a radio item:
+//   - unselected → read-only preview, click anywhere to select
+//   - selected   → inline <textarea> bound to the parent's edited value,
+//                  so "보내기"/"복사" both use the live edited text.
+// When `selectable` is false (inline variant, MatchmakerCard) the card is
+// read-only and only the copy button interacts.
 
 function DraftItem({
   text,
@@ -135,6 +142,8 @@ function DraftItem({
   selected,
   onSelect,
   selectable,
+  editable,
+  onChange,
 }: {
   text: string;
   onCopy: () => void;
@@ -142,15 +151,27 @@ function DraftItem({
   selected?: boolean;
   onSelect?: () => void;
   selectable?: boolean;
+  editable?: boolean;
+  onChange?: (next: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
   }, []);
 
-  const handleCopy = (e: React.MouseEvent) => {
+  // Auto-size the textarea to its content when the draft becomes editable
+  // or the text changes — avoids an internal scrollbar on short drafts.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el || !editable) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [editable, text]);
+
+  const handleCopy = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.stopPropagation();
     onCopy();
     setCopied(true);
@@ -164,12 +185,17 @@ function DraftItem({
     ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
     : "border-zinc-200 bg-white hover:border-zinc-300";
 
-  const Wrapper = selectable ? "button" : "div";
+  const showEditor = Boolean(selectable && selected && editable);
+
+  // When the card is acting as an editor we render a plain <div> instead
+  // of a <button> so the textarea can receive focus and caret events
+  // without the outer button hijacking them.
+  const Wrapper = selectable && !showEditor ? "button" : "div";
 
   return (
     <Wrapper
-      type={selectable ? "button" : undefined}
-      onClick={selectable ? onSelect : undefined}
+      type={selectable && !showEditor ? "button" : undefined}
+      onClick={selectable && !showEditor ? onSelect : undefined}
       className={`${base} ${stateClass}`}
       aria-pressed={selectable ? selected : undefined}
     >
@@ -186,17 +212,31 @@ function DraftItem({
           <CheckIcon />
         </span>
       )}
-      <p
-        className={`text-sm leading-relaxed text-zinc-800 whitespace-pre-wrap ${selectable ? "pl-6" : ""}`}
-      >
-        {text}
-      </p>
+
+      {showEditor ? (
+        <textarea
+          ref={textareaRef}
+          value={text}
+          onChange={(e) => onChange?.(e.target.value)}
+          rows={1}
+          spellCheck={false}
+          className="block w-full resize-none bg-transparent pl-6 text-sm leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400"
+          aria-label="소개 메시지 초안 편집"
+        />
+      ) : (
+        <p
+          className={`text-sm leading-relaxed text-zinc-800 whitespace-pre-wrap ${selectable ? "pl-6" : ""}`}
+        >
+          {text}
+        </p>
+      )}
+
       <span
         onClick={handleCopy}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            handleCopy(e as unknown as React.MouseEvent);
+            handleCopy(e);
           }
         }}
         role="button"
@@ -262,6 +302,10 @@ function IntroSheet({
 }: SheetProps) {
   const { t } = useT();
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  // Per-draft user edits. Key is the draft index, value is the edited body.
+  // An absent key means "use the original draft text as-is". Kept at the
+  // sheet level (not per-DraftItem) so Send/Copy always read the live value.
+  const [edits, setEdits] = useState<Record<number, string>>({});
   const [sendState, setSendState] = useState<SendState>({ kind: "idle" });
 
   useEffect(() => {
@@ -307,15 +351,25 @@ function IntroSheet({
         ? 0
         : null;
 
+  // Resolve the live text for a given draft index — user edits take
+  // precedence over the AI-generated original.
+  const textAt = (i: number) => edits[i] ?? drafts[i] ?? "";
+
+  const selectedText =
+    effectiveSelectedIdx !== null ? textAt(effectiveSelectedIdx).trim() : "";
+
   const canSend =
-    Boolean(recipientId) && effectiveSelectedIdx !== null && !loading;
+    Boolean(recipientId) &&
+    effectiveSelectedIdx !== null &&
+    selectedText.length > 0 &&
+    !loading;
   const sendLabel = isFollowing
     ? t("connection.sendOnly")
     : t("connection.sendCta");
 
   const handleSend = async () => {
     if (!recipientId || effectiveSelectedIdx === null) return;
-    const text = drafts[effectiveSelectedIdx];
+    const text = textAt(effectiveSelectedIdx).trim();
     if (!text) return;
     setSendState({ kind: "sending" });
 
@@ -427,29 +481,40 @@ function IntroSheet({
           )}
 
           {!loading &&
-            drafts.map((draft, i) => (
-              <DraftItem
-                key={i}
-                text={draft}
-                copyLabel={t("ai.action.copy")}
-                selectable={Boolean(recipientId)}
-                selected={effectiveSelectedIdx === i}
-                onSelect={() => setSelectedIdx(i)}
-                onCopy={() => {
-                  copyToClipboard(draft);
-                  markAiAccepted(result?.aiEventId, {
-                    feature: "intro_message_draft",
-                    via: "copy",
-                  });
-                }}
-              />
-            ))}
+            drafts.map((_draft, i) => {
+              const live = textAt(i);
+              return (
+                <DraftItem
+                  key={i}
+                  text={live}
+                  copyLabel={t("ai.action.copy")}
+                  selectable={Boolean(recipientId)}
+                  selected={effectiveSelectedIdx === i}
+                  editable={Boolean(recipientId)}
+                  onSelect={() => setSelectedIdx(i)}
+                  onChange={(next) =>
+                    setEdits((prev) => ({ ...prev, [i]: next }))
+                  }
+                  onCopy={() => {
+                    copyToClipboard(live);
+                    markAiAccepted(result?.aiEventId, {
+                      feature: "intro_message_draft",
+                      via: "copy",
+                    });
+                  }}
+                />
+              );
+            })}
         </div>
 
         <div className="border-t border-zinc-100 px-5 py-3.5 flex items-center justify-between gap-3">
           <button
             type="button"
-            onClick={onRefresh}
+            onClick={() => {
+              setEdits({});
+              setSelectedIdx(null);
+              onRefresh();
+            }}
             disabled={loading || sending}
             className="flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-400 hover:bg-zinc-50 transition-colors disabled:opacity-40"
           >
