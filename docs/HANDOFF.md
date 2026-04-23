@@ -2,6 +2,95 @@
 
 Last updated: 2026-04-22
 
+## 2026-04-22 — Boards RLS 재귀 버그 핫픽스 + 보드 → 전시 게시물 진화 경로
+
+### 증상
+
+`/my/shortlists`에서 "보드 만들기"가 항상 실패하고 "보드를 만들지 못했어요…" 토스트만 떴음. 패치 이전부터 이미 깨져 있던 잠복 버그.
+
+### 근본 원인
+
+Supabase `postgres` 로그에서 확인:
+
+```
+ERROR: infinite recursion detected in policy for relation "shortlists"
+```
+
+두 RLS 정책이 서로 EXISTS 서브쿼리로 물려 있었음:
+- `shortlists.shortlists_collab_select` → `EXISTS (SELECT FROM shortlist_collaborators …)`
+- `shortlist_collaborators.shortlist_collab_owner_manage` (FOR ALL) → `EXISTS (SELECT FROM shortlists …)`
+
+둘 다 PERMISSIVE라 SELECT 시 둘 다 OR로 평가되고 각 EXISTS가 상대 테이블의 RLS를 다시 트리거 → 재귀. Postgres가 감지해 쿼리 전체를 abort. PostgREST의 `.insert().select()` (returning=representation)도 뒤따르는 SELECT에서 같은 에러로 row를 돌려받지 못하고 클라이언트가 실패로 판정. 그래서 테이블은 비어 있고 UI는 계속 실패 토스트를 내던 상태.
+
+(`shortlist_items` / `shortlist_views`의 owner 정책도 같은 패턴을 가지고 있었음.)
+
+### 수정
+
+`supabase/migrations/20260422140000_shortlists_rls_recursion_fix.sql` 추가. Supabase에 이미 적용됨(MCP `apply_migration`).
+
+핵심: cross-table EXISTS를 `SECURITY DEFINER` 헬퍼로 치환해 RLS 평가가 상대 테이블로 재진입하지 않도록 끊음.
+
+신규 함수 (STABLE SECURITY DEFINER, search_path=public, authenticated에게 EXECUTE 권한):
+
+- `public.is_shortlist_owner(_sid uuid)`
+- `public.is_shortlist_collaborator(_sid uuid)`
+- `public.is_shortlist_editor(_sid uuid)`
+
+재작성된 정책:
+
+- `shortlists.shortlists_collab_select` → `USING (is_shortlist_collaborator(id))`
+- `shortlist_collaborators.shortlist_collab_owner_manage` (ALL) → USING/WITH CHECK `is_shortlist_owner(shortlist_id)`
+- `shortlist_items.shortlist_items_owner` (ALL) → `is_shortlist_owner(shortlist_id)`
+- `shortlist_items.shortlist_items_collab_select` → `is_shortlist_collaborator(shortlist_id)`
+- `shortlist_items.shortlist_items_collab_editor` (ALL) → `is_shortlist_editor(shortlist_id)`
+- `shortlist_views.shortlist_views_owner_select` → `is_shortlist_owner(shortlist_id)`
+
+SECURITY DEFINER 함수 안에서 테이블을 읽을 때는 RLS를 우회하므로 외부 정책이 함수를 호출해도 재진입이 발생하지 않음. 함수 자체는 boolean만 돌려주므로 정보 누출 위험 없음.
+
+### 검증
+
+- `pg_policies` 상 모든 재작성된 qual이 함수 호출 식으로 바뀜.
+- 시뮬레이션: `SET LOCAL role authenticated` + JWT claims 주입해 `SELECT count(*) FROM shortlists` → 0 (에러 없음).
+- INSERT ... RETURNING id, title 동일 조건에서 정상 동작 (테스트 row 삽입/삭제로 round-trip 확인).
+
+### 보드 → 전시 게시물 진화 경로
+
+브리프 취지("보드가 자연스럽게 전시 게시물로 진화")에 맞춰 홍보 경로를 구축:
+
+1. **보드 상세** (`/my/shortlists/[id]`)
+   - 타이틀 블록 아래에 "이 보드를 전시 게시물로 발전시키기" CTA 카드 추가.
+   - 작품이 1개 이상일 때만 활성화. 비활성화 시 "작품을 최소 1개 이상 담아두면 활성화돼요." 힌트.
+   - 클릭 → `/my/exhibitions/new?fromBoard=<id>` 이동 + `board_promote_started` 이벤트.
+
+2. **전시 생성** (`/my/exhibitions/new`)
+   - `fromBoard` 쿼리 감지 시 보드 타이틀로 제목 프리필(사용자가 수정한 뒤면 덮어쓰지 않음).
+   - 상단 배너: "보드에서 시작: {title} · 작품 N개".
+   - 생성 성공 후 `/my/exhibitions/<new-id>/add?fromBoard=<boardId>`로 이동해 상태 이월.
+
+3. **전시에 작품 추가** (`/my/exhibitions/[id]/add`)
+   - `fromBoard` 쿼리 감지 시 해당 보드의 artwork_id 목록을 프리페치.
+   - "작품 선택" 단계 최상단에 요약 배너 + `보드의 작품 N개 모두 추가` 원클릭 버튼.
+   - 이미 전시에 담겨 있는 작품은 스킵(중복 방지). 일부 실패 시 "부분 성공" 토스트, 전체 실패 시 재시도 안내.
+   - 성공 시 `board_promote_bulk_added` 이벤트 (added, total, exhibition_id, board_id).
+
+새 i18n 키: `boards.promote.cta|hint|disabledHint|fromBoardBanner|addAllFromBoard|adding|addedToast|partialToast|failedToast` (KO/EN).
+새 Beta 이벤트: `board_promote_started`, `board_promote_bulk_added`.
+
+보드 자체는 유지되므로 "비교/검토 공간 → 공개 게시물 승격" 흐름이 자연스럽게 이어짐. 보드 상세에서 다시 CTA를 눌러 또 다른 전시로도 확장 가능.
+
+### Supabase SQL 적용
+
+이미 프로덕션(`sgufonscldvdwfgzltfw`)에 MCP `apply_migration`으로 반영됨. 로컬 개발/다른 환경에서는 `supabase/migrations/20260422140000_shortlists_rls_recursion_fix.sql`을 SQL Editor에서 실행.
+
+### 영향 파일
+
+- `supabase/migrations/20260422140000_shortlists_rls_recursion_fix.sql` (신규)
+- `src/lib/i18n/messages.ts`, `src/lib/beta/logEvent.ts`
+- `src/app/my/shortlists/[id]/page.tsx`
+- `src/app/my/exhibitions/new/page.tsx`, `src/app/my/exhibitions/[id]/add/page.tsx`
+
+---
+
 ## 2026-04-22 — Workshop/Boards IA 재정비 + /my Studio UI/UX 업그레이드
 
 두 개의 패치 브리프를 묶어 한 번에 반영:

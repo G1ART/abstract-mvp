@@ -13,6 +13,7 @@ import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
+import { getShortlist, listShortlistItems } from "@/lib/supabase/shortlists";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -26,7 +27,9 @@ export default function NewExhibitionPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromUpload = searchParams.get("from") === "upload";
+  const fromBoardId = searchParams.get("fromBoard");
   const { t } = useT();
+  const [boardContext, setBoardContext] = useState<{ title: string; artworkCount: number } | null>(null);
   const { actingAsProfileId } = useActingAs();
   const [myProfileId, setMyProfileId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -56,6 +59,27 @@ export default function NewExhibitionPage() {
       setMyProfileId(id);
     });
   }, []);
+
+  // Seed title + context when promoting from a board.
+  // Only runs once per fromBoardId; guarded so manual edits to title
+  // after mount are not overwritten.
+  useEffect(() => {
+    if (!fromBoardId) return;
+    let cancelled = false;
+    (async () => {
+      const [{ data: sl }, { data: items }] = await Promise.all([
+        getShortlist(fromBoardId),
+        listShortlistItems(fromBoardId),
+      ]);
+      if (cancelled || !sl) return;
+      const artworkCount = items.filter((i) => i.artwork_id).length;
+      setBoardContext({ title: sl.title, artworkCount });
+      setTitle((prev) => (prev.trim().length > 0 ? prev : sl.title));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [fromBoardId]);
 
   const runCuratorSearch = useCallback(async () => {
     const q = curatorSearch.trim();
@@ -131,8 +155,14 @@ export default function NewExhibitionPage() {
       return;
     }
     if (data?.id) {
-      logBetaEventSync("exhibition_created", { exhibition_id: data.id });
-      router.push(`/my/exhibitions/${data.id}/add`);
+      logBetaEventSync("exhibition_created", {
+        exhibition_id: data.id,
+        from_board: fromBoardId ?? undefined,
+      });
+      const nextPath = fromBoardId
+        ? `/my/exhibitions/${data.id}/add?fromBoard=${fromBoardId}`
+        : `/my/exhibitions/${data.id}/add`;
+      router.push(nextPath);
     }
   }
 
@@ -156,6 +186,14 @@ export default function NewExhibitionPage() {
             {t("exhibition.createSubtitle")}
           </p>
         </div>
+
+        {boardContext && (
+          <div className="mb-5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+            {t("boards.promote.fromBoardBanner")
+              .replace("{title}", boardContext.title)
+              .replace("{n}", String(boardContext.artworkCount))}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}

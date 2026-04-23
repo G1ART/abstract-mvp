@@ -26,7 +26,9 @@ export type BetaEventName =
   | "room_inquiry_clicked"
   | "room_copy_link"
   | "ai_accepted"
-  | "connection_message_sent";
+  | "connection_message_sent"
+  | "board_promote_started"
+  | "board_promote_bulk_added";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

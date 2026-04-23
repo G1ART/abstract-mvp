@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import {
@@ -33,6 +33,8 @@ import type { PublicProfile } from "@/lib/supabase/artists";
 import { getSession } from "@/lib/supabase/auth";
 import { setPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { listShortlistItems } from "@/lib/supabase/shortlists";
+import { logBetaEventSync } from "@/lib/beta/logEvent";
 
 type Participant = {
   id: string;
@@ -43,8 +45,13 @@ type Participant = {
 export default function AddWorkToExhibitionPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
+  const fromBoardId = searchParams.get("fromBoard");
+  const [boardArtworkIds, setBoardArtworkIds] = useState<string[]>([]);
+  const [boardBulkAdding, setBoardBulkAdding] = useState(false);
+  const [boardBulkToast, setBoardBulkToast] = useState<string | null>(null);
   const [dragOverBucketKey, setDragOverBucketKey] = useState<string | null>(null);
   const [artworks, setArtworks] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
@@ -142,6 +149,71 @@ export default function AddWorkToExhibitionPage() {
       if (session?.user?.id) setMyId(session.user.id);
     });
   }, []);
+
+  // When promoting from a board, pre-fetch the artwork ids so we can
+  // offer a single bulk-add CTA instead of making the user hunt each one.
+  useEffect(() => {
+    if (!fromBoardId) return;
+    let cancelled = false;
+    listShortlistItems(fromBoardId).then(({ data }) => {
+      if (cancelled) return;
+      const ids = data
+        .map((it) => it.artwork_id)
+        .filter((v): v is string => typeof v === "string" && v.length > 0);
+      setBoardArtworkIds(ids);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromBoardId]);
+
+  useEffect(() => {
+    if (!boardBulkToast) return;
+    const tmr = setTimeout(() => setBoardBulkToast(null), 2800);
+    return () => clearTimeout(tmr);
+  }, [boardBulkToast]);
+
+  const handleBulkAddFromBoard = useCallback(async () => {
+    if (boardBulkAdding || boardArtworkIds.length === 0) return;
+    setBoardBulkAdding(true);
+    let added = 0;
+    let failed = 0;
+    for (const workId of boardArtworkIds) {
+      // Skip if already in exhibition; duplicate insert would violate uniqueness.
+      if (doneIds.has(workId)) continue;
+      const { error } = await addWorkToExhibition(id, workId);
+      if (error) {
+        failed += 1;
+      } else {
+        added += 1;
+        setDoneIds((prev) => {
+          const next = new Set(prev);
+          next.add(workId);
+          return next;
+        });
+      }
+    }
+    setBoardBulkAdding(false);
+    if (added > 0) {
+      logBetaEventSync("board_promote_bulk_added", {
+        exhibition_id: id,
+        board_id: fromBoardId ?? undefined,
+        added,
+        total: boardArtworkIds.length,
+      });
+    }
+    if (failed === 0 && added > 0) {
+      setBoardBulkToast(t("boards.promote.addedToast").replace("{n}", String(added)));
+    } else if (added > 0) {
+      setBoardBulkToast(
+        t("boards.promote.partialToast")
+          .replace("{added}", String(added))
+          .replace("{total}", String(boardArtworkIds.length)),
+      );
+    } else if (failed > 0) {
+      setBoardBulkToast(t("boards.promote.failedToast"));
+    }
+  }, [boardBulkAdding, boardArtworkIds, doneIds, id, t, fromBoardId]);
 
   // 참여 작가 검색 (온보딩된 유저)
   useEffect(() => {
@@ -645,6 +717,32 @@ export default function AddWorkToExhibitionPage() {
           </section>
         ) : (
           <section>
+            {fromBoardId && boardArtworkIds.length > 0 && (() => {
+              const pendingCount = boardArtworkIds.filter((w) => !doneIds.has(w)).length;
+              const allDone = pendingCount === 0;
+              return (
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3">
+                  <p className="text-xs text-zinc-600">
+                    {t("boards.promote.hint")}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void handleBulkAddFromBoard()}
+                    disabled={boardBulkAdding || allDone}
+                    className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    {boardBulkAdding
+                      ? t("boards.promote.adding")
+                      : t("boards.promote.addAllFromBoard").replace("{n}", String(pendingCount))}
+                  </button>
+                </div>
+              );
+            })()}
+            {boardBulkToast && (
+              <div role="status" className="mb-4 rounded bg-zinc-900 px-3 py-1.5 text-xs text-white">
+                {boardBulkToast}
+              </div>
+            )}
             {/* 작가 단위 버킷: 드롭 존 + 단일/일괄 버튼 */}
             <div className="mb-6 space-y-4">
               <p className="text-sm font-semibold text-zinc-800">{t("exhibition.addWorksByArtist")}</p>

@@ -182,6 +182,46 @@ function ShortlistDetailContent() {
         </div>
       )}
 
+      {/* Promote to exhibition post */}
+      {(() => {
+        const artworkCount = items.filter((i) => i.artwork_id).length;
+        const canPromote = artworkCount > 0;
+        return (
+          <div className="mb-6 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/60 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-zinc-900">{t("boards.promote.cta")}</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  {canPromote ? t("boards.promote.hint") : t("boards.promote.disabledHint")}
+                </p>
+              </div>
+              <Link
+                href={canPromote ? `/my/exhibitions/new?fromBoard=${id}` : "#"}
+                aria-disabled={!canPromote}
+                tabIndex={canPromote ? 0 : -1}
+                onClick={(e) => {
+                  if (!canPromote) {
+                    e.preventDefault();
+                    return;
+                  }
+                  logBetaEventSync("board_promote_started", {
+                    shortlist_id: id,
+                    artwork_count: artworkCount,
+                  });
+                }}
+                className={`shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  canPromote
+                    ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                    : "cursor-not-allowed bg-zinc-100 text-zinc-400"
+                }`}
+              >
+                {t("exhibition.create")}
+              </Link>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Share */}
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <button type="button" onClick={copyShareLink} className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
