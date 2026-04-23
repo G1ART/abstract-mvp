@@ -1,5 +1,8 @@
 import { supabase } from "./client";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
+import { recordUsageEvent } from "@/lib/metering";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
+import { recordActingContextEvent } from "@/lib/delegation/actingContext";
 
 export type InquiryStatus = "new" | "open" | "replied" | "closed";
 export type PipelineStage = "new" | "contacted" | "in_discussion" | "offer_sent" | "closed_won" | "closed_lost";
@@ -387,7 +390,39 @@ export async function replyToPriceInquiry(inquiryId: string, reply: string): Pro
     sender_id: session.user.id,
     body: reply.trim() || "",
   });
-  if (!error) logBetaEventSync("inquiry_replied", { inquiry_id: inquiryId });
+  if (!error) {
+    logBetaEventSync("inquiry_replied", { inquiry_id: inquiryId });
+    await recordUsageEvent({
+      userId: session.user.id,
+      key: USAGE_KEYS.INQUIRY_REPLIED,
+      featureKey: "inquiry.triage",
+      metadata: { inquiry_id: inquiryId },
+    });
+    // Best-effort acting-as audit. Lookup artist_id of the underlying
+    // artwork and, if the current session user isn't that artist, log
+    // the reply as a delegation event.
+    try {
+      const { data: inq } = await supabase
+        .from("price_inquiries")
+        .select("artworks!artwork_id(artist_id)")
+        .eq("id", inquiryId)
+        .maybeSingle();
+      const aw = (inq as { artworks?: { artist_id?: string } | { artist_id?: string }[] } | null)
+        ?.artworks;
+      const artistId = Array.isArray(aw) ? aw[0]?.artist_id ?? null : aw?.artist_id ?? null;
+      if (artistId && artistId !== session.user.id) {
+        await recordActingContextEvent({
+          subjectProfileId: artistId,
+          action: "inquiry.reply",
+          resourceType: "price_inquiry",
+          resourceId: inquiryId,
+          payload: { has_body: (reply ?? "").trim().length > 0 },
+        });
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
   return { error };
 }
 

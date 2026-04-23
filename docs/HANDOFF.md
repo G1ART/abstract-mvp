@@ -1,6 +1,78 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-23
+Last updated: 2026-04-24
+
+## 2026-04-24 — Monetization Readiness Spine Patch
+
+### 왜 필요했나
+
+앞선 2026-04-23 패치에서 `BETA_ALL_PAID` 플래그 + `SEE_BOARD_SAVER_IDENTITY` 등 소수의 feature key만 박아 두었는데, 유료화 로드맵이 12개월에 걸쳐 5개 플랜(`free` / `artist_pro` / `discovery_pro` / `hybrid_pro` / `gallery_workspace`)으로 확장되면 다음이 반드시 필요해진다:
+
+1. **Entitlement SSOT** — 기능 키·플랜 매트릭스를 TS와 DB 양쪽에서 동일하게 참조.
+2. **Metering foundation** — 플랜 전환 시점에 quota 계산이 가능한 단일 usage 테이블.
+3. **Delegation audit** — seat-based billing을 위해 "누가 누구를 대신해 무엇을 했는지" 추적.
+4. **Workspace 도메인 준비** — 기관(갤러리) 시트 개념의 DB/이름 공간을 미리 박아 두고 UI는 추후.
+
+Paywall 자체, Stripe 연동, Pricing 페이지는 **의도적으로 이번 범위에서 제외**. 이번 패치는 "언제든 paywall을 세울 수 있는 뼈대"만 완성한다.
+
+### 핵심 모듈
+
+- `src/lib/entitlements/` — SSOT.
+  - `featureKeys.ts` — 모든 canonical feature 키(33개). 레거시 4개는 `LEGACY_FEATURE_KEY_ALIAS`로 호환.
+  - `planMatrix.ts` — `PLAN_FEATURE_MATRIX`(feature → plans[])와 `PLAN_QUOTA_MATRIX`(feature → plan → quota rule).
+  - `betaOverrides.ts` — `BETA_ALL_PAID=true` 플래그 이관. Beta 기간엔 `applyBetaOverride`가 모든 거부 결정을 `source=beta_override / uiState=beta_granted`으로 변환하되 **quota 계산은 그림자로 수행**. Beta 해제 시점 `false` 플립만 하면 실제 plan gating이 즉시 켜진다.
+  - `quotaHelpers.ts` — `fetchUsageForFeature`, `computeQuotaInfo` 유틸.
+  - `resolveEntitlement.ts` — `resolveEntitlementFor({featureKey, userId, actingAsOwnerUserId, workspaceId})`. acting-as/workspace plan 합성 + quota 체크를 한 함수로. 30초 TTL 캐시로 핫패스 보호.
+  - `legacy.ts` — 기존 `getMyEntitlements`/`hasFeature` 시그니처를 유지하되 내부적으로 새 resolver로 dispatch. 기존 call site는 점진 이관.
+  - `index.ts` — 배럴.
+- `src/lib/metering/` — usage 기록.
+  - `usageKeys.ts` — 모든 event_key 상수(`ai.*.generated`, `board.created`, `connection.message_sent`, `feature.impression`, `feature.gate_blocked`, `delegation.acting_as_entered` 등).
+  - `recordUsageEvent.ts` — 단일 엔트리. 실패는 silent. Optional dual-write → `beta_analytics_events`로 기존 대시보드 호환.
+  - `aggregates.ts` — window aggregation 헬퍼.
+- `src/lib/delegation/actingContext.ts` — `acting_context_events` 기록 + `logActingScopeChange` 헬퍼.
+- `src/hooks/useFeatureAccess.ts` — 클라이언트 훅. `actingAsProfileId` 변화에 자동 재해결.
+- `src/components/monetization/FeatureBadge.tsx`, `UpgradeHint.tsx` — paywall hint UI 프리미티브(beta 중엔 자동으로 렌더 스킵).
+
+### DB 마이그레이션 (7개, 타임스탬프 `20260423120000`~`20260423123000`)
+
+| 파일 | 내용 |
+|---|---|
+| `20260423120000_plans_and_plan_matrix.sql` | `public.plans`, `public.plan_feature_matrix`, `public.plan_quota_matrix` 테이블. RLS read-all. |
+| `20260423120500_entitlements_status_upgrade.sql` | `entitlements`에 `plan_source`, `trial_ends_at` 컬럼 + `status` CHECK 확장. |
+| `20260423121000_usage_events.sql` | `public.usage_events` (user_id, workspace_id, feature_key, event_key, value_int, metadata). 본인/서비스롤 insert + 본인 select RLS. |
+| `20260423121500_acting_context_events.sql` | append-only 감사 로그. actor는 본인 insert, subject는 자신이 당한 기록 select 가능. |
+| `20260423122000_workspaces.sql` | `workspaces`, `workspace_members`, `workspace_invites`. `SECURITY DEFINER` 멤버십 헬퍼 + RLS. |
+| `20260423122500_entitlement_decisions_log.sql` | 샘플링된 `entitlement_decisions`. 본인/서비스롤 scope. |
+| `20260423123000_seed_plan_matrix.sql` | 위 TS 매트릭스와 1:1 mirror. idempotent upsert. |
+
+### 배선이 들어간 기존 코드
+
+- `src/lib/ai/route.ts` `handleAiRoute` — 인증 후 soft-cap 직전에 `resolveEntitlementFor`. 차단 시 `feature.gate_blocked` 기록 + 402/429 `degraded`. 허용 성공 시 `ai.*.generated` meter.
+- `src/lib/supabase/shortlists.ts` — `createShortlist` → `board.created`, `addArtwork/ExhibitionToShortlist` → `board.saved_artwork|exhibition`.
+- `src/lib/supabase/connectionMessages.ts` `sendConnectionMessage` → `connection.message_sent`.
+- `src/lib/supabase/artworks.ts` `createDraftArtwork` → `artwork.uploaded` + acting-as면 `artwork.create_draft` 감사 로그.
+- `src/lib/supabase/exhibitions.ts` `createExhibition` → `exhibition.created` + acting-as 감사.
+- `src/lib/supabase/priceInquiries.ts` `replyToPriceInquiry` → `inquiry.replied` + acting-as 감사.
+- `src/context/ActingAsContext.tsx` — `setActingAs` / `clearActingAs`에서 `delegation.acting_as_entered|exited` meter.
+- `src/app/my/page.tsx`, `src/app/notifications/page.tsx` — 기존 `hasFeature(...)` 호출을 `resolveEntitlementFor`(page)과 `useFeatureAccess`(notifications)로 이관. 외부 문구·UX는 그대로.
+
+### 진단 페이지
+
+- `/dev/entitlements` — 개발 모드 또는 `NEXT_PUBLIC_ENTITLEMENTS_DIAG=1`일 때 활성. 모든 `FEATURE_KEYS`에 대해 `resolveEntitlementFor` 결과를 테이블로 표시(plan/source/uiState/quota/hint). acting-as 컨텍스트 영향도 함께 확인 가능.
+- `/dev/ai-metrics` — 기존 AI 루틴 요약에 더해 `usage_events` 30일 집계 섹션 추가.
+
+### 유료화 플립 체크리스트
+
+1. `BETA_ALL_PAID=false`로 전환.
+2. `plans` / `plan_feature_matrix` / `plan_quota_matrix` 를 최신 매트릭스로 재seed(또는 Stripe webhook이 자동 upsert).
+3. 기존 유저에게 기본 `free` 플랜 행을 `entitlements`에 insert(또는 trial 자동 부여).
+4. Stripe checkout / portal 연결. 결제 성공 시 `entitlements.status='active', plan_source='stripe', plan=...` upsert.
+5. Workspace 도메인 front-end 착수(invite/member/billing 페이지).
+6. `UpgradeHint` 실제 CTA 문구 및 전환 deeplink 작성.
+
+추가 유료화 제안 15+건은 [docs/MONETIZATION_PROPOSALS.md](docs/MONETIZATION_PROPOSALS.md) 참조. 그 중 Group A는 이번 스파인 패치로 이미 meter/enforcement까지 준비 완료.
+
+---
 
 ## 2026-04-23 — 보드 담기 알림 + 아티스트 시그널 + 프리미엄 레이어
 

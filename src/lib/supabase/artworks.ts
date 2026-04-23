@@ -1,5 +1,8 @@
 import { supabase } from "./client";
 import { removeStorageFiles } from "./storage";
+import { recordUsageEvent } from "@/lib/metering";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
+import { recordActingContextEvent } from "@/lib/delegation/actingContext";
 
 const BUCKET = "artworks";
 
@@ -1200,7 +1203,26 @@ export async function createDraftArtwork(
     .single();
 
   if (error) return { data: null, error };
-  return { data: (data as { id: string })?.id ?? null, error: null };
+  const newArtworkId = (data as { id: string })?.id ?? null;
+  await recordUsageEvent({
+    userId: session.user.id,
+    key: USAGE_KEYS.ARTWORK_UPLOADED,
+    metadata: {
+      artwork_id: newArtworkId,
+      artist_id: artistId,
+      acting_as: options?.forProfileId && options.forProfileId !== session.user.id,
+    },
+  });
+  if (options?.forProfileId && options.forProfileId !== session.user.id && newArtworkId) {
+    await recordActingContextEvent({
+      subjectProfileId: options.forProfileId,
+      action: "artwork.create_draft",
+      resourceType: "artwork",
+      resourceId: newArtworkId,
+      payload: { title: payload.title ?? null },
+    });
+  }
+  return { data: newArtworkId, error: null };
 }
 
 export type UpdateArtworkPayload = Partial<{

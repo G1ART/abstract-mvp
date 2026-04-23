@@ -1,0 +1,170 @@
+/**
+ * Plan ↔ feature matrix and per-feature quota ceilings.
+ *
+ * This file is the single source of truth for monetization gating. The seed
+ * migration mirrors the same shape into `public.plan_feature_matrix` /
+ * `public.plan_quota_matrix` so DB-level `SECURITY DEFINER` RPCs that need
+ * to gate reveal operations (e.g. `get_profile_viewers`) can read from the
+ * same table-of-truth without re-hardcoding plans in SQL.
+ *
+ * Guiding principles:
+ *  - Every canonical `FeatureKey` appears exactly once here.
+ *  - `free` entries stay short and deliberate — anything not listed under a
+ *    plan is blocked for that plan (closed-by-default).
+ *  - `hybrid_pro` = artist_pro ∪ discovery_pro (handled by resolver folding
+ *    effective bundle, not redundant enumeration here).
+ *  - `gallery_workspace` is a superset of hybrid_pro + workspace/delegation
+ *    capabilities; listed explicitly to keep matrix grep-ability high.
+ */
+
+import type { FeatureKey } from "./featureKeys";
+import type { PlanKey } from "./types";
+
+export const PLAN_FEATURE_MATRIX: Record<FeatureKey, PlanKey[]> = {
+  // Insights
+  "insights.profile_viewer_identity": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "insights.artwork_viewer_identity": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "insights.board_saver_identity": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "insights.board_public_actor_details": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "insights.referrer_source": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "insights.interest_breakdown": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+
+  // AI — everyone gets a metered free tier, pro unlocks higher quotas
+  "ai.bio_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.inquiry_reply_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.exhibition_copy_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.intro_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.studio_intelligence": ["artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Boards
+  "board.pro_create": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "board.room_analytics": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "board.custom_branding": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "board.embed_widget": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "board.template": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Inquiries
+  "inquiry.triage": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "inquiry.response_templates": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "inquiry.sla_badge": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Discovery
+  "discovery.artwork_alerts": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "discovery.saved_searches": ["discovery_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Exhibitions
+  "exhibition.co_curator_credits": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Social
+  "social.connection_unlimited": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Profile
+  "profile.custom_slug": ["artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "profile.referrer_analytics": ["artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Provenance
+  "provenance.verified_badge": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+
+  // Workspace
+  "workspace.create": ["gallery_workspace"],
+  "workspace.seat_invite": ["gallery_workspace"],
+  "workspace.bulk_ops": ["gallery_workspace"],
+
+  // Delegation
+  "delegation.operator_invite": ["artist_pro", "hybrid_pro", "gallery_workspace"],
+  "delegation.multi_scope": ["gallery_workspace"],
+};
+
+export type QuotaRule = {
+  /** Numeric ceiling for rolling window; null == unlimited. */
+  limit: number | null;
+  /** Rolling window size. 0 means "ever" (lifetime). */
+  windowDays: number;
+  /**
+   * Usage event keys that count against this quota. Multiple keys can be
+   * summed (e.g. an AI feature counts every successful generation).
+   */
+  countEventKeys: string[];
+};
+
+/**
+ * Per-plan-per-feature quotas. Absent entries == unlimited for that plan.
+ * Free-tier quotas are intentionally conservative but **active**: during
+ * beta they are shadow-tracked (BETA_ALL_PAID=true bypasses enforcement)
+ * so when paid tiers flip on, we already have the usage baseline.
+ */
+export const PLAN_QUOTA_MATRIX: Partial<
+  Record<FeatureKey, Partial<Record<PlanKey, QuotaRule>>>
+> = {
+  "ai.bio_assist": {
+    free: { limit: 8, windowDays: 30, countEventKeys: ["ai.bio_assist.generated"] },
+    artist_pro: { limit: 200, windowDays: 30, countEventKeys: ["ai.bio_assist.generated"] },
+    discovery_pro: { limit: 40, windowDays: 30, countEventKeys: ["ai.bio_assist.generated"] },
+    hybrid_pro: { limit: 200, windowDays: 30, countEventKeys: ["ai.bio_assist.generated"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["ai.bio_assist.generated"] },
+  },
+  "ai.inquiry_reply_assist": {
+    free: { limit: 20, windowDays: 30, countEventKeys: ["ai.inquiry_reply_assist.generated"] },
+    artist_pro: { limit: null, windowDays: 30, countEventKeys: ["ai.inquiry_reply_assist.generated"] },
+    discovery_pro: { limit: 60, windowDays: 30, countEventKeys: ["ai.inquiry_reply_assist.generated"] },
+    hybrid_pro: { limit: null, windowDays: 30, countEventKeys: ["ai.inquiry_reply_assist.generated"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["ai.inquiry_reply_assist.generated"] },
+  },
+  "ai.exhibition_copy_assist": {
+    free: { limit: 10, windowDays: 30, countEventKeys: ["ai.exhibition_copy_assist.generated"] },
+    artist_pro: { limit: 100, windowDays: 30, countEventKeys: ["ai.exhibition_copy_assist.generated"] },
+    discovery_pro: { limit: 30, windowDays: 30, countEventKeys: ["ai.exhibition_copy_assist.generated"] },
+    hybrid_pro: { limit: 100, windowDays: 30, countEventKeys: ["ai.exhibition_copy_assist.generated"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["ai.exhibition_copy_assist.generated"] },
+  },
+  "ai.intro_assist": {
+    free: { limit: 15, windowDays: 30, countEventKeys: ["ai.intro_assist.generated"] },
+    artist_pro: { limit: 150, windowDays: 30, countEventKeys: ["ai.intro_assist.generated"] },
+    discovery_pro: { limit: 150, windowDays: 30, countEventKeys: ["ai.intro_assist.generated"] },
+    hybrid_pro: { limit: 300, windowDays: 30, countEventKeys: ["ai.intro_assist.generated"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["ai.intro_assist.generated"] },
+  },
+  "ai.studio_intelligence": {
+    artist_pro: { limit: null, windowDays: 30, countEventKeys: ["ai.studio_intelligence.generated"] },
+    discovery_pro: { limit: null, windowDays: 30, countEventKeys: ["ai.studio_intelligence.generated"] },
+    hybrid_pro: { limit: null, windowDays: 30, countEventKeys: ["ai.studio_intelligence.generated"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["ai.studio_intelligence.generated"] },
+  },
+  "board.pro_create": {
+    // Free tier: up to 3 boards. Beyond that the UI should prompt upgrade.
+    free: { limit: 3, windowDays: 0, countEventKeys: ["board.created"] },
+    artist_pro: { limit: 20, windowDays: 0, countEventKeys: ["board.created"] },
+    discovery_pro: { limit: null, windowDays: 0, countEventKeys: ["board.created"] },
+    hybrid_pro: { limit: null, windowDays: 0, countEventKeys: ["board.created"] },
+    gallery_workspace: { limit: null, windowDays: 0, countEventKeys: ["board.created"] },
+  },
+  "social.connection_unlimited": {
+    // Cold intros are spam-prone — quota-backed for everyone. Pro tiers lift the ceiling.
+    free: { limit: 5, windowDays: 30, countEventKeys: ["connection.message_sent"] },
+    artist_pro: { limit: 100, windowDays: 30, countEventKeys: ["connection.message_sent"] },
+    discovery_pro: { limit: 100, windowDays: 30, countEventKeys: ["connection.message_sent"] },
+    hybrid_pro: { limit: 300, windowDays: 30, countEventKeys: ["connection.message_sent"] },
+    gallery_workspace: { limit: null, windowDays: 30, countEventKeys: ["connection.message_sent"] },
+  },
+};
+
+/**
+ * When a user is missing access, suggest the single cheapest plan that would
+ * unlock `featureKey`. Used purely for UI copy ("Upgrade to Artist Pro") —
+ * the resolver never picks a plan for the user.
+ */
+export function recommendPaywallPlan(featureKey: FeatureKey): Exclude<PlanKey, "free"> | null {
+  const allowed = PLAN_FEATURE_MATRIX[featureKey] ?? [];
+  // Ordered cheapest-first (illustrative ordering — actual pricing lives in
+  // a later patch). The resolver uses this ordering only for UI hints.
+  const preference: Array<Exclude<PlanKey, "free">> = [
+    "artist_pro",
+    "discovery_pro",
+    "hybrid_pro",
+    "gallery_workspace",
+  ];
+  for (const p of preference) {
+    if (allowed.includes(p)) return p;
+  }
+  return null;
+}

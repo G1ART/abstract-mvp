@@ -6,6 +6,9 @@
 import { supabase } from "./client";
 import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { listMyDelegations } from "./delegations";
+import { recordUsageEvent } from "@/lib/metering";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
+import { recordActingContextEvent } from "@/lib/delegation/actingContext";
 
 export type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 
@@ -154,6 +157,25 @@ export async function createExhibition(args: {
     .single();
 
   if (error) return { data: null, error };
+  const newExhibitionId = (data as { id: string } | null)?.id ?? null;
+  await recordUsageEvent({
+    userId: session.user.id,
+    key: USAGE_KEYS.EXHIBITION_CREATED,
+    metadata: {
+      exhibition_id: newExhibitionId,
+      curator_id: curatorId,
+      acting_as: Boolean(args.forProfileId && args.forProfileId !== session.user.id),
+    },
+  });
+  if (args.forProfileId && args.forProfileId !== session.user.id && newExhibitionId) {
+    await recordActingContextEvent({
+      subjectProfileId: args.forProfileId,
+      action: "exhibition.create",
+      resourceType: "exhibition",
+      resourceId: newExhibitionId,
+      payload: { title: args.title },
+    });
+  }
   return { data: data as { id: string }, error: null };
 }
 

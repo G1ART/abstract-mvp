@@ -1,5 +1,7 @@
 import { supabase } from "./client";
 import type { FollowProfileRow } from "./follows";
+import { recordUsageEvent } from "@/lib/metering";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
 
 const SENDER_SELECT = "id, username, display_name, avatar_url, bio, main_role, roles";
 
@@ -49,6 +51,12 @@ export async function sendConnectionMessage(
     .select("id")
     .single();
   if (error) return { data: null, error };
+  await recordUsageEvent({
+    userId: session.user.id,
+    key: USAGE_KEYS.CONNECTION_MESSAGE_SENT,
+    featureKey: "social.connection_unlimited",
+    metadata: { recipient_id: recipientId, message_id: data.id },
+  });
   return { data: { id: data.id as string }, error: null };
 }
 

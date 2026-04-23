@@ -31,9 +31,18 @@ type Row = {
   last_event_at: string | null;
 };
 
+type UsageRow = {
+  event_key: string;
+  feature_key: string | null;
+  total: number;
+  last_30d: number;
+  last_at: string | null;
+};
+
 export default function AiMetricsPage() {
   const { t } = useT();
   const [rows, setRows] = useState<Row[]>([]);
+  const [usageRows, setUsageRows] = useState<UsageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,6 +59,48 @@ export default function AiMetricsPage() {
       .limit(50);
     if (err) setError(err.message);
     setRows((data ?? []) as Row[]);
+
+    // Compute usage aggregates client-side over the caller's own rows (RLS
+    // restricts `usage_events` to the authenticated user).
+    const { data: usageData, error: usageErr } = await supabase
+      .from("usage_events")
+      .select("event_key, feature_key, value_int, created_at")
+      .order("created_at", { ascending: false })
+      .limit(5000);
+    if (usageErr && !err) setError(usageErr.message);
+    if (usageData) {
+      const now = Date.now();
+      const windowStart = now - 30 * 24 * 60 * 60 * 1000;
+      const map = new Map<string, UsageRow>();
+      for (const r of usageData as Array<{
+        event_key: string;
+        feature_key: string | null;
+        value_int: number | null;
+        created_at: string;
+      }>) {
+        const key = `${r.event_key}::${r.feature_key ?? ""}`;
+        const value = Number(r.value_int ?? 1);
+        const isRecent = new Date(r.created_at).getTime() >= windowStart;
+        const existing = map.get(key);
+        if (!existing) {
+          map.set(key, {
+            event_key: r.event_key,
+            feature_key: r.feature_key,
+            total: value,
+            last_30d: isRecent ? value : 0,
+            last_at: r.created_at,
+          });
+        } else {
+          existing.total += value;
+          if (isRecent) existing.last_30d += value;
+          if (!existing.last_at || existing.last_at < r.created_at) {
+            existing.last_at = r.created_at;
+          }
+        }
+      }
+      const sorted = Array.from(map.values()).sort((a, b) => b.total - a.total);
+      setUsageRows(sorted);
+    }
     setLoading(false);
   }, []);
 
@@ -176,6 +227,48 @@ export default function AiMetricsPage() {
                       </td>
                       <td className="py-2 pr-3">
                         {r.p95_latency_ms != null ? Math.round(r.p95_latency_ms) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </SectionFrame>
+
+        <SectionFrame padding="md">
+          <SectionTitle eyebrow="usage_events">
+            Monetization meter (self)
+          </SectionTitle>
+          {usageRows.length === 0 ? (
+            <p className="text-xs text-zinc-500">
+              No usage events recorded yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500">
+                    <th className="py-2 pr-3">event_key</th>
+                    <th className="py-2 pr-3">feature_key</th>
+                    <th className="py-2 pr-3">total</th>
+                    <th className="py-2 pr-3">last_30d</th>
+                    <th className="py-2 pr-3">last_at</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-zinc-800">
+                  {usageRows.slice(0, 80).map((r) => (
+                    <tr key={`${r.event_key}::${r.feature_key ?? ""}`}>
+                      <td className="py-2 pr-3 font-medium">{r.event_key}</td>
+                      <td className="py-2 pr-3 text-zinc-600">
+                        {r.feature_key ?? "—"}
+                      </td>
+                      <td className="py-2 pr-3">{r.total}</td>
+                      <td className="py-2 pr-3">{r.last_30d}</td>
+                      <td className="py-2 pr-3">
+                        {r.last_at
+                          ? new Date(r.last_at).toLocaleString()
+                          : "—"}
                       </td>
                     </tr>
                   ))}

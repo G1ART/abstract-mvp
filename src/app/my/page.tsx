@@ -30,7 +30,8 @@ import {
   getProfileViewers,
   type ProfileViewerRow,
 } from "@/lib/supabase/profileViews";
-import { getMyEntitlements, hasFeature, type Plan } from "@/lib/entitlements";
+import { resolveEntitlementFor } from "@/lib/entitlements";
+import { supabase } from "@/lib/supabase/client";
 import { useActingAs } from "@/context/ActingAsContext";
 import {
   listExhibitionsForProfile,
@@ -85,13 +86,24 @@ export default function MyPage() {
     setError(null);
     const effectiveProfileId = actingAsProfileId ?? null;
     try {
-      const [profileRes, statsRes, artworksRes, entRes] = await Promise.all([
+      // Resolve `insights.profile_viewer_identity` up-front: it controls
+      // whether the studio viewer-identity list is populated at all and is
+      // referenced by several downstream queries below.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const userId = session?.user?.id ?? null;
+      const [profileRes, statsRes, artworksRes, viewerIdentityDecision] = await Promise.all([
         effectiveProfileId ? getProfileById(effectiveProfileId) : getMyProfile(),
         effectiveProfileId ? getStatsForProfile(effectiveProfileId) : getMyStats(),
         effectiveProfileId
           ? listPublicArtworksForProfile(effectiveProfileId, { limit: 50 })
           : listMyArtworks({ limit: 50, publicOnly: true }),
-        getMyEntitlements(),
+        resolveEntitlementFor({
+          featureKey: "insights.profile_viewer_identity",
+          userId,
+          skipQuotaCheck: true,
+        }),
       ]);
 
       if (profileRes.error) {
@@ -131,7 +143,7 @@ export default function MyPage() {
       );
       setArtworks(mergedArtworks);
 
-      const canView = hasFeature(entRes.plan as Plan, "VIEW_PROFILE_VIEWERS_LIST");
+      const canView = viewerIdentityDecision.allowed;
       setCanViewViewers(canView);
 
       if (profileData) {

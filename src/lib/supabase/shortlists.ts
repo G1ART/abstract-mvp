@@ -1,4 +1,6 @@
 import { supabase } from "./client";
+import { recordUsageEvent } from "@/lib/metering";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
 
 export type ShortlistRow = {
   id: string;
@@ -77,6 +79,12 @@ export async function createShortlist(
     .select("*")
     .single();
   if (error) return { data: null, error };
+  await recordUsageEvent({
+    userId: session.user.id,
+    key: USAGE_KEYS.BOARD_CREATED,
+    featureKey: "board.pro_create",
+    metadata: { shortlist_id: (data as { id?: string } | null)?.id ?? null },
+  });
   return { data: data as ShortlistRow, error: null };
 }
 
@@ -194,6 +202,11 @@ export async function addArtworkToShortlist(
       .from("shortlists")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", shortlistId);
+    await recordUsageEvent({
+      key: USAGE_KEYS.BOARD_SAVED_ARTWORK,
+      featureKey: "board.pro_create",
+      metadata: { shortlist_id: shortlistId, artwork_id: artworkId },
+    });
   }
   return { error };
 }
@@ -214,6 +227,11 @@ export async function addExhibitionToShortlist(
       .from("shortlists")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", shortlistId);
+    await recordUsageEvent({
+      key: USAGE_KEYS.BOARD_SAVED_EXHIBITION,
+      featureKey: "board.pro_create",
+      metadata: { shortlist_id: shortlistId, exhibition_id: exhibitionId },
+    });
   }
   return { error };
 }

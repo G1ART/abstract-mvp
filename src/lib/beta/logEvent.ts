@@ -28,7 +28,10 @@ export type BetaEventName =
   | "ai_accepted"
   | "connection_message_sent"
   | "board_promote_started"
-  | "board_promote_bulk_added";
+  | "board_promote_bulk_added"
+  | "monetization_hint_shown"
+  | "monetization_hint_clicked"
+  | "feature_gate_blocked";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

@@ -5,9 +5,11 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { logActingScopeChange } from "@/lib/delegation/actingContext";
 
 const STORAGE_KEY = "abstract_acting_as";
 
@@ -54,16 +56,31 @@ const ActingAsContext = createContext<ActingAsContextValue | null>(null);
 
 export function ActingAsProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<ActingAsState>(loadStored);
+  const previousProfileIdRef = useRef<string | null>(state.profileId);
 
   const setActingAs = useCallback((profileId: string, label: string) => {
     const next = { profileId, label };
+    const prev = previousProfileIdRef.current;
     setState(next);
     saveStored(next);
+    previousProfileIdRef.current = profileId;
+    // Best-effort: record that a delegate has entered an acting-as scope.
+    // Failures must not break UI so the helper swallows its own errors.
+    void logActingScopeChange({
+      subjectProfileId: profileId,
+      previousSubjectProfileId: prev,
+    });
   }, []);
 
   const clearActingAs = useCallback(() => {
+    const prev = previousProfileIdRef.current;
     setState({ profileId: null, label: null });
     saveStored({ profileId: null, label: null });
+    previousProfileIdRef.current = null;
+    void logActingScopeChange({
+      subjectProfileId: null,
+      previousSubjectProfileId: prev,
+    });
   }, []);
 
   const value = useMemo(

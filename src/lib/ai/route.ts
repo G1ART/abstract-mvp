@@ -5,6 +5,13 @@ import { AiSoftCapError, checkDailySoftCap } from "./softCap";
 import { logAiEvent } from "./events";
 import { assertSafePrompt } from "./safety";
 import type { AiDegradation, AiFeatureKey } from "./types";
+import { resolveEntitlementFor } from "@/lib/entitlements";
+import { recordUsageEvent, type UsageEventKey } from "@/lib/metering";
+import {
+  AI_FEATURE_TO_ENTITLEMENT_KEY,
+  AI_FEATURE_TO_METER_KEY,
+  USAGE_KEYS,
+} from "@/lib/metering/usageKeys";
 
 export type RouteHandlerInput<TBody> = {
   feature: AiFeatureKey;
@@ -97,6 +104,41 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
       body = rawBody as TBody;
     }
 
+    const entitlementKey = AI_FEATURE_TO_ENTITLEMENT_KEY[def.feature];
+    if (entitlementKey) {
+      const decision = await resolveEntitlementFor({
+        featureKey: entitlementKey,
+        userId: user.id,
+        client: supabase,
+      });
+      if (!decision.allowed) {
+        await recordUsageEvent(
+          {
+            userId: user.id,
+            key: USAGE_KEYS.FEATURE_GATE_BLOCKED,
+            featureKey: entitlementKey,
+            metadata: {
+              source: decision.source,
+              ai_feature: def.feature,
+              paywall_hint: decision.paywallHint,
+            },
+          },
+          { client: supabase, dualWriteBeta: false },
+        );
+        await logAiEvent(supabase, {
+          user_id: user.id,
+          feature_key: def.feature,
+          error_code: "cap",
+        });
+        const status = decision.source === "quota_exceeded" ? 429 : 402;
+        return degradedResponse(status, "cap", {
+          error: "plan_required",
+          paywallHint: decision.paywallHint,
+          source: decision.source,
+        });
+      }
+    }
+
     try {
       await checkDailySoftCap(supabase, user.id);
     } catch (err) {
@@ -180,6 +222,24 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
       latency_ms: result.meta.latencyMs,
       error_code: result.meta.errorCode,
     });
+
+    const meterKey = AI_FEATURE_TO_METER_KEY[def.feature] as UsageEventKey | undefined;
+    if (meterKey && !result.meta.errorCode) {
+      await recordUsageEvent(
+        {
+          userId: user.id,
+          key: meterKey,
+          featureKey: entitlementKey ?? undefined,
+          metadata: {
+            ai_feature: def.feature,
+            model: result.meta.model,
+            latency_ms: result.meta.latencyMs,
+            context_size: result.meta.contextSize,
+          },
+        },
+        { client: supabase, dualWriteBeta: false },
+      );
+    }
 
     return NextResponse.json(
       {

@@ -1,0 +1,59 @@
+/**
+ * Metering types. `UsageEventKey` is a literal union so mistyped event
+ * names fail at compile time in callers. `UsageEventPayload` mirrors the
+ * shape of the `public.usage_events` row.
+ */
+
+import type { FeatureKey } from "@/lib/entitlements/featureKeys";
+
+export type UsageEventKey =
+  // AI generation meters
+  | "ai.bio_assist.generated"
+  | "ai.inquiry_reply_assist.generated"
+  | "ai.exhibition_copy_assist.generated"
+  | "ai.intro_assist.generated"
+  | "ai.studio_intelligence.generated"
+  | "ai.profile_copilot.generated"
+  | "ai.portfolio_copilot.generated"
+  | "ai.studio_digest.generated"
+  | "ai.matchmaker_rationales.generated"
+  | "ai.accepted"
+  // Boards / shortlists
+  | "board.created"
+  | "board.saved_artwork"
+  | "board.saved_exhibition"
+  | "board.promoted_to_exhibition"
+  | "board.room_viewed"
+  // Inquiries
+  | "inquiry.created"
+  | "inquiry.replied"
+  // Connections / social
+  | "connection.message_sent"
+  // Exhibitions
+  | "exhibition.created"
+  // Artworks
+  | "artwork.uploaded"
+  // Delegation / acting-as
+  | "delegation.acting_as_entered"
+  | "delegation.acting_as_exited"
+  // Resolver instrumentation
+  | "feature.impression"
+  | "feature.upgrade_hint_shown"
+  | "feature.upgrade_hint_clicked"
+  | "feature.gate_blocked"
+  | "entitlement.decision_logged";
+
+export type UsageEventPayload = {
+  key: UsageEventKey;
+  featureKey?: FeatureKey | string;
+  valueInt?: number;
+  workspaceId?: string | null;
+  metadata?: Record<string, unknown>;
+  userId?: string | null;
+};
+
+export type UsageEventMeta = {
+  startedAt: string | null;
+  endedAt: string | null;
+  windowDays: number;
+};

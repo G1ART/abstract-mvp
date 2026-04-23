@@ -12,7 +12,7 @@ import {
 import { useT } from "@/lib/i18n/useT";
 import { formatDisplayName } from "@/lib/identity/format";
 import { EmptyState } from "@/components/ds/EmptyState";
-import { getMyEntitlements, hasFeature } from "@/lib/entitlements";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 
 function notificationLabel(
   row: NotificationRow,
@@ -107,10 +107,19 @@ function NotificationsContent() {
   const [list, setList] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
-  const [entitlements, setEntitlements] = useState<{
-    canSeeBoardSaver: boolean;
-    canSeeBoardPublicActor: boolean;
-  }>({ canSeeBoardSaver: false, canSeeBoardPublicActor: false });
+
+  // Resolver-backed gates. We skip the quota lookup for these render-path
+  // checks because they are cheap boolean gates, not usage-bearing actions.
+  const boardSaverAccess = useFeatureAccess("insights.board_saver_identity", {
+    skipQuotaCheck: true,
+  });
+  const boardPublicActorAccess = useFeatureAccess("insights.board_public_actor_details", {
+    skipQuotaCheck: true,
+  });
+  const entitlements = {
+    canSeeBoardSaver: boardSaverAccess.decision?.allowed ?? false,
+    canSeeBoardPublicActor: boardPublicActorAccess.decision?.allowed ?? false,
+  };
 
   const refresh = useCallback(() => {
     listNotifications({ limit: 50 }).then(({ data }) => {
@@ -125,20 +134,6 @@ function NotificationsContent() {
     });
     return () => cancelAnimationFrame(t);
   }, [refresh]);
-
-  useEffect(() => {
-    let cancelled = false;
-    getMyEntitlements().then((ent) => {
-      if (cancelled) return;
-      setEntitlements({
-        canSeeBoardSaver: hasFeature(ent.plan, "SEE_BOARD_SAVER_IDENTITY"),
-        canSeeBoardPublicActor: hasFeature(ent.plan, "SEE_BOARD_PUBLIC_ACTOR_DETAILS"),
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const handleMarkAll = useCallback(async () => {
     setMarkingAll(true);
