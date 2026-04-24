@@ -8,6 +8,7 @@ import type { ExhibitionDraftResult } from "@/lib/ai/types";
 import { parseExhibitionBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<ExhibitionDraftInput, ExhibitionDraftResult>(req, {

@@ -11,6 +11,7 @@ import type { MatchmakerRationalesResult } from "@/lib/ai/types";
 import { parseMatchmakerBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<MatchmakerRationaleInput, MatchmakerRationalesResult>(req, {

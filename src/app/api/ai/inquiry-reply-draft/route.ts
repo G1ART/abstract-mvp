@@ -8,6 +8,7 @@ import type { InquiryReplyDraftResult } from "@/lib/ai/types";
 import { parseInquiryBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<InquiryReplyInput, InquiryReplyDraftResult>(req, {

@@ -11,6 +11,8 @@ import type { PortfolioSuggestionsResult } from "@/lib/ai/types";
 import { parsePortfolioBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+/** Allow OpenAI JSON completions to finish (see `GENERATE_TIMEOUT_MS` in `lib/ai/client`). */
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<PortfolioContextInput, PortfolioSuggestionsResult>(req, {

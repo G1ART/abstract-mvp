@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { generateJSON } from "./client";
+import { generateJSON, GENERATE_TIMEOUT_MS } from "./client";
 import { AiSoftCapError, checkDailySoftCap } from "./softCap";
 import { logAiEvent } from "./events";
 import { assertSafePrompt } from "./safety";
@@ -182,7 +182,7 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
     }
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
+    const timeout = setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
     let result;
     try {
       result = await generateJSON<TResult>({

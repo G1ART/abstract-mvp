@@ -5,6 +5,7 @@ import type { BioDraftResult } from "@/lib/ai/types";
 import { parseBioBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<BioDraftInput, BioDraftResult>(req, {

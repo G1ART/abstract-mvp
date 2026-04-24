@@ -13,7 +13,12 @@ import { SAFETY_FOOTER, assertSafePrompt } from "./safety";
 
 const CONFIGURED_MODEL = (process.env.OPENAI_MODEL ?? "").trim();
 export const DEFAULT_MODEL = CONFIGURED_MODEL || "gpt-4o-mini";
-export const GENERATE_TIMEOUT_MS = 8_000;
+/**
+ * OpenAI chat completion budget (SDK client + AbortSignal in handleAiRoute).
+ * 8s was too tight for JSON-mode portfolio hints in production; keep below
+ * maxDuration on each `app/api/ai/.../route.ts` segment (60s).
+ */
+export const GENERATE_TIMEOUT_MS = 45_000;
 
 // Log the model in use on first module load so Vercel Function logs always
 // show which model is active. Helps catch misconfigurations (e.g. typos in

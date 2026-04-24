@@ -8,6 +8,7 @@ import type { ProfileSuggestionsResult } from "@/lib/ai/types";
 import { parseProfileBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<ProfileContextInput, ProfileSuggestionsResult>(req, {

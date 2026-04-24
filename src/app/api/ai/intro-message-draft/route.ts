@@ -8,6 +8,7 @@ import type { IntroMessageDraftResult } from "@/lib/ai/types";
 import { parseIntroBody } from "@/lib/ai/validation";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   return handleAiRoute<IntroMessageInput, IntroMessageDraftResult>(req, {
