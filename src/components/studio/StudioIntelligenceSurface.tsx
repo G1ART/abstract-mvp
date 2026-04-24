@@ -109,7 +109,8 @@ export function StudioIntelligenceSurface({
         title: a.title ?? null,
         year: (a as Record<string, unknown>).year as string | number | null | undefined ?? null,
         medium: (a as Record<string, unknown>).medium as string | null | undefined ?? null,
-        dimensions: (a as Record<string, unknown>).dimensions as string | null | undefined ?? null,
+        /** `Artwork` stores physical size as `size`; keep aligned for portfolio copilot context. */
+        dimensions: a.size ?? null,
       })),
       exhibitions: exhibitions.slice(0, 10).map((e) => ({
         id: e.id,

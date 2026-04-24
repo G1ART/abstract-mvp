@@ -21,6 +21,10 @@ export type AiDegradation = {
    * or pre-request failures.
    */
   aiEventId?: string;
+  /** Present on some `invalid_input` responses from `/api/ai/*` routes. */
+  validation?: string;
+  /** Optional machine-readable error from the server (do not show raw to users). */
+  error?: string;
 };
 
 export type AiLocale = "en" | "ko";

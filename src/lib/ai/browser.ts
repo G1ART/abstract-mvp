@@ -36,6 +36,27 @@ function degradedFallback<T extends AiDegradation>(
   return { ...(base as object), degraded: true, reason } as T;
 }
 
+/**
+ * When the server returns a JSON error contract (`degraded: true` + `reason`),
+ * merge it with the feature fallback shape so callers still get typed arrays.
+ */
+async function mergeDegradedResponseBody<T extends AiDegradation>(
+  resp: Response,
+  fallback: Omit<T, keyof AiDegradation>,
+): Promise<T | null> {
+  const ct = resp.headers.get("content-type") ?? "";
+  if (!ct.includes("application/json")) return null;
+  try {
+    const body = (await resp.json()) as Record<string, unknown>;
+    if (body && body.degraded === true && typeof body.reason === "string") {
+      return { ...(fallback as object), ...body } as T;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 async function getAccessToken(): Promise<string | null> {
   try {
     const { data } = await supabase.auth.getSession();
@@ -94,12 +115,6 @@ export async function callAi<T extends AiDegradation>(
       signal: opts?.signal,
       cache: "no-store",
     });
-    if (resp.status === 400) {
-      return degradedFallback<T>("invalid_input", fallback);
-    }
-    if (resp.status === 429) {
-      return degradedFallback<T>("cap", fallback);
-    }
     if (resp.status === 503) {
       try {
         const body = (await resp.json()) as T;
@@ -109,6 +124,11 @@ export async function callAi<T extends AiDegradation>(
       }
     }
     if (!resp.ok) {
+      const merged = await mergeDegradedResponseBody<T>(resp, fallback);
+      if (merged) return merged;
+      if (resp.status === 400) return degradedFallback<T>("invalid_input", fallback);
+      if (resp.status === 401) return degradedFallback<T>("unauthorized", fallback);
+      if (resp.status === 429) return degradedFallback<T>("cap", fallback);
       return degradedFallback<T>("error", fallback);
     }
     const json = (await resp.json()) as T;

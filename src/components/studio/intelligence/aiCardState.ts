@@ -11,8 +11,35 @@ import type { MessageKey } from "@/lib/i18n/messages";
 export function aiErrorKey(result: AiDegradation | null | undefined): MessageKey | null {
   const reason = result?.degraded ? result.reason : null;
   if (!reason) return null;
-  if (reason === "cap") return "ai.error.softCap";
-  if (reason === "no_key") return "ai.error.unavailable";
-  if (reason === "invalid_input") return "ai.error.invalidInput";
-  return "ai.error.tryLater";
+  switch (reason) {
+    case "cap":
+      return "ai.error.softCap";
+    case "no_key":
+      return "ai.error.unavailable";
+    case "invalid_input":
+      return invalidInputMessageKey(result?.validation);
+    case "unauthorized":
+      return "ai.error.unauthorized";
+    case "parse":
+      return "ai.error.parse";
+    case "timeout":
+      return "ai.error.timeout";
+    case "error":
+      return "ai.error.server";
+    default:
+      return "ai.error.tryLater";
+  }
+}
+
+function invalidInputMessageKey(validation: string | undefined): MessageKey {
+  switch (validation) {
+    case "missing_portfolio":
+      return "ai.error.invalidInputPortfolio";
+    case "missing_profile":
+      return "ai.error.invalidInputProfile";
+    case "missing_digest":
+      return "ai.error.invalidInputDigest";
+    default:
+      return "ai.error.invalidInput";
+  }
 }
