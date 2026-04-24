@@ -11,8 +11,19 @@ import type { InquiryReplyInput } from "@/lib/ai/contexts";
 type Tone = "concise" | "warm" | "curatorial";
 const TONES: readonly Tone[] = ["concise", "warm", "curatorial"] as const;
 
+const TONE_I18N: Record<Tone, "ai.inquiry.toneConcise" | "ai.inquiry.toneWarm" | "ai.inquiry.toneCuratorial"> = {
+  concise: "ai.inquiry.toneConcise",
+  warm: "ai.inquiry.toneWarm",
+  curatorial: "ai.inquiry.toneCuratorial",
+};
+
 type LengthPref = "short" | "long";
 const LENGTHS: readonly LengthPref[] = ["short", "long"] as const;
+
+const LENGTH_I18N: Record<LengthPref, "ai.inquiry.length.short" | "ai.inquiry.length.long"> = {
+  short: "ai.inquiry.length.short",
+  long: "ai.inquiry.length.long",
+};
 
 type Props = {
   artwork?: {
@@ -100,7 +111,7 @@ export function InquiryReplyAssist({
             onClick={() => updateTone(opt)}
             className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${tone === opt ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
           >
-            {t(`ai.inquiry.tone${opt.charAt(0).toUpperCase() + opt.slice(1)}` as never)}
+            {t(TONE_I18N[opt])}
           </button>
         ))}
         <span className="ml-1 inline-flex overflow-hidden rounded-full border border-zinc-200 text-[11px]">
@@ -111,7 +122,7 @@ export function InquiryReplyAssist({
               onClick={() => updateLength(opt)}
               className={`px-2 py-0.5 font-medium ${lengthPref === opt ? "bg-zinc-900 text-white" : "bg-white text-zinc-600"}`}
             >
-              {t(`ai.inquiry.length.${opt}` as never)}
+              {t(LENGTH_I18N[opt])}
             </button>
           ))}
         </span>

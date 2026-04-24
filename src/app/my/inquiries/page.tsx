@@ -28,7 +28,7 @@ import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 import { markAiAccepted } from "@/lib/ai/accept";
 
 export default function MyInquiriesPage() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const { actingAsProfileId } = useActingAs();
   const [list, setList] = useState<PriceInquiryRow[]>([]);
   const [nextCursor, setNextCursor] = useState<InquiryListCursor | null>(null);
@@ -98,7 +98,7 @@ export default function MyInquiriesPage() {
       return [...prev, ...add];
     });
     setNextCursor(nc);
-  }, [nextCursor, loadingMore, actingAsProfileId, statusFilter, searchDebounced]);
+  }, [nextCursor, loadingMore, actingAsProfileId, statusFilter, pipelineFilter, searchDebounced]);
 
   const openThread = useCallback(
     async (row: PriceInquiryRow) => {
@@ -247,13 +247,13 @@ export default function MyInquiriesPage() {
             onChange={(e) => setPipelineFilter(e.target.value as PipelineStage | "all")}
             className="rounded border border-zinc-300 px-3 py-2 text-sm"
           >
-            <option value="all">Pipeline: All</option>
-            <option value="new">New</option>
-            <option value="contacted">Contacted</option>
-            <option value="in_discussion">In Discussion</option>
-            <option value="offer_sent">Offer Sent</option>
-            <option value="closed_won">Closed Won</option>
-            <option value="closed_lost">Closed Lost</option>
+            <option value="all">{t("priceInquiry.pipelineFilterAll")}</option>
+            <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
+            <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
+            <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
+            <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
+            <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
+            <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
           </select>
         </div>
 
@@ -285,7 +285,7 @@ export default function MyInquiriesPage() {
                       onClick={() => void openThread(row)}
                       className="text-left font-medium text-zinc-900 hover:underline"
                     >
-                      {row.artwork?.title ?? "Untitled"}
+                      {row.artwork?.title ?? t("common.untitled")}
                     </button>
                     <Link
                       href={`/artwork/${row.artwork_id}`}
@@ -323,29 +323,29 @@ export default function MyInquiriesPage() {
                         onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
                         className="rounded border border-zinc-300 px-2 py-1 text-xs"
                       >
-                        <option value="new">new</option>
-                        <option value="open">open</option>
-                        <option value="replied">replied</option>
-                        <option value="closed">closed</option>
+                        <option value="new">{t("priceInquiry.filterNew")}</option>
+                        <option value="open">{t("priceInquiry.filterOpen")}</option>
+                        <option value="replied">{t("priceInquiry.filterReplied")}</option>
+                        <option value="closed">{t("priceInquiry.filterClosed")}</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">Pipeline</label>
+                      <label className="text-xs text-zinc-500">{t("priceInquiry.pipelineLabel")}</label>
                       <select
                         value={row.pipeline_stage ?? "new"}
                         onChange={(e) => void handlePipelineChange(row.id, e.target.value as PipelineStage)}
                         className="rounded border border-zinc-300 px-2 py-1 text-xs"
                       >
-                        <option value="new">New</option>
-                        <option value="contacted">Contacted</option>
-                        <option value="in_discussion">In Discussion</option>
-                        <option value="offer_sent">Offer Sent</option>
-                        <option value="closed_won">Won</option>
-                        <option value="closed_lost">Lost</option>
+                        <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
+                        <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
+                        <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
+                        <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
+                        <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
+                        <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">Assignee</label>
+                      <label className="text-xs text-zinc-500">{t("priceInquiry.assigneeLabel")}</label>
                       <button
                         type="button"
                         onClick={() => {
@@ -356,16 +356,19 @@ export default function MyInquiriesPage() {
                         }}
                         className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
                       >
-                        {row.assignee_id ? "Reassign to me" : "Assign to me"}
+                        {row.assignee_id ? t("priceInquiry.reassignToMe") : t("priceInquiry.assignToMe")}
                       </button>
                       {row.assignee_id && (
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">assigned</span>
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
+                          {t("priceInquiry.assigneeAssignedHint")}
+                        </span>
                       )}
                     </div>
                     <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">Next action</label>
+                      <label className="text-xs text-zinc-500">{t("priceInquiry.nextActionLabel")}</label>
                       <input
                         type="date"
+                        lang={locale}
                         value={row.next_action_date ?? ""}
                         onChange={(e) => void handleNextActionDate(row.id, e.target.value)}
                         className="rounded border border-zinc-300 px-2 py-1 text-xs"
@@ -444,9 +447,8 @@ export default function MyInquiriesPage() {
                         />
                       </div>
 
-                      {/* Internal notes (private to gallery) */}
                       <div className="mt-4 border-t border-zinc-100 pt-3">
-                        <p className="mb-2 text-xs font-medium text-zinc-500">Internal Notes</p>
+                        <p className="mb-2 text-xs font-medium text-zinc-500">{t("priceInquiry.internalNotesTitle")}</p>
                         {(notesByInquiry[row.id] ?? []).length > 0 && (
                           <ul className="mb-3 space-y-2">
                             {notesByInquiry[row.id].map((n) => (
@@ -460,7 +462,7 @@ export default function MyInquiriesPage() {
                         <div className="flex gap-2">
                           <input
                             type="text"
-                            placeholder="Add internal note..."
+                            placeholder={t("priceInquiry.internalNotePlaceholder")}
                             value={noteText[row.id] ?? ""}
                             onChange={(e) => setNoteText((prev) => ({ ...prev, [row.id]: e.target.value }))}
                             className="flex-1 rounded border border-zinc-300 px-3 py-1.5 text-sm"
@@ -471,7 +473,7 @@ export default function MyInquiriesPage() {
                             onClick={() => void handleAddNote(row.id)}
                             className="rounded bg-zinc-700 px-3 py-1.5 text-sm text-white hover:bg-zinc-600 disabled:opacity-50"
                           >
-                            Add
+                            {t("priceInquiry.internalNoteAdd")}
                           </button>
                         </div>
                       </div>
