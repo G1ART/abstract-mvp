@@ -25,12 +25,28 @@ export type AiDegradation = {
 
 export type AiLocale = "en" | "ko";
 
+/** Optional grouping for profile copilot suggestions (model-supplied). */
+export type ProfileSuggestionCategory =
+  | "basics"
+  | "public_clarity"
+  | "discoverability"
+  | "other";
+
+export type ProfileViewerLens = "curator" | "collector" | "gallery";
+
+export type ProfileViewerNote = {
+  lens: ProfileViewerLens;
+  note: string;
+};
+
 export type ProfileSuggestion = {
   id: string;
   title: string;
   detail: string;
   actionLabel?: string;
   actionHref?: string;
+  /** When absent, UI groups under “other”. */
+  category?: ProfileSuggestionCategory;
 };
 
 export type ProfileSuggestionsResult = AiDegradation & {
@@ -53,6 +69,20 @@ export type ProfileSuggestionsResult = AiDegradation & {
    * improve discoverability (themes, mediums, locale density, etc.).
    */
   discoverabilityRationale?: string;
+  /**
+   * Up to three short “visitor perspective” notes — humble tone, no scoring.
+   */
+  viewerNotes?: ProfileViewerNote[];
+};
+
+/** Deterministic counts from the client; sent with portfolio copilot context. */
+export type PortfolioMetadataGaps = {
+  missing_title: number;
+  missing_year: number;
+  missing_medium: number;
+  missing_size: number;
+  no_image: number;
+  drafts_not_public: number;
 };
 
 export type PortfolioSuggestion = {
@@ -111,9 +141,20 @@ export type InquiryReplyDraft = {
   length?: InquiryReplyDraftLength;
 };
 
+export type InquiryTriagePriority = "normal" | "time_sensitive" | "opportunity";
+
+/** Lightweight triage before reply drafts (model-supplied, optional). */
+export type InquiryReplyTriage = {
+  /** Short intent label (e.g. price, availability); UI maps known values to i18n. */
+  intent?: string;
+  priority?: InquiryTriagePriority;
+  missingInfo?: string[];
+};
+
 export type InquiryReplyDraftResult = AiDegradation & {
   tone: "concise" | "warm" | "curatorial";
   kind: "reply" | "followup";
+  triage?: InquiryReplyTriage;
   /**
    * Wave 2: drafts are objects carrying an optional length badge. Until
    * the model adopts the new shape everywhere we keep the UI layer

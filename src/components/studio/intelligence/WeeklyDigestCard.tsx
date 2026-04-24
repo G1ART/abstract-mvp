@@ -12,9 +12,16 @@ import type { StudioDigestResult } from "@/lib/ai/types";
 
 type Props = {
   digestInput: Record<string, unknown>;
+  /** Shown before running digest — grounded counts from the studio list. */
+  backlogDrafts?: number;
+  backlogIncomplete?: number;
 };
 
-export function WeeklyDigestCard({ digestInput }: Props) {
+export function WeeklyDigestCard({
+  digestInput,
+  backlogDrafts = 0,
+  backlogIncomplete = 0,
+}: Props) {
   const { t } = useT();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<StudioDigestResult | null>(null);
@@ -57,6 +64,14 @@ export function WeeklyDigestCard({ digestInput }: Props) {
       >
         {t("ai.digest.card.subtitle")}
       </SectionTitle>
+
+      {(backlogDrafts > 0 || backlogIncomplete > 0) && !result && (
+        <p className="mt-2 text-xs leading-relaxed text-zinc-600">
+          {t("ai.digest.backlogHint")
+            .replace("{drafts}", String(backlogDrafts))
+            .replace("{incomplete}", String(backlogIncomplete))}
+        </p>
+      )}
 
       {errorKey && <p className="text-xs text-amber-700">{t(errorKey)}</p>}
 

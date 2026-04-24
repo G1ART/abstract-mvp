@@ -61,6 +61,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (!item?.artwork_id || !item.apply) continue;
 
     const row = matchRows.find((r) => r.artwork_id === item.artwork_id);
+    if (!row || row.match_status === "no_match") continue;
     const chosenId =
       item.chosen_candidate_id !== undefined && item.chosen_candidate_id !== null
         ? item.chosen_candidate_id
@@ -74,6 +75,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         : null);
 
     const merged = mergeProposed(baseParsed, item.overrides);
+    const hasPayload =
+      (merged.title != null && String(merged.title).trim().length > 0) ||
+      (merged.year != null && Number.isFinite(merged.year)) ||
+      (merged.medium != null && String(merged.medium).trim().length > 0) ||
+      (merged.size != null && String(merged.size).trim().length > 0) ||
+      (merged.story != null && String(merged.story).trim().length > 0);
+    if (!hasPayload) continue;
+
     const provenance = {
       source: "website_import",
       session_id: id,

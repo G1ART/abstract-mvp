@@ -6,9 +6,30 @@ import { ProfileCopilotCard } from "./intelligence/ProfileCopilotCard";
 import { PortfolioCopilotCard } from "./intelligence/PortfolioCopilotCard";
 import { WeeklyDigestCard } from "./intelligence/WeeklyDigestCard";
 import { MatchmakerCard } from "./intelligence/MatchmakerCard";
+import type { PortfolioMetadataGaps } from "@/lib/ai/types";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import type { ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import type { ProfileSurface } from "@/lib/profile/surface";
+
+function computePortfolioMetadataGaps(artworks: ArtworkWithLikes[]): PortfolioMetadataGaps {
+  const g: PortfolioMetadataGaps = {
+    missing_title: 0,
+    missing_year: 0,
+    missing_medium: 0,
+    missing_size: 0,
+    no_image: 0,
+    drafts_not_public: 0,
+  };
+  for (const a of artworks) {
+    if (a.visibility !== "public") g.drafts_not_public += 1;
+    if (!a.title?.trim()) g.missing_title += 1;
+    if (a.year == null) g.missing_year += 1;
+    if (!a.medium?.trim()) g.missing_medium += 1;
+    if (!a.size?.trim()) g.missing_size += 1;
+    if (!a.artwork_images?.length) g.no_image += 1;
+  }
+  return g;
+}
 
 type Stats = {
   artworkCount?: number | null;
@@ -75,6 +96,11 @@ export function StudioIntelligenceSurface({
     [profileSurface, themes, mediums, city, artworks.length, exhibitions.length, stats?.followersCount, viewsCount7d, locale],
   );
 
+  const portfolioMetadataGaps = useMemo(
+    () => computePortfolioMetadataGaps(artworks),
+    [artworks],
+  );
+
   const portfolioInput = useMemo(
     () => ({
       username: profileSurface.username,
@@ -91,8 +117,27 @@ export function StudioIntelligenceSurface({
         year: (e as Record<string, unknown>).year as string | number | null | undefined ?? null,
         venue: (e as Record<string, unknown>).venue as string | null | undefined ?? null,
       })),
+      metadataGaps: portfolioMetadataGaps,
     }),
-    [profileSurface.username, artworks, exhibitions],
+    [profileSurface.username, artworks, exhibitions, portfolioMetadataGaps],
+  );
+
+  const draftsNotPublicCount = useMemo(
+    () => artworks.filter((a) => a.visibility !== "public").length,
+    [artworks],
+  );
+
+  const incompleteMetadataCount = useMemo(
+    () =>
+      artworks.filter((a) => {
+        const noImg = !a.artwork_images?.length;
+        const noTitle = !a.title?.trim();
+        const noYear = a.year == null;
+        const noMed = !a.medium?.trim();
+        const noSize = !a.size?.trim();
+        return noImg || noTitle || noYear || noMed || noSize;
+      }).length,
+    [artworks],
   );
 
   const digestInput = useMemo(
@@ -100,6 +145,8 @@ export function StudioIntelligenceSurface({
       username: profileSurface.username,
       views7d: viewsCount7d ?? 0,
       inquiries7d,
+      draftsNotPublicCount,
+      incompleteMetadataCount,
       recentExhibitions: exhibitions.slice(0, 3).map((e) => ({
         title: e.title ?? "",
       })),
@@ -111,7 +158,16 @@ export function StudioIntelligenceSurface({
       })),
       locale,
     }),
-    [profileSurface.username, viewsCount7d, inquiries7d, exhibitions, artworks, locale],
+    [
+      profileSurface.username,
+      viewsCount7d,
+      inquiries7d,
+      draftsNotPublicCount,
+      incompleteMetadataCount,
+      exhibitions,
+      artworks,
+      locale,
+    ],
   );
 
   const matchmakerMe = useMemo(
@@ -164,7 +220,11 @@ export function StudioIntelligenceSurface({
         artworkCount={artworks.length}
         artworkTitles={artworkTitles}
       />
-      <WeeklyDigestCard digestInput={digestInput} />
+      <WeeklyDigestCard
+        digestInput={digestInput}
+        backlogDrafts={draftsNotPublicCount}
+        backlogIncomplete={incompleteMetadataCount}
+      />
       <MatchmakerCard me={matchmakerMe} myArtworkTitles={artworkTitles} />
     </section>
   );

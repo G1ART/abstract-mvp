@@ -12,6 +12,7 @@ import { aiErrorKey } from "./aiCardState";
 import { copyToClipboard } from "@/components/ai/AiDraftPanel";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type {
+  PortfolioMetadataGaps,
   PortfolioSuggestion,
   PortfolioSuggestionsResult,
 } from "@/lib/ai/types";
@@ -66,6 +67,11 @@ export function PortfolioCopilotCard({
   const errorKey = aiErrorKey(result);
   const aiEventId = result?.aiEventId ?? null;
 
+  const metadataGaps = (() => {
+    const raw = (portfolioInput as { metadataGaps?: PortfolioMetadataGaps }).metadataGaps;
+    return raw && typeof raw === "object" ? raw : null;
+  })();
+
   const grouped = useMemo(() => {
     const map = new Map<PortfolioSuggestion["kind"], PortfolioSuggestion[]>();
     for (const s of result?.suggestions ?? []) {
@@ -112,6 +118,18 @@ export function PortfolioCopilotCard({
       >
         {t("ai.portfolio.card.subtitle")}
       </SectionTitle>
+
+      {metadataGaps && artworkCount > 0 ? (
+        <p className="mt-2 text-xs leading-relaxed text-zinc-600">
+          {t("ai.portfolio.gapSummary")
+            .replace("{missing_title}", String(metadataGaps.missing_title))
+            .replace("{missing_year}", String(metadataGaps.missing_year))
+            .replace("{missing_medium}", String(metadataGaps.missing_medium))
+            .replace("{missing_size}", String(metadataGaps.missing_size))
+            .replace("{no_image}", String(metadataGaps.no_image))
+            .replace("{drafts}", String(metadataGaps.drafts_not_public))}
+        </p>
+      ) : null}
 
       {disabled && !result && (
         <p className="text-xs text-zinc-500">{t("ai.portfolio.empty")}</p>

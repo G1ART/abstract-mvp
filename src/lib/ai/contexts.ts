@@ -2,6 +2,8 @@
 // send to the model. Keep these pure (no DB calls) so they stay easy to test
 // and so routes can audit exactly what text is shipped across the wire.
 
+import type { PortfolioMetadataGaps } from "./types";
+
 export type ProfileContextInput = {
   display_name?: string | null;
   username?: string | null;
@@ -56,6 +58,8 @@ export type PortfolioContextInput = {
   username?: string | null;
   artworks: ArtworkLite[];
   exhibitions: ExhibitionLite[];
+  /** Optional counts computed client-side from live artworks. */
+  metadataGaps?: PortfolioMetadataGaps | null;
 };
 
 export function buildPortfolioCopilotContext(input: PortfolioContextInput): string {
@@ -73,7 +77,11 @@ export function buildPortfolioCopilotContext(input: PortfolioContextInput): stri
     year: e.year ?? "",
     venue: e.venue ?? "",
   }));
-  return `username: ${input.username ?? ""}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}`;
+  const gaps =
+    input.metadataGaps != null && typeof input.metadataGaps === "object"
+      ? `\nmetadataGaps: ${JSON.stringify(input.metadataGaps)}`
+      : "";
+  return `username: ${input.username ?? ""}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}${gaps}`;
 }
 
 export type StudioDigestInput = {
@@ -82,6 +90,10 @@ export type StudioDigestInput = {
   followsDelta7d?: number;
   inquiries7d?: number;
   shortlistEvents7d?: number;
+  /** Works in the studio list that are not yet public (e.g. draft visibility). */
+  draftsNotPublicCount?: number;
+  /** Works missing title, year, medium, size, or primary image (client count). */
+  incompleteMetadataCount?: number;
   recentExhibitions?: Array<{ title: string; year?: string | number }>;
   /**
    * Wave 2: up to 3 of the artist's most recent uploads so the digest
@@ -105,6 +117,8 @@ export function buildStudioDigestContext(input: StudioDigestInput): string {
     `followsDelta7d: ${input.followsDelta7d ?? 0}`,
     `inquiries7d: ${input.inquiries7d ?? 0}`,
     `shortlistEvents7d: ${input.shortlistEvents7d ?? 0}`,
+    `drafts_not_public_count: ${input.draftsNotPublicCount ?? 0}`,
+    `incomplete_metadata_count: ${input.incompleteMetadataCount ?? 0}`,
     `recentExhibitions: ${JSON.stringify((input.recentExhibitions ?? []).slice(0, 5))}`,
     `recentUploads: ${JSON.stringify(
       (input.recentUploads ?? []).slice(0, 3).map((u) => ({

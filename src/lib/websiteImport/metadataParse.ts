@@ -11,7 +11,11 @@ const DIMENSION_IN_RE = /\b(\d+(?:\.\d+)?)\s*["']\s*(?:×|x|X)\s*(\d+(?:\.\d+)?)
  */
 export function parseMetadataLine(text: string | null | undefined): WebsiteImportParsedFields | null {
   if (!text || typeof text !== "string") return null;
-  const raw = text.replace(/\s+/g, " ").trim();
+  const raw = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (raw.length < 2) return null;
 
   const out: WebsiteImportParsedFields = {};
@@ -38,7 +42,7 @@ export function parseMetadataLine(text: string | null | undefined): WebsiteImpor
 
   // Split common separators for title / medium remainder
   const parts = raw
-    .split(/\s*[|,—–-]{1,3}\s*|\s{2,}/)
+    .split(/\s*[|·,，、;]\s*|\s*[|,—–-]{1,3}\s*|\s{2,}/)
     .map((p) => p.trim())
     .filter(Boolean);
 

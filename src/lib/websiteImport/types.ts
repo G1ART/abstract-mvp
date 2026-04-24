@@ -45,4 +45,8 @@ export type WebsiteImportScanMeta = {
   pages_fetched: number;
   pages_queued_cap: number;
   origin_hostname: string;
+  /** Candidates whose caption/metadata parsed to at least one field. */
+  candidates_parsed_count?: number;
+  /** Non-fatal crawl caveats for UI (e.g. near_candidate_cap). */
+  warnings?: string[];
 };

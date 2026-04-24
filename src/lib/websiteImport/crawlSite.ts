@@ -78,6 +78,113 @@ function prioritizeLinks(urls: string[], origin: URL): string[] {
   return scored.map((x) => x.u);
 }
 
+/** Down-rank favicons, sprites, logos, social badges, and tiny layout images. */
+function shouldSkipImageUrl(url: URL, alt: string, wAttr: number, hAttr: number): boolean {
+  const path = `${url.pathname}${url.search}`.toLowerCase();
+  const altL = alt.toLowerCase();
+  if (
+    /favicon|apple-touch|touch-icon|mstile|sprite|1x1|pixel|spacer|blank|placeholder|site-logo|brand-logo|logo-icon|social-share|og-image-for-/i.test(
+      path,
+    )
+  ) {
+    return true;
+  }
+  if (/(^|\/)icons\/|\/static\/.*icon/i.test(path)) return true;
+  if (altL.length > 0 && /\b(logo|icon|avatar|badge|facebook|instagram|twitter|linkedin|pinterest)\b/i.test(altL)) {
+    return true;
+  }
+  if (Number.isFinite(wAttr) && Number.isFinite(hAttr) && wAttr > 0 && hAttr > 0 && wAttr < 32 && hAttr < 32) {
+    return true;
+  }
+  return false;
+}
+
+function firstUrlToken(raw: string): string {
+  return raw.trim().split(/\s+/)[0] ?? "";
+}
+
+function bestSrcsetUrl(srcset: string, pageUrl: string, originHostname: string): string | null {
+  let bestUrl: string | null = null;
+  let bestW = -1;
+  for (const part of srcset.split(",")) {
+    const tok = firstUrlToken(part);
+    if (!tok || tok.startsWith("data:")) continue;
+    const abs = resolveUrl(pageUrl, tok);
+    if (!abs) continue;
+    try {
+      assertFetchableImageUrl(abs, originHostname);
+    } catch {
+      continue;
+    }
+    const m = part.match(/(\d+)\s*w\b/i);
+    const w = m ? parseInt(m[1]!, 10) : 0;
+    if (w > bestW) {
+      bestW = w;
+      bestUrl = abs.toString();
+    }
+  }
+  if (bestUrl) return bestUrl;
+  for (const part of srcset.split(",")) {
+    const tok = firstUrlToken(part);
+    if (!tok || tok.startsWith("data:")) continue;
+    const abs = resolveUrl(pageUrl, tok);
+    if (!abs) continue;
+    try {
+      assertFetchableImageUrl(abs, originHostname);
+      return abs.toString();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function collectImgUrls($: cheerio.CheerioAPI, el: any, pageUrl: string, originHostname: string): string[] {
+  const $el = $(el);
+  const urls: string[] = [];
+  const pushAttr = (raw: string | undefined) => {
+    if (!raw || raw.startsWith("data:")) return;
+    const token = firstUrlToken(raw);
+    if (!token) return;
+    const abs = resolveUrl(pageUrl, token);
+    if (!abs) return;
+    try {
+      assertFetchableImageUrl(abs, originHostname);
+    } catch {
+      return;
+    }
+    urls.push(abs.toString());
+  };
+
+  const srcset = $el.attr("srcset") ?? $el.attr("data-srcset");
+  if (srcset) {
+    const best = bestSrcsetUrl(srcset, pageUrl, originHostname);
+    if (best) urls.push(best);
+  }
+  pushAttr($el.attr("src"));
+  pushAttr($el.attr("data-src"));
+  pushAttr($el.attr("data-lazy-src"));
+  pushAttr($el.attr("data-original"));
+  pushAttr($el.attr("data-image"));
+  pushAttr($el.attr("data-zoom-src"));
+  pushAttr($el.attr("data-deferred"));
+
+  return [...new Set(urls)];
+}
+
+function pickDisplayUrl(urls: string[], alt: string, wAttr: number, hAttr: number): string | null {
+  for (const u of urls) {
+    try {
+      const parsed = new URL(u);
+      if (shouldSkipImageUrl(parsed, alt, wAttr, hAttr)) continue;
+      return u;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
 async function extractCandidatesFromPage(
   html: string,
   pageUrl: string,
@@ -86,25 +193,18 @@ async function extractCandidatesFromPage(
   const $ = cheerio.load(html);
   const found: Omit<WebsiteImportCandidate, "id" | "dhash_hex">[] = [];
 
-  $("img[src]").each((_, el) => {
-    const src = $(el).attr("src");
-    if (!src || src.startsWith("data:")) return;
-    const abs = resolveUrl(pageUrl, src);
-    if (!abs) return;
-    try {
-      assertFetchableImageUrl(abs, originHostname);
-    } catch {
-      return;
-    }
-    const wAttr = parseInt($(el).attr("width") || "", 10);
-    const hAttr = parseInt($(el).attr("height") || "", 10);
-    if (Number.isFinite(wAttr) && Number.isFinite(hAttr) && wAttr > 0 && hAttr > 0 && wAttr < 24 && hAttr < 24) {
-      return;
-    }
-    const alt = ($(el).attr("alt") || "").trim() || null;
-    const $fig = $(el).closest("figure");
+  $("img").each((_, el) => {
+    const $el = $(el);
+    const wAttr = parseInt($el.attr("width") || "", 10);
+    const hAttr = parseInt($el.attr("height") || "", 10);
+    const alt = ($el.attr("alt") || "").trim() || null;
+    const urls = collectImgUrls($, el, pageUrl, originHostname);
+    const absStr = pickDisplayUrl(urls, alt ?? "", wAttr, hAttr);
+    if (!absStr) return;
+
+    const $fig = $el.closest("figure");
     const cap = $fig.find("figcaption").first().text().trim() || null;
-    const $card = $(el).closest("article, .grid-item, .gallery-item, .portfolio-item, li, .sqs-block-content");
+    const $card = $el.closest("article, .grid-item, .gallery-item, .portfolio-item, li, .sqs-block-content");
     const nearby = $card
       .find("h1, h2, h3, h4, .title, .work-title, p")
       .first()
@@ -114,7 +214,7 @@ async function extractCandidatesFromPage(
     const parsed = parseMetadataLine(caption_blob);
     found.push({
       page_url: pageUrl,
-      image_url: abs.toString(),
+      image_url: absStr,
       width: Number.isFinite(wAttr) ? wAttr : undefined,
       height: Number.isFinite(hAttr) ? hAttr : undefined,
       alt_text: alt,
@@ -135,12 +235,18 @@ async function hashCandidateImage(
     const dhash_hex = await dhashFromImageBuffer(buf);
     const sharp = (await import("sharp")).default;
     const meta = await sharp(buf).metadata();
+    const mw = meta.width ?? c.width;
+    const mh = meta.height ?? c.height;
+    if (mw && mh) {
+      if (mw < 48 || mh < 48) return null;
+      if (mw * mh < 2400) return null;
+    }
     return {
       id: randomUUID(),
       ...c,
       dhash_hex,
-      width: meta.width ?? c.width,
-      height: meta.height ?? c.height,
+      width: mw,
+      height: mh,
     };
   } catch {
     return null;
@@ -210,6 +316,16 @@ export async function crawlPortfolioSite(startUrl: URL): Promise<CrawlSiteResult
     if (n % 4 === 0) await new Promise((r) => setTimeout(r, 20));
   }
 
+  const parsedCount = hashed.filter((c) => {
+    const p = c.parsed;
+    if (!p) return false;
+    return !!(p.title || p.year != null || p.medium || p.size || p.story);
+  }).length;
+  const warnings: string[] = [];
+  if (candidatesMap.size >= MAX_CANDIDATES) {
+    warnings.push("near_candidate_cap");
+  }
+
   return {
     ok: true,
     candidates: hashed,
@@ -217,6 +333,8 @@ export async function crawlPortfolioSite(startUrl: URL): Promise<CrawlSiteResult
       pages_fetched: pagesFetched,
       pages_queued_cap: MAX_QUEUE,
       origin_hostname: originHostname,
+      candidates_parsed_count: parsedCount,
+      warnings: warnings.length ? warnings : undefined,
     },
   };
 }

@@ -34,6 +34,7 @@ export type UsageEventKey =
   // Artworks
   | "artwork.uploaded"
   | "import.website_scanned"
+  | "import.website_matched"
   | "import.website_applied"
   // Delegation / acting-as
   | "delegation.acting_as_entered"

@@ -1,18 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
 import { aiErrorKey } from "./aiCardState";
 import { copyToClipboard } from "@/components/ai/AiDraftPanel";
 import type {
-  ProfileSuggestionsResult,
   ProfileSuggestion,
+  ProfileSuggestionCategory,
+  ProfileSuggestionsResult,
+  ProfileViewerNote,
 } from "@/lib/ai/types";
+
+const PROFILE_SUGGESTION_GROUP_ORDER: ProfileSuggestionCategory[] = [
+  "basics",
+  "public_clarity",
+  "discoverability",
+  "other",
+];
+
+function normalizeProfileCategory(
+  c: ProfileSuggestion["category"] | undefined,
+): ProfileSuggestionCategory {
+  if (c === "basics" || c === "public_clarity" || c === "discoverability") return c;
+  return "other";
+}
+
+const PROFILE_CATEGORY_LABEL: Record<ProfileSuggestionCategory, MessageKey> = {
+  basics: "ai.profile.category.basics",
+  public_clarity: "ai.profile.category.public_clarity",
+  discoverability: "ai.profile.category.discoverability",
+  other: "ai.profile.category.other",
+};
+
+const PROFILE_LENS_LABEL: Record<ProfileViewerNote["lens"], MessageKey> = {
+  curator: "ai.profile.viewerLens.curator",
+  collector: "ai.profile.viewerLens.collector",
+  gallery: "ai.profile.viewerLens.gallery",
+};
 
 type Props = {
   completeness: number | null;
@@ -34,14 +64,42 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
   const aiEventId = result?.aiEventId ?? null;
   const errorKey = aiErrorKey(result);
 
-  const filteredSuggestions = (result?.suggestions ?? []).filter((s) => {
-    const text = `${s.title ?? ""} ${s.detail ?? ""}`.toLowerCase();
-    return !(
-      /username|아이디/.test(text) ||
-      /\brole\b|역할/.test(text) ||
-      /\bpublic\b|\bprivate\b|공개|비공개|가시성|visibility/.test(text)
+  const filteredSuggestions = useMemo(() => {
+    return (result?.suggestions ?? []).filter((s) => {
+      const text = `${s.title ?? ""} ${s.detail ?? ""}`.toLowerCase();
+      return !(
+        /username|아이디/.test(text) ||
+        /\brole\b|역할/.test(text) ||
+        /\bpublic\b|\bprivate\b|공개|비공개|가시성|visibility/.test(text)
+      );
+    });
+  }, [result?.suggestions]);
+
+  const suggestionGroups = useMemo(() => {
+    const map = new Map<ProfileSuggestionCategory, ProfileSuggestion[]>();
+    for (const s of filteredSuggestions) {
+      const k = normalizeProfileCategory(s.category);
+      const arr = map.get(k) ?? [];
+      arr.push(s);
+      map.set(k, arr);
+    }
+    return PROFILE_SUGGESTION_GROUP_ORDER.filter((k) => (map.get(k)?.length ?? 0) > 0).map(
+      (k) => [k, map.get(k)!] as const,
     );
-  });
+  }, [filteredSuggestions]);
+
+  const viewerNotes = useMemo(() => {
+    const raw = result?.viewerNotes ?? [];
+    const allowed = new Set(["curator", "collector", "gallery"]);
+    const out: ProfileViewerNote[] = [];
+    for (const n of raw) {
+      if (!n || typeof n.note !== "string" || !n.note.trim()) continue;
+      if (!allowed.has(n.lens)) continue;
+      out.push({ lens: n.lens, note: n.note.trim() });
+      if (out.length >= 3) break;
+    }
+    return out;
+  }, [result?.viewerNotes]);
 
   return (
     <SectionFrame padding="md" noMargin>
@@ -105,13 +163,37 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
             </div>
           )}
           {filteredSuggestions.length > 0 && (
-            <div className="mt-4">
+            <div className="mt-4 space-y-4">
               <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                 {t("ai.profile.suggestionsTitle")}
               </p>
+              {suggestionGroups.map(([cat, items]) => (
+                <div key={cat}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">
+                    {t(PROFILE_CATEGORY_LABEL[cat])}
+                  </p>
+                  <ul className="mt-2 flex flex-col gap-2">
+                    {items.map((s) => (
+                      <SuggestionRow key={s.id} suggestion={s} aiEventId={aiEventId} />
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {viewerNotes.length > 0 && (
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                {t("ai.profile.viewerNotesTitle")}
+              </p>
               <ul className="mt-2 flex flex-col gap-2">
-                {filteredSuggestions.map((s) => (
-                  <SuggestionRow key={s.id} suggestion={s} aiEventId={aiEventId} />
+                {viewerNotes.map((n, i) => (
+                  <li key={`${n.lens}-${i}`} className="text-xs leading-relaxed text-zinc-700">
+                    <span className="font-medium text-zinc-500">
+                      {t(PROFILE_LENS_LABEL[n.lens])}
+                    </span>{" "}
+                    {n.note}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -206,6 +288,7 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
             </div>
           )}
           {filteredSuggestions.length === 0 &&
+            viewerNotes.length === 0 &&
             result.missing?.length === 0 &&
             (result.bioDrafts ?? []).length === 0 &&
             (result.headlineDrafts ?? []).length === 0 &&

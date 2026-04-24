@@ -32,6 +32,7 @@ export const USAGE_KEYS = {
   // Artwork
   ARTWORK_UPLOADED: "artwork.uploaded",
   IMPORT_WEBSITE_SCANNED: "import.website_scanned",
+  IMPORT_WEBSITE_MATCHED: "import.website_matched",
   IMPORT_WEBSITE_APPLIED: "import.website_applied",
   // Delegation
   DELEGATION_ACTING_AS_ENTERED: "delegation.acting_as_entered",

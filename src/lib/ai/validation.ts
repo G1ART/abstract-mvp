@@ -4,7 +4,7 @@
 // `{ ok: true, value }` on success or `{ ok: false, reason }` so the route
 // can return a 400 with a safe error contract.
 
-import type { AiLocale } from "./types";
+import type { AiLocale, PortfolioMetadataGaps } from "./types";
 
 export type ValidationError = {
   ok: false;
@@ -161,6 +161,33 @@ function collectExhibitions(arr: unknown, cap: number): ExhibitionLiteParsed[] {
   return out;
 }
 
+function clampStudioCount(v: unknown): number {
+  const n = numberOrNull(v);
+  if (n == null) return 0;
+  return Math.min(500, Math.max(0, Math.floor(n)));
+}
+
+const EMPTY_PORTFOLIO_GAPS: PortfolioMetadataGaps = {
+  missing_title: 0,
+  missing_year: 0,
+  missing_medium: 0,
+  missing_size: 0,
+  no_image: 0,
+  drafts_not_public: 0,
+};
+
+function parsePortfolioMetadataGaps(v: unknown): PortfolioMetadataGaps {
+  if (!isRecord(v)) return { ...EMPTY_PORTFOLIO_GAPS };
+  return {
+    missing_title: clampStudioCount(v.missing_title),
+    missing_year: clampStudioCount(v.missing_year),
+    missing_medium: clampStudioCount(v.missing_medium),
+    missing_size: clampStudioCount(v.missing_size),
+    no_image: clampStudioCount(v.no_image),
+    drafts_not_public: clampStudioCount(v.drafts_not_public),
+  };
+}
+
 export function parseProfileBody(raw: unknown): ValidationResult<{
   display_name: string | null;
   username: string | null;
@@ -200,15 +227,18 @@ export function parsePortfolioBody(raw: unknown): ValidationResult<{
   username: string | null;
   artworks: ArtworkLiteParsed[];
   exhibitions: ExhibitionLiteParsed[];
+  metadataGaps: PortfolioMetadataGaps;
 }> {
   if (!isRecord(raw) || !isRecord(raw.portfolio)) return { ok: false, reason: "missing_portfolio" };
   const p = raw.portfolio;
+  const gaps = parsePortfolioMetadataGaps(isRecord(p.metadataGaps) ? p.metadataGaps : {});
   return {
     ok: true,
     value: {
       username: trimOrNull(p.username, 64),
       artworks: collectArtworks(p.artworks, LIMITS.artworksMax),
       exhibitions: collectExhibitions(p.exhibitions, LIMITS.exhibitionsMax),
+      metadataGaps: gaps,
     },
   };
 }
@@ -219,6 +249,8 @@ export function parseDigestBody(raw: unknown): ValidationResult<{
   inquiries7d: number;
   followsDelta7d: number;
   shortlistEvents7d: number;
+  draftsNotPublicCount: number;
+  incompleteMetadataCount: number;
   recentExhibitions: Array<{ title: string; year?: string | number }>;
   recentUploads: Array<{ title: string; createdAt?: string }>;
   username: string | null;
@@ -252,6 +284,8 @@ export function parseDigestBody(raw: unknown): ValidationResult<{
       inquiries7d: numberOrNull(d.inquiries7d) ?? 0,
       followsDelta7d: numberOrNull(d.followsDelta7d) ?? 0,
       shortlistEvents7d: numberOrNull(d.shortlistEvents7d) ?? 0,
+      draftsNotPublicCount: clampStudioCount(d.draftsNotPublicCount),
+      incompleteMetadataCount: clampStudioCount(d.incompleteMetadataCount),
       recentExhibitions: recent,
       recentUploads: uploads,
       username: trimOrNull(d.username, 64),

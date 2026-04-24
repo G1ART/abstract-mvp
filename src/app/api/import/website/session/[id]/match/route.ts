@@ -5,6 +5,8 @@ import { buildMatchRow } from "@/lib/websiteImport/matchEngine";
 import { dhashFromImageBuffer } from "@/lib/websiteImport/dhash";
 import { publicArtworkObjectUrl } from "@/lib/websiteImport/storagePublicUrl";
 import { UPLOAD_WEBSITE_MATCH_MAX_ARTWORKS } from "@/lib/upload/limits";
+import { recordUsageEvent } from "@/lib/metering/recordUsageEvent";
+import { USAGE_KEYS } from "@/lib/metering/usageKeys";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -146,6 +148,24 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
+
+  const high = rows.filter((r) => r.match_status === "high_confidence").length;
+  const review = rows.filter((r) => r.match_status === "review_needed").length;
+  const noMatch = rows.filter((r) => r.match_status === "no_match").length;
+  void recordUsageEvent(
+    {
+      key: USAGE_KEYS.IMPORT_WEBSITE_MATCHED,
+      userId: auth.userId,
+      metadata: {
+        session_id: id,
+        high,
+        review,
+        no_match: noMatch,
+        batch_artworks: artworkIds.length,
+      },
+    },
+    { client: auth.supabase, dualWriteBeta: false },
+  );
 
   return NextResponse.json({ ok: true, rows, merged_count: merged.length });
 }
