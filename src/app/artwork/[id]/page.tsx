@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
@@ -244,6 +244,15 @@ function ArtworkDetailContent() {
   const showArtistInquiryBlock =
     Boolean(userId && artwork && (artwork.pricing_mode === "inquire" || artwork.is_price_public === false)) &&
     canReplyToInquiriesFromBackend === true;
+
+  /** True once the artist (or delegate) has sent any reply — inquirer must not see artist-only reply UI before this. */
+  const artistHasRepliedToMyInquiry = useMemo(() => {
+    if (!myPriceInquiry || !userId) return false;
+    if (myPriceInquiry.inquirer_id !== userId) return false;
+    if ((myPriceInquiry.artist_reply ?? "").trim().length > 0) return true;
+    if (myPriceInquiry.replied_at) return true;
+    return myInquiryMessages.some((m) => m.sender_id !== userId);
+  }, [myPriceInquiry, userId, myInquiryMessages]);
 
   useEffect(() => {
     if (!id || !showPriceInquiryBlock) return;
@@ -637,23 +646,27 @@ function ArtworkDetailContent() {
                         {successMessage && <p className="mt-1 text-sm text-green-600">{successMessage}</p>}
                       </div>
                     )}
-                    <div className="mt-2">
-                      <textarea
-                        value={inquirerReplyText}
-                        onChange={(e) => setInquirerReplyText(e.target.value)}
-                        placeholder={t("priceInquiry.replyPlaceholder")}
-                        rows={2}
-                        className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
-                      />
-                      <button
-                        type="button"
-                        disabled={!inquirerReplyText.trim() || inquirerReplying}
-                        onClick={handleInquirerFollowUp}
-                        className="mt-1 rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
-                      >
-                        {inquirerReplying ? "..." : t("priceInquiry.reply")}
-                      </button>
-                    </div>
+                    {!artistHasRepliedToMyInquiry ? (
+                      <p className="mt-2 text-xs text-zinc-500">{t("priceInquiry.waitingForArtistReply")}</p>
+                    ) : (
+                      <div className="mt-2">
+                        <textarea
+                          value={inquirerReplyText}
+                          onChange={(e) => setInquirerReplyText(e.target.value)}
+                          placeholder={t("priceInquiry.followUpToArtistPlaceholder")}
+                          rows={2}
+                          className="w-full rounded border border-zinc-200 px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          disabled={!inquirerReplyText.trim() || inquirerReplying}
+                          onClick={handleInquirerFollowUp}
+                          className="mt-1 rounded bg-zinc-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-900 disabled:opacity-50"
+                        >
+                          {inquirerReplying ? "..." : t("priceInquiry.followUpToArtistSend")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : showInquiryForm ? (
                   <div className="space-y-2">

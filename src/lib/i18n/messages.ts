@@ -34,6 +34,10 @@ export const messages = {
     "priceInquiry.empty": "No price inquiries yet.",
     "priceInquiry.reply": "Reply",
     "priceInquiry.replyPlaceholder": "Your reply to the inquirer…",
+    "priceInquiry.waitingForArtistReply":
+      "Only the artist (or their delegate) can reply here. You’ll be able to send a follow-up message after they respond.",
+    "priceInquiry.followUpToArtistPlaceholder": "Optional follow-up message to the artist…",
+    "priceInquiry.followUpToArtistSend": "Send",
     "priceInquiry.searchPlaceholder": "Search by artwork title or @username…",
     "priceInquiry.filterAll": "All states",
     "priceInquiry.filterNew": "New",
@@ -1307,6 +1311,10 @@ export const messages = {
     "priceInquiry.empty": "아직 가격 문의가 없습니다.",
     "priceInquiry.reply": "답변",
     "priceInquiry.replyPlaceholder": "문의자에게 보낼 답변…",
+    "priceInquiry.waitingForArtistReply":
+      "이 스레드에 답할 수 있는 건 작가(또는 위임받은 계정)뿐이에요. 작가가 답하면 그다음에 작가에게 보낼 후속 메시지를 쓸 수 있어요.",
+    "priceInquiry.followUpToArtistPlaceholder": "작가에게 보낼 추가 메시지(선택)…",
+    "priceInquiry.followUpToArtistSend": "보내기",
     "priceInquiry.searchPlaceholder": "작품 제목 또는 @아이디로 검색…",
     "priceInquiry.filterAll": "전체 상태",
     "priceInquiry.filterNew": "신규",
