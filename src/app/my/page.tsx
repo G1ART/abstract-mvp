@@ -51,7 +51,6 @@ import { computeStudioNextActions } from "@/lib/studio/priority";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { hasAnyRole, normalizeRoleList } from "@/lib/identity/roles";
-import type { PersonaTab } from "@/lib/provenance/personaTabs";
 
 type Profile = FullProfile;
 
@@ -74,7 +73,7 @@ export default function MyPage() {
   const [, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  const initialTab: PersonaTab = searchParams.get("tab") === "exhibitions" ? "exhibitions" : "all";
+  const initialTabParam = searchParams.get("tab");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -466,7 +465,7 @@ export default function MyPage() {
             profile={profile}
             artworks={artworks}
             exhibitions={exhibitions}
-            initialTab={initialTab}
+            initialTabParam={initialTabParam}
             canSaveTabOrder={!actingAsProfileId}
             onRefresh={fetchData}
             onToast={setToast}

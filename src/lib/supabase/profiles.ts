@@ -47,6 +47,8 @@ export type ProfilePublic = {
   main_role: string | null;
   roles: string[] | null;
   is_public?: boolean;
+  /** Subset of profile_details exposed on public username lookup (portfolio tabs only). */
+  studio_portfolio?: Record<string, unknown> | null;
 };
 
 export async function lookupPublicProfileByUsername(username: string): Promise<{
@@ -72,6 +74,7 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     return { data: null, isPrivate, notFound, error: null };
   }
 
+  const sp = raw?.studio_portfolio;
   const parsed: ProfilePublic = {
     id: String(raw?.id ?? ""),
     username: raw?.username != null ? String(raw.username) : null,
@@ -83,6 +86,8 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     main_role: raw?.main_role != null ? String(raw.main_role) : null,
     roles: Array.isArray(raw?.roles) ? (raw.roles as string[]) : null,
     is_public: raw?.is_public === true,
+    studio_portfolio:
+      sp != null && typeof sp === "object" && !Array.isArray(sp) ? (sp as Record<string, unknown>) : null,
   };
 
   return { data: parsed, isPrivate: false, notFound: false, error: null };
@@ -182,6 +187,8 @@ export async function getMyProfileAsPublic(): Promise<{
   const { data, error } = await getMyProfile();
   if (error || !data) return { data: null, error };
   const row = data as Record<string, unknown>;
+  const details = row?.profile_details as Record<string, unknown> | null | undefined;
+  const sp = details?.studio_portfolio;
   const parsed: ProfilePublic = {
     id: String(row?.id ?? ""),
     username: row?.username != null ? String(row.username) : null,
@@ -193,6 +200,8 @@ export async function getMyProfileAsPublic(): Promise<{
     main_role: row?.main_role != null ? String(row.main_role) : null,
     roles: Array.isArray(row?.roles) ? (row.roles as string[]) : null,
     is_public: row?.is_public === true,
+    studio_portfolio:
+      sp != null && typeof sp === "object" && !Array.isArray(sp) ? (sp as Record<string, unknown>) : null,
   };
   return { data: parsed, error: null };
 }

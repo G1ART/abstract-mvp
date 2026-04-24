@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useT } from "@/lib/i18n/useT";
@@ -14,15 +14,23 @@ import {
 import {
   filterArtworksByPersona,
   getArtworksByAllBuckets,
-  getOrderedPersonaTabs,
-  getPersonaCounts,
   type PersonaTab,
-  type PersonaTabItem,
 } from "@/lib/provenance/personaTabs";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import type { ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { EmptyState } from "@/components/ds/EmptyState";
+import { StudioPortfolioManageModal } from "@/components/studio/StudioPortfolioManageModal";
+import {
+  assignArtworksToCustomTab,
+  buildSavePayload,
+  buildStudioStripTabs,
+  type ActiveStudioTab,
+  parseActiveTabParam,
+  parseStudioPortfolio,
+  type StudioPortfolioV1,
+  type StudioStripTab,
+} from "@/lib/studio/studioPortfolioConfig";
 
 type ProfileShape = {
   id: string;
@@ -36,63 +44,129 @@ type Props = {
   profile: ProfileShape;
   artworks: ArtworkWithLikes[];
   exhibitions: ExhibitionWithCredits[];
-  initialTab?: PersonaTab;
+  /** Raw `?tab=` value (e.g. `exhibitions`, `all`, `CREATED`, `custom-<uuid>`) */
+  initialTabParam?: string | null;
   canSaveTabOrder: boolean;
   onRefresh: () => Promise<void> | void;
   onToast: (msg: string) => void;
 };
 
-const KNOWN_TABS: ReadonlySet<PersonaTab> = new Set<PersonaTab>([
-  "all",
-  "exhibitions",
-  "CREATED",
-  "OWNS",
-  "INVENTORY",
-  "CURATED",
-]);
+function isActiveTab(row: StudioStripTab, active: ActiveStudioTab): boolean {
+  if (active.kind === "persona") return row.kind === "persona" && row.personaTab === active.tab;
+  return row.kind === "custom" && row.customId === active.id;
+}
 
 /**
  * Persona-aware portfolio panel used on `/my`. Bundles the persona tab row,
- * artwork/exhibition grids, bulk delete, and tab reorder so `/my/page.tsx`
- * can stay close to pure data orchestration.
+ * artwork/exhibition grids, bulk delete, tab reorder, custom tabs, and labels.
  */
 export function StudioPortfolioPanel({
   profile,
   artworks,
   exhibitions,
-  initialTab = "all",
+  initialTabParam = null,
   canSaveTabOrder,
   onRefresh,
   onToast,
 }: Props) {
   const { t } = useT();
-  const [personaTab, setPersonaTab] = useState<PersonaTab>(initialTab);
+  const [active, setActive] = useState<ActiveStudioTab>({ kind: "persona", tab: "all" });
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [tabReorderMode, setTabReorderMode] = useState(false);
-  const [tabOrderDraft, setTabOrderDraft] = useState<PersonaTabItem[]>([]);
+  const [stripDraft, setStripDraft] = useState<StudioStripTab[]>([]);
   const [tabOrderSaving, setTabOrderSaving] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [moveSaving, setMoveSaving] = useState(false);
 
   const roles = (profile.roles ?? []) as string[];
+  const portfolio = useMemo(
+    () => parseStudioPortfolio(profile.profile_details ?? null),
+    [profile.profile_details]
+  );
+
+  const defaultTabLabels: Record<PersonaTab, string> = useMemo(
+    () => ({
+      all: t("profile.personaAll"),
+      exhibitions: t("exhibition.myExhibitions"),
+      CREATED: t("profile.personaWork"),
+      OWNS: t("profile.personaCollected"),
+      INVENTORY: t("profile.personaGallery"),
+      CURATED: t("profile.personaCurated"),
+    }),
+    [t]
+  );
+
+  const stripRows = useMemo(
+    () =>
+      buildStudioStripTabs({
+        profileId: profile.id,
+        artworks,
+        exhibitionsCount: exhibitions.length,
+        mainRole: profile.main_role ?? null,
+        roles,
+        portfolio,
+        rootProfileDetails: profile.profile_details ?? null,
+        defaultTabLabels,
+      }),
+    [
+      profile.id,
+      profile.main_role,
+      profile.profile_details,
+      artworks,
+      exhibitions.length,
+      roles,
+      portfolio,
+      defaultTabLabels,
+    ]
+  );
+
+  useEffect(() => {
+    const p = parseActiveTabParam(initialTabParam);
+    if (p) setActive(p);
+  }, [initialTabParam]);
+
+  useEffect(() => {
+    if (active.kind === "custom") {
+      const ok = stripRows.some((r) => r.kind === "custom" && r.customId === active.id);
+      if (!ok) setActive({ kind: "persona", tab: "all" });
+    }
+  }, [active, stripRows]);
+
   const allBuckets = useMemo(
     () => getArtworksByAllBuckets(artworks, profile.id),
     [artworks, profile.id]
   );
+
   const displayedArtworks = useMemo<ArtworkWithLikes[]>(() => {
-    if (personaTab === "exhibitions") return [];
-    if (personaTab === "all")
-      return [
-        ...allBuckets.created,
-        ...allBuckets.curated,
-        ...allBuckets.exhibited,
-        ...allBuckets.owns,
-      ];
-    return filterArtworksByPersona(artworks, profile.id, personaTab);
-  }, [artworks, profile.id, personaTab, allBuckets]);
+    if (active.kind === "persona") {
+      const personaTab = active.tab;
+      if (personaTab === "exhibitions") return [];
+      if (personaTab === "all")
+        return [
+          ...allBuckets.created,
+          ...allBuckets.curated,
+          ...allBuckets.exhibited,
+          ...allBuckets.owns,
+        ];
+      return filterArtworksByPersona(artworks, profile.id, personaTab);
+    }
+    const tab = (portfolio.custom_tabs ?? []).find((c) => c.id === active.id);
+    if (!tab) return [];
+    const byId = new Map(artworks.map((a) => [a.id, a]));
+    const out: ArtworkWithLikes[] = [];
+    for (const id of tab.artwork_ids) {
+      const a = byId.get(id);
+      if (a) out.push(a);
+    }
+    return out;
+  }, [active, allBuckets, artworks, profile.id, portfolio.custom_tabs]);
 
   const showExhibitionsTab = exhibitions.length > 0;
+
+  const activePersonaTab: PersonaTab | null = active.kind === "persona" ? active.tab : null;
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -139,48 +213,84 @@ export function StudioPortfolioPanel({
     }
   }
 
-  const counts = getPersonaCounts(artworks, profile.id);
-  const rawSaved = profile.profile_details?.tab_order;
-  const savedOrder = Array.isArray(rawSaved)
-    ? (rawSaved.filter(
-        (x): x is PersonaTab => typeof x === "string" && KNOWN_TABS.has(x as PersonaTab)
-      ) as PersonaTab[])
-    : undefined;
-  const orderedTabs = getOrderedPersonaTabs(
-    counts,
-    exhibitions.length,
-    { main_role: profile.main_role ?? null, roles },
-    savedOrder
-  );
-  const tabLabels: Record<PersonaTab, string> = {
-    all: t("profile.personaAll"),
-    exhibitions: t("exhibition.myExhibitions"),
-    CREATED: t("profile.personaWork"),
-    OWNS: t("profile.personaCollected"),
-    INVENTORY: t("profile.personaGallery"),
-    CURATED: t("profile.personaCurated"),
-  };
-
   const hasAnyContent = artworks.length > 0 || showExhibitionsTab;
 
+  const sectionTitle = useMemo(() => {
+    if (active.kind === "persona" && active.tab === "exhibitions") return t("exhibition.myExhibitions");
+    if (active.kind === "custom") {
+      const row = stripRows.find((r) => r.kind === "custom" && r.customId === active.id);
+      return row?.label ?? t("me.myArtworks");
+    }
+    return t("me.myArtworks");
+  }, [active, stripRows, t]);
+
+  const persistPortfolio = useCallback(
+    async (next: StudioPortfolioV1) => {
+      const { error: err } = await updateMyProfileDetails(buildSavePayload(next), null);
+      if (err) {
+        onToast(t("common.tryAgain"));
+        return false;
+      }
+      await onRefresh();
+      return true;
+    },
+    [onRefresh, onToast, t]
+  );
+
+  const handleMoveToCustomTab = useCallback(
+    async (targetCustomId: string | "") => {
+      const ids = Array.from(selectedIds);
+      if (ids.length === 0) return;
+      setMoveSaving(true);
+      const next = assignArtworksToCustomTab({
+        portfolio,
+        artworkIds: ids,
+        targetCustomId: targetCustomId || null,
+      });
+      const ok = await persistPortfolio(next);
+      setMoveSaving(false);
+      if (ok) {
+        clearSelection();
+        onToast(t("studio.portfolio.moveToTabSaved"));
+      }
+    },
+    [portfolio, selectedIds, persistPortfolio, onToast, t]
+  );
+
+  const visiblePersonaTabs = useMemo(
+    () => stripRows.filter((r) => r.kind === "persona").map((r) => r.personaTab!),
+    [stripRows]
+  );
+
   return (
-    <section aria-label={t("studio.portfolio.title")} className="mb-6">
+    <section
+      aria-label={t("studio.portfolio.title")}
+      className="mb-6"
+      data-tour="studio-portfolio-tabs"
+    >
       {hasAnyContent && (
         <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-2">
-          {tabReorderMode
-            ? renderReorder()
-            : renderTabs()}
+          {tabReorderMode ? renderReorder() : renderTabs()}
         </div>
       )}
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900">
-          {personaTab === "exhibitions" ? t("exhibition.myExhibitions") : t("me.myArtworks")}
-        </h2>
-        {personaTab !== "exhibitions" && artworks.length > 0 && renderBulkControls()}
+        <h2 className="text-lg font-semibold text-zinc-900">{sectionTitle}</h2>
+        {activePersonaTab !== "exhibitions" && artworks.length > 0 && renderBulkControls()}
       </div>
 
       {renderBody()}
+
+      {canSaveTabOrder && (
+        <StudioPortfolioManageModal
+          open={manageOpen}
+          onClose={() => setManageOpen(false)}
+          portfolio={portfolio}
+          visiblePersonaTabs={visiblePersonaTabs}
+          defaultTabLabels={defaultTabLabels}
+          onSave={persistPortfolio}
+        />
+      )}
 
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -214,50 +324,64 @@ export function StudioPortfolioPanel({
   function renderTabs() {
     return (
       <>
-        {orderedTabs.map(({ tab, count }) => (
+        {stripRows.map((row) => (
           <button
-            key={tab}
+            key={row.key}
             type="button"
-            onClick={() => setPersonaTab(tab)}
+            onClick={() => {
+              if (row.kind === "persona") setActive({ kind: "persona", tab: row.personaTab! });
+              else setActive({ kind: "custom", id: row.customId! });
+            }}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              personaTab === tab
+              isActiveTab(row, active)
                 ? "bg-zinc-900 text-white"
                 : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
             }`}
           >
-            {tabLabels[tab]} ({count})
+            {row.label} ({row.count})
           </button>
         ))}
         {canSaveTabOrder && hasAnyContent && (
-          <button
-            type="button"
-            onClick={() => {
-              setTabOrderDraft(orderedTabs);
-              setTabReorderMode(true);
-            }}
-            className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
-            title={t("my.reorderTabs")}
-          >
-            ↕
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setStripDraft(stripRows);
+                setTabReorderMode(true);
+              }}
+              className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
+              title={t("my.reorderTabs")}
+            >
+              ↕
+            </button>
+            <button
+              type="button"
+              onClick={() => setManageOpen(true)}
+              className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-100"
+              title={t("studio.portfolio.manageTabs")}
+              aria-label={t("studio.portfolio.manageTabs")}
+            >
+              ⚙
+            </button>
+          </>
         )}
       </>
     );
   }
 
   function renderReorder() {
-    const list = tabOrderDraft.length > 0 ? tabOrderDraft : orderedTabs;
+    const list = stripDraft.length > 0 ? stripDraft : stripRows;
     return (
       <>
-        {list.map(({ tab, count }, idx) => (
-          <span key={tab} className="flex items-center gap-0.5">
+        {list.map((row, idx) => (
+          <span key={row.key} className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => {
                 if (idx <= 0) return;
                 const next = [...list];
                 [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
-                setTabOrderDraft(next);
+                setStripDraft(next);
               }}
               className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
               disabled={idx === 0}
@@ -271,7 +395,7 @@ export function StudioPortfolioPanel({
                 if (idx >= list.length - 1) return;
                 const next = [...list];
                 [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
-                setTabOrderDraft(next);
+                setStripDraft(next);
               }}
               className="rounded border border-zinc-300 p-0.5 text-zinc-500 hover:bg-zinc-100 disabled:opacity-40"
               disabled={idx === list.length - 1}
@@ -280,7 +404,7 @@ export function StudioPortfolioPanel({
               ↓
             </button>
             <span className="rounded bg-zinc-100 px-2 py-1 text-sm text-zinc-700">
-              {tabLabels[tab]} ({count})
+              {row.label} ({row.count})
             </span>
           </span>
         ))}
@@ -288,19 +412,16 @@ export function StudioPortfolioPanel({
           type="button"
           disabled={tabOrderSaving}
           onClick={async () => {
-            const order = (tabOrderDraft.length > 0 ? tabOrderDraft : orderedTabs).map(
-              (o) => o.tab
+            const draft = stripDraft.length > 0 ? stripDraft : stripRows;
+            const tab_strip_order = draft.map((r) =>
+              r.kind === "persona" ? r.personaTab! : `c:${r.customId!}`
             );
             setTabOrderSaving(true);
-            const { error: err } = await updateMyProfileDetails({ tab_order: order }, null);
+            const ok = await persistPortfolio({ ...portfolio, tab_strip_order });
             setTabOrderSaving(false);
-            if (err) {
-              onToast(t("common.tryAgain"));
-              return;
-            }
+            if (!ok) return;
             setTabReorderMode(false);
-            setTabOrderDraft([]);
-            await onRefresh();
+            setStripDraft([]);
           }}
           className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
         >
@@ -310,7 +431,7 @@ export function StudioPortfolioPanel({
           type="button"
           onClick={() => {
             setTabReorderMode(false);
-            setTabOrderDraft([]);
+            setStripDraft([]);
           }}
           className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
         >
@@ -321,6 +442,7 @@ export function StudioPortfolioPanel({
   }
 
   function renderBulkControls() {
+    const customTabs = portfolio.custom_tabs ?? [];
     if (!selectMode) {
       return (
         <button
@@ -333,7 +455,7 @@ export function StudioPortfolioPanel({
       );
     }
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={selectAll}
@@ -350,6 +472,30 @@ export function StudioPortfolioPanel({
         >
           {t("my.bulkSelect.clear")}
         </button>
+        {canSaveTabOrder && customTabs.length > 0 && (
+          <label className="flex items-center gap-1 text-sm text-zinc-700">
+            <span className="hidden sm:inline">{t("studio.portfolio.moveToTab")}</span>
+            <select
+              disabled={selectedIds.size === 0 || moveSaving}
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v === "__noop") return;
+                void handleMoveToCustomTab(v);
+              }}
+              className="rounded-lg border border-zinc-300 bg-white px-2 py-1 text-sm"
+            >
+              <option value="__noop">{t("studio.portfolio.moveToTabPlaceholder")}</option>
+              <option value="">{t("studio.portfolio.clearCustomTab")}</option>
+              {customTabs.map((ct) => (
+                <option key={ct.id} value={ct.id}>
+                  {ct.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           type="button"
           disabled={selectedIds.size === 0 || deleting}
@@ -373,7 +519,7 @@ export function StudioPortfolioPanel({
   }
 
   function renderBody() {
-    if (personaTab === "exhibitions") {
+    if (active.kind === "persona" && active.tab === "exhibitions") {
       return (
         <ul className="space-y-2">
           {exhibitions.map((ex) => {
@@ -416,7 +562,7 @@ export function StudioPortfolioPanel({
       );
     }
 
-    if (personaTab === "all") {
+    if (active.kind === "persona" && active.tab === "all") {
       const { created, curated, exhibited, owns } = allBuckets;
       const hasAny = created.length + curated.length + exhibited.length + owns.length > 0;
       if (!hasAny) {

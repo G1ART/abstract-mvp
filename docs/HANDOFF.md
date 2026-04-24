@@ -1,6 +1,20 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-26
+Last updated: 2026-04-24
+
+## 2026-04-24 — Studio portfolio tabs + studio tour step
+
+### 요약
+
+- **공개 작품 영역**: `profile_details.studio_portfolio`에 탭 순서·기본 탭 이름/공개 여부·커스텀 탭·작품 배치 저장. `/my`와 공개 프로필(`/u/...`)에 반영.
+- **RPC**: `lookup_profile_by_username`이 `studio_portfolio`만 추가 반환 (`supabase/migrations/20260428000000_lookup_profile_studio_portfolio.sql`). 배포 시 Supabase에 마이그레이션 적용 필요.
+- **스튜디오 투어**: `studio.main` 버전 **2**로 상향. 새 스텝 `portfolio-tabs` — 앵커 `data-tour="studio-portfolio-tabs"`(`StudioPortfolioPanel` 루트 `section`). ↕ 순서, ⚙ 탭 설정·커스텀 탭, 선택 후 탭으로 이동 안내.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+
+---
 
 ## 2026-04-26 — Overlay Guided Tour System
 
@@ -68,7 +82,7 @@ supabase/migrations/
 
 | Tour id | 페이지 | 스텝 | 핵심 목적 |
 |---|---|---|---|
-| `studio.main` | `/my` | 7 | Studio hero / Next steps / Operating grid / Workshop / Boards / Exhibitions / Public works |
+| `studio.main` | `/my` | 8 | Studio hero / Next steps / Operating grid / Workshop / Boards / Exhibitions / Public works / Portfolio tabs |
 | `upload.main` | `/upload/*` | 5 | Tabs 개요 / Single / Bulk / Exhibition post / Intent 선택 |
 | `exhibition.create` | `/my/exhibitions/new` | 4 | Post purpose / Dates / Status / Curator·Host |
 | `people.main` | `/people` | 4 | Search / Discovery lanes / Role filters / Card actions |
@@ -85,6 +99,7 @@ supabase/migrations/
 | `studio-next-steps` | `StudioNextStepsRail` (기존) |
 | `studio-operating-grid` / `studio-card-*` | `StudioOperationGrid` (기존) |
 | `studio-public-works` | `/my/page.tsx` (기존) |
+| `studio-portfolio-tabs` | `StudioPortfolioPanel.tsx` 루트 `section` (공개 작품·탭 영역) |
 | `upload-tabs` | `upload/layout.tsx` nav |
 | `upload-tab-single` / `upload-tab-bulk` / `upload-tab-exhibition` | 각 탭 `<Link>` |
 | `upload-intent-selector` | `/upload` intent step wrapper |

@@ -16,7 +16,7 @@ import { UserProfileContent } from "@/components/UserProfileContent";
 
 type Props = {
   params: Promise<{ username: string }>;
-  searchParams: Promise<{ mode?: string }>;
+  searchParams: Promise<{ mode?: string; tab?: string | string[] }>;
 };
 
 function normalizeUsername(u: string | null): string {
@@ -25,7 +25,11 @@ function normalizeUsername(u: string | null): string {
 
 export default async function ProfilePage({ params, searchParams }: Props) {
   const { username: paramUsername } = await params;
-  const { mode } = await searchParams;
+  const sp = await searchParams;
+  const mode = typeof sp.mode === "string" ? sp.mode : Array.isArray(sp.mode) ? sp.mode[0] : undefined;
+  const rawTab = sp.tab;
+  const tabParam =
+    typeof rawTab === "string" ? rawTab : Array.isArray(rawTab) ? rawTab[0] : undefined;
   const normalizedParam = paramUsername.trim().toLowerCase();
   const locale = await getServerLocale();
   const t = getT(locale);
@@ -96,6 +100,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
       artworks={orderedArtworks ?? []}
       exhibitions={(exhibitions ?? []) as ExhibitionWithCredits[]}
       initialReorderMode={mode === "reorder"}
+      initialTabParam={tabParam ?? null}
     />
   );
 }

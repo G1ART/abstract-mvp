@@ -33,15 +33,23 @@ const PROFILE_UPDATED_KEY = "profile_updated";
 
 import {
   filterArtworksByPersona,
-  getPersonaCounts,
   type PersonaTab,
 } from "@/lib/provenance/personaTabs";
+import {
+  type ActiveStudioTab,
+  buildStudioStripTabs,
+  filterStripForPublicView,
+  parseActiveTabParam,
+  parseStudioPortfolio,
+} from "@/lib/studio/studioPortfolioConfig";
 
 type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
   exhibitions?: ExhibitionWithCredits[];
   initialReorderMode?: boolean;
+  /** Raw `?tab=` (e.g. `exhibitions`, `all`, `CREATED`, `custom-<uuid>`) */
+  initialTabParam?: string | null;
 };
 
 function getAvatarUrl(avatarUrl: string | null): string | null {
@@ -50,7 +58,13 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
   return getArtworkImageUrl(avatarUrl, "avatar");
 }
 
-export function UserProfileContent({ profile, artworks, exhibitions = [], initialReorderMode = false }: Props) {
+export function UserProfileContent({
+  profile,
+  artworks,
+  exhibitions = [],
+  initialReorderMode = false,
+  initialTabParam = null,
+}: Props) {
   const { t } = useT();
   const router = useRouter();
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -58,7 +72,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
   const [isOwner, setIsOwner] = useState(false);
   const [viewerId, setViewerId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
-  const [personaTab, setPersonaTab] = useState<PersonaTab>("all");
+  const [active, setActive] = useState<ActiveStudioTab>({ kind: "persona", tab: "all" });
   const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
@@ -69,10 +83,15 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
   }, [artworks]);
 
   useEffect(() => {
-    if (exhibitions.length > 0 && artworks.length === 0) {
-      setPersonaTab("exhibitions");
+    const fromUrl = parseActiveTabParam(initialTabParam);
+    if (fromUrl) {
+      setActive(fromUrl);
+      return;
     }
-  }, []);
+    if (exhibitions.length > 0 && artworks.length === 0) {
+      setActive({ kind: "persona", tab: "exhibitions" });
+    }
+  }, [initialTabParam, exhibitions.length, artworks.length]);
 
   useEffect(() => {
     if (initialReorderMode && isOwner && artworks.length > 0) setReorderMode(true);
@@ -206,14 +225,79 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
   const avatarUrl = getAvatarUrl(profile.avatar_url);
   const roleChips = formatRoleChips(profile, t, { max: 6 });
 
-  const personaCounts = useMemo(
-    () => getPersonaCounts(artworks, profile.id),
-    [artworks, profile.id]
+  const portfolio = useMemo(
+    () =>
+      parseStudioPortfolio(
+        profile.studio_portfolio != null
+          ? { studio_portfolio: profile.studio_portfolio }
+          : null
+      ),
+    [profile.studio_portfolio]
   );
-  const displayedArtworks = useMemo(
-    () => filterArtworksByPersona(artworks, profile.id, personaTab),
-    [artworks, profile.id, personaTab]
+
+  const roles = (profile.roles ?? []) as string[];
+
+  const defaultTabLabels: Record<PersonaTab, string> = useMemo(
+    () => ({
+      all: t("profile.personaAll"),
+      exhibitions: t("exhibition.myExhibitions"),
+      CREATED: t("profile.personaWork"),
+      OWNS: t("profile.personaCollected"),
+      INVENTORY: t("profile.personaGallery"),
+      CURATED: t("profile.personaCurated"),
+    }),
+    [t]
   );
+
+  const stripRows = useMemo(
+    () =>
+      buildStudioStripTabs({
+        profileId: profile.id,
+        artworks,
+        exhibitionsCount: exhibitions.length,
+        mainRole: profile.main_role ?? null,
+        roles,
+        portfolio,
+        rootProfileDetails: null,
+        defaultTabLabels,
+      }),
+    [
+      profile.id,
+      profile.main_role,
+      artworks,
+      exhibitions.length,
+      roles,
+      portfolio,
+      defaultTabLabels,
+    ]
+  );
+
+  const stripPublic = useMemo(() => filterStripForPublicView(stripRows), [stripRows]);
+
+  useEffect(() => {
+    if (active.kind === "custom") {
+      const ok = stripPublic.some((r) => r.kind === "custom" && r.customId === active.id);
+      if (!ok) setActive({ kind: "persona", tab: "all" });
+    } else if (active.kind === "persona") {
+      const ok = stripPublic.some((r) => r.kind === "persona" && r.personaTab === active.tab);
+      if (!ok) setActive({ kind: "persona", tab: "all" });
+    }
+  }, [active, stripPublic]);
+
+  const displayedArtworks = useMemo(() => {
+    if (active.kind === "persona") {
+      return filterArtworksByPersona(artworks, profile.id, active.tab);
+    }
+    const tab = (portfolio.custom_tabs ?? []).find((c) => c.id === active.id);
+    if (!tab) return [];
+    const byId = new Map(artworks.map((a) => [a.id, a]));
+    const out: ArtworkWithLikes[] = [];
+    for (const id of tab.artwork_ids) {
+      const a = byId.get(id);
+      if (a) out.push(a);
+    }
+    return out;
+  }, [active, artworks, profile.id, portfolio.custom_tabs]);
   // Reorderable artworks: user is artist OR has any claim (not just CREATED)
   const reorderableArtworks = useMemo(
     () => localArtworks.filter((a) => {
@@ -223,6 +307,17 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
     }),
     [localArtworks, profile.id]
   );
+
+  const isExhibitionsView = active.kind === "persona" && active.tab === "exhibitions";
+
+  const worksHeading = useMemo(() => {
+    if (isExhibitionsView) return t("exhibition.myExhibitions");
+    if (active.kind === "custom") {
+      const row = stripPublic.find((r) => r.kind === "custom" && r.customId === active.id);
+      return row?.label ?? t("profile.works");
+    }
+    return t("profile.works");
+  }, [active, isExhibitionsView, stripPublic, t]);
 
   return (
     <>
@@ -289,44 +384,33 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
         )}
       </div>
 
-      {/* Persona tabs: exhibitions, CREATED, OWNS, all */}
-      {(personaCounts.all > 0 || exhibitions.length > 0) && (
+      {stripPublic.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
-          {[
-            ...(exhibitions.length > 0
-              ? [{ tab: "exhibitions" as PersonaTab, label: t("exhibition.myExhibitions"), count: exhibitions.length }]
-              : []),
-            ...(personaCounts.created > 0
-              ? [{ tab: "CREATED" as PersonaTab, label: t("profile.personaWork"), count: personaCounts.created }]
-              : []),
-            ...(personaCounts.owns > 0
-              ? [{ tab: "OWNS" as PersonaTab, label: t("profile.personaCollected"), count: personaCounts.owns }]
-              : []),
-            ...(personaCounts.all > 0
-              ? [{ tab: "all" as PersonaTab, label: t("profile.personaAll"), count: personaCounts.all }]
-              : []),
-          ].map(({ tab, label, count }) => (
+          {stripPublic.map((row) => (
             <button
-              key={tab}
+              key={row.key}
               type="button"
-              onClick={() => setPersonaTab(tab)}
+              onClick={() => {
+                if (row.kind === "persona") setActive({ kind: "persona", tab: row.personaTab! });
+                else setActive({ kind: "custom", id: row.customId! });
+              }}
               className={`rounded px-3 py-1.5 text-sm font-medium ${
-                personaTab === tab
+                row.kind === "persona" && active.kind === "persona" && active.tab === row.personaTab
                   ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
+                  : row.kind === "custom" && active.kind === "custom" && active.id === row.customId
+                    ? "bg-zinc-900 text-white"
+                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
               }`}
             >
-              {label} ({count})
+              {row.label} ({row.count})
             </button>
           ))}
         </div>
       )}
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-zinc-900">
-          {personaTab === "exhibitions" ? t("exhibition.myExhibitions") : t("profile.works")}
-        </h2>
-        {personaTab !== "exhibitions" && isOwner && reorderableArtworks.length > 0 && !reorderMode && (
+        <h2 className="text-lg font-semibold text-zinc-900">{worksHeading}</h2>
+        {!isExhibitionsView && isOwner && reorderableArtworks.length > 0 && !reorderMode && (
           <button
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
@@ -335,7 +419,7 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
             {t("profile.reorder")}
           </button>
         )}
-        {personaTab !== "exhibitions" && reorderMode && isOwner && reorderableArtworks.length > 0 && (
+        {!isExhibitionsView && reorderMode && isOwner && reorderableArtworks.length > 0 && (
           <div className="flex gap-2">
             <button
               type="button"
@@ -356,10 +440,10 @@ export function UserProfileContent({ profile, artworks, exhibitions = [], initia
           </div>
         )}
       </div>
-      {personaTab !== "exhibitions" && reorderMode && isOwner && (
+      {!isExhibitionsView && reorderMode && isOwner && (
         <p className="mb-4 text-sm text-zinc-500">{t("profile.reorderHint")}</p>
       )}
-      {personaTab === "exhibitions" ? (
+      {isExhibitionsView ? (
         exhibitions.length === 0 ? (
           <EmptyState title={t("exhibition.emptyList")} size="sm" />
         ) : (

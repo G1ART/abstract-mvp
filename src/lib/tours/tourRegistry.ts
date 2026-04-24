@@ -29,7 +29,7 @@ export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
 export const TOURS: Record<TourId, TourDefinition> = {
   [TOUR_IDS.studio]: {
     id: TOUR_IDS.studio,
-    version: 1,
+    version: 2,
     titleKey: "tour.studio.title",
     introKey: "tour.studio.intro",
     requiredAnchors: ["studio-hero", "studio-operating-grid"],
@@ -81,6 +81,13 @@ export const TOURS: Record<TourId, TourDefinition> = {
         target: "studio-public-works",
         titleKey: "tour.studio.publicWorks.title",
         bodyKey: "tour.studio.publicWorks.body",
+        placement: "top",
+      },
+      {
+        id: "portfolio-tabs",
+        target: "studio-portfolio-tabs",
+        titleKey: "tour.studio.portfolioTabs.title",
+        bodyKey: "tour.studio.portfolioTabs.body",
         placement: "top",
       },
     ],
