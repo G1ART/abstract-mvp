@@ -2,7 +2,7 @@
 // send to the model. Keep these pure (no DB calls) so they stay easy to test
 // and so routes can audit exactly what text is shipped across the wire.
 
-import type { PortfolioMetadataGaps } from "./types";
+import type { AiLocale, PortfolioMetadataGaps } from "./types";
 
 export type ProfileContextInput = {
   display_name?: string | null;
@@ -60,6 +60,8 @@ export type PortfolioContextInput = {
   exhibitions: ExhibitionLite[];
   /** Optional counts computed client-side from live artworks. */
   metadataGaps?: PortfolioMetadataGaps | null;
+  /** UI locale so the model writes copy in one language (see portfolio copilot prompt). */
+  locale?: AiLocale | null;
 };
 
 const PORTFOLIO_CTX_MAX_CHARS = 18_000;
@@ -89,7 +91,8 @@ export function buildPortfolioCopilotContext(input: PortfolioContextInput): stri
     input.metadataGaps != null && typeof input.metadataGaps === "object"
       ? `\nmetadataGaps: ${JSON.stringify(input.metadataGaps)}`
       : "";
-  const line = `username: ${clipPromptText(String(input.username ?? ""), 64)}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}${gaps}`;
+  const loc = input.locale ?? "en";
+  const line = `locale: ${loc}\nusername: ${clipPromptText(String(input.username ?? ""), 64)}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}${gaps}`;
   if (line.length <= PORTFOLIO_CTX_MAX_CHARS) return line;
   return `${line.slice(0, PORTFOLIO_CTX_MAX_CHARS - 20)}\n…[truncated]`;
 }

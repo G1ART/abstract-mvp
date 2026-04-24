@@ -1172,6 +1172,11 @@ export const messages = {
     "ai.portfolio.referenced": "Referenced works",
     "ai.portfolio.gapSummary":
       "Across works shown here: {missing_title} missing title · {missing_year} missing year · {missing_medium} missing medium · {missing_size} missing size · {no_image} without an image · {drafts} not public yet.",
+    "ai.portfolio.unnamedSlot": "Untitled work {n}",
+    "ai.portfolio.action.editArtwork": "Edit artwork details",
+    "ai.portfolio.action.reorderOnProfile": "Adjust order on profile",
+    "ai.portfolio.action.openStudioExhibitions": "Open exhibitions in studio",
+    "ai.portfolio.action.openWorkshop": "Open workshop / library",
     "ai.digest.card.title": "This week in the studio",
     "ai.digest.card.subtitle": "Seven-day snapshot of your activity.",
     "ai.digest.cta": "Summarize this week",
@@ -2614,6 +2619,11 @@ export const messages = {
     "ai.portfolio.referenced": "참조된 작품",
     "ai.portfolio.gapSummary":
       "여기에 보이는 작품 기준: 제목 없음 {missing_title} · 연도 없음 {missing_year} · 재료 없음 {missing_medium} · 크기 없음 {missing_size} · 이미지 없음 {no_image} · 아직 공개 아님 {drafts}.",
+    "ai.portfolio.unnamedSlot": "제목 없는 작품 {n}",
+    "ai.portfolio.action.editArtwork": "작품 정보 수정",
+    "ai.portfolio.action.reorderOnProfile": "프로필에서 순서 조정",
+    "ai.portfolio.action.openStudioExhibitions": "스튜디오 전시 화면 열기",
+    "ai.portfolio.action.openWorkshop": "워크숍(라이브러리) 열기",
     "ai.digest.card.title": "이번 주 스튜디오",
     "ai.digest.card.subtitle": "지난 7일 활동을 한눈에 정리해요.",
     "ai.digest.cta": "이번 주 요약 보기",

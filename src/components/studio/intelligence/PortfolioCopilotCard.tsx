@@ -10,6 +10,10 @@ import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
 import { aiErrorKey } from "./aiCardState";
 import { copyToClipboard } from "@/components/ai/AiDraftPanel";
+import {
+  resolvePortfolioActionLabel,
+  stripOpaqueIdsFromCopilotText,
+} from "@/lib/ai/portfolioCopilotDisplay";
 import type { MessageKey } from "@/lib/i18n/messages";
 import type {
   PortfolioMetadataGaps,
@@ -84,7 +88,11 @@ export function PortfolioCopilotCard({
     );
   }, [result]);
 
-  const titleFor = (id: string) => artworkTitles?.[id] ?? id.slice(0, 8);
+  const titleForChip = (id: string, slotIndex: number) => {
+    const title = artworkTitles?.[id]?.trim();
+    if (title) return title;
+    return t("ai.portfolio.unnamedSlot").replace("{n}", String(slotIndex + 1));
+  };
 
   return (
     <SectionFrame padding="md" noMargin>
@@ -150,7 +158,7 @@ export function PortfolioCopilotCard({
                   {t("ai.portfolio.orderingTitle")}
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-700">
-                  {result.ordering.rationale}
+                  {stripOpaqueIdsFromCopilotText(result.ordering.rationale)}
                 </p>
                 <ol className="mt-2 flex flex-col gap-1 text-xs text-zinc-700">
                   {result.ordering.artworkIds.map((id, i) => (
@@ -166,7 +174,7 @@ export function PortfolioCopilotCard({
                         }}
                         className="text-zinc-800 hover:underline"
                       >
-                        {titleFor(id)}
+                        {titleForChip(id, i)}
                       </Link>
                     </li>
                   ))}
@@ -178,7 +186,7 @@ export function PortfolioCopilotCard({
                       const text = (result.ordering?.artworkIds ?? [])
                         .map(
                           (id, i) =>
-                            `${i + 1}. ${titleFor(id)} (/artwork/${id})`,
+                            `${i + 1}. ${titleForChip(id, i)} (/artwork/${id})`,
                         )
                         .join("\n");
                       copyToClipboard(text);
@@ -222,12 +230,12 @@ export function PortfolioCopilotCard({
                           <div className="flex items-center gap-2">
                             <Chip tone="muted">{t(KIND_LABEL[s.kind])}</Chip>
                             <p className="text-sm font-medium text-zinc-900">
-                              {s.title}
+                              {stripOpaqueIdsFromCopilotText(s.title)}
                             </p>
                           </div>
                           {s.detail && (
                             <p className="mt-1 text-xs text-zinc-600">
-                              {s.detail}
+                              {stripOpaqueIdsFromCopilotText(s.detail)}
                             </p>
                           )}
                           {(s.artworkIds ?? []).length > 0 && (
@@ -236,7 +244,7 @@ export function PortfolioCopilotCard({
                                 {t("ai.portfolio.referenced")}
                               </p>
                               <ul className="mt-1 flex flex-wrap gap-1.5">
-                                {(s.artworkIds ?? []).map((id) => (
+                                {(s.artworkIds ?? []).map((id, idx) => (
                                   <li key={id}>
                                     <Link
                                       href={`/artwork/${id}`}
@@ -248,7 +256,7 @@ export function PortfolioCopilotCard({
                                       }}
                                       className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-2 py-0.5 text-[11px] text-zinc-700 hover:border-zinc-500"
                                     >
-                                      {titleFor(id)}
+                                      {titleForChip(id, idx)}
                                     </Link>
                                   </li>
                                 ))}
@@ -267,17 +275,22 @@ export function PortfolioCopilotCard({
                                 }}
                                 className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
                               >
-                                {s.actionLabel || t("ai.action.apply")}
+                                {resolvePortfolioActionLabel(
+                                  s.actionHref,
+                                  s.actionLabel,
+                                  t,
+                                )}
                               </Link>
                             )}
                             <button
                               type="button"
                               onClick={() => {
                                 const text = [
-                                  s.title,
-                                  s.detail,
+                                  stripOpaqueIdsFromCopilotText(s.title),
+                                  s.detail ? stripOpaqueIdsFromCopilotText(s.detail) : "",
                                   ...(s.artworkIds ?? []).map(
-                                    (id) => `- ${titleFor(id)} (/artwork/${id})`,
+                                    (id, idx) =>
+                                      `- ${titleForChip(id, idx)} (/artwork/${id})`,
                                   ),
                                 ]
                                   .filter(Boolean)

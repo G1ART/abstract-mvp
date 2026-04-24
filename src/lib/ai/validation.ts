@@ -228,6 +228,7 @@ export function parsePortfolioBody(raw: unknown): ValidationResult<{
   artworks: ArtworkLiteParsed[];
   exhibitions: ExhibitionLiteParsed[];
   metadataGaps: PortfolioMetadataGaps;
+  locale: AiLocale;
 }> {
   if (!isRecord(raw) || !isRecord(raw.portfolio)) return { ok: false, reason: "missing_portfolio" };
   const p = raw.portfolio;
@@ -239,6 +240,7 @@ export function parsePortfolioBody(raw: unknown): ValidationResult<{
       artworks: collectArtworks(p.artworks, LIMITS.artworksMax),
       exhibitions: collectExhibitions(p.exhibitions, LIMITS.exhibitionsMax),
       metadataGaps: gaps,
+      locale: parseLocale(p.locale),
     },
   };
 }

@@ -119,8 +119,9 @@ export function StudioIntelligenceSurface({
         venue: (e as Record<string, unknown>).venue as string | null | undefined ?? null,
       })),
       metadataGaps: portfolioMetadataGaps,
+      locale,
     }),
-    [profileSurface.username, artworks, exhibitions, portfolioMetadataGaps],
+    [profileSurface.username, artworks, exhibitions, portfolioMetadataGaps, locale],
   );
 
   const draftsNotPublicCount = useMemo(
