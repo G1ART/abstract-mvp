@@ -34,6 +34,16 @@ import {
 } from "@/lib/supabase/exhibitions";
 import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { WebsiteImportPanel } from "@/components/upload/WebsiteImportPanel";
+import { BulkUploadGuidance } from "@/components/upload/BulkUploadGuidance";
+import { formatBulkFileUploadFailure } from "@/lib/upload/formatUploadError";
+import {
+  BULK_MAX_FILES_PER_BATCH,
+  BULK_MY_DRAFTS_QUERY_LIMIT,
+  BULK_WEBSITE_STAGED_IDS_MAX,
+  UPLOAD_MAX_IMAGE_BYTES,
+  UPLOAD_MAX_IMAGE_MB_LABEL,
+} from "@/lib/upload/limits";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -99,6 +109,7 @@ export default function BulkUploadPage() {
   const [linkingExhibition, setLinkingExhibition] = useState(false);
   const [csvText, setCsvText] = useState("");
   const [csvBusy, setCsvBusy] = useState(false);
+  const [stagedArtworkIds, setStagedArtworkIds] = useState<string[]>([]);
 
   // Persona / intent — from exhibition add: pre-fill CURATED + artist, skip intent/attribution steps
   const [intent, setIntent] = useState<IntentType | null>(
@@ -144,12 +155,65 @@ export default function BulkUploadPage() {
     return () => clearTimeout(t);
   }, [artistSearch, doSearchArtists]);
 
+  const enqueuePendingImageFiles = useCallback(
+    (incoming: File[]) => {
+      if (incoming.length === 0) return;
+      const arr = incoming.filter((f) => f.type.startsWith("image/"));
+      if (arr.length === 0) {
+        setUploadError(t("bulk.pickImageTypes"));
+        return;
+      }
+      const ok = arr.filter((f) => f.size <= UPLOAD_MAX_IMAGE_BYTES);
+      const skipped = arr.length - ok.length;
+      if (skipped > 0) {
+        setUploadError(
+          t("bulk.filesSkippedOversized")
+            .replace("{n}", String(skipped))
+            .replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL)),
+        );
+      } else {
+        setUploadError(null);
+      }
+      if (ok.length === 0) return;
+
+      const toastHint = { full: false, partialAdded: null as number | null };
+      setPendingFiles((prev) => {
+        const remaining = BULK_MAX_FILES_PER_BATCH - prev.length;
+        if (remaining <= 0) {
+          toastHint.full = true;
+          return prev;
+        }
+        const batch = ok.slice(0, remaining);
+        if (ok.length > remaining) {
+          toastHint.partialAdded = batch.length;
+        }
+        return [...prev, ...batch.map((file) => ({ id: crypto.randomUUID(), file }))];
+      });
+
+      if (toastHint.full) {
+        setToast(t("bulk.pendingQueueFull"));
+        setTimeout(() => setToast(null), 4000);
+      } else if (toastHint.partialAdded != null) {
+        setToast(
+          t("bulk.batchCapPartialAdd")
+            .replace("{added}", String(toastHint.partialAdded))
+            .replace("{max}", String(BULK_MAX_FILES_PER_BATCH)),
+        );
+        setTimeout(() => setToast(null), 5000);
+      }
+    },
+    [t],
+  );
+
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
-    const { data } = await listMyDraftArtworks({ limit: 100 });
+    const { data } = await listMyDraftArtworks({
+      limit: BULK_MY_DRAFTS_QUERY_LIMIT,
+      forProfileId: actingAsProfileId ?? undefined,
+    });
     setDrafts(data ?? []);
     setLoading(false);
-  }, []);
+  }, [actingAsProfileId]);
 
   useEffect(() => {
     fetchDrafts();
@@ -164,25 +228,13 @@ export default function BulkUploadPage() {
       externalName: preselectedExternalName ?? null,
     });
     if (pending?.files.length) {
-      setPendingFiles((prev) => [
-        ...prev,
-        ...pending.files.map((file) => ({ id: crypto.randomUUID(), file })),
-      ]);
+      enqueuePendingImageFiles(pending.files);
     }
-  }, [fromExhibition, addToExhibitionId, preselectedArtistId, preselectedExternalName]);
+  }, [fromExhibition, addToExhibitionId, preselectedArtistId, preselectedExternalName, enqueuePendingImageFiles]);
 
   function addPendingFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    if (arr.length === 0) {
-      setUploadError("Please select image files (JPG, PNG, WebP)");
-      return;
-    }
-    setUploadError(null);
-    setPendingFiles((prev) => [
-      ...prev,
-      ...arr.map((file) => ({ id: crypto.randomUUID(), file })),
-    ]);
+    enqueuePendingImageFiles(Array.from(files));
   }
 
   function removePendingFile(id: string) {
@@ -197,7 +249,7 @@ export default function BulkUploadPage() {
     if (pendingFiles.length === 0) return;
     const { data: { session } } = await getSession();
     if (!session?.user?.id) {
-      setUploadError("Not authenticated");
+      setUploadError(t("bulk.uploadNotAuthenticated"));
       return;
     }
     const userId = session.user.id;
@@ -207,6 +259,7 @@ export default function BulkUploadPage() {
     setUploadCurrent(0);
     const queue = [...pendingFiles];
     setPendingFiles([]);
+    const uploadedIds: string[] = [];
 
     for (let i = 0; i < queue.length; i++) {
       const { file } = queue[i];
@@ -227,8 +280,9 @@ export default function BulkUploadPage() {
         storagePath = await uploadArtworkImage(file, userId);
         const { error: attachErr } = await attachArtworkImage(artworkId, storagePath);
         if (attachErr) throw attachErr;
+        uploadedIds.push(artworkId);
       } catch (err) {
-        setUploadError(err instanceof Error ? err.message : "Upload failed");
+        setUploadError(formatBulkFileUploadFailure(file.name, err, t));
         if (storagePath) {
           try { await removeStorageFile(storagePath); } catch {}
         }
@@ -238,6 +292,9 @@ export default function BulkUploadPage() {
       }
     }
     setUploading(false);
+    if (uploadedIds.length > 0) {
+      setStagedArtworkIds((prev) => [...uploadedIds, ...prev].slice(0, BULK_WEBSITE_STAGED_IDS_MAX));
+    }
     await fetchDrafts();
   }
 
@@ -731,6 +788,21 @@ export default function BulkUploadPage() {
         {/* Main bulk UI */}
         {showMain && (
           <>
+        <BulkUploadGuidance t={t} pendingCount={pendingFiles.length} draftCount={drafts.length} />
+
+        <WebsiteImportPanel
+          t={t}
+          actingAsProfileId={actingAsProfileId}
+          drafts={drafts}
+          stagedArtworkIds={stagedArtworkIds}
+          onApplied={fetchDrafts}
+          onApplyToast={(n) => {
+            setToast(t("bulk.wi.appliedToast").replace("{n}", String(n)));
+            setTimeout(() => setToast(null), 3200);
+          }}
+          onSessionReset={() => setStagedArtworkIds([])}
+        />
+
         {/* Tips accordion */}
         <div className="mb-6 rounded-lg border border-zinc-200">
           <button
@@ -770,6 +842,11 @@ export default function BulkUploadPage() {
             disabled={uploading}
           />
           <p className="text-sm text-zinc-600">{t("bulk.dropzone")}</p>
+          <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+            {t("bulk.dropzoneHint")
+              .replace("{batch}", String(BULK_MAX_FILES_PER_BATCH))
+              .replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL))}
+          </p>
         </div>
 
         {/* Pending files */}
@@ -821,7 +898,7 @@ export default function BulkUploadPage() {
           </p>
         )}
         {uploadError && (
-          <p className="mb-4 text-sm text-red-600">
+          <p className="mb-4 text-sm leading-relaxed text-red-600" role="alert">
             {t("bulk.uploadError").replace("{message}", uploadError)}
           </p>
         )}

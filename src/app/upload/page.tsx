@@ -29,6 +29,8 @@ import { findHosuSize } from "@/lib/size/hosu";
 import { parseSizeWithUnit } from "@/lib/size/format";
 import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { UPLOAD_MAX_IMAGE_BYTES, UPLOAD_MAX_IMAGE_MB_LABEL } from "@/lib/upload/limits";
+import { formatSingleUploadFailure } from "@/lib/upload/formatUploadError";
 
 type UploadStep = "intent" | "attribution" | "form" | "dedup";
 
@@ -331,7 +333,7 @@ function UploadPageContent() {
         storagePath = await uploadArtworkImage(image, userId);
       } catch (uploadErr) {
         await deleteArtwork(artworkId);
-        setError(uploadErr instanceof Error ? uploadErr.message : "Failed to upload image");
+        setError(formatSingleUploadFailure(uploadErr, t));
         setIsSubmitting(false);
         return;
       }
@@ -530,9 +532,24 @@ function UploadPageContent() {
                 type="file"
                 accept="image/*"
                 required
-                onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && f.size > UPLOAD_MAX_IMAGE_BYTES) {
+                    setError(
+                      t("upload.fileTooLarge").replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL)),
+                    );
+                    setImage(null);
+                    e.target.value = "";
+                    return;
+                  }
+                  setError(null);
+                  setImage(f);
+                }}
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                {t("upload.screenSizeHint").replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL))}
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelTitle")}</label>
