@@ -33,6 +33,8 @@ export type UsageEventKey =
   | "exhibition.created"
   // Artworks
   | "artwork.uploaded"
+  | "import.website_scanned"
+  | "import.website_applied"
   // Delegation / acting-as
   | "delegation.acting_as_entered"
   | "delegation.acting_as_exited"

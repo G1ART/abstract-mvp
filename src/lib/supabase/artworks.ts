@@ -115,6 +115,8 @@ export type Artwork = {
   profiles: ArtistProfile;
   claims?: ArtworkClaim[] | null;
   provenance_visible?: boolean | null;
+  /** Filled when user applied website-assisted import metadata (audit / trust UI). */
+  website_import_provenance?: Record<string, unknown> | null;
 };
 
 /** User can edit artwork if they are artist or have a confirmed claim. */
@@ -290,6 +292,7 @@ const ARTWORK_SELECT = `
   artist_sort_order,
   created_at,
   provenance_visible,
+  website_import_provenance,
   likes_count,
   artwork_images(storage_path, sort_order),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
@@ -1240,6 +1243,7 @@ export type UpdateArtworkPayload = Partial<{
   visibility: "draft" | "public";
   artist_id: string | null;
   provenance_visible?: boolean | null;
+  website_import_provenance?: Record<string, unknown> | null;
 }>;
 
 export async function updateArtwork(
@@ -1258,19 +1262,21 @@ export async function updateArtwork(
 }
 
 export async function listMyDraftArtworks(
-  options: { limit?: number } = {}
+  options: { limit?: number; forProfileId?: string | null } = {}
 ): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
-  const { limit = 100 } = options;
+  const { limit = 100, forProfileId } = options;
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
+  const artistFilter = forProfileId && forProfileId !== session.user.id ? forProfileId : session.user.id;
+
   const { data, error } = await supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
-    .eq("artist_id", session.user.id)
+    .eq("artist_id", artistFilter)
     .eq("visibility", "draft")
     .order("created_at", { ascending: false })
     .limit(limit);

@@ -31,6 +31,8 @@ export const USAGE_KEYS = {
   EXHIBITION_CREATED: "exhibition.created",
   // Artwork
   ARTWORK_UPLOADED: "artwork.uploaded",
+  IMPORT_WEBSITE_SCANNED: "import.website_scanned",
+  IMPORT_WEBSITE_APPLIED: "import.website_applied",
   // Delegation
   DELEGATION_ACTING_AS_ENTERED: "delegation.acting_as_entered",
   DELEGATION_ACTING_AS_EXITED: "delegation.acting_as_exited",
