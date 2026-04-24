@@ -21,6 +21,8 @@ import { searchPeople } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import type { PublicProfile } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 
 function scopeLabel(scope: string, t: (k: string) => string): string {
   switch (scope) {
@@ -198,11 +200,17 @@ export default function MyDelegationsPage() {
 
   return (
     <AuthGate>
+      <TourTrigger tourId={TOUR_IDS.delegation} />
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-2 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
-        <p className="mb-6 text-sm text-zinc-500">{t("delegation.stagesIntro")}</p>
+        <div data-tour="delegation-header" className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-2 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
+            <p className="text-sm text-zinc-500">{t("delegation.stagesIntro")}</p>
+          </div>
+          <TourHelpButton tourId={TOUR_IDS.delegation} />
+        </div>
 
-        <section className="mb-8">
+        <section data-tour="delegation-received" className="mb-8">
           <h2 className="mb-3 text-sm font-medium text-zinc-500">
             {t("delegation.received")}
           </h2>
@@ -277,7 +285,7 @@ export default function MyDelegationsPage() {
           )}
         </section>
 
-        <section className="mb-8" ref={searchRef}>
+        <section data-tour="delegation-invite" className="mb-8" ref={searchRef}>
           <h2 className="mb-3 text-sm font-medium text-zinc-500">{t("delegation.inviteAccountAccess")}</h2>
           <p className="mb-3 text-sm text-zinc-600">{t("delegation.inviteAccountAccessHint")}</p>
 
@@ -361,7 +369,7 @@ export default function MyDelegationsPage() {
           )}
         </section>
 
-        <section>
+        <section data-tour="delegation-sent">
           <h2 className="mb-3 text-sm font-medium text-zinc-500">{t("delegation.sent")}</h2>
           {sent.length === 0 ? (
             <p className="text-sm text-zinc-500">No invitations sent.</p>

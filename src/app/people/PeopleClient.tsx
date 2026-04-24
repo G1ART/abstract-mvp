@@ -26,6 +26,8 @@ import { Chip } from "@/components/ds/Chip";
 import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
 import { getMyProfile } from "@/lib/supabase/me";
 import { getProfileSurface } from "@/lib/profile/surface";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
@@ -262,11 +264,16 @@ export function PeopleClient() {
 
   return (
     <AuthGate>
+      <TourTrigger tourId={TOUR_IDS.people} />
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-xl font-semibold">{t("people.title")}</h1>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <h1 className="text-xl font-semibold">{t("people.title")}</h1>
+          <TourHelpButton tourId={TOUR_IDS.people} />
+        </div>
 
         <input
           ref={searchInputRef}
+          data-tour="people-search"
           type="search"
           placeholder={t("people.searchPlaceholder")}
           value={search}
@@ -276,7 +283,7 @@ export function PeopleClient() {
 
         {!isSearchMode && (
           <div className="mb-4 flex flex-col gap-2">
-            <div className="flex flex-wrap gap-2">
+            <div data-tour="people-lane-tabs" className="flex flex-wrap gap-2">
               {(["follow", "likes", "expand"] as LaneKey[]).map((l) => (
                 <button
                   key={l}
@@ -302,7 +309,7 @@ export function PeopleClient() {
           </div>
         )}
 
-        <div className="mb-6 flex flex-wrap items-center gap-2">
+        <div data-tour="people-role-filters" className="mb-6 flex flex-wrap items-center gap-2">
           <span className="text-sm text-zinc-500">{t("people.filtersLabel")}:</span>
           {ROLE_OPTIONS.map((role) => (
             <button
@@ -396,13 +403,14 @@ export function PeopleClient() {
         ) : (
           <>
             <div className="space-y-4">
-              {profiles.map((profile) => {
+              {profiles.map((profile, profileIdx) => {
                 const username = profile.username ?? "";
                 if (!username) return null;
                 // Suppress placeholder (user_xxxxxxxx) identities from
                 // public people lanes — see Onboarding Identity Overhaul,
                 // Track I.
                 if (!hasPublicLinkableUsername(profile)) return null;
+                const isFirstVisibleCard = profileIdx === 0;
                 const isSelf = userId === profile.id;
                 const initialFollowing = followingIds.has(profile.id);
                 const reasonLine =
@@ -474,6 +482,7 @@ export function PeopleClient() {
                     </div>
                     {!isSelf && (
                       <div
+                        data-tour={isFirstVisibleCard ? "people-card-actions" : undefined}
                         className="flex shrink-0 flex-col items-end gap-2"
                         onClick={(e) => e.stopPropagation()}
                         onKeyDown={(e) => e.stopPropagation()}

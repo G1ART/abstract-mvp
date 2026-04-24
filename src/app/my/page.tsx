@@ -48,6 +48,8 @@ import {
   type QuickAction,
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { hasAnyRole, normalizeRoleList } from "@/lib/identity/roles";
 import type { PersonaTab } from "@/lib/provenance/personaTabs";
 
@@ -412,6 +414,12 @@ export default function MyPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-5xl px-4 py-8">
+        {profile && !actingAsProfileId ? <TourTrigger tourId={TOUR_IDS.studio} /> : null}
+        {profile && !actingAsProfileId ? (
+          <div className="mb-3 flex items-center justify-end">
+            <TourHelpButton tourId={TOUR_IDS.studio} />
+          </div>
+        ) : null}
         {profile && !actingAsProfileId && (
           <>
             <StudioHeroPanel

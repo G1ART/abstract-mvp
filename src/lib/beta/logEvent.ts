@@ -31,7 +31,12 @@ export type BetaEventName =
   | "board_promote_bulk_added"
   | "monetization_hint_shown"
   | "monetization_hint_clicked"
-  | "feature_gate_blocked";
+  | "feature_gate_blocked"
+  | "tour_shown"
+  | "tour_step_advanced"
+  | "tour_skipped"
+  | "tour_completed"
+  | "tour_reopened";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

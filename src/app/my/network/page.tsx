@@ -15,6 +15,8 @@ import {
 } from "@/lib/supabase/follows";
 import { getMyStats, type MyStats } from "@/lib/supabase/me";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 
 type TabKey = "followers" | "following";
 type SortKey = "recent" | "alpha";
@@ -218,13 +220,17 @@ export default function MyNetworkPage() {
 
   return (
     <AuthGate>
+      <TourTrigger tourId={TOUR_IDS.network} />
       <main className="mx-auto max-w-3xl px-4 py-8">
-        <Link
-          href="/my"
-          className="mb-4 inline-block text-sm text-zinc-600 hover:text-zinc-900"
-        >
-          ← {t("network.backToStudio")}
-        </Link>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <Link
+            href="/my"
+            className="inline-block text-sm text-zinc-600 hover:text-zinc-900"
+          >
+            ← {t("network.backToStudio")}
+          </Link>
+          <TourHelpButton tourId={TOUR_IDS.network} />
+        </div>
 
         <header className="mb-5">
           <h1 className="text-xl font-semibold text-zinc-900">

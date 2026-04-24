@@ -8,6 +8,7 @@ import { ProfileBootstrap } from "@/components/ProfileBootstrap";
 import { RandomIdBanner } from "@/components/RandomIdBanner";
 import { ActingAsBanner } from "@/components/ActingAsBanner";
 import { ActingAsProvider } from "@/context/ActingAsContext";
+import { TourProvider } from "@/components/tour";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -41,10 +42,12 @@ export default function RootLayout({
         <MigrationGuard />
         <ProfileBootstrap />
         <ActingAsProvider>
-          <Header />
-          <ActingAsBanner />
-          <RandomIdBanner />
-          {children}
+          <TourProvider>
+            <Header />
+            <ActingAsBanner />
+            <RandomIdBanner />
+            {children}
+          </TourProvider>
         </ActingAsProvider>
       </body>
     </html>

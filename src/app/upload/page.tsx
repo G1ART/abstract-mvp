@@ -401,7 +401,7 @@ function UploadPageContent() {
 
         {/* Step: Intent */}
         {step === "intent" && (
-          <div className="space-y-4">
+          <div className="space-y-4" data-tour="upload-intent-selector">
             <p className="text-sm text-zinc-600">{t("upload.whatUploading")}</p>
             <div className="grid gap-3">
               {INTENTS.map((opt) => (

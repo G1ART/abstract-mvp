@@ -1166,6 +1166,111 @@ export const messages = {
     "boards.collab.empty": "No one else is viewing yet.",
     "boards.collab.role.viewer": "Viewer",
     "boards.collab.role.editor": "Editor",
+
+    "tour.next": "Next",
+    "tour.prev": "Back",
+    "tour.skip": "Skip",
+    "tour.done": "Done",
+    "tour.reopen": "Guide",
+
+    "tour.studio.title": "Studio tour",
+    "tour.studio.intro": "A quick look at the modules that make your studio run.",
+    "tour.studio.hero.title": "Welcome to your Studio",
+    "tour.studio.hero.body":
+      "This is the home base for everything you make, save, and share on Abstract.",
+    "tour.studio.nextSteps.title": "Suggested next steps",
+    "tour.studio.nextSteps.body":
+      "Quick actions tuned to what your studio needs right now — profile, works, inquiries.",
+    "tour.studio.grid.title": "Operating tiles",
+    "tour.studio.grid.body":
+      "Eight focused modules help you run your studio without hunting through menus.",
+    "tour.studio.workshop.title": "Workshop",
+    "tour.studio.workshop.body":
+      "A private space for in-progress or unlisted works — separate from your public studio.",
+    "tour.studio.boards.title": "Boards",
+    "tour.studio.boards.body":
+      "Collect works or exhibitions into shareable bundles. Great for reviews, pitches, and future shows.",
+    "tour.studio.exhibitions.title": "Exhibitions",
+    "tour.studio.exhibitions.body":
+      "Publish posts for shows that happened, are running, or are coming up.",
+    "tour.studio.publicWorks.title": "What others see",
+    "tour.studio.publicWorks.body":
+      "Your public studio shows only the works you've chosen to share — the face of your practice.",
+
+    "tour.upload.title": "Upload basics",
+    "tour.upload.intro": "Three paths, one for each shape of work you bring to Abstract.",
+    "tour.upload.tabs.title": "Three upload paths",
+    "tour.upload.tabs.body":
+      "Pick the path that matches what you're sharing right now.",
+    "tour.upload.single.title": "Single",
+    "tour.upload.single.body":
+      "Upload one work with full details — title, size, medium, pricing, story.",
+    "tour.upload.bulk.title": "Bulk",
+    "tour.upload.bulk.body":
+      "Upload many works at once when you're bringing an inventory to Abstract.",
+    "tour.upload.exhibition.title": "Exhibition post",
+    "tour.upload.exhibition.body":
+      "Publish a single page that represents a whole show — artists, works, dates, venue.",
+    "tour.upload.intent.title": "Your relationship to this work",
+    "tour.upload.intent.body":
+      "Tell us whether you made it, own it, keep it in inventory, or curated it. The right record is built from there.",
+
+    "tour.exhibition.title": "Exhibition post",
+    "tour.exhibition.intro": "This page publishes a show — it isn't a planning workflow.",
+    "tour.exhibition.purpose.title": "An exhibition you can share",
+    "tour.exhibition.purpose.body":
+      "This publishes an exhibition — past, running, or upcoming — not a planning workflow for a new show.",
+    "tour.exhibition.dates.title": "When it happens",
+    "tour.exhibition.dates.body":
+      "Add start and end dates so collectors, curators, and visitors know when to pay attention.",
+    "tour.exhibition.status.title": "Status",
+    "tour.exhibition.status.body":
+      "Pick planned, live, or ended — Abstract adjusts how the post is highlighted accordingly.",
+    "tour.exhibition.curator.title": "Curator & host",
+    "tour.exhibition.curator.body":
+      "Credit the curator and host. Both can link to existing Abstract profiles.",
+
+    "tour.people.title": "Finding people",
+    "tour.people.intro": "Search, filter, and discover beyond the obvious.",
+    "tour.people.search.title": "Search people",
+    "tour.people.search.body":
+      "Find artists, collectors, curators, galleries by name, handle, or keyword.",
+    "tour.people.lanes.title": "Discovery modes",
+    "tour.people.lanes.body":
+      "Who your network knows, who aligns with what you like, and who's worth expanding toward.",
+    "tour.people.roles.title": "Filter by role",
+    "tour.people.roles.body":
+      "Narrow to artists, collectors, curators, or galleries when you're after someone specific.",
+    "tour.people.card.title": "Act with care",
+    "tour.people.card.body":
+      "Follow to stay close, or open a short message when first contact really matters.",
+
+    "tour.delegation.title": "Delegation",
+    "tour.delegation.intro": "Share the operating load without sharing who you are.",
+    "tour.delegation.what.title": "Delegate operations, not identity",
+    "tour.delegation.what.body":
+      "Invite trusted collaborators to help run your account — uploads, exhibitions, inquiries — without handing over who you are.",
+    "tour.delegation.invite.title": "Invite a collaborator",
+    "tour.delegation.invite.body":
+      "Invite an existing Abstract member or send an email invite to someone new.",
+    "tour.delegation.received.title": "Invitations to you",
+    "tour.delegation.received.body":
+      "Offers to act on someone else's behalf arrive here. Accept only what you truly intend to manage.",
+    "tour.delegation.sent.title": "Your active delegations",
+    "tour.delegation.sent.body":
+      "Everything you've delegated stays visible and revocable here — no surprises.",
+
+    "tour.network.title": "Network",
+    "tour.network.intro": "Both sides of your graph, lightly organized.",
+    "tour.network.tabs.title": "Followers · Following",
+    "tour.network.tabs.body":
+      "Switch between people following you and people you follow — the two sides of your graph.",
+    "tour.network.search.title": "Search & sort",
+    "tour.network.search.body":
+      "Trim by name, or sort by recency to find people you've recently connected with.",
+    "tour.network.list.title": "Your relationship graph",
+    "tour.network.list.body":
+      "Each row is a live connection — follow back, view their studio, or send a short message.",
   },
   ko: {
     "nav.feed": "피드",
@@ -2334,6 +2439,111 @@ export const messages = {
     "boards.collab.empty": "아직 함께 보는 사람이 없어요.",
     "boards.collab.role.viewer": "뷰어",
     "boards.collab.role.editor": "에디터",
+
+    "tour.next": "다음",
+    "tour.prev": "이전",
+    "tour.skip": "건너뛰기",
+    "tour.done": "완료",
+    "tour.reopen": "가이드 보기",
+
+    "tour.studio.title": "스튜디오 안내",
+    "tour.studio.intro": "스튜디오를 움직이는 모듈을 짧게 살펴볼게요.",
+    "tour.studio.hero.title": "내 스튜디오에 오신 걸 환영해요",
+    "tour.studio.hero.body":
+      "Abstract에서 만들고, 담고, 공유하는 모든 것이 시작되는 공간이에요.",
+    "tour.studio.nextSteps.title": "다음 해보면 좋은 일",
+    "tour.studio.nextSteps.body":
+      "지금 스튜디오에 도움이 될 만한 일을 간단히 모아두는 곳이에요. 프로필·작품·문의를 바로 열 수 있어요.",
+    "tour.studio.grid.title": "운영 타일",
+    "tour.studio.grid.body":
+      "작업실·보드·전시처럼 스튜디오 운영에 필요한 여덟 개 모듈을 한 자리에 모아두었어요.",
+    "tour.studio.workshop.title": "작업실",
+    "tour.studio.workshop.body":
+      "비공개·작업 중·보관 중인 작품을 관리하는 공간이에요. 공개 스튜디오와는 분리돼 있어요.",
+    "tour.studio.boards.title": "보드",
+    "tour.studio.boards.body":
+      "작품이나 전시를 한데 모아 검토·공유하는 묶음이에요. 리뷰·제안·다음 전시 준비에 잘 어울려요.",
+    "tour.studio.exhibitions.title": "전시",
+    "tour.studio.exhibitions.body":
+      "이미 진행했거나 진행 중, 또는 예정된 전시를 소개하는 게시물을 만드는 곳이에요.",
+    "tour.studio.publicWorks.title": "바깥에서 보이는 내 작업",
+    "tour.studio.publicWorks.body":
+      "공개 스튜디오에는 공유하기로 선택한 작품만 보여요. 바깥에서 보이는 내 작업의 얼굴이에요.",
+
+    "tour.upload.title": "업로드 안내",
+    "tour.upload.intro": "올리려는 내용에 맞춰 세 가지 경로를 준비했어요.",
+    "tour.upload.tabs.title": "세 가지 업로드 방법",
+    "tour.upload.tabs.body":
+      "지금 공유하려는 내용에 맞는 경로를 골라주세요.",
+    "tour.upload.single.title": "개별 업로드",
+    "tour.upload.single.body":
+      "작품 한 점을 자세히 올리는 경로예요. 제목·사이즈·매체·가격·이야기를 한 번에 기록할 수 있어요.",
+    "tour.upload.bulk.title": "일괄 업로드",
+    "tour.upload.bulk.body":
+      "여러 점을 한 번에 올리는 경로예요. 보유 작품이나 인벤토리를 한꺼번에 가져올 때 좋아요.",
+    "tour.upload.exhibition.title": "전시 게시물 만들기",
+    "tour.upload.exhibition.body":
+      "전시 전체를 한 페이지에 담아 발행하는 경로예요. 참여 작가·작품·일정·장소가 함께 묶여요.",
+    "tour.upload.intent.title": "이 작품과 나의 관계는요",
+    "tour.upload.intent.body":
+      "직접 만든 작품인지, 소유 중인지, 인벤토리에 보관 중인지, 큐레이션 중인지 알려주세요. 알맞은 기록이 자동으로 만들어져요.",
+
+    "tour.exhibition.title": "전시 게시물 안내",
+    "tour.exhibition.intro": "이미 확정된 전시를 공유하는 페이지예요. 기획 툴이 아니에요.",
+    "tour.exhibition.purpose.title": "공유할 수 있는 전시 게시물",
+    "tour.exhibition.purpose.body":
+      "이미 진행했거나 진행 중, 또는 예정된 전시를 소개하는 게시물이에요. 새 전시를 기획하는 화면은 아니에요.",
+    "tour.exhibition.dates.title": "언제 열리나요",
+    "tour.exhibition.dates.body":
+      "시작일과 종료일을 남기면 컬렉터·큐레이터·방문자가 일정을 알 수 있어요.",
+    "tour.exhibition.status.title": "전시 상태",
+    "tour.exhibition.status.body":
+      "예정·진행 중·종료 중에서 고르면, 게시물 노출 방식도 자동으로 맞춰져요.",
+    "tour.exhibition.curator.title": "큐레이터와 호스트",
+    "tour.exhibition.curator.body":
+      "전시를 만든 큐레이터와 주최자를 남겨보세요. Abstract 안의 프로필을 바로 연결할 수 있어요.",
+
+    "tour.people.title": "사람 찾기",
+    "tour.people.intro": "눈에 띄는 사람 너머도 자연스럽게 만나볼 수 있어요.",
+    "tour.people.search.title": "사람 검색",
+    "tour.people.search.body":
+      "이름이나 @username, 키워드로 작가·컬렉터·큐레이터·갤러리를 찾을 수 있어요.",
+    "tour.people.lanes.title": "추천 모드",
+    "tour.people.lanes.body":
+      "내 네트워크가 아는 사람·내 취향과 맞는 사람·새로 만나볼 만한 사람을 따로 보여줘요.",
+    "tour.people.roles.title": "역할로 좁히기",
+    "tour.people.roles.body":
+      "작가·컬렉터·큐레이터·갤러리 중 특정 역할만 남기고 싶을 때 써보세요.",
+    "tour.people.card.title": "연결 액션",
+    "tour.people.card.body":
+      "팔로우로 가까이 두거나, 첫 인사가 중요한 자리에는 짧은 메시지로 먼저 말을 걸 수 있어요.",
+
+    "tour.delegation.title": "위임 안내",
+    "tour.delegation.intro": "내 정체성은 지키되, 운영의 무게는 함께 나눌 수 있어요.",
+    "tour.delegation.what.title": "계정 운영만 함께, 정체성은 그대로",
+    "tour.delegation.what.body":
+      "신뢰할 수 있는 사람에게 계정 운영을 함께 맡길 수 있어요. 업로드·전시·문의 같은 실무를 나눠도, 나의 정체성은 그대로예요.",
+    "tour.delegation.invite.title": "협업자 초대",
+    "tour.delegation.invite.body":
+      "Abstract 회원을 바로 초대하거나, 이메일로 새 초대장을 보낼 수 있어요.",
+    "tour.delegation.received.title": "내게 온 초대",
+    "tour.delegation.received.body":
+      "다른 사람을 대신해 일해달라는 요청이 이곳에 도착해요. 정말 맡을 것만 수락해 주세요.",
+    "tour.delegation.sent.title": "내가 만든 위임",
+    "tour.delegation.sent.body":
+      "내가 맡긴 모든 위임은 여기서 보이고, 언제든 회수할 수 있어요. 숨겨진 연결은 없어요.",
+
+    "tour.network.title": "네트워크 안내",
+    "tour.network.intro": "그래프의 양쪽을 가볍게 정리해둔 공간이에요.",
+    "tour.network.tabs.title": "팔로워 · 팔로잉",
+    "tour.network.tabs.body":
+      "나를 팔로우하는 사람과 내가 팔로우하는 사람을 오가며 볼 수 있어요. 그래프의 두 면이에요.",
+    "tour.network.search.title": "검색 · 정렬",
+    "tour.network.search.body":
+      "이름으로 좁히거나 최근 순으로 정렬해서 최근에 연결된 사람을 쉽게 찾을 수 있어요.",
+    "tour.network.list.title": "내 관계 그래프",
+    "tour.network.list.body":
+      "각 줄이 살아있는 연결이에요. 맞팔하거나 스튜디오를 보거나 짧은 메시지로 인사를 건네보세요.",
   },
 } as const;
 

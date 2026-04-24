@@ -14,6 +14,8 @@ import { searchPeople } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
 import { getShortlist, listShortlistItems } from "@/lib/supabase/shortlists";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -178,13 +180,17 @@ export default function NewExhibitionPage() {
           </Link>
         </div>
 
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold text-zinc-900">
-            {t("exhibition.create")}
-          </h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            {t("exhibition.createSubtitle")}
-          </p>
+        <TourTrigger tourId={TOUR_IDS.exhibitionCreate} />
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-zinc-900">
+              {t("exhibition.create")}
+            </h1>
+            <p className="mt-1 text-sm text-zinc-500">
+              {t("exhibition.createSubtitle")}
+            </p>
+          </div>
+          <TourHelpButton tourId={TOUR_IDS.exhibitionCreate} />
         </div>
 
         {boardContext && (
@@ -198,7 +204,7 @@ export default function NewExhibitionPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}
 
-          <div>
+          <div data-tour="exhibition-form-title">
             <label className="mb-1 block text-sm font-medium text-zinc-700">
               {t("exhibition.title")} *
             </label>
@@ -212,7 +218,7 @@ export default function NewExhibitionPage() {
             />
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div data-tour="exhibition-form-dates" className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="mb-1 block text-sm font-medium text-zinc-700">
                 {t("exhibition.startDate")}
@@ -237,7 +243,7 @@ export default function NewExhibitionPage() {
             </div>
           </div>
 
-          <div>
+          <div data-tour="exhibition-form-status">
             <label className="mb-1 block text-sm font-medium text-zinc-700">
               {t("exhibition.status")}
             </label>
@@ -254,7 +260,7 @@ export default function NewExhibitionPage() {
             </select>
           </div>
 
-          <div>
+          <div data-tour="exhibition-form-curator">
             <label className="mb-1 block text-sm font-medium text-zinc-700">
               {t("exhibition.curator")}
             </label>

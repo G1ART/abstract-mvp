@@ -1,6 +1,163 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
+
+## 2026-04-26 — Overlay Guided Tour System
+
+### 왜 필요했나
+
+`/my`, `/people`, `/upload`, `/my/exhibitions/new`, `/my/delegations`, `/my/network` 순으로 수차례 IA/UX 정돈 패치가 누적되면서 표면은 일관돼졌지만, 베타로 합류하는 초기 유저에게 "작업실·보드·위임·전시 게시물" 같은 Abstract 고유 개념이 여전히 낯설다. 텍스트 설명을 늘리는 대신, **첫 방문 1회성 가이드 오버레이**로 한 페이지의 2–5개 핵심 액션을 가볍게 짚어주는 시스템을 도입.
+
+설계 기조:
+- 과장하지 않는 premium/calm 톤, 1 타이틀 + 1–2문장.
+- Registry/config 중심. 새 투어 추가나 카피 변경은 page 코드를 건드리지 않고 레지스트리만 수정.
+- 앵커는 모두 `data-tour="..."` 속성. 텍스트/CSS 셀렉터 의존 금지.
+- Per-user progress 영속화(DB+localStorage). 해제하면 재방문 시 재등장하지 않음.
+- Version bump시에만 다시 한 번 노출.
+- Missing anchor는 **silently skip**하여 조건부 UI에서도 안전.
+
+### 아키텍처
+
+```
+src/lib/tours/
+  tourTypes.ts         ← TourStep / TourDefinition / TourState 타입
+  tourRegistry.ts      ← TOURS 맵 (SSOT for all tour copy & steps)
+  tourPersistence.ts   ← loadTourState / saveTourState (DB + localStorage)
+  tourUtils.ts         ← findTourTarget, measureTarget, waitForTourTarget, ensureTargetVisible
+
+src/components/tour/
+  TourProvider.tsx     ← Context provider + controller. Root-mounted.
+  TourOverlay.tsx      ← Backdrop(SVG spotlight mask) + halo + popover + arrow + controls + step dots
+  TourTrigger.tsx      ← 페이지에서 <TourTrigger tourId=... /> 1회 장착하면 auto-start 요청
+  TourHelpButton.tsx   ← "가이드 보기" 수동 재진입 어포던스
+  index.ts             ← barrel export
+
+supabase/migrations/
+  20260426000000_user_tour_state.sql  ← user_tour_state 테이블 + RLS
+```
+
+**TourProvider**는 `RootLayout`에서 `ActingAsProvider` 하위에 1회 mount. 컨텍스트는 `requestAutoStart(tourId)` / `startTour(tourId)` API만 노출. 실제 auto-start 로직은 provider 내부에서 처리하며, 이미 평가한 `(tourId@version)`은 ref로 memoize하여 이중 진입 차단.
+
+**진입 플로우**:
+1. 페이지에 `<TourTrigger tourId={...} />` 배치.
+2. Provider가 `loadTourState(tourId)` 호출 — 로컬 → DB 순(없으면 null).
+3. `status === 'not_seen'` 또는 `stored.version < current.version` 이면 auto-start.
+4. 400ms 디퍼 후 `enterTour()`가 `requiredAnchors` 프레젠스 체크 → `guard()` → 개별 앵커 `waitForTourTarget(400ms)` 로 resolvedSteps 계산.
+5. 빈 배열이면 조용히 취소(로딩 skeleton 위에 투어가 뜨는 사고 방지).
+
+**스포트라이트 렌더**:
+- Backdrop는 full-screen SVG. `<mask>`에 black 라운드 rect(padding 10px, radius 14px)로 target 영역을 뚫어 natural cutout.
+- 추가로 흰색 halo ring + soft shadow로 target을 "살짝 들어올린" 인상.
+- Popover는 portal 렌더, 기본 placement는 step에서 선언하되 viewport clamp + `pickPlacement()`로 실패 시 공간이 가장 큰 방향으로 swap.
+- Arrow는 placement 반대 방향에 rotate-45 square로 ring과 배경을 그대로 연결.
+
+**접근성**:
+- Popover에 `role="dialog" aria-modal="true" aria-labelledby="tour-title"`.
+- 스텝 변경 시 primary CTA로 초기 포커스 이동(80ms 디퍼).
+- `Esc` → skip, `←/→` → prev/next.
+- 모든 컨트롤은 키보드로 조작 가능.
+
+### 영속화
+
+- 테이블 `public.user_tour_state`: `(user_id, tour_id)` PK, `version int`, `status in ('not_seen','in_progress','completed','skipped')`, `last_step int`, `updated_at`.
+- RLS: SELECT/INSERT/UPDATE/DELETE 모두 `auth.uid() = user_id`.
+- `tourPersistence.ts`가 DB write를 best-effort로 수행 — 실패해도 throw하지 않음. 동일 값이 localStorage에 미러링되어 같은 기기에서는 재방문 즉시 반영.
+- 로그아웃/anonymous 유저도 localStorage만으로 once-only 동작 유지.
+
+### 투어 카탈로그 v1
+
+| Tour id | 페이지 | 스텝 | 핵심 목적 |
+|---|---|---|---|
+| `studio.main` | `/my` | 7 | Studio hero / Next steps / Operating grid / Workshop / Boards / Exhibitions / Public works |
+| `upload.main` | `/upload/*` | 5 | Tabs 개요 / Single / Bulk / Exhibition post / Intent 선택 |
+| `exhibition.create` | `/my/exhibitions/new` | 4 | Post purpose / Dates / Status / Curator·Host |
+| `people.main` | `/people` | 4 | Search / Discovery lanes / Role filters / Card actions |
+| `delegation.main` | `/my/delegations` | 4 | What delegation is / Invite / Received / Sent |
+| `network.main` | `/my/network` | 3 | Tabs / Search·Sort / List |
+
+각 스텝의 실제 카피는 `messages.ts`의 `tour.*` 키(KR/EN)로 관리.
+
+### 신규 data-tour 앵커
+
+| Anchor | 위치 |
+|---|---|
+| `studio-hero` | `StudioHeroPanel` (기존) |
+| `studio-next-steps` | `StudioNextStepsRail` (기존) |
+| `studio-operating-grid` / `studio-card-*` | `StudioOperationGrid` (기존) |
+| `studio-public-works` | `/my/page.tsx` (기존) |
+| `upload-tabs` | `upload/layout.tsx` nav |
+| `upload-tab-single` / `upload-tab-bulk` / `upload-tab-exhibition` | 각 탭 `<Link>` |
+| `upload-intent-selector` | `/upload` intent step wrapper |
+| `exhibition-form-title` / `exhibition-form-dates` / `exhibition-form-status` / `exhibition-form-curator` | `/my/exhibitions/new` form fields |
+| `people-search` / `people-lane-tabs` / `people-role-filters` / `people-card-actions` | `PeopleClient.tsx` (card-actions는 첫 번째 visible card에만) |
+| `delegation-header` / `delegation-invite` / `delegation-received` / `delegation-sent` | `/my/delegations` 섹션들 |
+| `network-tabs` / `network-search` / `network-sort` / `network-list` | `/my/network` (기존) |
+
+누락되거나 조건부로 사라지는 앵커는 프레임워크가 silently skip.
+
+### 분석(best-effort)
+
+`logBetaEvent`에 5개 이벤트 확장: `tour_shown`, `tour_step_advanced`, `tour_skipped`, `tour_completed`, `tour_reopened`. `beta_analytics_events` 테이블에 payload(`tourId`, `version`, `stepIndex`)와 함께 기록. 실패해도 UI는 영향 없음.
+
+### 새 투어를 추가하는 법
+
+1. `src/lib/tours/tourRegistry.ts`의 `TOUR_IDS` + `TOURS`에 항목 추가. `version: 1`, `steps[]`에 각 step `{ id, target, titleKey, bodyKey, placement }`.
+2. `messages.ts`에 `tour.<newId>.*` 키 KR/EN 동시에 추가.
+3. 대상 페이지에 `<TourTrigger tourId={TOUR_IDS.newId} />` 1회 배치.
+4. 제목 옆에 `<TourHelpButton tourId={TOUR_IDS.newId} />` 배치(선택, 수동 재진입용).
+5. 타깃 엘리먼트에 `data-tour="..."` 부여. 대부분은 이미 레이아웃 수준에서 존재.
+
+### 투어 버전 bump이 필요한 경우
+
+- 스텝을 추가/제거/재정렬
+- 앵커 이름을 바꿔야 하는 UI 리팩터
+- 카피를 유저에게 다시 상기시켜야 하는 의미 변경(라벨 명칭 교체 등)
+
+bump: `tourRegistry.ts`에서 해당 tour의 `version` 을 +1. 다른 투어 상태는 영향 없음.
+
+### 수동 적용 필요
+
+- Supabase SQL editor에서 `supabase/migrations/20260426000000_user_tour_state.sql` 실행. 실패해도 client는 localStorage로 작동하지만 cross-device persistence를 위해 적용 필요.
+
+### QA 체크리스트
+
+Framework:
+- [ ] /my 첫 진입 시 studio 투어 자동 실행.
+- [ ] Skip 후 재방문하면 자동 실행되지 않음.
+- [ ] "가이드 보기" 버튼으로 수동 재진입 가능.
+- [ ] 스텝 Next/Prev/Skip/Done 모두 동작.
+- [ ] Esc/←/→ 키보드 네비게이션.
+- [ ] 오버레이가 모달 위로 올라감(z-[1200]).
+- [ ] 모바일 뷰포트에서 popover clipping 없음.
+- [ ] 타깃이 스크롤 밖이면 부드럽게 스크롤 인.
+- [ ] Target 누락 시 step이 건너뛰어짐, 전체 누락 시 투어 미실행(로그 없음).
+
+Per-tour:
+- [ ] `/my` studio: 7 steps, 워크숍·보드·전시 카드 하이라이트.
+- [ ] `/upload`: tabs 설명 후 single/bulk/exhibition 각각 하이라이트, 마지막 intent 셀렉터.
+- [ ] `/upload/bulk` 또는 `/upload/exhibition`에서는 intent 스텝 auto-skip (anchor 부재).
+- [ ] `/my/exhibitions/new`: 4 steps(title/dates/status/curator).
+- [ ] `/people`: search, lane tabs, role filters, first card actions.
+- [ ] `/my/delegations`: header, invite, received, sent.
+- [ ] `/my/network`: tabs, search, list.
+
+Cross-locale:
+- [ ] KR 유저 카피 자연스러움.
+- [ ] EN 유저 카피 자연스러움.
+
+### 기존 기능 회귀 방지
+
+- 기존 `data-tour` 앵커 이름 변경 없음.
+- `TourProvider`는 context 미사용 시 no-op fallback 반환(비-오덴트 페이지 안전).
+- localStorage만으로도 작동하므로 DB 마이그레이션 지연 시에도 회귀 없음.
+- `beta_analytics_events` insert 실패는 swallow되므로 기존 event 체인에 영향 없음.
+
+### 알려진 트레이드오프
+
+- Provider가 `ActingAsProvider` 하위에 있어 acting-as 모드에서도 투어가 뜰 수 있음(정책: 앵커가 있는 한 괜찮다고 판단). 원치 않을 경우 `TourTrigger` 를 `!actingAsProfileId` 가드와 함께 배치(`/my` 에서 이미 적용).
+- 같은 기기에서 여러 계정을 쓰면 localStorage가 account-less key라 한쪽이 다른 쪽의 투어를 먹일 수 있음. 로그인 유저에게는 DB가 source of truth 이므로 재로그인 후 재평가됨.
+
+---
 
 ## 2026-04-25 — Studio Counter Fixes + Messaging Feature Activation
 
