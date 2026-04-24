@@ -456,7 +456,7 @@ export const messages = {
     "bulk.guidance.listNote":
       "The table shows your {n} newest drafts. Older drafts still exist; they simply fall off this view until you publish or clear space here.",
     "bulk.guidance.matchNote":
-      "Website import matches up to {n} drafts per run. If you have more, click Match again—each run is merged into the same review table.",
+      "Optional website import: after you scan your portfolio URL, tap Match once—we line your drafts up with likely works for you to confirm in the table below.",
     "bulk.guidance.pendingStatus": "{pending} of {max} files staged in this batch.",
     "bulk.guidance.draftListFull":
       "You are viewing the maximum number of drafts this page can list. Publish or delete from this list to bring older drafts back into view.",
@@ -519,8 +519,8 @@ export const messages = {
     "bulk.wi.matching": "Matching your draft images…",
     "bulk.wi.matchingBatch": "Matching batch {current} of {total}…",
     "bulk.wi.matchLimitCallout":
-      "Each Match run processes up to {n} drafts. If you have more, we run additional batches automatically and merge results below.",
-    "bulk.wi.matchHint": "Prefers the IDs from your most recent upload; otherwise uses the newest drafts in the table.",
+      "Tap Match when you are ready—we compare your drafts to the scanned site and list suggestions here. Larger sets may take a few extra seconds.",
+    "bulk.wi.matchHint": "We usually start with your most recent uploads; otherwise we use the newest drafts in the list.",
     "bulk.wi.errGeneric": "Something went wrong ({code}). Try again, or clear website import and restart.",
     "bulk.wi.errCreateSession": "We could not start an import session. Check the URL and try again.",
     "bulk.wi.errScanFailed": "The site scan did not finish. The URL may be unreachable or blocked.",
@@ -1826,7 +1826,7 @@ export const messages = {
     "bulk.guidance.listNote":
       "아래 표에는 최신 초안 {n}개만 보여요. 그보다 오래된 초안도 살아 있지만, 여기 목록에는 안 나올 수 있어요. 위에서 게시하거나 지우면 다시 보일 수 있습니다.",
     "bulk.guidance.matchNote":
-      "홈페이지에서 가져오기 매칭은 한 번에 최대 {n}점까지 돌려요. 더 많으면 ‘매칭’을 한 번 더 눌러 주세요. 결과는 같은 검토 표에 이어 붙습니다.",
+      "홈페이지 가져오기(선택): 포트폴리오 주소를 스캔한 뒤 맞추기를 한 번 누르면, 초안과 사이트 작품을 짝 지어 제안해 드려요. 아래 표에서 확인하고 반영하면 됩니다.",
     "bulk.guidance.pendingStatus": "이번 묶음 대기: {pending} / {max}장",
     "bulk.guidance.draftListFull":
       "지금 목록에 보이는 초안이 화면이 담을 수 있는 최대치예요. 여기서 일부를 게시하거나 지우면, 그만큼 비워진 뒤 이전 초안이 다시 보일 수 있어요.",
@@ -1889,8 +1889,8 @@ export const messages = {
     "bulk.wi.matching": "초안 이미지와 매칭하는 중…",
     "bulk.wi.matchingBatch": "매칭 진행 중 {current} / {total} 묶음…",
     "bulk.wi.matchLimitCallout":
-      "한 번의 매칭에는 최대 {n}점까지 처리돼요. 더 많으면 자동으로 나눠 돌리고, 아래 표에 이어 붙입니다.",
-    "bulk.wi.matchHint": "가장 최근에 올린 초안 ID를 우선 쓰고, 없으면 표에서 최신 초안을 가져와요.",
+      "준비되면 맞추기를 눌러 주세요. 스캔한 사이트와 초안을 맞춰 제안을 여기에 모읍니다. 초안이 많으면 잠시 더 걸릴 수 있어요.",
+    "bulk.wi.matchHint": "보통 가장 최근에 올린 초안부터 맞추고, 없으면 목록 위쪽의 최신 초안을 기준으로 해요.",
     "bulk.wi.errGeneric": "문제가 생겼어요 ({code}). 다시 시도하거나 가져오기를 초기화해 보세요.",
     "bulk.wi.errCreateSession": "가져오기 세션을 만들지 못했어요. 주소를 확인한 뒤 다시 시도해 주세요.",
     "bulk.wi.errScanFailed": "사이트 스캔이 끝나지 않았어요. 주소가 막혔거나 응답이 없을 수 있어요.",

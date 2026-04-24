@@ -4,7 +4,6 @@ import {
   BULK_MAX_FILES_PER_BATCH,
   BULK_MY_DRAFTS_QUERY_LIMIT,
   UPLOAD_MAX_IMAGE_MB_LABEL,
-  UPLOAD_WEBSITE_MATCH_MAX_ARTWORKS,
 } from "@/lib/upload/limits";
 
 type T = (key: string) => string;
@@ -22,7 +21,7 @@ export function BulkUploadGuidance({ t, pendingCount, draftCount }: Props) {
   const sizeNote = t("bulk.guidance.sizeNote").replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL));
   const batchNote = t("bulk.guidance.batchNote").replace("{n}", String(BULK_MAX_FILES_PER_BATCH));
   const listNote = t("bulk.guidance.listNote").replace("{n}", String(BULK_MY_DRAFTS_QUERY_LIMIT));
-  const matchNote = t("bulk.guidance.matchNote").replace("{n}", String(UPLOAD_WEBSITE_MATCH_MAX_ARTWORKS));
+  const matchNote = t("bulk.guidance.matchNote");
 
   return (
     <aside className="mb-6 overflow-hidden rounded-2xl border border-zinc-200/90 bg-gradient-to-b from-zinc-50/90 to-white shadow-sm ring-1 ring-zinc-900/[0.04]">

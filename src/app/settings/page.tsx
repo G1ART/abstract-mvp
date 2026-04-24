@@ -781,7 +781,7 @@ export default function SettingsPage() {
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
         <div className="mb-6 flex items-start justify-between gap-4">
-          <h1 className="text-xl font-semibold">{t("settings.title")}</h1>
+          <h1 className="min-w-0 flex-1 pr-2 text-xl font-semibold">{t("settings.title")}</h1>
           <BuildStamp />
         </div>
 

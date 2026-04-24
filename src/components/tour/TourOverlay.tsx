@@ -231,18 +231,18 @@ export function TourOverlay({
           <button
             type="button"
             onClick={onSkip}
-            className="rounded-md px-2 py-1 text-[12px] font-medium text-zinc-500 hover:text-zinc-900"
+            className="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium text-zinc-500 hover:text-zinc-900"
             aria-label={t("tour.skip")}
           >
             {t("tour.skip")}
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {stepIndex > 0 ? (
               <button
                 type="button"
                 onClick={onPrev}
-                className="rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
+                className="whitespace-nowrap rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 {t("tour.prev")}
               </button>
@@ -251,7 +251,7 @@ export function TourOverlay({
               ref={primaryBtnRef}
               type="button"
               onClick={isLast ? onComplete : onNext}
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
+              className="whitespace-nowrap rounded-md bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
             >
               {cta ?? (isLast ? t("tour.done") : t("tour.next"))}
             </button>

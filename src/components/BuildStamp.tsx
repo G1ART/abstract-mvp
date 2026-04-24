@@ -14,7 +14,10 @@ export function BuildStamp() {
   if (!BUILD_STAMP) return null;
 
   return (
-    <span className="text-[10px] text-zinc-400" title={`Build: ${BUILD_STAMP}`}>
+    <span
+      className="shrink-0 whitespace-nowrap text-[10px] text-zinc-400"
+      title={`Build: ${BUILD_STAMP}`}
+    >
       Build: {BUILD_STAMP}
     </span>
   );

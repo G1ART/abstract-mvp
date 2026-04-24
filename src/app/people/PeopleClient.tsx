@@ -267,7 +267,7 @@ export function PeopleClient() {
       <TourTrigger tourId={TOUR_IDS.people} />
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between gap-3">
-          <h1 className="text-xl font-semibold">{t("people.title")}</h1>
+          <h1 className="min-w-0 flex-1 text-xl font-semibold">{t("people.title")}</h1>
           <TourHelpButton tourId={TOUR_IDS.people} />
         </div>
 

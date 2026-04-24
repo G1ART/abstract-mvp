@@ -225,7 +225,7 @@ export default function MyNetworkPage() {
         <div className="mb-4 flex items-center justify-between gap-3">
           <Link
             href="/my"
-            className="inline-block text-sm text-zinc-600 hover:text-zinc-900"
+            className="min-w-0 flex-1 truncate text-sm text-zinc-600 hover:text-zinc-900"
           >
             ← {t("network.backToStudio")}
           </Link>

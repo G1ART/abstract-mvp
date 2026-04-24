@@ -30,7 +30,7 @@ export default function UploadLayout({
         </div>
         <nav
           data-tour="upload-tabs"
-          className="mb-6 flex gap-1 rounded-lg border border-zinc-200 bg-zinc-50/50 p-1"
+          className="mb-6 flex flex-nowrap gap-1 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50/50 p-1 [-webkit-overflow-scrolling:touch]"
         >
           {TABS.map(({ href, labelKey, anchor }) => {
             const active =
@@ -42,7 +42,7 @@ export default function UploadLayout({
                 key={href}
                 href={href}
                 data-tour={anchor}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
                   active
                     ? "bg-white text-zinc-900 shadow-sm"
                     : "text-zinc-600 hover:text-zinc-900"

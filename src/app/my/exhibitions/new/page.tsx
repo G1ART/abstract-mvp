@@ -182,7 +182,7 @@ export default function NewExhibitionPage() {
 
         <TourTrigger tourId={TOUR_IDS.exhibitionCreate} />
         <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1 pr-2">
             <h1 className="text-xl font-semibold text-zinc-900">
               {t("exhibition.create")}
             </h1>

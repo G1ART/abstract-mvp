@@ -31,8 +31,8 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
 
   const baseClass =
     variant === "ghost"
-      ? "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-900"
-      : "inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-zinc-600 shadow-sm hover:border-zinc-300 hover:bg-white hover:text-zinc-900";
+      ? "inline-flex max-w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-zinc-500 hover:text-zinc-900"
+      : "inline-flex max-w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-zinc-600 shadow-sm hover:border-zinc-300 hover:bg-white hover:text-zinc-900";
 
   return (
     <button
@@ -46,7 +46,7 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
       aria-label={t(labelKey)}
       disabled={busy}
     >
-      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
+      <svg className="shrink-0" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
         <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.2" />
         <path
           d="M6 6.2c.2-1 1-1.7 2-1.7 1.2 0 2 .8 2 1.8 0 1.1-1 1.3-1.6 1.8-.4.3-.4.6-.4.9"
@@ -56,7 +56,7 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
         />
         <circle cx="8" cy="11.2" r="0.7" fill="currentColor" />
       </svg>
-      <span>{t(labelKey)}</span>
+      <span className="whitespace-nowrap">{t(labelKey)}</span>
     </button>
   );
 }

@@ -203,7 +203,7 @@ export default function MyDelegationsPage() {
       <TourTrigger tourId={TOUR_IDS.delegation} />
       <div className="mx-auto max-w-2xl px-4 py-8">
         <div data-tour="delegation-header" className="mb-6 flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1 pr-2">
             <h1 className="mb-2 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
             <p className="text-sm text-zinc-500">{t("delegation.stagesIntro")}</p>
           </div>
