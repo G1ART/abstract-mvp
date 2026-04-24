@@ -1239,7 +1239,6 @@ export default function SettingsPage() {
         )}
 
         <div className="mt-12 border-t border-zinc-200 pt-8">
-          <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.logoutSection")}</h2>
           <button
             type="button"
             onClick={async () => {
