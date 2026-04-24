@@ -5,9 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import {
-  listMyReceivedMessages,
-  markConnectionMessageRead,
-  type ConnectionMessageRow,
+  listMyConversations,
+  type ConversationSummary,
 } from "@/lib/supabase/connectionMessages";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 
@@ -35,45 +34,35 @@ function relativeTime(iso: string, locale: "ko" | "en"): string {
 
 export default function MyMessagesPage() {
   const { t, locale } = useT();
-  const [messages, setMessages] = useState<ConnectionMessageRow[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const fetchPage = useCallback(async (cursor?: string) => {
+  const fetchPage = useCallback(async (cursor?: string | null) => {
     if (cursor) setLoadingMore(true);
     else setLoading(true);
-    const res = await listMyReceivedMessages({ limit: 20, cursor });
+    const res = await listMyConversations({ limit: 20, beforeTs: cursor ?? null });
     if (res.error) {
       setLoading(false);
       setLoadingMore(false);
       return;
     }
-    setMessages((prev) => (cursor ? [...prev, ...res.data] : res.data));
+    setConversations((prev) => (cursor ? [...prev, ...res.data] : res.data));
     setNextCursor(res.nextCursor);
     setLoading(false);
     setLoadingMore(false);
-
-    // Eagerly mark the freshly fetched page as read. We do this inside the
-    // fetch callback (rather than a follow-up effect) so the /my badge
-    // clears in the same tick, and we side-step
-    // react-hooks/set-state-in-effect cascading-render warnings.
-    if (!cursor) {
-      const unreadIds = res.data.filter((m) => !m.read_at).map((m) => m.id);
-      if (unreadIds.length > 0) {
-        await Promise.all(
-          unreadIds.map((id) => markConnectionMessageRead(id)),
-        );
-        const nowIso = new Date().toISOString();
-        setMessages((prev) =>
-          prev.map((m) => (m.read_at ? m : { ...m, read_at: nowIso })),
-        );
-      }
-    }
   }, []);
 
   useEffect(() => {
-    void fetchPage();
+    // Defer the initial fetch to the next frame so the setState calls
+    // inside `fetchPage` don't fire synchronously from an effect body
+    // (react-hooks/set-state-in-effect). Matches the pattern used by
+    // `/my/network/page.tsx` and `/dev/entitlements/page.tsx`.
+    const handle = requestAnimationFrame(() => {
+      void fetchPage();
+    });
+    return () => cancelAnimationFrame(handle);
   }, [fetchPage]);
 
   return (
@@ -89,82 +78,97 @@ export default function MyMessagesPage() {
           {t("connection.inbox.title")}
         </h1>
         <p className="mb-6 text-sm text-zinc-500">
-          {t("connection.inbox.subtitle")}
+          {t("connection.inbox.subtitleThreads")}
         </p>
 
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
-        ) : messages.length === 0 ? (
-          <p className="text-zinc-600">{t("connection.inbox.empty")}</p>
+        ) : conversations.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 p-8 text-center">
+            <p className="text-sm text-zinc-600">
+              {t("connection.inbox.empty")}
+            </p>
+            <p className="mt-2 text-xs text-zinc-500">
+              {t("connection.inbox.emptyHint")}
+            </p>
+            <Link
+              href="/people"
+              className="mt-4 inline-block text-xs font-medium text-zinc-700 underline-offset-2 hover:text-zinc-900 hover:underline"
+            >
+              {t("connection.inbox.findPeople")} →
+            </Link>
+          </div>
         ) : (
-          <ul className="space-y-3">
-            {messages.map((m) => {
-              const sender = m.sender;
+          <ul className="space-y-2">
+            {conversations.map((c) => {
+              const peer = c.otherUser;
               const name =
-                sender?.display_name ?? sender?.username ?? "—";
-              const avatarSrc = sender?.avatar_url
-                ? sender.avatar_url.startsWith("http")
-                  ? sender.avatar_url
-                  : getArtworkImageUrl(sender.avatar_url, "avatar")
+                peer?.display_name ?? peer?.username ?? t("connection.inbox.unknownUser");
+              const handle = peer?.username ? `@${peer.username}` : null;
+              const avatarSrc = peer?.avatar_url
+                ? peer.avatar_url.startsWith("http")
+                  ? peer.avatar_url
+                  : getArtworkImageUrl(peer.avatar_url, "avatar")
                 : null;
-              const unread = !m.read_at;
+              const unread = c.unreadCount > 0;
+              // Thread URL prefers the username (prettier + stable) but
+              // falls back to the peer user id when the counterpart has
+              // no username (placeholder/onboarding accounts).
+              const href = peer?.username
+                ? `/my/messages/${encodeURIComponent(peer.username)}`
+                : `/my/messages/${c.otherUserId}`;
+              const preview = c.lastIsFromMe
+                ? `${t("connection.inbox.youLabel")} ${c.lastBody}`
+                : c.lastBody;
               return (
-                <li
-                  key={m.id}
-                  className={[
-                    "rounded-xl border p-4 transition-colors",
-                    unread
-                      ? "border-zinc-300 bg-white ring-1 ring-zinc-100"
-                      : "border-zinc-200 bg-white",
-                  ].join(" ")}
-                >
-                  <div className="flex items-start gap-3">
-                    {avatarSrc ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={avatarSrc}
-                        alt=""
-                        className="h-10 w-10 shrink-0 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-base font-medium text-zinc-600">
-                        {name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="truncate font-medium text-zinc-900">
-                            {name}
-                          </p>
-                          {unread && (
-                            <span className="inline-flex shrink-0 items-center rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                              {t("connection.inbox.unreadBadge")}
-                            </span>
-                          )}
+                <li key={c.participantKey}>
+                  <Link
+                    href={href}
+                    className={[
+                      "block rounded-xl border p-4 transition-colors",
+                      unread
+                        ? "border-zinc-300 bg-white ring-1 ring-zinc-100 hover:border-zinc-400"
+                        : "border-zinc-200 bg-white hover:border-zinc-300",
+                    ].join(" ")}
+                  >
+                    <div className="flex items-start gap-3">
+                      {avatarSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={avatarSrc}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-base font-medium text-zinc-600">
+                          {name.charAt(0).toUpperCase()}
                         </div>
-                        <span className="shrink-0 text-xs text-zinc-400">
-                          {relativeTime(m.created_at, locale as "ko" | "en")}
-                        </span>
-                      </div>
-                      {sender?.username && (
-                        <p className="text-xs text-zinc-500">
-                          @{sender.username}
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p className="truncate font-medium text-zinc-900">
+                              {name}
+                            </p>
+                            {unread && (
+                              <span className="inline-flex shrink-0 items-center rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                                {c.unreadCount > 1 ? c.unreadCount : t("connection.inbox.unreadBadge")}
+                              </span>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-xs text-zinc-400">
+                            {relativeTime(c.lastCreatedAt, locale as "ko" | "en")}
+                          </span>
+                        </div>
+                        {handle && (
+                          <p className="text-xs text-zinc-500">{handle}</p>
+                        )}
+                        <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-zinc-700">
+                          {preview}
                         </p>
-                      )}
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-800">
-                        {m.body}
-                      </p>
-                      {sender?.username && (
-                        <Link
-                          href={`/u/${sender.username}`}
-                          className="mt-3 inline-block text-xs font-medium text-zinc-600 hover:text-zinc-900"
-                        >
-                          {t("connection.inbox.viewProfile")} →
-                        </Link>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  </Link>
                 </li>
               );
             })}

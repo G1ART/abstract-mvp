@@ -289,10 +289,16 @@ export default function MyPage() {
       },
       {
         key: "workshop",
+        // `stats.artworksCount` counts every artwork where the caller is
+        // `artist_id` regardless of visibility. This is the same scope
+        // /my/library lists (default visibility="all"), so the tile and
+        // the page can never disagree. The local `artworks` array is a
+        // merged public + claim-listed set used for the portfolio panel
+        // and is intentionally not used for this counter.
         labelKey: "studio.sections.workshop",
         descKey: "studio.sections.workshopDesc",
         href: "/my/library",
-        value: artworks.length,
+        value: stats?.artworksCount ?? 0,
         dataTour: "studio-card-workshop",
       },
       {
@@ -331,10 +337,16 @@ export default function MyPage() {
       },
       {
         key: "network",
+        // The network page holds both followers and following in one
+        // place, so the tile surfaces a composite "followers · following"
+        // glyph (e.g. "9 · 12"). The subtitle already reads "팔로워와
+        // 팔로잉" / "Followers and following", so the ordering is
+        // self-explanatory without extra copy.
         labelKey: "studio.sections.network",
         descKey: "studio.sections.networkDesc",
         href: "/my/network",
         value: stats?.followersCount ?? 0,
+        valueLabel: `${stats?.followersCount ?? 0} · ${stats?.followingCount ?? 0}`,
       },
       {
         key: "views",
@@ -351,11 +363,12 @@ export default function MyPage() {
     ];
     return tiles;
   }, [
-    artworks.length,
     exhibitions.length,
     priceInquiryCount,
     unreadMessagesCount,
+    stats?.artworksCount,
     stats?.followersCount,
+    stats?.followingCount,
     pendingClaimsCount,
     boardSaveSignal,
     canViewViewers,

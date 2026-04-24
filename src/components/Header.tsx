@@ -146,7 +146,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* My Profile | EN/KR | Avatar */}
+        {/* My Studio | EN/KR | Avatar */}
         {ready && loggedIn && (
           <>
             <Link href={myHref} className={linkClass}>

@@ -1,6 +1,110 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
+
+## 2026-04-25 — Studio Counter Fixes + Messaging Feature Activation
+
+### 왜 필요했나
+
+직전 Studio/Network 패치 리뷰에서 네 가지 후속 이슈가 나왔다.
+1. 헤더의 `My Profile/내 프로필` 라벨이 실제 목적지(`/my`의 스튜디오 대시보드)와 어긋남.
+2. `네트워크` 타일이 팔로워 카운트만 보여줌 — 목적지 페이지가 팔로워+팔로잉을 모두 다루는데 단일 숫자라 오해.
+3. `작업실` 타일 숫자(`artworks.length` = 내 공개 작품 + claims 테이블에서 내가 `subject_profile_id`로 오른 공개 작품 최대 50건)가 `/my/library`(=`artist_id = me` 전체, visibility=all)와 불일치.
+4. `connection_messages` 스키마는 있지만 UI 진입점이 `/people`의 Follow-with-Intro 한 곳뿐이었고, 받은 메시지에 회신할 수도 없었음. 가격 문의(`/my/inquiries`)와 별개 inbox로 분리되어 사용자에겐 두 개의 inbox가 존재.
+
+### 스튜디오 카운터 / 헤더 통일
+
+- **`nav.myProfile` 리라벨**: `My Profile → My Studio`, `내 프로필 → 내 스튜디오`. i18n 키 하나만 바꿔서 헤더(데스크톱/모바일) + 모든 하위 페이지 back link 11곳 + `artworkBack` 브레드크럼이 일관되게 반영됨.
+- **네트워크 타일 composite**: `valueLabel: "${followers} · ${following}"` 형식. 서브타이틀("팔로워와 팔로잉")이 이미 순서를 설명하므로 추가 레이블 없이 자명. `stats.followingCount` 의존성 추가.
+- **작업실 타일 소스 교체**: `artworks.length` → `stats?.artworksCount ?? 0`. `stats.artworksCount`는 `artist_id = me`의 **모든 visibility** 카운트라서 `/my/library`(기본 `visibility="all"`) 뷰와 항상 일치.
+
+### 메시지 기능 정식 활성화 (Q4)
+
+`connection_messages` 표를 1:1 inbox에서 **양방향 대화 스레드 + 어디서나 보낼 수 있는 Compose**로 승격.
+
+#### DB 마이그레이션 `20260425000000_connection_message_threads.sql`
+
+- `public.connection_messages.participant_key` — `text generated always as (least(...)||':'||greatest(...)) stored`. 보내는/받는 방향을 단일 key로 canonical화.
+- Index `idx_connection_messages_participant_created on (participant_key, created_at desc)`로 스레드 페이지네이션을 O(N)으로.
+- RPC `list_connection_conversations(limit_count, before_ts)` — 호출자 기준 thread 당 1행(`participant_key`, `other_user_id`, last preview, `last_is_from_me`, `unread_count`). `before_ts` cursor는 방금 본 페이지에서 가장 오래된 `last_created_at`을 전달.
+
+RLS는 기존 그대로(`connection_messages_select_own` 이 sender OR recipient 둘 다 허용). **팔로우는 DB-level 요구 사항이 아님** — 모든 로그인 유저는 다른 유저에게 메시지를 보낼 수 있고, 쿼터는 이미 `social.connection_unlimited` feature key가 `planMatrix`/`seed_plan_matrix`에 정의되어 있어 BETA_ALL_PAID를 내리는 시점에 자동 적용.
+
+#### 클라이언트 (`src/lib/supabase/connectionMessages.ts`)
+
+기존 API(`sendConnectionMessage`, `listMyReceivedMessages`, `markConnectionMessageRead`, `getUnreadConnectionMessageCount`)는 back-compat로 유지. 신규:
+- `type ConversationSummary`
+- `listMyConversations({ limit, beforeTs })` — RPC 호출 → `profiles` 단일 `in("id",…)`로 peer 프로필 하이드레이션.
+- `listConversationWith(otherUserId, { limit, beforeTs })` — `participant_key` eq 기반 쿼리, oldest-first 반환(채팅 버블용).
+- `markConversationRead(otherUserId)` — 특정 peer로부터 받은 미읽음 메시지 일괄 읽음 처리.
+
+#### 신규 페이지/컴포넌트
+
+- `src/app/my/messages/page.tsx` — 기존 받은 메시지 리스트 → **대화 리스트**로 리팩터링. Preview, unread badge, "나:" prefix (내가 보낸 마지막이면), 시간, Load more 커서.
+- `src/app/my/messages/[peer]/page.tsx` — 신규 **스레드 디테일**. `peer`는 username(pretty) 또는 uuid(placeholder 계정 fallback). 채팅 버블 + 날짜 divider + 이전 메시지 페이지네이션 + 인라인 회신 composer. 진입 시 `markConversationRead(peerId)`로 자동 읽음 처리.
+- `src/components/connection/MessageComposer.tsx` — 공용 composer. textarea + 문자수 카운트(4000) + `useFeatureAccess("social.connection_unlimited")`로 **사용량 hint / near_limit 경고 / soft block**. ⌘/Ctrl+Enter 전송. `sendConnectionMessage` 경유하므로 metering (`connection.message_sent` usage event) 유지.
+- `src/components/connection/MessageRecipientButton.tsx` — `ProfileActions`에서 사용하는 "메시지" 버튼 + portal sheet. 내부 composer에 `autoFocus`, 전송 성공 시 1.4s confirm toast 후 자동 닫힘.
+- `src/components/ProfileActions.tsx` — FollowButton 옆에 `MessageRecipientButton` 나란히. 자기 자신 프로필에서는 여전히 렌더 안 함.
+
+#### Entitlement / Metering 통합
+
+- Composer는 `useFeatureAccess("social.connection_unlimited")`로 실시간 quota 조회. 기존 `seed_plan_matrix.sql`의 rule(free 월 5건, artist_pro/discovery_pro 월 100건, hybrid_pro 월 300건, gallery_workspace unlimited)을 그대로 사용. BETA_ALL_PAID가 켜진 현재는 `allowed=true`로 override되지만 usage_events는 계속 쌓이므로 post-beta 전환 즉시 차단이 동작.
+- 전송 후 `refresh()`로 quota 재해석 → UI가 최신 `used`를 반영.
+
+#### 알림/기존 트리거
+
+`on_connection_message_notify` 트리거와 `notify_on_connection_message()` 함수는 그대로. 스레드에서 회신하더라도 동일한 `connection_message` 타입 알림이 상대에게 전송됨.
+
+#### i18n 키(KR/EN) 추가
+
+- `connection.inbox.subtitleThreads`, `connection.inbox.emptyHint`, `connection.inbox.findPeople`, `connection.inbox.unknownUser`, `connection.inbox.youLabel`
+- `connection.thread.*` (backToInbox / notFound / empty / loadOlder / viewProfile)
+- `connection.composer.*` (ctaMessage / sheetTitle / placeholder / placeholderTo / send / sent / usageUnlimited / usageLimited / nearLimit / blocked)
+- `nav.myProfile` 값 갱신(영문/한글).
+
+#### 영향 / 리그레션 체크
+
+- `/my/messages` 기존 진입점 URL 동일, subtitle만 교체. 기존 signal badge(`getUnreadConnectionMessageCount`)는 건드리지 않음 — 인바운드 미읽음은 스레드 탐색 시 `markConversationRead`로 해소.
+- `IntroMessageAssist`(/people)는 수정 안 됨 — 기존 Follow-with-Intro 경로 보존.
+- `price_inquiries` inbox(`/my/inquiries`)는 이번 패치 범위 외. 별도 스키마/pipeline 유지.
+- `FollowProfileRow`는 이번 패치에서 변경 없음(직전 Network 패치에서 `followed_at` 추가한 상태 그대로).
+
+#### 수동 QA 체크리스트
+
+1. `/u/<peer>`에서 "메시지" 클릭 → sheet 열림 → 보내기 → `/my/messages`에 대화 나타남.
+2. `/my/messages` 에서 대화 카드 클릭 → `/my/messages/<peer>`로 이동, 미읽음 뱃지 사라짐, 채팅 버블이 오래된 → 최신 순으로 정렬.
+3. 상대가 답장하면 동일 thread에 append (새로고침 후). 답장 UI의 ⌘+Enter가 전송.
+4. 쿼터 hint: 무료 플랜 시드에서 5건 초과시 `blocked` 배지 렌더 (BETA_ALL_PAID OFF 필요).
+5. 헤더 "내 스튜디오 / My Studio" 표기, 각 `← 내 스튜디오로/Back to My Studio` 동작.
+6. 스튜디오 작업실 타일 = `/my/library` 총 카운트 일치, 네트워크 타일 = `9 · 12` composite.
+
+### Supabase 적용 필요
+
+- `supabase/migrations/20260425000000_connection_message_threads.sql` 수동 실행 필요.
+
+### 환경 변수
+
+변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- `npm run lint`에서 새로 건드린 파일 관련 에러 없음(기존 파일의 pre-existing 경고/오류는 무시).
+
+### 변경 파일
+
+- Added: `supabase/migrations/20260425000000_connection_message_threads.sql`
+- Added: `src/app/my/messages/[peer]/page.tsx`
+- Added: `src/components/connection/MessageComposer.tsx`
+- Added: `src/components/connection/MessageRecipientButton.tsx`
+- Modified: `src/app/my/messages/page.tsx`
+- Modified: `src/components/ProfileActions.tsx`
+- Modified: `src/lib/supabase/connectionMessages.ts`
+- Modified: `src/lib/i18n/messages.ts`
+- Modified: `src/components/Header.tsx` (주석 통일)
+- Modified: `src/app/my/page.tsx` (네트워크/작업실 타일 소스 교체)
+
+---
 
 ## 2026-04-24 — Studio/Profile UX Reset + Network Page Upgrade
 
