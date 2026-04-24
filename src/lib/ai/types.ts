@@ -13,7 +13,13 @@ export type AiDegradation = {
     | "parse"
     | "error"
     | "unauthorized"
-    | "invalid_input";
+    | "invalid_input"
+    /** OpenAI or upstream rate limit (distinct from product soft cap). */
+    | "rate_limit"
+    /** Prompt or combined context too large for the model. */
+    | "context_limit"
+    /** Upstream rejected API credentials (distinct from our 401). */
+    | "upstream_auth";
   /**
    * Row id of the `ai_events` record for this call. Clients send this back
    * to `/api/ai/accept` when the user adopts the draft so the analytics row

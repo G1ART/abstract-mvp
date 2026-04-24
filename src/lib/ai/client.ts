@@ -1,4 +1,13 @@
-import OpenAI from "openai";
+import OpenAI, {
+  APIConnectionError,
+  APIConnectionTimeoutError,
+  APIError,
+  APIUserAbortError,
+  AuthenticationError,
+  BadRequestError,
+  PermissionDeniedError,
+  RateLimitError,
+} from "openai";
 import type { AiFeatureKey, AiDegradation } from "./types";
 import { SAFETY_FOOTER, assertSafePrompt } from "./safety";
 
@@ -99,6 +108,8 @@ export async function generateJSON<T extends object>(
       {
         model: DEFAULT_MODEL,
         temperature: 0.7,
+        /** Portfolio / profile JSON payloads need headroom beyond the default cap. */
+        max_completion_tokens: 2048,
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemMessage },
@@ -131,14 +142,76 @@ export async function generateJSON<T extends object>(
         },
       };
     } catch (err: unknown) {
-      const anyErr = err as { name?: string; status?: number; message?: string };
-      const name = String(anyErr?.name ?? "");
-      if (name === "APIUserAbortError" || name === "AbortError") {
+      if (err instanceof APIUserAbortError) {
         lastError = "timeout";
         break;
       }
-      // Always log the raw OpenAI error so Vercel Function logs expose the
-      // real failure cause (invalid model name, expired key, quota, etc.).
+      if (err instanceof APIConnectionTimeoutError || err instanceof APIConnectionError) {
+        lastError = "timeout";
+        break;
+      }
+      if (err instanceof RateLimitError) {
+        lastError = "rate_limit";
+        break;
+      }
+      if (err instanceof AuthenticationError || err instanceof PermissionDeniedError) {
+        lastError = "upstream_auth";
+        break;
+      }
+      if (err instanceof BadRequestError) {
+        const e = err as APIError;
+        const msg = String(e.message ?? "").toLowerCase();
+        const code = String(e.code ?? "").toLowerCase();
+        if (
+          code.includes("context_length") ||
+          code.includes("string_above_max_length") ||
+          msg.includes("context length") ||
+          msg.includes("maximum context") ||
+          msg.includes("too many tokens") ||
+          msg.includes("reduce the length") ||
+          msg.includes("token count")
+        ) {
+          lastError = "context_limit";
+        } else {
+          lastError = "error";
+        }
+        console.error("[ai/client] OpenAI BadRequest", {
+          feature: opts.feature,
+          model: DEFAULT_MODEL,
+          attempt,
+          code: e.code,
+          message: e.message,
+        });
+        break;
+      }
+      if (err instanceof APIError) {
+        const e = err as APIError;
+        if (e.status === 429) {
+          lastError = "rate_limit";
+          break;
+        }
+        if (e.status === 401 || e.status === 403) {
+          lastError = "upstream_auth";
+          break;
+        }
+        console.error("[ai/client] OpenAI call failed", {
+          feature: opts.feature,
+          model: DEFAULT_MODEL,
+          attempt,
+          status: e.status,
+          code: e.code,
+          message: e.message,
+        });
+        lastError = "error";
+        if (attempt === 0 && (e.status ?? 0) >= 500) continue;
+        break;
+      }
+      const anyErr = err as { name?: string; status?: number; message?: string };
+      const name = String(anyErr?.name ?? "");
+      if (name === "AbortError") {
+        lastError = "timeout";
+        break;
+      }
       console.error("[ai/client] OpenAI call failed", {
         feature: opts.feature,
         model: DEFAULT_MODEL,
@@ -157,8 +230,14 @@ export async function generateJSON<T extends object>(
     lastError === "parse"
       ? "parse"
       : lastError === "timeout"
-      ? "timeout"
-      : "error";
+        ? "timeout"
+        : lastError === "rate_limit"
+          ? "rate_limit"
+          : lastError === "context_limit"
+            ? "context_limit"
+            : lastError === "upstream_auth"
+              ? "upstream_auth"
+              : "error";
 
   return {
     data: { ...opts.fallback(), degraded: true, reason },

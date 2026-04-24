@@ -26,6 +26,12 @@ export function aiErrorKey(result: AiDegradation | null | undefined): MessageKey
       return "ai.error.timeout";
     case "error":
       return "ai.error.server";
+    case "rate_limit":
+      return "ai.error.rateLimit";
+    case "context_limit":
+      return "ai.error.contextLimit";
+    case "upstream_auth":
+      return "ai.error.upstreamAuth";
     default:
       return "ai.error.tryLater";
   }

@@ -62,26 +62,36 @@ export type PortfolioContextInput = {
   metadataGaps?: PortfolioMetadataGaps | null;
 };
 
+const PORTFOLIO_CTX_MAX_CHARS = 18_000;
+
+/** Keeps portfolio copilot prompts under typical model context limits. */
+function clipPromptText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max - 1)}…`;
+}
+
 export function buildPortfolioCopilotContext(input: PortfolioContextInput): string {
   const summarized = input.artworks.slice(0, 20).map((a) => ({
-    id: a.id,
-    title: a.title ?? "",
-    year: a.year ?? "",
-    medium: a.medium ?? "",
-    dimensions: a.dimensions ?? "",
-    keywords: (a.keywords ?? []).slice(0, 4),
+    id: clipPromptText(String(a.id ?? ""), 72),
+    title: clipPromptText(String(a.title ?? ""), 160),
+    year: clipPromptText(String(a.year ?? ""), 24),
+    medium: clipPromptText(String(a.medium ?? ""), 120),
+    dimensions: clipPromptText(String(a.dimensions ?? ""), 120),
+    keywords: (a.keywords ?? []).slice(0, 4).map((k) => clipPromptText(k, 48)),
   }));
   const ex = input.exhibitions.slice(0, 10).map((e) => ({
-    id: e.id,
-    title: e.title ?? "",
-    year: e.year ?? "",
-    venue: e.venue ?? "",
+    id: clipPromptText(String(e.id ?? ""), 72),
+    title: clipPromptText(String(e.title ?? ""), 160),
+    year: clipPromptText(String(e.year ?? ""), 24),
+    venue: clipPromptText(String(e.venue ?? ""), 120),
   }));
   const gaps =
     input.metadataGaps != null && typeof input.metadataGaps === "object"
       ? `\nmetadataGaps: ${JSON.stringify(input.metadataGaps)}`
       : "";
-  return `username: ${input.username ?? ""}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}${gaps}`;
+  const line = `username: ${clipPromptText(String(input.username ?? ""), 64)}\nartworks: ${JSON.stringify(summarized)}\nexhibitions: ${JSON.stringify(ex)}${gaps}`;
+  if (line.length <= PORTFOLIO_CTX_MAX_CHARS) return line;
+  return `${line.slice(0, PORTFOLIO_CTX_MAX_CHARS - 20)}\n…[truncated]`;
 }
 
 export type StudioDigestInput = {
