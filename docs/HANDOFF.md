@@ -14,6 +14,11 @@ Last updated: 2026-04-24
 
 - `npx tsc --noEmit` 통과.
 
+### 2026-04-24 부록 — 투어 한글 깨짐(글리프)
+
+- 원인: `Geist` `latin` 서브셋만 로드된 상태에서 일부 환경이 한글을 Geist로 치환해 **잘못된 글리프**로 그림.
+- 조치: `globals.css`의 `body` 및 `@theme --font-sans`에 **시스템 CJK 폴백** 스택 추가, `Geist`에 `adjustFontFallback`, 투어 `TourOverlay` 루트에 `lang` 동기화.
+
 ---
 
 ## 2026-04-26 — Overlay Guided Tour System

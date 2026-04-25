@@ -128,7 +128,7 @@ export function TourOverlay({
   onSkip,
   onComplete,
 }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [mounted, setMounted] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const primaryBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -179,6 +179,7 @@ export function TourOverlay({
       role="dialog"
       aria-modal="true"
       aria-labelledby="tour-title"
+      lang={locale === "ko" ? "ko" : "en"}
       className="fixed inset-0 z-[1200] pointer-events-none"
     >
       {/* Backdrop with spotlight cutout via SVG mask */}
