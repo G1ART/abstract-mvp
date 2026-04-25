@@ -11,6 +11,14 @@
  * Uses a React portal so it can live above modals and page content without
  * inheriting z-index/overflow from the nearest parent. Designed to be calm
  * and premium: no bouncing, no flashing; brief transitions only.
+ *
+ * Why `"use no memo"`: React Compiler 1.0 can over-memoize text fragments
+ * derived from i18n + per-step props. Combined with our portal + GPU
+ * compositing, that produced visible glyph bleed across step transitions
+ * (e.g. "Workshop" → "Oprkshop", "A private…" → "Eighivate…"). Per-step
+ * `key`s on the popover + title/body forcibly remount the DOM, but we
+ * also opt out of compiler memoization here so any future regression
+ * inside this file fails loudly rather than silently caching text nodes.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -135,6 +143,11 @@ export function TourOverlay({
   onSkip,
   onComplete,
 }: Props) {
+  // Opt this component out of React Compiler memoization. The compiler
+  // sometimes caches per-step derived strings (title/body/eyebrow) and
+  // re-uses text nodes across step transitions, which collided with our
+  // portal + GPU compositing and produced visible glyph bleed.
+  "use no memo";
   const { t, locale } = useT();
   const useKoCopy = locale === "ko";
   const koStep = useKoCopy ? TOUR_KO_STEP[tourKoStepKey(tour.id, step.id)] : undefined;
@@ -203,8 +216,12 @@ export function TourOverlay({
       {/* Subtle halo ring around target */}
       {targetRect ? <Halo rect={targetRect} /> : null}
 
-      {/* Popover */}
+      {/* Popover. The `key` forces a fresh DOM node per step so neither React
+          Compiler memoization nor GPU layer rasterization can leak glyphs
+          from the previous step into the current one (root cause of the
+          "Eighivate / withparate" bleed users were reporting). */}
       <div
+        key={`${tour.id}:${step.id}:${locale}`}
         ref={popoverRef}
         style={{
           top: position.top,
@@ -212,7 +229,7 @@ export function TourOverlay({
           maxWidth: `min(${POPOVER_WIDTH}px, ${POPOVER_MAX_WIDTH_VW}vw)`,
           fontFamily: TOUR_POPOVER_FONT_FAMILY,
         }}
-        className="pointer-events-auto absolute w-[min(340px,92vw)] rounded-2xl bg-white text-zinc-900 shadow-[0_20px_60px_-20px_rgba(24,24,27,0.35),0_8px_18px_-8px_rgba(24,24,27,0.25)] ring-1 ring-zinc-200/80 transition-opacity duration-200"
+        className="pointer-events-auto absolute w-[min(340px,92vw)] rounded-2xl bg-white text-zinc-900 shadow-[0_20px_60px_-20px_rgba(24,24,27,0.35),0_8px_18px_-8px_rgba(24,24,27,0.25)] ring-1 ring-zinc-200/80"
       >
         {/* Arrow */}
         <ArrowIndicator direction={position.arrow} />
@@ -222,10 +239,19 @@ export function TourOverlay({
             <span className={useKoCopy ? "" : "uppercase tracking-[0.12em]"}>{tourEyebrow}</span>
             <span className="tabular-nums">{stepIndex + 1} / {totalSteps}</span>
           </div>
-          <h2 id="tour-title" className="text-base font-semibold leading-snug text-zinc-900">
+          <h2
+            id="tour-title"
+            key={`title:${step.id}`}
+            className="text-base font-semibold leading-snug text-zinc-900"
+          >
             {title}
           </h2>
-          <p className="mt-1 text-[13px] leading-relaxed text-zinc-600">{body}</p>
+          <p
+            key={`body:${step.id}`}
+            className="mt-1 text-[13px] leading-relaxed text-zinc-600"
+          >
+            {body}
+          </p>
         </div>
 
         {/* Step dots */}
@@ -286,7 +312,7 @@ function Spotlight({ rect }: { rect: TargetRect | null }) {
 
   if (!rect) {
     return (
-      <div className="pointer-events-auto absolute inset-0 bg-zinc-900/35 backdrop-blur-[2px] transition-opacity duration-200" />
+      <div className="pointer-events-auto absolute inset-0 bg-zinc-900/35" />
     );
   }
 
@@ -298,7 +324,7 @@ function Spotlight({ rect }: { rect: TargetRect | null }) {
 
   return (
     <svg
-      className="pointer-events-auto absolute inset-0 h-full w-full transition-opacity duration-200"
+      className="pointer-events-auto absolute inset-0 h-full w-full"
       aria-hidden
     >
       <defs>
@@ -323,7 +349,7 @@ function Spotlight({ rect }: { rect: TargetRect | null }) {
 function Halo({ rect }: { rect: TargetRect }) {
   return (
     <div
-      className="pointer-events-none absolute rounded-2xl ring-1 ring-white/70 shadow-[0_0_0_3px_rgba(255,255,255,0.35),0_0_24px_4px_rgba(255,255,255,0.25)] transition-all duration-200"
+      className="pointer-events-none absolute rounded-2xl ring-1 ring-white/70 shadow-[0_0_0_3px_rgba(255,255,255,0.35),0_0_24px_4px_rgba(255,255,255,0.25)]"
       style={{
         top: rect.top - PADDING,
         left: rect.left - PADDING,
