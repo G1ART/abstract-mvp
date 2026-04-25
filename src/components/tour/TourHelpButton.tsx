@@ -10,7 +10,7 @@
 
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { useT } from "@/lib/i18n/useT";
-import { TOUR_KO_CHROME, TOUR_KO_FONT_FAMILY } from "@/lib/tours/tourKoCopy";
+import { TOUR_KO_CHROME, TOUR_POPOVER_FONT_FAMILY } from "@/lib/tours/tourKoCopy";
 import { useTourController } from "./TourProvider";
 
 type Props = {
@@ -39,7 +39,7 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
   return (
     <button
       type="button"
-      style={locale === "ko" ? { fontFamily: TOUR_KO_FONT_FAMILY } : undefined}
+      style={{ fontFamily: TOUR_POPOVER_FONT_FAMILY }}
       onClick={() => {
         if (busy) return;
         logBetaEventSync("tour_reopened", { tourId });
