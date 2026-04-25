@@ -29,7 +29,7 @@ export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
 export const TOURS: Record<TourId, TourDefinition> = {
   [TOUR_IDS.studio]: {
     id: TOUR_IDS.studio,
-    version: 4,
+    version: 5,
     titleKey: "tour.studio.title",
     introKey: "tour.studio.intro",
     requiredAnchors: ["studio-hero", "studio-operating-grid"],

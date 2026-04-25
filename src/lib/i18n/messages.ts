@@ -2835,7 +2835,7 @@ export const messages = {
     "tour.studio.hero.title": "내 스튜디오에 오신 걸 환영해요",
     "tour.studio.hero.body":
       "Abstract에서 만들고, 담고, 공유하는 모든 것이 시작되는 공간이에요.",
-    "tour.studio.nextSteps.title": "다음 해보면 좋은 일",
+    "tour.studio.nextSteps.title": "다음으로보면 좋은 일",
     "tour.studio.nextSteps.body":
       "지금 스튜디오에 도움이 될 만한 일을 간단히 모아두는 곳이에요. 프로필·작품·문의를 바로 열 수 있어요.",
     "tour.studio.grid.title": "운영 타일",

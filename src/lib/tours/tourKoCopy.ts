@@ -36,7 +36,7 @@ export const TOUR_KO_STEP: Record<string, { title: string; body: string }> = {
     body: "Abstract에서 만들고, 담고, 공유하는 모든 것이 시작되는 공간이에요.",
   },
   "studio.main:next-steps": {
-    title: "\uB2E4\uC74C \uD574\uBCFC\uBA74 \uC88B\uC740 \uC77C",
+    title: "다음으로보면 좋은 일",
     body: "지금 스튜디오에 도움이 될 만한 일을 간단히 모아두는 곳이에요. 프로필·작품·문의를 바로 열 수 있어요.",
   },
   "studio.main:grid": {
