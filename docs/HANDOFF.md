@@ -1,6 +1,31 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-24
+Last updated: 2026-04-25
+
+## 2026-04-25 — Tour auto-start: once per user, ignore version bumps
+
+### 요약
+
+- **정책 변경**: 가이드 오버레이 자동 발동을 **사용자당 평생 1회**로 제한. 한 번 완료/스킵한 사용자에게는 로그아웃·재로그인이나 투어 버전 bump가 일어나도 다시 자동으로 뜨지 않음.
+- **Manual reopen 그대로**: 우상단 `TourHelpButton`(가이드 보기)은 언제든 다시 띄울 수 있는 유일한 공식 경로.
+- **이유**: 카피 수정만 해도 `tour.version`을 올리는 운영 패턴 + 자동 재발동 → 매 배포마다 오버레이가 다시 떠서 노이즈. 사용자도 명시적으로 1회로 묶고 싶다고 요청.
+
+### 변경 위치
+
+- `src/components/tour/TourProvider.tsx` `requestAutoStart`: `state.version < tour.version` 분기 제거. 이제 `!state || state.status === "not_seen"`일 때만 자동 발동.
+- `src/lib/tours/tourPersistence.ts`: `localStorage` 키를 사용자별로 분리 (`abstract.tour.v2.{uid}.{tourId}`). 같은 브라우저에서 다른 계정으로 로그인해도 이전 사용자의 "completed"가 새 사용자에게 새지 않음. 기존 v1 키는 한 번만 마이그레이션 소스로 읽혀서 기존 사용자 경험은 깨지지 않음.
+- 미사용 `loadTourStateLocal` export 제거.
+
+### Supabase / 환경 변수
+
+- Supabase SQL 돌려야 할 것은 없음.
+- 환경 변수 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+
+---
 
 ## 2026-04-24 — Studio portfolio tabs + studio tour step
 
