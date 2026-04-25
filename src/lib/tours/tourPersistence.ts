@@ -18,17 +18,38 @@
 import { supabase } from "@/lib/supabase/client";
 import type { TourState, TourStatus } from "./tourTypes";
 
-const LS_PREFIX = "abstract.tour.v1.";
+/**
+ * v2 keys are scoped by user id (or "anon" when logged out) so that
+ * multiple accounts on the same browser do not see each other's
+ * "completed" tour state. v1 keys (un-scoped) are kept readable as a
+ * one-time migration source so existing users don't get the tour shown
+ * to them again after this rollout.
+ */
+const LS_PREFIX_V1 = "abstract.tour.v1.";
+const LS_PREFIX_V2 = "abstract.tour.v2.";
 
-function lsKey(tourId: string): string {
-  return `${LS_PREFIX}${tourId}`;
+function lsKeyV1(tourId: string): string {
+  return `${LS_PREFIX_V1}${tourId}`;
 }
 
-function readLocal(tourId: string): TourState | null {
-  if (typeof window === "undefined") return null;
+function lsKey(tourId: string, userId: string): string {
+  return `${LS_PREFIX_V2}${userId}.${tourId}`;
+}
+
+async function currentUserScope(): Promise<string> {
   try {
-    const raw = window.localStorage.getItem(lsKey(tourId));
-    if (!raw) return null;
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    return session?.user?.id ?? "anon";
+  } catch {
+    return "anon";
+  }
+}
+
+function parseState(raw: string | null): TourState | null {
+  if (!raw) return null;
+  try {
     const parsed = JSON.parse(raw) as Partial<TourState>;
     if (!parsed || typeof parsed !== "object") return null;
     if (typeof parsed.tourId !== "string") return null;
@@ -45,10 +66,32 @@ function readLocal(tourId: string): TourState | null {
   }
 }
 
-function writeLocal(state: TourState): void {
+async function readLocalScoped(tourId: string): Promise<TourState | null> {
+  if (typeof window === "undefined") return null;
+  const userId = await currentUserScope();
+  const v2 = parseState(window.localStorage.getItem(lsKey(tourId, userId)));
+  if (v2) return v2;
+  // One-time migration: read v1 key. Only migrate when logged in so we
+  // don't leak an anonymous "completed" state to a freshly signed-in user.
+  if (userId !== "anon") {
+    const v1 = parseState(window.localStorage.getItem(lsKeyV1(tourId)));
+    if (v1) {
+      try {
+        window.localStorage.setItem(lsKey(tourId, userId), JSON.stringify(v1));
+      } catch {
+        /* ignore quota */
+      }
+      return v1;
+    }
+  }
+  return null;
+}
+
+async function writeLocalScoped(state: TourState): Promise<void> {
   if (typeof window === "undefined") return;
+  const userId = await currentUserScope();
   try {
-    window.localStorage.setItem(lsKey(state.tourId), JSON.stringify(state));
+    window.localStorage.setItem(lsKey(state.tourId, userId), JSON.stringify(state));
   } catch {
     /* ignore quota errors */
   }
@@ -106,27 +149,20 @@ async function writeRemote(state: TourState): Promise<void> {
 /**
  * Loads the freshest known state.
  * Prefers remote (source of truth) when available; otherwise falls back to
- * local. Always returns immediately with local first, then best-effort
- * upgrades via remote.
+ * the user-scoped local mirror. We never return another user's local state
+ * to a freshly signed-in user (see `readLocalScoped`).
  */
 export async function loadTourState(tourId: string): Promise<TourState | null> {
-  const local = readLocal(tourId);
   const remote = await readRemote(tourId);
   if (remote) {
-    // Reconcile: remote wins; mirror to local for next boot speed.
-    writeLocal(remote);
+    await writeLocalScoped(remote);
     return remote;
   }
-  return local;
-}
-
-/** Synchronous local read (used during provider bootstrap to pick up SSR-safe defaults). */
-export function loadTourStateLocal(tourId: string): TourState | null {
-  return readLocal(tourId);
+  return readLocalScoped(tourId);
 }
 
 export async function saveTourState(state: TourState): Promise<void> {
-  writeLocal(state);
+  await writeLocalScoped(state);
   await writeRemote(state);
 }
 

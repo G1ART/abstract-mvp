@@ -130,11 +130,14 @@ export function TourProvider({ children }: { children: ReactNode }) {
       void (async () => {
         const state = await loadTourState(tour.id);
         if (cancelled) return;
-        // Auto-start only for fresh users or after a version bump.
-        const shouldStart =
-          !state ||
-          state.status === "not_seen" ||
-          state.version < tour.version;
+        // Policy: auto-start fires AT MOST ONCE per user per tour.
+        //
+        // Once a user has seen this tour (status === completed | skipped)
+        // we never auto-pop it again, even after copy or version bumps.
+        // The manual "가이드 보기" button (TourHelpButton) stays as the
+        // re-entry path on demand. This avoids onboarding-overlay fatigue
+        // on every release that touches tour copy.
+        const shouldStart = !state || state.status === "not_seen";
         if (!shouldStart) return;
         // Defer slightly so the page's own data can paint first; keeps
         // the overlay from landing on a loading skeleton.
