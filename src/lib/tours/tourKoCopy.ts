@@ -4,6 +4,10 @@
  * English and keys in `tourRegistry.ts` stay the i18n path; edit both when copy changes.
  */
 
+/** Do not put Geist first here — Latin-subset + letter-spacing breaks Hangul in some engines. */
+export const TOUR_KO_FONT_FAMILY =
+  'system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif';
+
 export const TOUR_KO_CHROME = {
   next: "다음",
   prev: "이전",

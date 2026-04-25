@@ -16,7 +16,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/lib/i18n/useT";
-import { TOUR_KO_CHROME, TOUR_KO_HEADER, TOUR_KO_STEP, tourKoStepKey } from "@/lib/tours/tourKoCopy";
+import {
+  TOUR_KO_CHROME,
+  TOUR_KO_FONT_FAMILY,
+  TOUR_KO_HEADER,
+  TOUR_KO_STEP,
+  tourKoStepKey,
+} from "@/lib/tours/tourKoCopy";
 import type { TourDefinition, TourPlacement, TourStep } from "@/lib/tours/tourTypes";
 import type { TargetRect } from "@/lib/tours/tourUtils";
 
@@ -177,6 +183,10 @@ export function TourOverlay({
     [targetRect, step.placement, popSize.w, popSize.h]
   );
 
+  const eyebrowBarClass = useKoCopy
+    ? "mb-2 flex items-center justify-between text-[11px] font-medium text-zinc-400"
+    : "mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400";
+
   if (!mounted || typeof document === "undefined") return null;
 
   const isLast = stepIndex >= totalSteps - 1;
@@ -204,16 +214,17 @@ export function TourOverlay({
           top: position.top,
           left: position.left,
           maxWidth: `min(${POPOVER_WIDTH}px, ${POPOVER_MAX_WIDTH_VW}vw)`,
+          ...(useKoCopy ? { fontFamily: TOUR_KO_FONT_FAMILY } : {}),
         }}
-        className="pointer-events-auto absolute w-[min(340px,92vw)] rounded-2xl bg-white text-zinc-900 shadow-[0_20px_60px_-20px_rgba(24,24,27,0.35),0_8px_18px_-8px_rgba(24,24,27,0.25)] ring-1 ring-zinc-200/80 backdrop-blur-sm transition-opacity duration-200"
+        className="pointer-events-auto absolute w-[min(340px,92vw)] rounded-2xl bg-white text-zinc-900 shadow-[0_20px_60px_-20px_rgba(24,24,27,0.35),0_8px_18px_-8px_rgba(24,24,27,0.25)] ring-1 ring-zinc-200/80 transition-opacity duration-200"
       >
         {/* Arrow */}
         <ArrowIndicator direction={position.arrow} />
 
-        <div className="px-5 pt-4 pb-3">
-          <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">
+        <div className={`px-5 pt-4 pb-3${useKoCopy ? " [word-break:keep-all]" : ""}`}>
+          <div className={eyebrowBarClass}>
             <span>{tourEyebrow}</span>
-            <span>
+            <span className={useKoCopy ? "tabular-nums" : ""}>
               {stepIndex + 1} / {totalSteps}
             </span>
           </div>
