@@ -16,6 +16,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useT } from "@/lib/i18n/useT";
+import { TOUR_KO_CHROME, TOUR_KO_HEADER, TOUR_KO_STEP, tourKoStepKey } from "@/lib/tours/tourKoCopy";
 import type { TourDefinition, TourPlacement, TourStep } from "@/lib/tours/tourTypes";
 import type { TargetRect } from "@/lib/tours/tourUtils";
 
@@ -129,6 +130,16 @@ export function TourOverlay({
   onComplete,
 }: Props) {
   const { t, locale } = useT();
+  const useKoCopy = locale === "ko";
+  const koStep = useKoCopy ? TOUR_KO_STEP[tourKoStepKey(tour.id, step.id)] : undefined;
+  const title = koStep?.title ?? t(step.titleKey);
+  const body = koStep?.body ?? t(step.bodyKey);
+  const tourEyebrow =
+    useKoCopy && TOUR_KO_HEADER[tour.id] ? TOUR_KO_HEADER[tour.id] : t(tour.titleKey);
+  const skipLabel = useKoCopy ? TOUR_KO_CHROME.skip : t("tour.skip");
+  const prevLabel = useKoCopy ? TOUR_KO_CHROME.prev : t("tour.prev");
+  const nextLabel = useKoCopy ? TOUR_KO_CHROME.next : t("tour.next");
+  const doneLabel = useKoCopy ? TOUR_KO_CHROME.done : t("tour.done");
   const [mounted, setMounted] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const primaryBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -169,8 +180,6 @@ export function TourOverlay({
   if (!mounted || typeof document === "undefined") return null;
 
   const isLast = stepIndex >= totalSteps - 1;
-  const title = t(step.titleKey);
-  const body = t(step.bodyKey);
   const cta = step.ctaKey ? t(step.ctaKey) : null;
 
   const overlayEl = (
@@ -203,7 +212,7 @@ export function TourOverlay({
 
         <div className="px-5 pt-4 pb-3">
           <div className="mb-2 flex items-center justify-between text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-400">
-            <span>{t(tour.titleKey)}</span>
+            <span>{tourEyebrow}</span>
             <span>
               {stepIndex + 1} / {totalSteps}
             </span>
@@ -233,9 +242,9 @@ export function TourOverlay({
             type="button"
             onClick={onSkip}
             className="shrink-0 whitespace-nowrap rounded-md px-2 py-1 text-[12px] font-medium text-zinc-500 hover:text-zinc-900"
-            aria-label={t("tour.skip")}
+            aria-label={skipLabel}
           >
-            {t("tour.skip")}
+            {skipLabel}
           </button>
 
           <div className="flex shrink-0 items-center gap-2">
@@ -245,7 +254,7 @@ export function TourOverlay({
                 onClick={onPrev}
                 className="whitespace-nowrap rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-[12px] font-medium text-zinc-700 hover:bg-zinc-50"
               >
-                {t("tour.prev")}
+                {prevLabel}
               </button>
             ) : null}
             <button
@@ -254,7 +263,7 @@ export function TourOverlay({
               onClick={isLast ? onComplete : onNext}
               className="whitespace-nowrap rounded-md bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:ring-offset-2"
             >
-              {cta ?? (isLast ? t("tour.done") : t("tour.next"))}
+              {cta ?? (isLast ? doneLabel : nextLabel)}
             </button>
           </div>
         </div>

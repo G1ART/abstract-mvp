@@ -29,7 +29,7 @@ export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
 export const TOURS: Record<TourId, TourDefinition> = {
   [TOUR_IDS.studio]: {
     id: TOUR_IDS.studio,
-    version: 3,
+    version: 4,
     titleKey: "tour.studio.title",
     introKey: "tour.studio.intro",
     requiredAnchors: ["studio-hero", "studio-operating-grid"],
@@ -95,7 +95,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.upload]: {
     id: TOUR_IDS.upload,
-    version: 1,
+    version: 2,
     titleKey: "tour.upload.title",
     introKey: "tour.upload.intro",
     requiredAnchors: ["upload-tabs"],
@@ -140,7 +140,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.exhibitionCreate]: {
     id: TOUR_IDS.exhibitionCreate,
-    version: 1,
+    version: 2,
     titleKey: "tour.exhibition.title",
     introKey: "tour.exhibition.intro",
     requiredAnchors: ["exhibition-form-title"],
@@ -178,7 +178,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.people]: {
     id: TOUR_IDS.people,
-    version: 1,
+    version: 2,
     titleKey: "tour.people.title",
     introKey: "tour.people.intro",
     requiredAnchors: ["people-search"],
@@ -216,7 +216,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.delegation]: {
     id: TOUR_IDS.delegation,
-    version: 1,
+    version: 2,
     titleKey: "tour.delegation.title",
     introKey: "tour.delegation.intro",
     requiredAnchors: ["delegation-invite"],
@@ -254,7 +254,7 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.network]: {
     id: TOUR_IDS.network,
-    version: 1,
+    version: 2,
     titleKey: "tour.network.title",
     introKey: "tour.network.intro",
     requiredAnchors: ["network-tabs"],

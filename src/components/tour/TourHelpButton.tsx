@@ -10,6 +10,7 @@
 
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { useT } from "@/lib/i18n/useT";
+import { TOUR_KO_CHROME } from "@/lib/tours/tourKoCopy";
 import { useTourController } from "./TourProvider";
 
 type Props = {
@@ -24,7 +25,8 @@ type Props = {
 };
 
 export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "subtle", className }: Props) {
-  const { t } = useT();
+  const { t, locale } = useT();
+  const label = locale === "ko" ? TOUR_KO_CHROME.reopen : t(labelKey);
   const { startTour, isActive, activeTourId } = useTourController();
 
   const busy = isActive && activeTourId === tourId;
@@ -43,7 +45,7 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
         startTour(tourId);
       }}
       className={`${baseClass} ${className ?? ""}`.trim()}
-      aria-label={t(labelKey)}
+      aria-label={label}
       disabled={busy}
     >
       <svg className="shrink-0" width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden>
@@ -56,7 +58,7 @@ export function TourHelpButton({ tourId, labelKey = "tour.reopen", variant = "su
         />
         <circle cx="8" cy="11.2" r="0.7" fill="currentColor" />
       </svg>
-      <span className="whitespace-nowrap">{t(labelKey)}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
 }
