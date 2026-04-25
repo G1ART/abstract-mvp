@@ -263,13 +263,12 @@ export function StudioPortfolioPanel({
   );
 
   return (
-    <section
-      aria-label={t("studio.portfolio.title")}
-      className="mb-6"
-      data-tour="studio-portfolio-tabs"
-    >
+    <section aria-label={t("studio.portfolio.title")} className="mb-6">
       {hasAnyContent && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-2">
+        <div
+          className="mb-4 flex flex-wrap items-center gap-2 border-b border-zinc-200 pb-2"
+          data-tour="studio-portfolio-tab-strip"
+        >
           {tabReorderMode ? renderReorder() : renderTabs()}
         </div>
       )}

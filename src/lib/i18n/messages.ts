@@ -1383,9 +1383,9 @@ export const messages = {
     "tour.studio.exhibitions.title": "Exhibitions",
     "tour.studio.exhibitions.body":
       "Publish posts for shows that happened, are running, or are coming up.",
-    "tour.studio.publicWorks.title": "What others see",
+    "tour.studio.publicWorks.title": "What visitors see on your profile",
     "tour.studio.publicWorks.body":
-      "Your public studio shows only the works you've chosen to share — the face of your practice.",
+      "These tabs mirror your public profile: only works you have shared publicly appear here. It is the first impression visitors get of your practice.",
     "tour.studio.portfolioTabs.title": "Tabs & custom groups",
     "tour.studio.portfolioTabs.body":
       "Reorder tabs with the arrow control, open tab settings (gear) to rename defaults, add your own tabs, and choose what appears on your public profile. Select works and use “Move to tab” to group them by theme or category.",
@@ -2850,9 +2850,9 @@ export const messages = {
     "tour.studio.exhibitions.title": "전시",
     "tour.studio.exhibitions.body":
       "이미 진행했거나 진행 중, 또는 예정된 전시를 소개하는 게시물을 만드는 곳이에요.",
-    "tour.studio.publicWorks.title": "바깥에서 보이는 내 작업",
+    "tour.studio.publicWorks.title": "공개 프로필에 보이는 작품",
     "tour.studio.publicWorks.body":
-      "공개 스튜디오에는 공유하기로 선택한 작품만 보여요. 바깥에서 보이는 내 작업의 얼굴이에요.",
+      "이 탭 줄은 공개 프로필과 맞춰져 있어요. 공개로 두신 작품·전시만 여기서 다루고, 방문자가 프로필에서 처음 보게 되는 구성이에요.",
     "tour.studio.portfolioTabs.title": "탭으로 정리하기",
     "tour.studio.portfolioTabs.body":
       "탭 옆 순서 변경(↕)으로 순서를 바꾸고, 설정(⚙)에서 기본 탭 이름을 바꾸거나 나만의 탭을 만들고 공개 프로필에 어떤 탭을 보일지 정할 수 있어요. 작품을 선택한 뒤 ‘탭으로 이동’으로 테마나 카테고리별로 묶을 수도 있어요.",

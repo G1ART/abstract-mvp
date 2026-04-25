@@ -8,7 +8,7 @@ Last updated: 2026-04-24
 
 - **공개 작품 영역**: `profile_details.studio_portfolio`에 탭 순서·기본 탭 이름/공개 여부·커스텀 탭·작품 배치 저장. `/my`와 공개 프로필(`/u/...`)에 반영.
 - **RPC**: `lookup_profile_by_username`이 `studio_portfolio`만 추가 반환 (`supabase/migrations/20260428000000_lookup_profile_studio_portfolio.sql`). 배포 시 Supabase에 마이그레이션 적용 필요.
-- **스튜디오 투어**: `studio.main` 버전 **2**로 상향. 새 스텝 `portfolio-tabs` — 앵커 `data-tour="studio-portfolio-tabs"`(`StudioPortfolioPanel` 루트 `section`). ↕ 순서, ⚙ 탭 설정·커스텀 탭, 선택 후 탭으로 이동 안내.
+- **스튜디오 투어**: `studio.main` 버전 **3**. 공개 작품·탭 안내 스텝(7·8) 스포트라이트는 **`studio-portfolio-tab-strip`**(탭 줄·↕·⚙만)으로 한정. 한국어 카피에서 「바깥」 표현 제거.
 
 ### Verified
 
@@ -82,7 +82,7 @@ supabase/migrations/
 
 | Tour id | 페이지 | 스텝 | 핵심 목적 |
 |---|---|---|---|
-| `studio.main` | `/my` | 8 | Studio hero / Next steps / Operating grid / Workshop / Boards / Exhibitions / Public works / Portfolio tabs |
+| `studio.main` | `/my` | 8 | Studio hero / Next steps / Operating grid / Workshop / Boards / Exhibitions / Public works (탭 줄) / Portfolio tabs (동일 탭 줄) |
 | `upload.main` | `/upload/*` | 5 | Tabs 개요 / Single / Bulk / Exhibition post / Intent 선택 |
 | `exhibition.create` | `/my/exhibitions/new` | 4 | Post purpose / Dates / Status / Curator·Host |
 | `people.main` | `/people` | 4 | Search / Discovery lanes / Role filters / Card actions |
@@ -98,8 +98,8 @@ supabase/migrations/
 | `studio-hero` | `StudioHeroPanel` (기존) |
 | `studio-next-steps` | `StudioNextStepsRail` (기존) |
 | `studio-operating-grid` / `studio-card-*` | `StudioOperationGrid` (기존) |
-| `studio-public-works` | `/my/page.tsx` (기존) |
-| `studio-portfolio-tabs` | `StudioPortfolioPanel.tsx` 루트 `section` (공개 작품·탭 영역) |
+| `studio-public-works` | `/my/page.tsx` 헬퍼 카드(투어 타깃 아님, 앵커 보존) |
+| `studio-portfolio-tab-strip` | `StudioPortfolioPanel.tsx` 탭 줄 전용(`↕`·`⚙` 포함) |
 | `upload-tabs` | `upload/layout.tsx` nav |
 | `upload-tab-single` / `upload-tab-bulk` / `upload-tab-exhibition` | 각 탭 `<Link>` |
 | `upload-intent-selector` | `/upload` intent step wrapper |
@@ -332,6 +332,7 @@ Before → After:
 - `studio-hero`, `studio-next-steps`, `studio-operating-grid`
 - `studio-card-exhibitions`, `studio-card-workshop`, `studio-card-boards`, `studio-card-messages`
 - `studio-public-works`
+- `studio-portfolio-tab-strip` (스튜디오 투어 7·8단계 — 탭 줄만)
 - `network-tabs`, `network-search`, `network-sort`, `network-list`
 
 ### 데이터/엔티타이틀먼트 영향도
