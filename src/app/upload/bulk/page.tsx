@@ -88,6 +88,10 @@ export default function BulkUploadPage() {
   const [uploadCurrent, setUploadCurrent] = useState(0);
   const [uploadTotal, setUploadTotal] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Per-file failure log shown alongside the progress bar so a 100-image
+  // batch where 3 files fail doesn't disappear into a single rolling toast.
+  const [uploadFailures, setUploadFailures] = useState<{ name: string; message: string }[]>([]);
+  const [uploadSucceeded, setUploadSucceeded] = useState(0);
   const [publishing, setPublishing] = useState(false);
   const [tipsOpen, setTipsOpen] = useState(true);
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
@@ -257,13 +261,25 @@ export default function BulkUploadPage() {
     setUploading(true);
     setUploadTotal(pendingFiles.length);
     setUploadCurrent(0);
+    setUploadSucceeded(0);
+    setUploadFailures([]);
     const queue = [...pendingFiles];
     setPendingFiles([]);
     const uploadedIds: string[] = [];
+    const failures: { name: string; message: string }[] = [];
 
-    for (let i = 0; i < queue.length; i++) {
-      const { file } = queue[i];
-      setUploadCurrent(i + 1);
+    // Bounded concurrency: 4 simultaneous uploads is a measured sweet spot
+    // for our supabase storage tier — fast enough that 100 files takes
+    // <1m, slow enough that the function stays well under any per-host
+    // rate limits and we don't spike the user's network.
+    const UPLOAD_CONCURRENCY = 4;
+    let nextIdx = 0;
+    let completed = 0;
+
+    const runOne = async (idx: number) => {
+      const slot = queue[idx];
+      if (!slot) return;
+      const { file } = slot;
       const title = deriveTitle(file.name);
       let artworkId: string | null = null;
       let storagePath: string | null = null;
@@ -273,24 +289,43 @@ export default function BulkUploadPage() {
           { forProfileId: actingAsProfileId ?? undefined }
         );
         if (createErr || !id) {
-          setUploadError(createErr instanceof Error ? createErr.message : "Failed to create draft");
-          continue;
+          throw createErr instanceof Error ? createErr : new Error("Failed to create draft");
         }
         artworkId = id;
         storagePath = await uploadArtworkImage(file, userId);
         const { error: attachErr } = await attachArtworkImage(artworkId, storagePath);
         if (attachErr) throw attachErr;
         uploadedIds.push(artworkId);
+        setUploadSucceeded((n) => n + 1);
       } catch (err) {
-        setUploadError(formatBulkFileUploadFailure(file.name, err, t));
+        const message = formatBulkFileUploadFailure(file.name, err, t);
+        // Surface the latest failure prominently AND keep a per-file log
+        // so the user can fix and retry exactly the failed entries.
+        setUploadError(message);
+        failures.push({ name: file.name, message });
+        setUploadFailures([...failures]);
         if (storagePath) {
           try { await removeStorageFile(storagePath); } catch {}
         }
         if (artworkId) {
           try { await deleteArtwork(artworkId); } catch {}
         }
+      } finally {
+        completed += 1;
+        setUploadCurrent(completed);
       }
-    }
+    };
+
+    const worker = async () => {
+      while (true) {
+        const idx = nextIdx++;
+        if (idx >= queue.length) return;
+        await runOne(idx);
+      }
+    };
+    const workerCount = Math.min(UPLOAD_CONCURRENCY, queue.length);
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
+
     setUploading(false);
     if (uploadedIds.length > 0) {
       setStagedArtworkIds((prev) => [...uploadedIds, ...prev].slice(0, BULK_WEBSITE_STAGED_IDS_MAX));
@@ -606,6 +641,20 @@ export default function BulkUploadPage() {
     void listMyExhibitions().then(({ data }) => setMyExhibitions(data ?? []));
   }, [showMain]);
 
+  // Refuse to silently lose in-flight uploads on tab close / navigation.
+  // Browsers ignore custom strings now (use the standard prompt), but
+  // returning a value still triggers the confirm dialog.
+  useEffect(() => {
+    if (!uploading) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = t("bulk.uploadBeforeUnload");
+      return e.returnValue;
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [uploading, t]);
+
   function transformTitle(
     title: string | null,
     mode: typeof titleBulkMode,
@@ -902,10 +951,38 @@ export default function BulkUploadPage() {
             {t("bulk.uploadError").replace("{message}", uploadError)}
           </p>
         )}
-        {!uploading && uploadTotal > 0 && (
+        {!uploading && uploadTotal > 0 && uploadFailures.length === 0 && (
           <p className="mb-4 text-sm text-green-600">
             {t("bulk.uploadDone").replace("{total}", String(uploadTotal))}
           </p>
+        )}
+        {!uploading && uploadTotal > 0 && uploadFailures.length > 0 && (
+          <p className="mb-2 text-sm text-amber-700">
+            {t("bulk.uploadDoneWithFailures")
+              .replace("{ok}", String(uploadSucceeded))
+              .replace("{total}", String(uploadTotal))
+              .replace("{failed}", String(uploadFailures.length))}
+          </p>
+        )}
+        {uploadFailures.length > 0 && (
+          <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="mb-2 text-sm font-medium text-amber-900">
+              {t("bulk.uploadFailuresTitle").replace("{n}", String(uploadFailures.length))}
+            </p>
+            <ul className="space-y-1 text-xs text-amber-900">
+              {uploadFailures.slice(0, 12).map((f, i) => (
+                <li key={`${f.name}-${i}`}>
+                  <span className="font-medium">{f.name}</span>
+                  <span className="ml-1 text-amber-800">— {f.message}</span>
+                </li>
+              ))}
+              {uploadFailures.length > 12 && (
+                <li className="italic text-amber-800">
+                  +{uploadFailures.length - 12} more
+                </li>
+              )}
+            </ul>
+          </div>
         )}
 
         {/* Apply-to-all */}
