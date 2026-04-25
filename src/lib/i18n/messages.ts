@@ -551,6 +551,14 @@ export const messages = {
     "bulk.wi.groupNone": "No automatic match",
     "bulk.wi.groupNoneHint":
       "Pick a site image manually if you see a plausible pair, or skip applying for these rows.",
+    "bulk.wi.errorFetchFailed": "Could not fetch the artwork image (auth wall, redirect, or timeout).",
+    "bulk.wi.errorDecodeFailed": "Image bytes were retrieved but could not be decoded.",
+    "bulk.wi.errorNoCandidates": "The website scan returned no candidate images.",
+    "bulk.wi.errorNoSimilar":
+      "No site image was visually close enough — pick manually if you see a plausible pair.",
+    "bulk.wi.cancel": "Cancel scan",
+    "bulk.wi.cancelling": "Cancelling…",
+    "bulk.wi.cancelled": "Scan cancelled.",
     "bulk.wi.draftTitleNow": "Draft title",
     "bulk.wi.proposedBlockTitle": "Proposed from website (not saved yet)",
     "bulk.wi.fieldTitle": "Title",
@@ -2020,6 +2028,14 @@ export const messages = {
     "bulk.wi.groupNone": "자동 일치 없음",
     "bulk.wi.groupNoneHint":
       "어울리는 쌍이 보이면 사이트 이미지를 직접 고르거나, 해당 행은 적용하지 않아도 됩니다.",
+    "bulk.wi.errorFetchFailed": "작품 이미지를 가져오지 못했어요 (인증 페이지, 리다이렉트, 또는 타임아웃).",
+    "bulk.wi.errorDecodeFailed": "이미지를 받았지만 디코딩에 실패했어요.",
+    "bulk.wi.errorNoCandidates": "스캔에서 후보 이미지를 하나도 찾지 못했어요.",
+    "bulk.wi.errorNoSimilar":
+      "시각적으로 충분히 비슷한 사이트 이미지가 없어요 — 어울리는 쌍이 보이면 직접 골라보세요.",
+    "bulk.wi.cancel": "스캔 중지",
+    "bulk.wi.cancelling": "중지하는 중…",
+    "bulk.wi.cancelled": "스캔이 중지되었습니다.",
     "bulk.wi.draftTitleNow": "초안 제목",
     "bulk.wi.proposedBlockTitle": "웹사이트에서 제안 (아직 저장 안 됨)",
     "bulk.wi.fieldTitle": "제목",

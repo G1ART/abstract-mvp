@@ -39,7 +39,25 @@ async function authHeaders(): Promise<HeadersInit> {
   };
 }
 
-type WiErrPhase = "create" | "scan" | "match" | "pick" | "apply" | "load";
+type WiErrPhase = "create" | "scan" | "match" | "pick" | "apply" | "load" | "cancel";
+
+function rowErrorMessage(
+  code: string | null | undefined,
+  t: (key: string) => string,
+): string | null {
+  switch (code) {
+    case "fetch_failed":
+      return t("bulk.wi.errorFetchFailed");
+    case "decode_failed":
+      return t("bulk.wi.errorDecodeFailed");
+    case "no_candidates":
+      return t("bulk.wi.errorNoCandidates");
+    case "no_similar":
+      return t("bulk.wi.errorNoSimilar");
+    default:
+      return null;
+  }
+}
 
 function wiErrorMessage(code: string | undefined, phase: WiErrPhase, t: (key: string) => string): string {
   if (!code) return t("bulk.wi.errGeneric").replace("{code}", "unknown");
@@ -62,7 +80,14 @@ function wiErrorMessage(code: string | undefined, phase: WiErrPhase, t: (key: st
     case "too_many_ids":
       return t("bulk.wi.errMatchFailed");
     case "scan_not_ready":
+      return t("bulk.wi.errScanFailed");
     case "no_candidates":
+      return t("bulk.wi.errorNoCandidates");
+    case "delegation_not_authorized":
+      return t("bulk.wi.errCreateSession");
+    case "rate_limited":
+      return t("bulk.wi.errScanFailed");
+    case "scan_in_progress":
       return t("bulk.wi.errScanFailed");
     case "artworks_load_failed":
       return t("bulk.wi.errMatchFailed");
@@ -110,6 +135,7 @@ export function WebsiteImportPanel(props: {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [session, setSession] = useState<WiSession | null>(null);
   const [busy, setBusy] = useState<"idle" | "scan" | "match" | "apply" | "pick">("idle");
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [applyIds, setApplyIds] = useState<Record<string, boolean>>({});
   const [lastScanUrl, setLastScanUrl] = useState("");
@@ -311,6 +337,34 @@ export function WebsiteImportPanel(props: {
     }
   }
 
+  async function handleCancelScan() {
+    if (!sessionId) return;
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      const h = await authHeaders();
+      const res = await fetch(`/api/import/website/session/${sessionId}/cancel`, {
+        method: "POST",
+        headers: h,
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error((j as { error?: string }).error ?? "cancel_failed");
+      }
+      try {
+        await refreshSession(sessionId);
+      } catch {
+        // session may already be gone; the cancel itself succeeded.
+      }
+      setError(t("bulk.wi.cancelled"));
+    } catch (e) {
+      if (e instanceof Error && e.message === "auth") setError(t("bulk.wi.authRequired"));
+      else setError(wiErrorMessage(e instanceof Error ? e.message : undefined, "cancel", t));
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   function clearSession() {
     setSessionId(null);
     setSession(null);
@@ -339,6 +393,7 @@ export function WebsiteImportPanel(props: {
     const chosen = candidates.find((c) => c.id === row.chosen_candidate_id);
     const p = row.proposed;
     const noApply = row.match_status === "no_match";
+    const rowErr = noApply ? rowErrorMessage(row.error_code, t) : null;
 
     return (
       <article
@@ -430,6 +485,11 @@ export function WebsiteImportPanel(props: {
             {row.raw_caption ? (
               <p className="line-clamp-2 text-[11px] text-zinc-500">
                 <span className="font-medium text-zinc-400">{t("bulk.wi.captionPreview")}</span> {row.raw_caption}
+              </p>
+            ) : null}
+            {rowErr ? (
+              <p className="rounded-md border border-zinc-200 bg-white/70 px-2 py-1 text-[11px] leading-snug text-zinc-600">
+                {rowErr}
               </p>
             ) : null}
             <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
@@ -559,6 +619,16 @@ export function WebsiteImportPanel(props: {
             >
               {busy === "scan" ? t("bulk.wi.scanning") : t("bulk.wi.scan")}
             </button>
+            {busy === "scan" && sessionId ? (
+              <button
+                type="button"
+                onClick={() => void handleCancelScan()}
+                disabled={cancelling}
+                className="shrink-0 whitespace-nowrap rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                {cancelling ? t("bulk.wi.cancelling") : t("bulk.wi.cancel")}
+              </button>
+            ) : null}
           </div>
           {session?.status === "failed" && session.scan_error && (
             <p className="text-sm text-red-600">

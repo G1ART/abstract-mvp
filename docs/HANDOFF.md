@@ -2,6 +2,50 @@
 
 Last updated: 2026-04-25
 
+## 2026-04-25 — Website import audit pass: P0/P1/P2 hardening
+
+### 요약
+
+100장+ 이미지 일괄 업로드 + 웹사이트 파싱/매칭 흐름을 처음부터 끝까지 감사한 뒤 SSRF·동시성·UX·세션 위생까지 한 번에 끌어올린 패치. `main`에 직접 커밋하되 PR 단위로 3개로 분리해서 리뷰 가능하게 정리했다.
+
+#### PR 1 — `release(website-import P0)`
+
+- **SSRF 강화** (`src/lib/websiteImport/urlSafety.ts`, `crawlSite.ts`):
+  - 사설 IPv6 prefix 차단, 10진/16진/8진 형태 IPv4 표기 정규화 후 사설 대역 검증.
+  - 클라우드 메타데이터 호스트 차단(`metadata.google.internal`, `169.254.169.254`).
+  - `redirect: "follow"` 폐기 → hop마다 `Location`을 `assertFetchablePageUrl`/`assertFetchableImageUrl` + `assertResolvedHostSafe`로 재검증.
+  - HTML/이미지 모두 스트림 읽기로 `MAX_HTML_BYTES`/`MAX_IMAGE_BYTES` 상한 강제, `Content-Length` 사전 거절.
+- **사용자 수동 선택 보존** (`matchEngine.ts`, `match/route.ts`): 매칭 재실행 시 `manual_pick: true`인 행은 재처리에서 제외하고 결과에 다시 합쳐 돌려준다.
+- **동시성 + 단일 디코드** (`dhash.ts` `dhashAndMetadataFromImageBuffer`, `match/route.ts`): 작품당 디코딩 1회로 dHash + sharp metadata 모두 산출. `MATCH_CONCURRENCY = 4`.
+- **고장난 스캔 자동 회복** (`scan/route.ts`): `scanning`이 90초(=`maxDuration` 60초 + 여유 30초) 이상 머무르면 죽은 것으로 보고 새 스캔 허용. 그렇지 않으면 `409 retry_after_ms`. 사용자당 60초에 2회 rate limit.
+- **에러 코드 전파**: `WebsiteImportMatchRow.error_code`(`fetch_failed`/`decode_failed`/`no_candidates`/`no_similar`)를 P0에서 데이터로 추가.
+
+#### PR 2 — `release(website-import P1)`
+
+- **일괄 업로드 동시성 + 실패 누적** (`src/app/upload/bulk/page.tsx`): 4 worker 풀로 동시 업로드, 성공·실패 카운터/실패 파일 목록을 UI에 노출, 업로드 중 페이지 이탈 시 `beforeunload` 경고.
+- **Apply 라우트 최적화** (`apply/route.ts`): 단일 `.in()` 조회 + `runWithLimit` 4 동시성 + `count: "exact"` + `eq("artist_id").eq("visibility","draft")`로 race 제거. 0건 적용이면 세션 status를 `applied`로 묻지 않고 직전 상태 복원.
+- **메타데이터 파서 보강** (`metadataParse.ts`): 한국어 매체 사전(`MEDIUM_KEYWORDS_KO`), 제목에서 연도-only 토큰만 떨궈내고 "Diary 2020" 같은 제목 보존, `mm`/`m`/`ft` → `cm`/`in` 정규화. `mergeCaptionBlocks`는 em-dash 정규식과 충돌하지 않도록 ` · ` 결합으로 전환. 신규 케이스는 `tests/website-import.test.ts`에 추가.
+- **i18n**: `bulk.uploadDoneWithFailures`, `bulk.uploadFailuresTitle`, `bulk.uploadBeforeUnload` 추가.
+
+#### PR 3 — `release(website-import P2)`
+
+- **스캔 취소 API + UI** (`src/app/api/import/website/session/[id]/cancel/route.ts`, `WebsiteImportPanel.tsx`): `POST /cancel`은 idempotent하게 세션을 `cancelled`로 마킹. UI는 스캔 진행 중에 "스캔 중지" 버튼을 노출하고 결과를 토스트로 안내. `bulk.wi.cancel`/`cancelling`/`cancelled` i18n 추가.
+- **세션 GC 마이그레이션** (`supabase/migrations/20260429000000_website_import_sessions_gc.sql`): `gc_website_import_sessions(retention_days int default 30)` SECURITY DEFINER 함수 + `pg_cron`이 활성화돼 있으면 매일 04:17 UTC에 자동 실행. 30일 이상 된 세션을 삭제해 JSONB 페이로드 누적 방지.
+- **Match row error_code UI 안내**: `no_match` 행에 `fetch_failed` / `decode_failed` / `no_candidates` / `no_similar` 별로 사람이 읽을 수 있는 한국어/영문 안내 문구 노출. 새 i18n 키 `bulk.wi.errorFetchFailed` 외 4개.
+- **Delegation 사전 검증** (`api/import/website/session/route.ts`): `actingProfileId`가 본인이 아닐 때 `delegations`에서 `account|inventory` scope + `manage_works` 권한이 active 상태인지 미리 확인하고, 부합하지 않으면 `403 delegation_not_authorized`. RLS 뒤로 무성히 묻히던 권한 실패를 즉시 명시적으로 처리.
+
+### Supabase / 환경 변수
+
+- **Supabase SQL 적용 필요**: `supabase/migrations/20260429000000_website_import_sessions_gc.sql`. SQL Editor에서 1회 실행.
+- 환경 변수 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- `npm run test:website-import` 통과.
+
+---
+
 ## 2026-04-25 — Tour auto-start: once per user, ignore version bumps
 
 ### 요약
