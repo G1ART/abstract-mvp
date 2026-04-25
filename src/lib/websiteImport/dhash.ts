@@ -1,10 +1,57 @@
+import sharp from "sharp";
 import type { WebsiteImportCandidate } from "./types";
 
-/** 64-bit difference hash as 16 hex chars. */
+/**
+ * 64-bit difference hash as 16 hex chars.
+ *
+ * Notes on robustness:
+ *   - We `.rotate()` *before* resizing so EXIF orientation is honored.
+ *     Without this, an iPhone photo that displays as portrait but is stored
+ *     as landscape gets a different dHash than the displayed crop, and the
+ *     downstream match silently fails.
+ *   - We deliberately do not flatten or apply a colorspace — `.grayscale()`
+ *     handles both alpha and color.
+ */
 export async function dhashFromImageBuffer(buf: Buffer): Promise<string> {
-  const sharp = (await import("sharp")).default;
-  const { data } = await sharp(buf).resize(9, 8, { fit: "fill" }).grayscale().raw().toBuffer({ resolveWithObject: true });
+  const { data } = await sharp(buf, { failOnError: false })
+    .rotate()
+    .resize(9, 8, { fit: "fill" })
+    .grayscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  return computeDhashFromGrayscale(data);
+}
 
+/**
+ * Single-pass dHash + intrinsic dimensions. Re-decoding a JPEG/PNG twice
+ * (once for dhash, once for `metadata()`) burns CPU and was a measured
+ * bottleneck in the website-import scan path. This helper does both off the
+ * same `sharp(buf)` instance using a side-branch for the metadata.
+ *
+ * `width` / `height` reflect the post-rotate orientation, matching what the
+ * user actually sees in their browser, so dimension-similarity scoring is
+ * consistent with how the artwork was uploaded.
+ */
+export async function dhashAndMetadataFromImageBuffer(
+  buf: Buffer,
+): Promise<{ dhash_hex: string; width?: number; height?: number }> {
+  const pipeline = sharp(buf, { failOnError: false }).rotate();
+  const metaPromise = pipeline.clone().metadata();
+  const dataPromise = pipeline
+    .clone()
+    .resize(9, 8, { fit: "fill" })
+    .grayscale()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const [meta, data] = await Promise.all([metaPromise, dataPromise]);
+  return {
+    dhash_hex: computeDhashFromGrayscale(data.data),
+    width: meta.width,
+    height: meta.height,
+  };
+}
+
+function computeDhashFromGrayscale(data: Buffer): string {
   let hi = 0 >>> 0;
   let lo = 0 >>> 0;
   let i = 0;

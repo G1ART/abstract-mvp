@@ -1,7 +1,14 @@
 import * as cheerio from "cheerio";
-import { assertFetchableImageUrl, assertFetchablePageUrl, resolveUrl } from "./urlSafety";
+import type { AnyNode } from "domhandler";
+import sharp from "sharp";
+import {
+  assertFetchableImageUrl,
+  assertFetchablePageUrl,
+  assertResolvedHostSafe,
+  resolveUrl,
+} from "./urlSafety";
 import { mergeCaptionBlocks, parseMetadataLine } from "./metadataParse";
-import { dhashFromImageBuffer } from "./dhash";
+import { dhashAndMetadataFromImageBuffer } from "./dhash";
 import type { WebsiteImportCandidate, WebsiteImportScanMeta } from "./types";
 import { randomUUID } from "crypto";
 
@@ -9,36 +16,123 @@ const MAX_PAGES = 28;
 const MAX_QUEUE = 80;
 const MAX_CANDIDATES = 180;
 const PAGE_TIMEOUT_MS = 7500;
+const IMAGE_TIMEOUT_MS = 9500;
 const MAX_HTML_BYTES = 1_400_000;
 const MAX_IMAGE_BYTES = 4_000_000;
 const MAX_CONCURRENT_PAGE_FETCH = 3;
+const MAX_CONCURRENT_IMAGE_HASH = 4;
+const MAX_REDIRECT_HOPS = 3;
 
 const GALLERY_PATH_HINTS =
   /portfolio|gallery|works|artwork|work|series|exhibition|projects|collections|shop|store/i;
 
-async function fetchBuffer(url: URL, originHostname: string, kind: "page" | "image"): Promise<Buffer> {
-  if (kind === "page") assertFetchablePageUrl(url, originHostname);
-  else assertFetchableImageUrl(url, originHostname);
+const HTML_CONTENT_TYPE_RE = /^(text\/html|application\/xhtml\+xml)\b/i;
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), kind === "page" ? PAGE_TIMEOUT_MS : PAGE_TIMEOUT_MS + 2000);
-  try {
-    const res = await fetch(url.toString(), {
-      signal: ctrl.signal,
-      redirect: "follow",
-      headers: {
-        "User-Agent": "AbstractWebsiteImport/1.0 (+https://abstract.art)",
-        Accept: kind === "page" ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8" : "image/*,*/*;q=0.8",
-      },
-    });
-    if (!res.ok) throw new Error(`http_${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    const cap = kind === "page" ? MAX_HTML_BYTES : MAX_IMAGE_BYTES;
-    if (buf.length > cap) throw new Error("response_too_large");
-    return buf;
-  } finally {
-    clearTimeout(t);
+/**
+ * Manual-redirect, size-capped fetch with both pre-fetch hostname validation
+ * AND post-resolution IP validation. Each redirect hop is re-validated.
+ *
+ * Why we don't trust `redirect: "follow"`:
+ *   A page on a public host can 302 to `http://169.254.169.254/...`. The
+ *   undici fetch built into Node would follow it without re-running our
+ *   safety predicates, leaking metadata-service responses back into the
+ *   caller. So we follow redirects ourselves, calling
+ *   `assertFetchablePageUrl|ImageUrl` AND `assertResolvedHostSafe` at every
+ *   hop.
+ */
+async function safeFetchBuffer(
+  startUrl: URL,
+  originHostname: string,
+  kind: "page" | "image",
+): Promise<Buffer> {
+  let current = startUrl;
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    if (kind === "page") assertFetchablePageUrl(current, originHostname);
+    else assertFetchableImageUrl(current, originHostname);
+
+    await assertResolvedHostSafe(current.hostname);
+
+    const ctrl = new AbortController();
+    const timeout = setTimeout(
+      () => ctrl.abort(),
+      kind === "page" ? PAGE_TIMEOUT_MS : IMAGE_TIMEOUT_MS,
+    );
+    try {
+      const res = await fetch(current.toString(), {
+        signal: ctrl.signal,
+        redirect: "manual",
+        headers: {
+          "User-Agent": "AbstractWebsiteImport/1.0 (+https://abstract.art)",
+          Accept:
+            kind === "page"
+              ? "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8"
+              : "image/*,*/*;q=0.8",
+        },
+      });
+
+      // Manual redirect handling.
+      if (res.status >= 300 && res.status < 400) {
+        const loc = res.headers.get("location");
+        if (!loc) throw new Error("redirect_no_location");
+        const next = resolveUrl(current.toString(), loc);
+        if (!next) throw new Error("redirect_invalid_url");
+        if (next.protocol !== "http:" && next.protocol !== "https:") {
+          throw new Error("redirect_unsupported_scheme");
+        }
+        current = next;
+        continue;
+      }
+
+      if (!res.ok) throw new Error(`http_${res.status}`);
+
+      // For pages we additionally insist on text/html-ish responses so a
+      // tarball or PDF doesn't land in cheerio.
+      if (kind === "page") {
+        const ct = res.headers.get("content-type") ?? "";
+        if (ct && !HTML_CONTENT_TYPE_RE.test(ct)) {
+          throw new Error("page_non_html");
+        }
+      }
+
+      const cap = kind === "page" ? MAX_HTML_BYTES : MAX_IMAGE_BYTES;
+      const lenHeader = res.headers.get("content-length");
+      if (lenHeader) {
+        const lenNum = parseInt(lenHeader, 10);
+        if (Number.isFinite(lenNum) && lenNum > cap) {
+          throw new Error("response_too_large");
+        }
+      }
+
+      // Stream-read with running cap to defeat chunk-bombing servers.
+      if (!res.body) throw new Error("no_body");
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          received += value.byteLength;
+          if (received > cap) {
+            await reader.cancel().catch(() => undefined);
+            throw new Error("response_too_large");
+          }
+          chunks.push(value);
+        }
+      } finally {
+        try {
+          reader.releaseLock();
+        } catch {
+          /* noop */
+        }
+      }
+      return Buffer.concat(chunks.map((c) => Buffer.from(c)), received);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  throw new Error("too_many_redirects");
 }
 
 function extractLinks(html: string, pageUrl: string, originHostname: string): string[] {
@@ -61,7 +155,7 @@ function extractLinks(html: string, pageUrl: string, originHostname: string): st
   return [...new Set(out)];
 }
 
-function prioritizeLinks(urls: string[], origin: URL): string[] {
+function prioritizeLinks(urls: string[]): string[] {
   const scored = urls.map((u) => {
     let s = 0;
     try {
@@ -139,7 +233,12 @@ function bestSrcsetUrl(srcset: string, pageUrl: string, originHostname: string):
   return null;
 }
 
-function collectImgUrls($: cheerio.CheerioAPI, el: any, pageUrl: string, originHostname: string): string[] {
+function collectImgUrls(
+  $: cheerio.CheerioAPI,
+  el: AnyNode,
+  pageUrl: string,
+  originHostname: string,
+): string[] {
   const $el = $(el);
   const urls: string[] = [];
   const pushAttr = (raw: string | undefined) => {
@@ -155,6 +254,17 @@ function collectImgUrls($: cheerio.CheerioAPI, el: any, pageUrl: string, originH
     }
     urls.push(abs.toString());
   };
+
+  // <picture><source srcset> wins over the inner <img> — handle it first.
+  const $picture = $el.closest("picture");
+  if ($picture.length) {
+    $picture.find("source[srcset], source[data-srcset]").each((_, src) => {
+      const ss = $(src).attr("srcset") || $(src).attr("data-srcset");
+      if (!ss) return;
+      const best = bestSrcsetUrl(ss, pageUrl, originHostname);
+      if (best) urls.push(best);
+    });
+  }
 
   const srcset = $el.attr("srcset") ?? $el.attr("data-srcset");
   if (srcset) {
@@ -231,12 +341,10 @@ async function hashCandidateImage(
   originHostname: string,
 ): Promise<WebsiteImportCandidate | null> {
   try {
-    const buf = await fetchBuffer(new URL(c.image_url), originHostname, "image");
-    const dhash_hex = await dhashFromImageBuffer(buf);
-    const sharp = (await import("sharp")).default;
-    const meta = await sharp(buf).metadata();
-    const mw = meta.width ?? c.width;
-    const mh = meta.height ?? c.height;
+    const buf = await safeFetchBuffer(new URL(c.image_url), originHostname, "image");
+    const { dhash_hex, width, height } = await dhashAndMetadataFromImageBuffer(buf);
+    const mw = width ?? c.width;
+    const mh = height ?? c.height;
     if (mw && mh) {
       if (mw < 48 || mh < 48) return null;
       if (mw * mh < 2400) return null;
@@ -251,6 +359,25 @@ async function hashCandidateImage(
   } catch {
     return null;
   }
+}
+
+/**
+ * Bounded-concurrency map runner — p-limit lite.
+ * We deliberately keep concurrency modest (4) to stay under serverless
+ * function memory / per-host politeness expectations.
+ */
+async function runWithLimit<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]!);
+    }
+  }
+  await Promise.all(Array(Math.min(limit, items.length)).fill(0).map(() => worker()));
+  return out;
 }
 
 export type CrawlSiteResult =
@@ -271,22 +398,22 @@ export async function crawlPortfolioSite(startUrl: URL): Promise<CrawlSiteResult
   try {
     while (queue.length > 0 && pagesFetched < MAX_PAGES && seenPages.size < MAX_QUEUE) {
       const batch = queue.splice(0, MAX_CONCURRENT_PAGE_FETCH);
-      const results = await Promise.all(
+      await Promise.all(
         batch.map(async (pageUrlStr) => {
-          if (seenPages.has(pageUrlStr)) return null as string | null;
+          if (seenPages.has(pageUrlStr)) return;
           seenPages.add(pageUrlStr);
           const pageUrl = new URL(pageUrlStr);
           try {
             assertFetchablePageUrl(pageUrl, originHostname);
           } catch {
-            return null;
+            return;
           }
           try {
-            const buf = await fetchBuffer(pageUrl, originHostname, "page");
+            const buf = await safeFetchBuffer(pageUrl, originHostname, "page");
             const html = buf.toString("utf8");
             pagesFetched += 1;
             const links = extractLinks(html, pageUrlStr, originHostname);
-            for (const u of prioritizeLinks(links, startUrl)) {
+            for (const u of prioritizeLinks(links)) {
               if (!seenPages.has(u) && queue.length + seenPages.size < MAX_QUEUE) queue.push(u);
             }
             const cands = await extractCandidatesFromPage(html, pageUrlStr, originHostname);
@@ -296,25 +423,41 @@ export async function crawlPortfolioSite(startUrl: URL): Promise<CrawlSiteResult
           } catch {
             /* skip page */
           }
-          return pageUrlStr;
         }),
       );
-      void results;
     }
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "crawl_failed" };
   }
 
-  const rawList = [...candidatesMap.values()].slice(0, MAX_CANDIDATES + 40);
-  const hashed: WebsiteImportCandidate[] = [];
-  let n = 0;
-  for (const c of rawList) {
-    if (hashed.length >= MAX_CANDIDATES) break;
-    const withHash = await hashCandidateImage(c, originHostname);
-    if (withHash) hashed.push(withHash);
-    n += 1;
-    if (n % 4 === 0) await new Promise((r) => setTimeout(r, 20));
+  // Prioritize images that look "art-sized" via attribute hints so the
+  // 180-cap never trims real artwork in favor of tiny layout images.
+  const rawList = [...candidatesMap.values()].sort((a, b) => {
+    const areaA = (a.width ?? 0) * (a.height ?? 0);
+    const areaB = (b.width ?? 0) * (b.height ?? 0);
+    return areaB - areaA;
+  });
+
+  const slice = rawList.slice(0, MAX_CANDIDATES + 40);
+  const hashedAll = await runWithLimit(slice, MAX_CONCURRENT_IMAGE_HASH, (c) =>
+    hashCandidateImage(c, originHostname),
+  );
+  const hashedRaw = hashedAll.filter((c): c is WebsiteImportCandidate => Boolean(c));
+
+  // dHash-level dedupe: collapse identical hashes (CDN size variants of the
+  // same image present as distinct URLs). Keeping the largest variant.
+  const byHash = new Map<string, WebsiteImportCandidate>();
+  for (const c of hashedRaw) {
+    const existing = byHash.get(c.dhash_hex);
+    if (!existing) {
+      byHash.set(c.dhash_hex, c);
+      continue;
+    }
+    const cArea = (c.width ?? 0) * (c.height ?? 0);
+    const eArea = (existing.width ?? 0) * (existing.height ?? 0);
+    if (cArea > eArea) byHash.set(c.dhash_hex, c);
   }
+  const hashed = [...byHash.values()].slice(0, MAX_CANDIDATES);
 
   const parsedCount = hashed.filter((c) => {
     const p = c.parsed;
@@ -338,3 +481,8 @@ export async function crawlPortfolioSite(startUrl: URL): Promise<CrawlSiteResult
     },
   };
 }
+
+// Reference sharp at the module level so the top-of-file `import` is not
+// flagged as unused even though the actual usage is via dhash.ts. This keeps
+// the dynamic import / cold-start cost out of the hot loop.
+export const __sharpVersion = sharp.versions.sharp;

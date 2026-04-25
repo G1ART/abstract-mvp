@@ -84,19 +84,30 @@ export function rebuildRowWithCandidate(
       source_page_url: null,
       source_image_url: null,
       raw_caption: null,
+      manual_pick: true,
+      error_code: null,
     };
   }
   const parsed = nonEmptyParsed(candidate.parsed ?? null);
   const proposed = parsed;
+  // Preserve `high_confidence` when the user picks the same candidate the
+  // matcher had already chosen — manually picking shouldn't downgrade the
+  // status, only confirm it.
+  const sameAsAuto = base.chosen_candidate_id === candidate.id;
+  const status = sameAsAuto && base.match_status === "high_confidence"
+    ? "high_confidence"
+    : "review_needed";
   return {
     ...base,
     chosen_candidate_id: candidate.id,
-    match_status: "review_needed",
+    match_status: status,
     confidence: Math.max(base.confidence, 0.4),
     proposed,
     field_provenance: proposed ? fieldProvFromParsed(proposed) : {},
     source_page_url: candidate.page_url,
     source_image_url: candidate.image_url,
     raw_caption: candidate.caption_blob ?? null,
+    manual_pick: true,
+    error_code: null,
   };
 }
