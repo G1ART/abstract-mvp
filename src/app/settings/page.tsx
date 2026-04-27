@@ -946,20 +946,25 @@ export default function SettingsPage() {
               사용자에게는 "이메일과 비밀번호로 로그인할 수 있도록…"
               안내가 오히려 *비밀번호를 설정하지 않은 것처럼* 보이게
               해서 혼란을 일으킨다. 이 분기에선 링크 라벨을 "비밀번호
-              재설정 / Reset password" 으로 명확히 좁히고, hint 단락은
-              아예 렌더하지 않는다. 아직 비밀번호를 설정하지 않은
-              사용자에게만 원래의 안내 문구가 노출되도록 유지. 또
-              `hasPassword === null` (auth-state 로딩 중) 동안에는
-              잘못된 라벨이 잠깐 깜빡이지 않도록 링크 자체를 렌더하지
-              않는다. */}
-          {hasPassword !== null && (
-            <Link
-              href="/set-password"
-              className="text-sm text-zinc-600 underline hover:text-zinc-900"
-            >
-              {hasPassword ? t("settings.changePassword") : t("settings.setPassword")}
-            </Link>
-          )}
+              재설정 / Reset password" 으로 좁히고, hint 단락은 아예
+              렌더하지 않는다. 단, `hasPassword === null` 은 auth-state
+              RPC 로딩 중 또는 일시적 오류 일 수 있는데, 이전 버전에선
+              이 케이스에서 링크 자체를 숨겨버려 "보안만 보이고 기능이
+              없다" 는 사용자 체감 문제가 있었음 — 그래서 null 일 때도
+              링크는 *항상* 노출하고, `/set-password` 페이지가 두 케이스
+              (최초 설정 / 재설정) 를 모두 처리한다는 사실에 의존해
+              "비밀번호 재설정" 을 안전한 기본값으로 사용한다. 아직
+              비밀번호 미설정 (`hasPassword === false`) 으로 명시적으로
+              확인된 사용자에게만 "비밀번호 설정" 라벨 + 안내 문구가
+              노출된다. */}
+          <Link
+            href="/set-password"
+            className="text-sm text-zinc-600 underline hover:text-zinc-900"
+          >
+            {hasPassword === false
+              ? t("settings.setPassword")
+              : t("settings.changePassword")}
+          </Link>
           {hasPassword === false && (
             <p className="mt-1 text-xs text-zinc-500">
               {t("settings.setPasswordHint")}
