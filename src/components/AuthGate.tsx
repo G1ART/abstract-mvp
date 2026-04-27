@@ -82,14 +82,44 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       }
 
       if (state.needs_identity_setup) {
-        const next = currentPathWithQuery();
-        const isAlreadyFinish =
-          pathname === IDENTITY_FINISH_PATH ||
-          (pathname?.startsWith(`${IDENTITY_FINISH_PATH}/`) ?? false);
-        if (!isAlreadyFinish) {
-          const q = next ? `?next=${encodeURIComponent(next)}` : "";
-          router.replace(`${IDENTITY_FINISH_PATH}${q}`);
-          return;
+        // QA P0.5-D (rows 30, 35): get_my_auth_state RPC has shown stale
+        // `needs_identity_setup=true` for some users right after they
+        // finished /onboarding/identity (re-login fixed it for them).
+        // The RPC reads directly from `public.profiles`, so the most
+        // likely cause is supabase-js auth.uid() being momentarily
+        // unbound after a write→read round-trip. We add a defensive
+        // double-check: if the actual profile row already has a clean
+        // username + display_name + roles + main_role, treat the
+        // identity gate as satisfied. This prevents the "/my →
+        // /onboarding/identity → /feed → /my (loop)" pattern.
+        const { data: profile } = await getMyProfile();
+        if (cancelled) return;
+        const p = profile as
+          | {
+              username?: string | null;
+              display_name?: string | null;
+              roles?: string[] | null;
+              main_role?: string | null;
+            }
+          | null;
+        const profileLooksComplete =
+          !!p &&
+          !!p.username &&
+          !isPlaceholderUsername(p.username) &&
+          !!p.display_name?.trim() &&
+          Array.isArray(p.roles) &&
+          p.roles.length > 0 &&
+          !!p.main_role?.trim();
+        if (!profileLooksComplete) {
+          const next = currentPathWithQuery();
+          const isAlreadyFinish =
+            pathname === IDENTITY_FINISH_PATH ||
+            (pathname?.startsWith(`${IDENTITY_FINISH_PATH}/`) ?? false);
+          if (!isAlreadyFinish) {
+            const q = next ? `?next=${encodeURIComponent(next)}` : "";
+            router.replace(`${IDENTITY_FINISH_PATH}${q}`);
+            return;
+          }
         }
       } else if (state.needs_onboarding) {
         const isAlreadyOnboarding =

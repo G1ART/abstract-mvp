@@ -35,7 +35,7 @@ export default function MyExhibitionsPage() {
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <Link href="/my" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("nav.myProfile")}
+            ← {t("profile.privateBackToMy")}
           </Link>
           <Link
             href="/my/exhibitions/new"

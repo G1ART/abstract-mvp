@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useState, useRef, KeyboardEvent, useCallback } fr
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
-import { signOut } from "@/lib/supabase/auth";
+import { getMyAuthState, signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
 import { checkUsernameExists, getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
@@ -290,6 +290,11 @@ export default function SettingsPage() {
     durationMs?: number;
   } | null>(null);
   const [showRetryDetails, setShowRetryDetails] = useState(false);
+  // QA P0.5-C (row 25): /settings 의 비밀번호 섹션은 이미 비밀번호가 설정된
+  // 사용자에게도 동일한 "비밀번호 설정 — 이메일과 비밀번호로 로그인…" 카피를
+  // 보여주고 있어서, 같은 사용자가 매번 자신이 비번을 안 정한 줄 알고
+  // 클릭하게 만든다. has_password 상태로 카피를 분기한다.
+  const [hasPassword, setHasPassword] = useState<boolean | null>(null);
 
   const isDev = process.env.NODE_ENV === "development";
 
@@ -298,6 +303,17 @@ export default function SettingsPage() {
     if (window.sessionStorage.getItem("ab_focus_username_field") !== "1") return;
     window.sessionStorage.removeItem("ab_focus_username_field");
     setTimeout(() => usernameInputRef.current?.focus(), 60);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getMyAuthState().then((state) => {
+      if (cancelled) return;
+      setHasPassword(state?.has_password ?? null);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -383,7 +399,12 @@ export default function SettingsPage() {
           is_public: (p as Profile)?.is_public ?? true,
           education: (p as Profile)?.education ?? [],
         };
-        initialBaseRef.current = normalizeProfileBase(baseForNorm) as unknown as Record<string, unknown>;
+        const normalizedInitialBase = normalizeProfileBase(baseForNorm) as unknown as Record<string, unknown>;
+        // QA P0.5-A: artist_statement 도 메인 폼 diff 의 baseline 에 포함시켜
+        // textarea 값이 onBlur 없이 곧장 [저장] 으로 이어져도 변경분이
+        // 정확히 detect 되도록 한다.
+        normalizedInitialBase.artist_statement = (p as Profile)?.artist_statement ?? null;
+        initialBaseRef.current = normalizedInitialBase;
 
         const src = d ?? (p as Profile);
         const detailsForNorm = {
@@ -766,7 +787,13 @@ export default function SettingsPage() {
       program_focus: programFocus,
     });
 
-    const baseSnap = { ...normalizedBase } as Record<string, unknown>;
+    // QA P0.5-A: 메인 Save 시점에 artist_statement 도 함께 diff 하도록
+    // baseSnap 에 statement 값을 포함한다. onBlur 자동 저장 경로는 그대로
+    // 유지되지만, blur 가 발생하지 않은 채 [저장] 을 누르더라도 statement
+    // 변경분이 누락되지 않는다 (또한 "저장할 변경 사항이 없습니다" 오분기 차단).
+    const trimmedStatement = (statement ?? "").trim();
+    const statementForPatch = trimmedStatement.length > 0 ? trimmedStatement : null;
+    const baseSnap = { ...normalizedBase, artist_statement: statementForPatch } as Record<string, unknown>;
     const detailsSnap = { ...normalizedDetails } as Record<string, unknown>;
     let basePatch = makePatch(initialBaseRef.current, baseSnap) as Record<string, unknown>;
     if (normalizedUsername !== initialUsernameRef.current) {
@@ -838,15 +865,19 @@ export default function SettingsPage() {
       if (pc != null) setDbProfileCompleteness(pc);
       if (ref) {
         initialBaseRef.current = {
-          display_name: ref.display_name ?? undefined,
-          bio: ref.bio ?? undefined,
-          location: ref.location ?? undefined,
-          website: ref.website ?? undefined,
-          main_role: ref.main_role ?? undefined,
-          roles: ref.roles ?? undefined,
-          is_public: ref.is_public ?? undefined,
-          education: ref.education ?? undefined,
+          display_name: ref.display_name ?? null,
+          bio: ref.bio ?? null,
+          location: ref.location ?? null,
+          website: ref.website ?? null,
+          main_role: ref.main_role ?? null,
+          roles: ref.roles ?? [],
+          is_public: ref.is_public ?? true,
+          education: ref.education ?? null,
+          // QA P0.5-A: statement 도 baseline 에 포함 (재편집 시 diff 정확성).
+          artist_statement: ref.artist_statement ?? null,
         } as Record<string, unknown>;
+        // QA P0.5-A: blur 자동 저장 경로의 baseline 도 동기화한다.
+        statementInitialRef.current = ref.artist_statement ?? "";
         const pd = profileDetailsFromProfile(ref);
         initialDetailsRef.current = pd
           ? {
@@ -915,9 +946,11 @@ export default function SettingsPage() {
             href="/set-password"
             className="text-sm text-zinc-600 underline hover:text-zinc-900"
           >
-            {t("settings.setPassword")}
+            {hasPassword ? t("settings.changePassword") : t("settings.setPassword")}
           </Link>
-          <p className="mt-1 text-xs text-zinc-500">{t("settings.setPasswordHint")}</p>
+          <p className="mt-1 text-xs text-zinc-500">
+            {hasPassword ? t("settings.changePasswordHint") : t("settings.setPasswordHint")}
+          </p>
         </div>
 
         {loading ? (
@@ -1060,6 +1093,9 @@ export default function SettingsPage() {
                           bio: bio || null,
                           themes,
                           mediums,
+                          // QA P0.5-B (row 24): /settings 의 스타일 칩을
+                          // statement 프롬프트로 그대로 전달한다.
+                          styles,
                           city: city || null,
                           locale,
                           currentStatement: statement || null,
@@ -1095,18 +1131,44 @@ export default function SettingsPage() {
               </section>
             )}
 
-            <div className="flex items-center justify-between">
-              <label htmlFor="isPublic" className="text-sm font-medium">
-                {t("settings.publicToggle")}
+            {/* QA P0.5-E (row 31): /settings 의 프라이버시 토글이 한 줄짜리
+                체크박스로만 노출되어 있어, 한 번 비공개로 전환한 사용자가
+                "다시 공개로 돌릴 곳이 없다"고 잘못 판단하는 사례가 보고됨.
+                섹션 형태(제목 + 설명 + 명시적 라벨)로 끌어올려서, 어느 페이지
+                (온보딩 / 설정) 에서나 같은 결정을 다시 내릴 수 있다는 점을
+                선명하게 한다. */}
+            <section className="space-y-3 border-t border-zinc-200 pt-6">
+              <div>
+                <h2 className="text-sm font-medium text-zinc-900">
+                  {t("settings.visibility.title")}
+                </h2>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {t("settings.visibility.hint")}
+                </p>
+              </div>
+              <label
+                htmlFor="isPublic"
+                className="flex items-start justify-between gap-4 rounded-md border border-zinc-200 px-3 py-3 text-sm"
+              >
+                <span className="flex flex-col">
+                  <span className="font-medium text-zinc-900">
+                    {t("settings.publicToggle")}
+                  </span>
+                  <span className="mt-1 text-xs text-zinc-500">
+                    {isPublic
+                      ? t("settings.visibility.publicHint")
+                      : t("settings.visibility.privateHint")}
+                  </span>
+                </span>
+                <input
+                  id="isPublic"
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded"
+                />
               </label>
-              <input
-                id="isPublic"
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                className="rounded"
-              />
-            </div>
+            </section>
 
             <div>
               <label htmlFor="username" className="mb-1 block text-sm font-medium">

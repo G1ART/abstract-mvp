@@ -29,6 +29,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
 import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
+import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -74,7 +75,11 @@ export default function EditExhibitionPage() {
   const [delegateSearchResults, setDelegateSearchResults] = useState<PublicProfile[]>([]);
   const [delegateSearchLoading, setDelegateSearchLoading] = useState(false);
   const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
-  const [inviteByProfileToast, setInviteByProfileToast] = useState<"sent" | "failed" | null>(null);
+  const [inviteByProfileToast, setInviteByProfileToast] = useState<
+    | { kind: "sent" }
+    | { kind: "failed"; messageKey: string; raw: string }
+    | null
+  >(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [exhibitionWorks, setExhibitionWorks] = useState<
     Array<{ id: string; title?: string | null; year?: string | number | null; medium?: string | null }>
@@ -224,13 +229,25 @@ export default function EditExhibitionPage() {
       permissions: ["view", "edit_metadata", "manage_works"],
     });
     setInviteByProfileSending(false);
-    if (error || !data) {
-      setInviteByProfileToast("failed");
-      return;
-    }
-    setInviteByProfileToast("sent");
+    // QA P0.5-F (rows 37, 38): close dropdown + surface specific reason.
     setDelegateSearchQ("");
     setDelegateSearchResults([]);
+    if (error || !data) {
+      const classified = classifyDelegationInviteError(error);
+      console.warn("[delegation] invite-by-profile failed", {
+        delegate: profile.id,
+        scope: "project",
+        projectId: id,
+        raw: classified.raw,
+      });
+      setInviteByProfileToast({
+        kind: "failed",
+        messageKey: classified.key,
+        raw: classified.raw,
+      });
+      return;
+    }
+    setInviteByProfileToast({ kind: "sent" });
   }
 
   useEffect(() => {
@@ -657,8 +674,17 @@ export default function EditExhibitionPage() {
                 )}
               </div>
               {inviteByProfileToast && (
-                <p className={`mb-3 text-xs ${inviteByProfileToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
-                  {inviteByProfileToast === "sent" ? t("delegation.inviteSentToUser") : t("delegation.inviteToUserFailed")}
+                <p
+                  className={`mb-3 text-xs ${
+                    inviteByProfileToast.kind === "sent"
+                      ? "text-zinc-600"
+                      : "text-amber-600"
+                  }`}
+                  role={inviteByProfileToast.kind === "sent" ? "status" : "alert"}
+                >
+                  {inviteByProfileToast.kind === "sent"
+                    ? t("delegation.inviteSentToUser")
+                    : t(inviteByProfileToast.messageKey)}
                 </p>
               )}
 

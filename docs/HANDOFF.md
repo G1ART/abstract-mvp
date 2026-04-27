@@ -2,6 +2,42 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — QA Stabilization P0.5 (프로필 저장·온보딩 루프·비공개 미리보기·위임)
+
+### 동기
+
+QA 팀이 제출한 *Profile / Onboarding / Delegation* 안정화 감사(`Abstract_QA_Stabilization_Profile_Onboarding_Delegation_2026-04-27.md`, rows 24–39) 의 16건을 한 패치로 처리. 특정 기능 회귀가 아닌 "조용히 작동하지 않는" 상태들 — 저장이 무시되거나, 라우팅 루프가 생기거나, 클릭이 사라지는 — 이 대부분이라 사용자 신뢰도에 직접 영향이 컸다.
+
+### 변경
+
+| 영역 | 파일 | 변경 |
+|---|---|---|
+| **P0.5-A 프로필 저장 통합** (rows 26–29, 32) | `src/lib/supabase/profileSaveUnified.ts` | `NULLABLE_BASE_KEYS` 에 `bio` / `location` / `website` 추가. 직전엔 `compactPatch` 가 빈 문자열 / `null` 을 RPC 도달 전에 잘라버려 (a) 입력란을 비워도 DB 가 갱신되지 않거나 (b) "저장할 변경 사항이 없습니다" 로 빠지는 경우가 있었음. RPC 의 `upsert_my_profile` 은 이 키들에 대해 `nullif(trim(...), '')` 로 안전히 NULL 처리하므로 `23502` 위험 없음. |
+| | `src/app/settings/page.tsx` | `artist_statement` 를 메인 폼 diff baseline (`initialBaseRef`) / `baseSnap` / 저장-후 ref 갱신 / blur 자동저장 baseline (`statementInitialRef`) 모두에 통합. 직전엔 `onBlur` 자동저장 경로에서만 추적되어, 사용자가 [작가의 말] 만 수정하고 곧장 [저장] 을 누르면 변경분이 누락되어 "저장할 변경 사항이 없습니다" 가 떴음. |
+| **P0.5-B Statement AI에 styles 포함** (row 24) | `src/lib/ai/contexts.ts` / `src/lib/ai/validation.ts` / `src/lib/ai/prompts/index.ts` / `src/components/profile/StatementDraftAssist.tsx` / `src/app/settings/page.tsx` | `ProfileContextInput` / `parseProfileBody` / 시스템 프롬프트에 `styles` 추가. /settings 의 스타일 칩이 statement 초안에 자연스럽게 반영되도록 했고, 프롬프트는 styles를 themes 와 혼용하지 않도록 형식·시각적 접근 차원으로 명시. |
+| **P0.5-C 비밀번호 prompt 조건화** (row 25) | `src/app/settings/page.tsx` / `src/lib/i18n/messages.ts` | `getMyAuthState().has_password` 로 라벨/힌트를 분기. 이미 비밀번호가 있는 사용자에게는 "비밀번호 변경" + "필요할 때 언제든 변경할 수 있어요" 가 노출되도록 함. |
+| **P0.5-D 온보딩 → /my 루프 fix** (rows 30, 35) | `src/components/AuthGate.tsx` / `src/app/onboarding/identity/page.tsx` | `get_my_auth_state` RPC 가 어쩌다 `needs_identity_setup=true` 로 잠시 stale 하게 응답해도, **실제 profiles 행** 을 즉시 더 읽어 username·display_name·roles·main_role 이 모두 채워져 있으면 identity gate 를 통과시키는 방어 분기 추가. /my → /onboarding/identity → /feed → /my 무한 튕김 차단. |
+| **P0.5-E 비공개 프로필 owner 미리보기 + 진입 경로** (rows 31, 33, 34) | `src/app/u/[username]/page.tsx` / `src/app/u/[username]/PrivateProfileShell.tsx` (신규) / `src/app/settings/page.tsx` / `src/lib/i18n/messages.ts` | (1) RSC 안에서 client-side Supabase 세션을 못 보는 한계로 owner 가 자신의 비공개 프로필을 미리보지 못하던 문제 — 비공개 분기를 client shell 로 분리해 owner 일 때만 데이터를 추가로 fetch 하고 `UserProfileContent` 로 위임. 비-owner 에게는 동일한 "비공개" 메시지 + "내 스튜디오로 돌아가기" 링크. (2) /settings 의 공개 토글을 별도 "공개 범위" 섹션으로 끌어올려 *"한 번 비공개로 바꾼 뒤엔 다시 공개로 돌릴 곳이 없다"* 는 오해를 차단(rows 31). |
+| **P0.5-F 위임 검색/초대 신뢰성** (rows 37, 38) | `src/lib/delegation/inviteErrors.ts` (신규) / `src/app/my/delegations/page.tsx` / `src/app/my/exhibitions/[id]/edit/page.tsx` / `src/app/my/exhibitions/[id]/add/page.tsx` / `src/lib/i18n/messages.ts` | RPC 의 명시적 사유(self / duplicate / no email / not allowed) 를 i18n 키로 매핑하는 `classifyDelegationInviteError` 헬퍼 추가. 검색 드롭다운은 **모든** 클릭 후 항상 닫히도록 변경(직전엔 실패 시에도 열려 있어 *"클릭 자체가 무시된 것 같다"* 는 오해 발생). 일반 "초대를 보내지 못했어요." 대신 *본인에게 보낼 수 없음 / 이미 진행 중인 초대 / 등록 이메일 없음 / 권한 없음* 등이 표시됨. |
+| **P0.5-G 메시지 알림 카피** (row 36) | `src/lib/i18n/messages.ts` | `notifications.connectionMessageText` 를 *"…님이 소개 메시지를 보냈어요" → "…님이 메시지를 보냈어요"*. 일반 메시지 채널 출시 이후 의미가 좁았음. |
+| **P0.5-H 위임 back link + 카피 폴리시** (row 39) | `src/lib/i18n/messages.ts` / `src/app/my/delegations/page.tsx` 외 9개 (`my/inquiries`, `my/messages`, `my/ops`, `my/exhibitions/[id]`, `my/claims`, `my/alerts`, `my/followers`, `my/following`, `my/exhibitions`) | `← {common.backTo} {nav.myProfile}` = "← 돌아가기 내 스튜디오" 의 어색한 문장을 단일 키 `profile.privateBackToMy` ("내 스튜디오로 돌아가기" / "Back to My Studio") 로 통일. |
+
+### 검증
+
+- `npx tsc --noEmit` 통과.
+- `npm run build` 통과.
+- `npm run lint` 회귀 없음(76 problems 동일 — 모두 사전부터 존재).
+
+### Supabase SQL 적용 필요
+
+없음 — 이번 패치는 RPC / 마이그레이션 변경 없이 클라이언트 가드 + 컴팩트 정책 + 에러 분류로만 처리.
+
+### 환경 변수
+
+추가/변경 없음.
+
+---
+
 ## 2026-04-27 — Reorder 튕김·Supabase 에러 표기·"작가 → 아티스트" 통일 핫픽스
 
 ### 동기

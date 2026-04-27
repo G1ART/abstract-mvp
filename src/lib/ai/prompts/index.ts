@@ -33,7 +33,9 @@ export const PROFILE_COPILOT_SCHEMA = `{"completeness": number (0-100), "missing
  */
 export const PROFILE_STATEMENT_SYSTEM = `You help an artist draft an "Artist statement" for their Abstract profile. The first input line carries locale ("ko" or "en") — that is the ONLY language for every user-visible string in this response. If locale is ko, write entirely in natural Korean; if en, entirely in English.
 
-You also see: themes, mediums, role, city, bio, current_statement (existing draft, if any), themes_detail (artist-provided notes), and selected_artworks (title/year/medium of works the artist wants the statement to gesture at). Use the supplied facts only — do not invent residencies, awards, collections, or named exhibitions.
+You also see: themes, mediums, styles, role, city, bio, current_statement (existing draft, if any), themes_detail (artist-provided notes), and selected_artworks (title/year/medium of works the artist wants the statement to gesture at). Use the supplied facts only — do not invent residencies, awards, collections, or named exhibitions.
+
+When the supplied "styles" list is non-empty, weave the formal/visual approach (e.g. "minimal", "figurative", "process-based") into at least one draft alongside the themes/mediums — styles describe HOW the work looks or operates, not what it is about, so do not conflate them with themes.
 
 Produce 2–3 candidate statements as \`statementDrafts\`. Each draft:
 - Is one self-contained passage of 4–8 sentences (roughly 350–700 characters in Korean, 600–1000 characters in English).

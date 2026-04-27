@@ -92,7 +92,7 @@ function OpsContent() {
   return (
     <main className="mx-auto max-w-5xl px-4 py-8">
       <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-        ← {t("common.backTo")} {t("nav.myProfile")}
+        ← {t("profile.privateBackToMy")}
       </Link>
       <h1 className="mb-4 text-xl font-semibold text-zinc-900">Ops <span className="text-sm font-normal text-zinc-400">(internal)</span></h1>
 

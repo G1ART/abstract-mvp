@@ -377,7 +377,7 @@ export default function ExhibitionDetailPage() {
       <main className="mx-auto max-w-3xl px-4 py-8">
         <div className="mb-6 flex flex-wrap items-center gap-3">
           <Link href="/my?tab=exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("nav.myProfile")}
+            ← {t("profile.privateBackToMy")}
           </Link>
           <span className="text-zinc-400">|</span>
           <Link href="/my/exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">

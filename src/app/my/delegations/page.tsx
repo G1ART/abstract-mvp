@@ -24,6 +24,7 @@ import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
+import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
 
 function scopeLabel(scope: string, t: (k: string) => string): string {
   switch (scope) {
@@ -52,7 +53,11 @@ export default function MyDelegationsPage() {
   const [searchResults, setSearchResults] = useState<PublicProfile[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
-  const [inviteByProfileToast, setInviteByProfileToast] = useState<"sent" | "failed" | null>(null);
+  const [inviteByProfileToast, setInviteByProfileToast] = useState<
+    | { kind: "sent" }
+    | { kind: "failed"; messageKey: string; raw: string }
+    | null
+  >(null);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -102,13 +107,30 @@ export default function MyDelegationsPage() {
       scopeType: "account",
     });
     setInviteByProfileSending(false);
-    if (error || !data) {
-      setInviteByProfileToast("failed");
-      return;
-    }
-    setInviteByProfileToast("sent");
+    // QA P0.5-F (rows 37, 38): close the dropdown on EVERY click, even
+    // when the RPC errors. Previously the dropdown only cleared on
+    // success, so a failed invite (most often "duplicate" or "self")
+    // looked exactly like the click was ignored. We also surface a
+    // specific reason instead of the generic "초대를 보내지 못했습니다"
+    // so the user can tell whether to retry, pick a different account,
+    // or skip the step entirely.
     setSearchQ("");
     setSearchResults([]);
+    if (error || !data) {
+      const classified = classifyDelegationInviteError(error);
+      console.warn("[delegation] invite-by-profile failed", {
+        delegate: profile.id,
+        scope: "account",
+        raw: classified.raw,
+      });
+      setInviteByProfileToast({
+        kind: "failed",
+        messageKey: classified.key,
+        raw: classified.raw,
+      });
+      return;
+    }
+    setInviteByProfileToast({ kind: "sent" });
     load();
   }
 
@@ -351,8 +373,17 @@ export default function MyDelegationsPage() {
             )}
           </div>
           {inviteByProfileToast && (
-            <p className={`mb-3 text-xs ${inviteByProfileToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
-              {inviteByProfileToast === "sent" ? t("delegation.inviteSentToUser") : t("delegation.inviteToUserFailed")}
+            <p
+              className={`mb-3 text-xs ${
+                inviteByProfileToast.kind === "sent"
+                  ? "text-zinc-600"
+                  : "text-amber-600"
+              }`}
+              role={inviteByProfileToast.kind === "sent" ? "status" : "alert"}
+            >
+              {inviteByProfileToast.kind === "sent"
+                ? t("delegation.inviteSentToUser")
+                : t(inviteByProfileToast.messageKey)}
             </p>
           )}
 
@@ -423,8 +454,11 @@ export default function MyDelegationsPage() {
         </section>
 
         <p className="mt-6">
+          {/* QA P0.5-H (row 39): '돌아가기 내 스튜디오' → '내 스튜디오로
+              돌아가기'. We reuse the same back-to-my-studio phrase that
+              the private-profile shell uses so copy stays consistent. */}
           <Link href="/my" className="text-sm font-medium text-zinc-700 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("nav.myProfile")}
+            ← {t("profile.privateBackToMy")}
           </Link>
         </p>
       </div>

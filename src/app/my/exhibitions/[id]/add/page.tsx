@@ -35,6 +35,7 @@ import { setPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { listShortlistItems } from "@/lib/supabase/shortlists";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
+import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
 
 type Participant = {
   id: string;
@@ -86,7 +87,11 @@ export default function AddWorkToExhibitionPage() {
   const [delegateSearchResults, setDelegateSearchResults] = useState<PublicProfile[]>([]);
   const [delegateSearchLoading, setDelegateSearchLoading] = useState(false);
   const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
-  const [inviteByProfileToast, setInviteByProfileToast] = useState<"sent" | "failed" | null>(null);
+  const [inviteByProfileToast, setInviteByProfileToast] = useState<
+    | { kind: "sent" }
+    | { kind: "failed"; messageKey: string; raw: string }
+    | null
+  >(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [exhibitionTitle, setExhibitionTitle] = useState<string | null>(null);
 
@@ -274,13 +279,26 @@ export default function AddWorkToExhibitionPage() {
       permissions: ["view", "edit_metadata", "manage_works"],
     });
     setInviteByProfileSending(false);
-    if (error || !data) {
-      setInviteByProfileToast("failed");
-      return;
-    }
-    setInviteByProfileToast("sent");
+    // QA P0.5-F (rows 37, 38): always close the dropdown so click is
+    // visibly acknowledged, and surface a specific failure reason.
     setDelegateSearchQ("");
     setDelegateSearchResults([]);
+    if (error || !data) {
+      const classified = classifyDelegationInviteError(error);
+      console.warn("[delegation] invite-by-profile failed", {
+        delegate: profile.id,
+        scope: "project",
+        projectId: id,
+        raw: classified.raw,
+      });
+      setInviteByProfileToast({
+        kind: "failed",
+        messageKey: classified.key,
+        raw: classified.raw,
+      });
+      return;
+    }
+    setInviteByProfileToast({ kind: "sent" });
   }
 
   const filteredArtworks = useMemo(() => {
@@ -444,8 +462,17 @@ export default function AddWorkToExhibitionPage() {
             )}
           </div>
           {inviteByProfileToast && (
-            <p className={`mb-3 text-xs ${inviteByProfileToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
-              {inviteByProfileToast === "sent" ? t("delegation.inviteSentToUser") : t("delegation.inviteToUserFailed")}
+            <p
+              className={`mb-3 text-xs ${
+                inviteByProfileToast.kind === "sent"
+                  ? "text-zinc-600"
+                  : "text-amber-600"
+              }`}
+              role={inviteByProfileToast.kind === "sent" ? "status" : "alert"}
+            >
+              {inviteByProfileToast.kind === "sent"
+                ? t("delegation.inviteSentToUser")
+                : t(inviteByProfileToast.messageKey)}
             </p>
           )}
 

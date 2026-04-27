@@ -74,7 +74,7 @@ export default function MyClaimsPage() {
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
         <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t("nav.myProfile")}
+          ← {t("profile.privateBackToMy")}
         </Link>
         <h1 className="mb-2 text-xl font-semibold text-zinc-900">{t("my.kpi.claimRequests")}</h1>
         <p className="mb-6 text-sm text-zinc-500">{t("claims.intro")}</p>

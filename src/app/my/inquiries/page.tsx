@@ -212,7 +212,7 @@ export default function MyInquiriesPage() {
     <AuthGate>
       <main className="mx-auto max-w-2xl px-4 py-8">
         <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t("nav.myProfile")}
+          ← {t("profile.privateBackToMy")}
         </Link>
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>

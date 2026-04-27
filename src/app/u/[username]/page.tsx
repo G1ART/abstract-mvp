@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import {
-  getMyProfileAsPublic,
   lookupPublicProfileByUsername,
   type ProfilePublic,
 } from "@/lib/supabase/profiles";
@@ -15,17 +14,13 @@ import {
   getProfileExhibitionOrders,
   type ExhibitionWithCredits,
 } from "@/lib/supabase/exhibitions";
-import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
+import { PrivateProfileShell } from "./PrivateProfileShell";
 
 type Props = {
   params: Promise<{ username: string }>;
   searchParams: Promise<{ mode?: string; tab?: string | string[] }>;
 };
-
-function normalizeUsername(u: string | null): string {
-  return (u ?? "").trim().toLowerCase();
-}
 
 export default async function ProfilePage({ params, searchParams }: Props) {
   const { username: paramUsername } = await params;
@@ -34,9 +29,6 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const rawTab = sp.tab;
   const tabParam =
     typeof rawTab === "string" ? rawTab : Array.isArray(rawTab) ? rawTab[0] : undefined;
-  const normalizedParam = paramUsername.trim().toLowerCase();
-  const locale = await getServerLocale();
-  const t = getT(locale);
 
   const { data: profile, isPrivate, notFound: profileNotFound, error } =
     await lookupPublicProfileByUsername(paramUsername);
@@ -48,20 +40,19 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   let p: ProfilePublic;
 
   if (isPrivate) {
-    // Allow self to view own private profile
-    const { data: myProfile } = await getMyProfileAsPublic();
-    if (
-      myProfile &&
-      normalizeUsername(myProfile.username) === normalizedParam
-    ) {
-      p = myProfile;
-    } else {
-      return (
-        <main className="mx-auto max-w-2xl px-4 py-8">
-          <p className="text-zinc-600">{t("profile.private")}</p>
-        </main>
-      );
-    }
+    // QA P0.5-E (rows 33, 34): owner-fallback must run on the client
+    // because the browser-only Supabase client has no SSR session.
+    // PrivateProfileShell handles both branches: if the visitor turns
+    // out to be the owner, it loads the same data this RSC would and
+    // hands off to UserProfileContent; otherwise it shows the private
+    // notice with a "내 스튜디오로 돌아가기" escape hatch (row 33).
+    return (
+      <PrivateProfileShell
+        paramUsername={paramUsername}
+        initialReorderMode={mode === "reorder"}
+        initialTabParam={tabParam ?? null}
+      />
+    );
   } else if (!profile) {
     notFound();
   } else {

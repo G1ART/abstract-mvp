@@ -45,6 +45,16 @@ const NULLABLE_BASE_KEYS = new Set([
   // avatar_url existed before P1-0 but had no remove-UI affordance; we make
   // its clear path safe now too so future "Remove photo" works.
   "avatar_url",
+  // QA P0.5-A (rows 26–29, 32): /settings 의 [소개], [위치], [웹사이트] 는
+  // 사용자가 명시적으로 비우는 것이 정상 흐름이다. 이전에는 compactPatch 가
+  // null/"" 을 그대로 잘라버려 RPC 까지 도달하지 못했고, 결과적으로
+  // (a) 입력란을 비워도 DB 가 갱신되지 않거나 (b) 다른 필드 변경분이 없을 때
+  // "저장할 변경 사항이 없습니다" 로 분기되는 버그가 있었다. RPC 의
+  // upsert_my_profile 은 nullif(trim(...), '') 으로 이 키들을 안전히 NULL 처리하므로
+  // NULLABLE 으로 승격해도 23502 위험이 없다.
+  "bio",
+  "location",
+  "website",
 ]);
 
 /** Strip null/undefined/"" and empty []/{} so we never send education:null (prevents 23502). */

@@ -81,6 +81,39 @@ function IdentityInner() {
         return;
       }
 
+      // QA P0.5-D (rows 30, 35): defensive check — even when the auth-state
+      // RPC reports `needs_identity_setup=true`, an immediately-fresh
+      // profile row read can show that the user actually finished setup
+      // (we have seen brief inconsistencies right after upsert_my_profile
+      // commits). If the profile is concretely complete, mirror the
+      // "already complete" branch so the user does NOT get stuck on the
+      // "Step 2 of 2" screen on every visit to /my.
+      if (state?.needs_identity_setup) {
+        const { data: profileNow } = await getMyProfile();
+        if (cancelled) return;
+        const pn = profileNow as
+          | {
+              username?: string | null;
+              display_name?: string | null;
+              roles?: string[] | null;
+              main_role?: string | null;
+            }
+          | null;
+        const completeNow =
+          !!pn &&
+          !!pn.username &&
+          !isPlaceholderUsername(pn.username) &&
+          !!pn.display_name?.trim() &&
+          Array.isArray(pn.roles) &&
+          pn.roles.length > 0 &&
+          !!pn.main_role?.trim();
+        if (completeNow) {
+          setLoadState("redirecting");
+          router.replace(nextPath ?? "/feed?tab=all&sort=latest");
+          return;
+        }
+      }
+
       setUserEmail(session.user.email ?? null);
 
       const { data: profile } = await getMyProfile();

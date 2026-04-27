@@ -15,6 +15,8 @@ type ProfileInputForStatement = {
   bio?: string | null;
   themes?: string[] | null;
   mediums?: string[] | null;
+  // QA P0.5-B (row 24): styles 도 statement prompt 컨텍스트에 포함시킨다.
+  styles?: string[] | null;
   city?: string | null;
   locale?: string | null;
   currentStatement?: string | null;

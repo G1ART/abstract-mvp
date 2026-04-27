@@ -220,6 +220,8 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
   bio: string | null;
   themes: string[];
   mediums: string[];
+  // QA P0.5-B (row 24): selected styles flow into the statement prompt.
+  styles: string[];
   city: string | null;
   locale: AiLocale;
   counts: { artworks?: number; exhibitions?: number; followers?: number; views7d?: number };
@@ -242,6 +244,9 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
       bio: trimOrNull(p.bio, LIMITS.bioMax),
       themes: trimArray(p.themes, LIMITS.themesMax, LIMITS.keywordItem),
       mediums: trimArray(p.mediums, LIMITS.mediumsMax, LIMITS.keywordItem),
+      // QA P0.5-B: styles 도 themes/mediums 와 동일한 keyword 슬러그 형태이므로
+      // themesMax 한도/길이를 재사용한다 (taxonomy.styles 는 최대 5개).
+      styles: trimArray(p.styles, LIMITS.themesMax, LIMITS.keywordItem),
       city: trimOrNull(p.city, 80),
       locale: parseLocale(p.locale),
       counts: {

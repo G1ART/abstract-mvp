@@ -11,6 +11,14 @@ export type ProfileContextInput = {
   bio?: string | null;
   themes?: string[] | null;
   mediums?: string[] | null;
+  /**
+   * QA P0.5-B (row 24): Statement draft must reflect the artist's chosen
+   * styles too — not just theme/medium. The artist taxonomy section in
+   * /settings exposes a styles chip group, and we now forward those slugs
+   * into the prompt so the model can ground its drafts in formal/visual
+   * approach as well as subject and material.
+   */
+  styles?: string[] | null;
   city?: string | null;
   locale?: string | null;
   counts?: {
@@ -24,7 +32,7 @@ export type ProfileContextInput = {
   /**
    * P1-0 Statement extension. When `mode === "statement"`, the route picks
    * the statement system prompt and the model returns 2-3 statementDrafts
-   * grounded in the supplied themes/mediums/selectedArtworks.
+   * grounded in the supplied themes/mediums/styles/selectedArtworks.
    */
   mode?: "general" | "statement";
   /** Existing statement (if any) so the model can re-anchor instead of inventing. */
@@ -43,6 +51,10 @@ export function buildProfileCopilotContext(input: ProfileContextInput): string {
     `bio: ${(input.bio ?? "").slice(0, 400)}`,
     `themes: ${(input.themes ?? []).slice(0, 6).join(", ")}`,
     `mediums: ${(input.mediums ?? []).slice(0, 6).join(", ")}`,
+    // QA P0.5-B (row 24): forward selected styles so the model grounds the
+    // statement in the artist's formal/visual approach (e.g. minimalism,
+    // figurative, …), not just subjects and materials.
+    `styles: ${(input.styles ?? []).slice(0, 6).join(", ")}`,
     `city: ${input.city ?? ""}`,
     `locale: ${input.locale ?? "ko"}`,
     `counts: ${JSON.stringify(input.counts ?? {})}`,
