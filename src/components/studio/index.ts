@@ -9,7 +9,6 @@ export {
   type OperationTile,
   type OperationTileKey,
 } from "./StudioOperationGrid";
-export { StudioQuickActions, type QuickAction } from "./StudioQuickActions";
 export { StudioViewsInsights } from "./StudioViewsInsights";
 export { StudioPortfolioPanel } from "./StudioPortfolioPanel";
 export { StudioIntelligenceSurface } from "./StudioIntelligenceSurface";

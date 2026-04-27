@@ -41,16 +41,14 @@ import {
   StudioHeroPanel,
   StudioNextStepsRail,
   StudioOperationGrid,
-  StudioQuickActions,
   StudioPortfolioPanel,
   StudioIntelligenceSurface,
   type OperationTile,
-  type QuickAction,
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
-import { hasAnyRole, normalizeRoleList } from "@/lib/identity/roles";
+import { hasAnyRole } from "@/lib/identity/roles";
 
 type Profile = FullProfile;
 
@@ -376,39 +374,9 @@ export default function MyPage() {
     profileViewsCount,
   ]);
 
-  // Quick actions strip — Brief §3 Section 3. Deliberately compact:
-  //   primary   — one filled CTA (upload)
-  //   secondary — 2-3 outlined high-frequency destinations
-  //   tertiary  — hidden under "더 보기" (lower-frequency tools)
-  const quickActions = useMemo<QuickAction[]>(() => {
-    if (!profile) return [];
-    const out: QuickAction[] = [
-      { key: "upload", label: t("studio.quickActions.upload"), href: "/upload", tone: "primary" },
-      { key: "exhibition", label: t("studio.quickActions.exhibition"), href: "/my/exhibitions/new", tone: "secondary" },
-      { key: "editProfile", label: t("studio.quickActions.editProfile"), href: "/settings", tone: "secondary" },
-      { key: "people", label: t("studio.quickActions.findPeople"), href: "/people", tone: "secondary" },
-    ];
-    const roleSet = new Set(normalizeRoleList(profile.roles));
-    if (roleSet.has("curator") || roleSet.has("collector")) {
-      out.push({ key: "alerts", label: t("studio.quickActions.alerts"), href: "/my/alerts", tone: "tertiary" });
-    }
-    if (profile.username) {
-      out.push({
-        key: "reorder",
-        label: t("studio.quickActions.reorder"),
-        href: `/u/${profile.username}?mode=reorder`,
-        tone: "tertiary",
-      });
-    } else {
-      out.push({
-        key: "complete",
-        label: t("studio.quickActions.completeProfile"),
-        href: "/onboarding",
-        tone: "tertiary",
-      });
-    }
-    return out;
-  }, [profile, t]);
+  // (Quick actions strip removed 2026-04-26: every entry was already
+  // reachable in 1–2 clicks from the top nav, the hero card, or the
+  // 4×2 operation grid — see HANDOFF.md for the audit.)
 
   return (
     <AuthGate>
@@ -434,7 +402,6 @@ export default function MyPage() {
               rail={<StudioNextStepsRail actions={studioActions} />}
             />
             <StudioOperationGrid tiles={operationTiles} />
-            <StudioQuickActions actions={quickActions} />
           </>
         )}
 

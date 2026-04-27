@@ -1,6 +1,51 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
+
+## 2026-04-26 — Studio: remove redundant Quick Actions strip
+
+### 요약
+
+`/my` 화면 하단의 `StudioQuickActions`(빠른 작업) 섹션을 통째로 제거. 이 줄이 차지하던 세로 공간을 회수하고, 어떤 액션이 어디에서 발화하는지에 대한 SSOT를 명확히 했다.
+
+#### 왜 제거했나
+
+빠른 작업 칩들이 다른 표면과 1:1로 중복돼 있었다.
+
+| 빠른 작업 항목 | 이미 닿을 수 있는 경로 |
+|---|---|
+| 작품 올리기 (primary) | 글로벌 nav `업로드` |
+| 전시 게시물 만들기 | 글로벌 nav `업로드` 안의 전시 탭 |
+| 프로필 수정 | 히어로 카드의 `프로필 편집` 버튼 |
+| 사람 찾기 | 글로벌 nav `사람` |
+| 관심 알림 (`/my/alerts`, tertiary) | 4×2 운영 그리드의 메시지/문의 타일과 기능적으로 겹침. 영문만 노출돼 있어서 한국 유저 체감 품질이 나빴음 |
+| 작품 순서 정리 (tertiary) | 히어로 카드의 `공개 프로필 미리보기` → 공개 프로필에서 1클릭 reorder |
+| 프로필 완성하기 (tertiary) | `StudioNextStepsRail`("지금 하면 좋은 일")이 동일 경로 안내 |
+
+내비게이션 SSOT가 글로벌 헤더, 히어로 카드, 운영 그리드, Next Steps 레일로 이미 구성돼 있어 빠른 작업 줄은 노이즈였다.
+
+### 변경 위치
+
+- `src/app/my/page.tsx`: `StudioQuickActions` import / `quickActions` `useMemo` / 렌더 호출 제거. `normalizeRoleList`도 이 메모에서만 쓰여서 같이 제거 (`hasAnyRole`은 다른 분기에서 계속 사용).
+- `src/components/studio/StudioQuickActions.tsx`: 파일 삭제.
+- `src/components/studio/index.ts`: `StudioQuickActions`, `QuickAction` 배럴 export 제거.
+- `src/lib/i18n/messages.ts`: `studio.quickActions.*` 영/한 키 12개씩 삭제.
+
+### 호환성 / 회귀 체크
+
+- 가이드 투어 앵커는 `studio-hero` / `studio-next-steps` / `studio-operating-grid` / `studio-portfolio-tab-strip` / `studio-public-works`만 사용. `studio-quick-*` 앵커는 존재하지 않아 투어는 그대로 동작.
+- `/my/alerts` 페이지 자체는 살아 있음. 직접 URL 접근 / 알림 트리거에서 들어오는 경로는 유지. UI에서의 진입점 한 곳이 사라진다는 점을 감안해 향후 `studio.operationGrid`로 흡수할지 별도 검토 필요(이번 패치에서는 의도적으로 보류).
+
+### Supabase / 환경 변수
+
+- Supabase SQL 돌려야 할 것은 없음.
+- 환경 변수 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+
+---
 
 ## 2026-04-25 — Website import audit pass: P0/P1/P2 hardening
 
