@@ -98,6 +98,17 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
   const [error, setError] = useState<string | null>(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [myDisplayName, setMyDisplayName] = useState<string | null>(null);
+  /**
+   * When the SMTP send fails (or throws), we pause inside the wizard
+   * with this token captured so the user can copy the invite URL and
+   * share it manually. The delegation row already exists by then.
+   * Cleared when the user dismisses the fallback panel.
+   */
+  const [emailFailedResult, setEmailFailedResult] = useState<
+    | { id: string; invite_token: string; scope: DelegationScopeType; recipientEmail: string }
+    | null
+  >(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -269,18 +280,28 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
           });
           if (!resp.ok) {
             console.warn("delegation-invite-email failed", resp.status);
-            setError(t("delegation.error.email_send_failed"));
-            // Keep submitting=false so user can read message, but the row
-            // is already created. They can re-share the link from the hub.
+            // Keep the wizard open with a fallback panel: the row is
+            // already created server-side, but the email never reached
+            // the recipient. Surface the invite link so the inviter can
+            // share it through their own channel (DM, work chat, etc.).
+            setEmailFailedResult({
+              id: data.id,
+              invite_token: data.invite_token,
+              scope: scope as DelegationScopeType,
+              recipientEmail: person.email,
+            });
             setSubmitting(false);
-            onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
             return;
           }
         } catch (emailErr) {
           console.warn("delegation-invite-email threw", emailErr);
-          setError(t("delegation.error.email_send_failed"));
+          setEmailFailedResult({
+            id: data.id,
+            invite_token: data.invite_token,
+            scope: scope as DelegationScopeType,
+            recipientEmail: person.email,
+          });
           setSubmitting(false);
-          onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
           return;
         }
         onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
@@ -302,6 +323,64 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
 
   const titleText = titleOverride ?? t("delegation.wizard.title");
 
+  // Build the absolute invite URL for the link-copy fallback. We pull
+  // the canonical app origin from NEXT_PUBLIC_APP_URL so the link looks
+  // identical to what we send via email; falling back to window.origin
+  // for local dev. Computed at render time intentionally — the token
+  // never changes after the row is created.
+  const buildInviteUrl = (token: string): string => {
+    const configured = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "");
+    const origin =
+      configured ||
+      (typeof window !== "undefined" ? window.location.origin : "");
+    return `${origin}/invites/delegation?token=${token}`;
+  };
+
+  const handleCopyLink = async (token: string) => {
+    const url = buildInviteUrl(token);
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+        setLinkCopied(true);
+        window.setTimeout(() => setLinkCopied(false), 2000);
+        return;
+      }
+    } catch {
+      // fall through to legacy textarea fallback below
+    }
+    if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea");
+      textarea.value = url;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "absolute";
+      textarea.style.left = "-9999px";
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand("copy");
+        setLinkCopied(true);
+        window.setTimeout(() => setLinkCopied(false), 2000);
+      } catch {
+        // last resort: leave selection so user can Ctrl+C
+      } finally {
+        document.body.removeChild(textarea);
+      }
+    }
+  };
+
+  const handleFallbackDone = () => {
+    if (emailFailedResult) {
+      onCreated?.({
+        id: emailFailedResult.id,
+        invite_token: emailFailedResult.invite_token,
+        scope: emailFailedResult.scope,
+      });
+    }
+    setEmailFailedResult(null);
+    setLinkCopied(false);
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 pt-12 sm:items-center sm:px-6 sm:py-12">
       <div
@@ -313,11 +392,13 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
         <header className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
           <div className="flex items-center gap-3 text-sm">
             <h2 className="text-base font-semibold text-zinc-900">{titleText}</h2>
-            <StepDots step={step} scope={scope} skipExhibitionPick={!!initialProjectId} />
+            {!emailFailedResult && (
+              <StepDots step={step} scope={scope} skipExhibitionPick={!!initialProjectId} />
+            )}
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={emailFailedResult ? handleFallbackDone : onClose}
             className="rounded-md px-2 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
             aria-label={t("delegation.wizard.cancel")}
           >
@@ -325,6 +406,50 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
           </button>
         </header>
 
+        {emailFailedResult && (
+          <div className="flex-1 overflow-y-auto px-5 py-6">
+            <p className="text-base font-semibold text-zinc-900">
+              {t("delegation.fallback.title")}
+            </p>
+            <p className="mt-1 text-sm text-zinc-600">
+              {t("delegation.fallback.body").replace(
+                "{email}",
+                emailFailedResult.recipientEmail
+              )}
+            </p>
+            <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50 p-3">
+              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                {t("delegation.fallback.linkLabel")}
+              </p>
+              <p className="break-all text-xs text-zinc-700">
+                {buildInviteUrl(emailFailedResult.invite_token)}
+              </p>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopyLink(emailFailedResult.invite_token)}
+                className="rounded-md bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+              >
+                {linkCopied
+                  ? t("delegation.fallback.copied")
+                  : t("delegation.fallback.copyLink")}
+              </button>
+              <button
+                type="button"
+                onClick={handleFallbackDone}
+                className="rounded-md border border-zinc-300 px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
+              >
+                {t("delegation.fallback.done")}
+              </button>
+            </div>
+            <p className="mt-4 text-[11px] leading-relaxed text-zinc-500">
+              {t("delegation.fallback.privacyNote")}
+            </p>
+          </div>
+        )}
+
+        {!emailFailedResult && (
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {step === 1 && (
             <div>
@@ -534,7 +659,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
           )}
 
           {step === 4 && (
-            <div>
+            <div data-step="4">
               <p className="mb-3 text-base font-medium text-zinc-900">{t("delegation.wizard.step4Title")}</p>
               <dl className="space-y-3 text-sm">
                 <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
@@ -587,7 +712,9 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
             </div>
           )}
         </div>
+        )}
 
+        {!emailFailedResult && (
         <footer className="flex items-center justify-between border-t border-zinc-100 px-5 py-3">
           <button
             type="button"
@@ -616,6 +743,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
             </button>
           )}
         </footer>
+        )}
       </div>
     </div>
   );

@@ -2,6 +2,88 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Final Hardening · PR-C (이메일 실패 fallback + delegated mutation 감사 로그)
+
+P1 trust 마무리. 새 SQL 1 개 (best-effort audit hook RPC) + 클라이언트 변경 2 곳.
+
+### 1. P1 — 이메일 초대 실패 fallback (copy-link)
+
+**문제**: `CreateDelegationWizard` 의 이메일 탭에서 `/api/delegation-invite-email` 호출이 실패해도 invite row 자체는 이미 생성된 상태인데, 사용자는 그저 토스트만 보고 위자드가 닫혀 → 초대 링크가 어디에도 노출되지 않음 → 사용자는 "보냈는지 안 보냈는지" 모르는 채 다시 시도하거나 아예 포기.
+
+**해결**:
+- `src/components/delegation/CreateDelegationWizard.tsx`:
+  - 이메일 발송 실패 시 위자드를 닫지 않고 `emailFailedResult` state 에 `{ id, invite_token, scope, recipientEmail }` 캡처.
+  - 전용 fallback 패널을 본문 영역에 렌더 (StepDots 와 step UI 는 숨김):
+    - 제목/본문 (이메일이 발송되지 않았다는 점, 직접 링크를 전달해도 동일하게 동작한다는 점 안내)
+    - 초대 링크 (`{origin}/invites/delegation?token={invite_token}`) 가 박스 안에 readable 하게 표시.
+    - "링크 복사" 버튼 — `navigator.clipboard` 우선, 실패 시 `document.execCommand("copy")` fallback. 복사 직후 2 초간 "복사됨" 라벨로 토글.
+    - "완료" 버튼 — 이 버튼을 눌러야만 `onCreated` 콜백이 호출되고 위자드가 닫힘. 즉 "발송 실패는 사용자가 인지 후 dismiss" 로 강제.
+  - 프라이버시 노트 1 줄: 토큰은 양방향 (sender·recipient) 만 사용 가능, 함부로 공유 금지.
+- 새 i18n 키 (영·한): `delegation.fallback.title`, `delegation.fallback.body`, `delegation.fallback.linkLabel`, `delegation.fallback.copyLink`, `delegation.fallback.copied`, `delegation.fallback.done`, `delegation.fallback.privacyNote`.
+
+### 2. P1 — delegated mutation activity logs (제한적 범위)
+
+**문제**: `delegation_activity_events` 가 lifecycle (invite/accept/decline/revoke/expire) 만 보유. delegator 가 detail drawer 에서 보기에 "위임 동안 무슨 일이 일어났는지" 가 거의 빈 칸. 반대로 `acting_context_events` 는 client-side log 라 (a) 변조 가능, (b) delegator UI 가 읽을 수 없음.
+
+**해결**:
+- 신규 SQL `supabase/migrations/20260505000400_delegation_mutation_log.sql`:
+  - `record_delegated_mutation(p_owner_profile_id, p_event_type, p_target_type?, p_target_id?, p_summary?, p_metadata?)` — security definer.
+  - `auth.uid()` 기준으로 `p_owner_profile_id` 와의 가장 최근 active 위임을 찾아 한 줄을 `delegation_activity_events` 에 insert. active 위임 없으면 silent no-op (RLS 회피용 escalation 차단).
+  - `auth.uid() = p_owner_profile_id` (= 본인 self-edit) 면 no-op. event_type 비어있으면 no-op.
+- `src/lib/delegation/actingContext.ts`:
+  - `mutationEventTypeFor(action)` — high-level action → canonical event_type 매핑 테이블:
+    - `artwork.create_draft` → `delegated_artwork_created`
+    - `artwork.update`        → `delegated_artwork_updated`
+    - `artwork.publish`       → `delegated_artwork_published`
+    - `exhibition.create`     → `delegated_exhibition_created`
+    - `exhibition.update`     → `delegated_exhibition_updated`
+    - `exhibition.publish`    → `delegated_exhibition_published`
+    - `inquiry.reply`         → `delegated_inquiry_replied`
+    - 그 외 (board.*, connection.*) → null (delegator 화면에 노출하지 않음)
+  - `recordActingContextEvent` 본문에서 client log insert 직후, `evt` 가 non-null 이면 `record_delegated_mutation` RPC 도 best-effort 로 호출. 모든 에러는 swallow (mutation 자체를 절대 막지 않음).
+- 클라이언트 호출자리 (artworks/exhibitions/priceInquiries) 는 변경 없음 — 기존에 이미 `recordActingContextEvent` 를 부르고 있어서 매핑만 추가하면 자동으로 audit-trail 도 기록됨.
+
+### 3. 변경 파일 요약 (PR-C)
+
+| 영역 | 파일 |
+|---|---|
+| SQL | `20260505000400_delegation_mutation_log.sql` |
+| 라이브러리 | `src/lib/delegation/actingContext.ts` (mutation event mapping + RPC twin) |
+| UI | `src/components/delegation/CreateDelegationWizard.tsx` (email fallback panel) |
+| i18n | `src/lib/i18n/messages.ts` (영·한 7 키) |
+
+### 4. Supabase SQL — 실행 (PR-C)
+
+```
+20260505000400_delegation_mutation_log.sql
+```
+
+Idempotent · additive. PR-A·B 마이그레이션 이후에 실행.
+
+### 5. 환경 변수
+
+추가/변경 없음.
+
+### 6. QA 체크리스트
+
+| # | 시나리오 | 기대 |
+|---|---|---|
+| 1 | 이메일 탭에서 임의 invalid 도메인 (`foo@example.invalid` 등) 으로 초대 발송 → SendGrid bounce / 401 등 | 위자드 닫히지 않고 fallback 패널 노출. invite row 는 이미 생성됨. 링크 복사 가능. "완료" 누르면 위자드 닫히고 보낸 목록에 row 1 개 추가 보임. |
+| 2 | 1 의 fallback 에서 "링크 복사" → 다른 사용자 (수신자) 에게 직접 전달 → 수신자가 링크 클릭 | 정상적으로 `/invites/delegation?token=...` 페이지가 로드되어 수락 가능. (PR-A 의 그레이스풀 처리도 그대로 적용.) |
+| 3 | 정상 이메일 발송 (성공) | 기존 흐름 그대로: 위자드 닫히고 보낸 목록 갱신. fallback 패널 안 뜸. |
+| 4 | 사용자 A 가 B 에게 active 위임 → B 가 acting-as 로 A 의 작품 1 개 발행 | A 의 위임 detail drawer 에 `delegated_artwork_published` 이벤트 1 개 노출. |
+| 5 | 4 와 동일하지만, 위임을 회수한 직후 (PR-B stale probe 가 클리어) 시도 | acting-as 가 이미 클리어되어 있어 RPC 가 호출되어도 active 위임 없음 → no-op. detail drawer 깨끗. |
+| 6 | B 가 자기 본인 작품 발행 (acting-as 아님) | `record_delegated_mutation` 이 호출되어도 `auth.uid() = p_owner_profile_id` 라 no-op. 다른 사용자 detail drawer 에 누수 없음. |
+| 7 | RPC 실패 (네트워크 장애 등) | mutation 자체는 성공. detail drawer 에 그 1 건 누락만 발생 (best-effort 로 의도된 동작). 콘솔 warn 만. |
+
+### 7. 보안 노트
+
+- `record_delegated_mutation` 은 security definer 지만 auth.uid() 와 active 위임 join 으로 self-validation 한다. 임의 owner-id 를 넘겨도 active 위임이 없으면 row 가 들어가지 않음 → privilege escalation 경로 없음.
+- `metadata` 는 `payload` 그대로 전달하므로 PII 가 들어갈 가능성이 있는 path 는 호출자에서 적절히 redact 해야 함. 현재 호출자 (artworks/exhibitions/priceInquiries) 의 payload 는 ID·간단 메타뿐.
+- fallback 패널의 invite link 는 token 을 평문으로 보유하므로 사용자가 신뢰할 수 있는 채널로만 전달하도록 패널 하단에 1 줄 노트 표기.
+
+---
+
 ## 2026-04-27 — Delegation Final Hardening · PR-B (project preset destination 매퍼 + acting-as stale 검증 훅)
 
 P0 클라이언트 신뢰 갭 마무리. 새 SQL 1 개 (read-only probe RPC) + 클라이언트 변경.

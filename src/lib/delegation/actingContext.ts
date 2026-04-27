@@ -25,6 +25,25 @@ export type ActingContextAction =
   | "board.create"
   | "board.save_artwork";
 
+/**
+ * Map a high-level acting-context action to the canonical event-type
+ * string that lives in `delegation_activity_events`. Returning null
+ * means we deliberately don't surface this mutation in the delegator's
+ * audit drawer (e.g. board interactions are personal to the delegate).
+ */
+function mutationEventTypeFor(action: string): string | null {
+  switch (action) {
+    case "artwork.create_draft": return "delegated_artwork_created";
+    case "artwork.update":       return "delegated_artwork_updated";
+    case "artwork.publish":      return "delegated_artwork_published";
+    case "exhibition.create":    return "delegated_exhibition_created";
+    case "exhibition.update":    return "delegated_exhibition_updated";
+    case "exhibition.publish":   return "delegated_exhibition_published";
+    case "inquiry.reply":        return "delegated_inquiry_replied";
+    default:                     return null;
+  }
+}
+
 export type RecordActingContextOptions = {
   client?: SupabaseClient;
   /** Explicit delegate user id. Defaults to the logged-in session user. */
@@ -64,6 +83,36 @@ export async function recordActingContextEvent(
     });
     if (error && process.env.NODE_ENV !== "production") {
       console.warn("[acting_context] insert failed", error.message);
+    }
+
+    // Audit-trail twin: when the action represents a mutation we want
+    // the delegator to see in their detail drawer, also fire
+    // `record_delegated_mutation`. The RPC is security-definer and
+    // self-validates against active delegations, so a flaky local row
+    // can't escalate privileges. Best-effort: failures are swallowed.
+    const evt = mutationEventTypeFor(opts.action);
+    if (evt) {
+      try {
+        const targetIdValid =
+          typeof opts.resourceId === "string" && opts.resourceId.length > 0
+            ? opts.resourceId
+            : null;
+        const { error: rpcErr } = await client.rpc("record_delegated_mutation", {
+          p_owner_profile_id: opts.subjectProfileId,
+          p_event_type: evt,
+          p_target_type: opts.resourceType ?? null,
+          p_target_id: targetIdValid,
+          p_summary: null,
+          p_metadata: (opts.payload ?? {}) as unknown as Record<string, unknown>,
+        });
+        if (rpcErr && process.env.NODE_ENV !== "production") {
+          console.warn("[delegated_mutation] rpc failed", rpcErr.message);
+        }
+      } catch (rpcErr) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[delegated_mutation] threw", rpcErr);
+        }
+      }
     }
   } catch (err) {
     if (process.env.NODE_ENV !== "production") {
