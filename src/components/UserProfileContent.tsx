@@ -432,8 +432,22 @@ export function UserProfileContent({
           <button
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
-            className="text-sm text-zinc-600 hover:text-zinc-900"
+            aria-label={t("profile.reorder")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
+            <svg
+              aria-hidden
+              viewBox="0 0 16 16"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 5h8M4 8h8M4 11h8" />
+              <path d="M2 3l1.2 1.2M14 3l-1.2 1.2M2 13l1.2-1.2M14 13l-1.2-1.2" />
+            </svg>
             {t("profile.reorder")}
           </button>
         )}

@@ -28,6 +28,7 @@ import {
   type ActiveStudioTab,
   parseActiveTabParam,
   parseStudioPortfolio,
+  serializeActiveTabParam,
   type StudioPortfolioV1,
   type StudioStripTab,
 } from "@/lib/studio/studioPortfolioConfig";
@@ -443,14 +444,59 @@ export function StudioPortfolioPanel({
   function renderBulkControls() {
     const customTabs = portfolio.custom_tabs ?? [];
     if (!selectMode) {
+      // "공개 프로필에서 순서 변경 →" 딥링크. 작품 reorder 의 SSOT 는 공개
+      // 프로필(미리보기 = 편집)이고, /my 는 발견 경로만 제공해 인터랙션
+      // 충돌(탭 reorder vs 작품 reorder vs bulk select)을 방지한다.
+      // exhibitions 탭에서는 의미가 없으므로 숨김(상위에서 가드).
+      const reorderHref =
+        profile.username && activePersonaTab !== "exhibitions"
+          ? `/u/${profile.username}?mode=reorder&tab=${encodeURIComponent(serializeActiveTabParam(active))}`
+          : null;
       return (
-        <button
-          type="button"
-          onClick={() => setSelectMode(true)}
-          className="text-sm text-zinc-600 hover:text-zinc-900"
-        >
-          {t("my.bulkSelect.select")}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectMode(true)}
+            aria-label={t("my.bulkSelect.select")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 16 16"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+              <path d="M5.5 8.5l2 2 3.5-4" />
+            </svg>
+            {t("my.bulkSelect.select")}
+          </button>
+          {reorderHref && (
+            <Link
+              href={reorderHref}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              <svg
+                aria-hidden
+                viewBox="0 0 16 16"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 5h8M4 8h8M4 11h8" />
+                <path d="M2 3l1.2 1.2M14 3l-1.2 1.2M2 13l1.2-1.2M14 13l-1.2-1.2" />
+              </svg>
+              {t("studio.portfolio.reorderOnPublic")}
+            </Link>
+          )}
+        </div>
       );
     }
     return (
