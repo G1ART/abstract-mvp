@@ -8,8 +8,11 @@ import { useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "./aiCardState";
-import { copyToClipboard } from "@/components/ai/AiDraftPanel";
+import {
+  AiCopyButton,
+  AiDisclosureNote,
+  AiStateBlock,
+} from "@/components/ai/primitives";
 import type {
   ProfileSuggestion,
   ProfileSuggestionCategory,
@@ -62,7 +65,7 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
   };
 
   const aiEventId = result?.aiEventId ?? null;
-  const errorKey = aiErrorKey(result);
+  const hasError = Boolean(result?.degraded);
 
   const filteredSuggestions = useMemo(() => {
     return (result?.suggestions ?? []).filter((s) => {
@@ -123,7 +126,7 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
               title={t("ai.disclosure.tooltip")}
             >
-              {loading ? t("ai.state.loading") : t("ai.profile.improveCta")}
+              {loading ? t("ai.common.loading") : t("ai.profile.improveCta")}
             </button>
           </div>
         }
@@ -140,15 +143,15 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
         </span>
       </div>
 
-      {!result && !errorKey && !loading && (
+      {!result && !loading && (
         <p className="mt-3 text-xs text-zinc-500">{t("ai.profile.idle")}</p>
       )}
 
-      {errorKey && (
-        <p className="mt-3 text-xs text-amber-700">{t(errorKey)}</p>
-      )}
+      <div className="mt-3">
+        <AiStateBlock loading={loading} result={result} />
+      </div>
 
-      {result && !errorKey && (
+      {result && !hasError && (
         <>
           {result.missing?.length > 0 && (
             <div className="mt-4">
@@ -213,19 +216,13 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
                       {draft}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          copyToClipboard(draft);
-                          markAiAccepted(aiEventId, {
-                            feature: "profile_copilot",
-                            via: "copy",
-                          });
-                        }}
-                        className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500"
-                      >
-                        {t("ai.profile.copyDraft")}
-                      </button>
+                      <AiCopyButton
+                        text={draft}
+                        feature="profile_copilot"
+                        aiEventId={aiEventId}
+                        labelKey="ai.profile.copyDraft"
+                        size="md"
+                      />
                       <Link
                         href="/settings"
                         onClick={() => {
@@ -259,19 +256,12 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
                     className="flex items-start justify-between gap-3 rounded-xl border border-zinc-200 bg-white p-3"
                   >
                     <p className="text-sm text-zinc-800">{line}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        copyToClipboard(line);
-                        markAiAccepted(aiEventId, {
-                          feature: "profile_copilot",
-                          via: "copy",
-                        });
-                      }}
-                      className="shrink-0 rounded-lg border border-zinc-300 px-2 py-1 text-[11px] font-medium text-zinc-700 hover:border-zinc-500"
-                    >
-                      {t("ai.profile.copyDraft")}
-                    </button>
+                    <AiCopyButton
+                      text={line}
+                      feature="profile_copilot"
+                      aiEventId={aiEventId}
+                      labelKey="ai.profile.copyDraft"
+                    />
                   </li>
                 ))}
               </ul>
@@ -297,6 +287,9 @@ export function ProfileCopilotCard({ completeness, profileInput }: Props) {
                 {t("ai.profile.missingEmpty")}
               </p>
             )}
+          <div className="mt-3">
+            <AiDisclosureNote />
+          </div>
         </>
       )}
     </SectionFrame>

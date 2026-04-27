@@ -6,6 +6,7 @@ import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
 import { copyToClipboard } from "./AiDraftPanel";
+import { aiErrorKey } from "@/components/studio/intelligence/aiCardState";
 import { follow as followUser } from "@/lib/supabase/follows";
 import { sendConnectionMessage } from "@/lib/supabase/connectionMessages";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
@@ -345,16 +346,7 @@ function IntroSheet({
   const drafts = result?.drafts ?? [];
   const isDegraded = Boolean(result?.degraded);
 
-  const errorKey =
-    isDegraded && result?.reason
-      ? result.reason === "cap"
-        ? "ai.error.softCap"
-        : result.reason === "no_key"
-          ? "ai.error.unavailable"
-          : result.reason === "invalid_input"
-            ? "ai.error.invalidInput"
-            : "ai.error.tryLater"
-      : null;
+  const errorKey = aiErrorKey(result ?? null);
 
   const hasError = isDegraded && drafts.length === 0 && Boolean(errorKey);
 
@@ -648,18 +640,8 @@ function InlineDraftView({
   const { t } = useT();
 
   const drafts = result?.drafts ?? [];
-  const isDegraded = Boolean(result?.degraded);
 
-  const errorKey =
-    isDegraded && result?.reason
-      ? result.reason === "cap"
-        ? "ai.error.softCap"
-        : result.reason === "no_key"
-          ? "ai.error.unavailable"
-          : result.reason === "invalid_input"
-            ? "ai.error.invalidInput"
-            : "ai.error.tryLater"
-      : null;
+  const errorKey = aiErrorKey(result ?? null);
 
   return (
     <div className="mt-3 rounded-2xl border border-zinc-200 bg-white overflow-hidden">

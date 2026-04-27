@@ -7,7 +7,7 @@ import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "./aiCardState";
+import { AiDisclosureNote, AiStateBlock } from "@/components/ai/primitives";
 import type { StudioDigestResult } from "@/lib/ai/types";
 
 type Props = {
@@ -33,7 +33,7 @@ export function WeeklyDigestCard({
     setLoading(false);
   };
 
-  const errorKey = aiErrorKey(result);
+  const hasError = Boolean(result?.degraded);
 
   return (
     <SectionFrame padding="md" noMargin>
@@ -57,7 +57,7 @@ export function WeeklyDigestCard({
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
               title={t("ai.disclosure.tooltip")}
             >
-              {loading ? t("ai.state.loading") : t("ai.digest.cta")}
+              {loading ? t("ai.common.loading") : t("ai.digest.cta")}
             </button>
           </div>
         }
@@ -73,13 +73,13 @@ export function WeeklyDigestCard({
         </p>
       )}
 
-      {errorKey && <p className="text-xs text-amber-700">{t(errorKey)}</p>}
+      <AiStateBlock loading={loading} result={result} />
 
-      {!result && !errorKey && !loading && (
+      {!result && !loading && (
         <p className="text-xs text-zinc-500">{t("ai.digest.idle")}</p>
       )}
 
-      {result && !errorKey && (
+      {result && !hasError && (
         <>
           {result.headline && (
             <p className="text-sm font-medium text-zinc-900">{result.headline}</p>
@@ -127,6 +127,9 @@ export function WeeklyDigestCard({
               </ul>
             </div>
           )}
+          <div className="mt-3">
+            <AiDisclosureNote />
+          </div>
         </>
       )}
     </SectionFrame>

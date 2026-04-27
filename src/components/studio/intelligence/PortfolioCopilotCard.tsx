@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
-import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "./aiCardState";
-import { copyToClipboard } from "@/components/ai/AiDraftPanel";
+import {
+  AiCopyButton,
+  AiDisclosureNote,
+  AiStateBlock,
+  AiStatusChip,
+} from "@/components/ai/primitives";
 import {
   resolvePortfolioActionLabel,
   stripOpaqueIdsFromCopilotText,
@@ -68,7 +71,7 @@ export function PortfolioCopilotCard({
     setLoading(false);
   };
 
-  const errorKey = aiErrorKey(result);
+  const hasError = Boolean(result?.degraded);
   const aiEventId = result?.aiEventId ?? null;
 
   const metadataGaps = (() => {
@@ -119,7 +122,7 @@ export function PortfolioCopilotCard({
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
               title={t("ai.disclosure.tooltip")}
             >
-              {loading ? t("ai.state.loading") : t("ai.portfolio.cta")}
+              {loading ? t("ai.common.loading") : t("ai.portfolio.cta")}
             </button>
           </div>
         }
@@ -143,13 +146,15 @@ export function PortfolioCopilotCard({
         <p className="text-xs text-zinc-500">{t("ai.portfolio.empty")}</p>
       )}
 
-      {!disabled && !result && !errorKey && !loading && (
+      {!disabled && !result && !loading && (
         <p className="text-xs text-zinc-500">{t("ai.portfolio.idle")}</p>
       )}
 
-      {errorKey && <p className="mt-2 text-xs text-amber-700">{t(errorKey)}</p>}
+      <div className="mt-2">
+        <AiStateBlock loading={loading} result={result} />
+      </div>
 
-      {result && !errorKey && (
+      {result && !hasError && (
         <>
           {result.ordering &&
             (result.ordering.artworkIds ?? []).length > 0 && (
@@ -180,25 +185,18 @@ export function PortfolioCopilotCard({
                   ))}
                 </ol>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const text = (result.ordering?.artworkIds ?? [])
-                        .map(
-                          (id, i) =>
-                            `${i + 1}. ${titleForChip(id, i)} (/artwork/${id})`,
-                        )
-                        .join("\n");
-                      copyToClipboard(text);
-                      markAiAccepted(aiEventId, {
-                        feature: "portfolio_copilot",
-                        via: "copy",
-                      });
-                    }}
-                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500"
-                  >
-                    {t("ai.portfolio.copyChecklist")}
-                  </button>
+                  <AiCopyButton
+                    text={(result.ordering?.artworkIds ?? [])
+                      .map(
+                        (id, i) =>
+                          `${i + 1}. ${titleForChip(id, i)} (/artwork/${id})`,
+                      )
+                      .join("\n")}
+                    feature="portfolio_copilot"
+                    aiEventId={aiEventId}
+                    labelKey="ai.portfolio.copyChecklist"
+                    size="md"
+                  />
                 </div>
                 <p className="mt-2 text-[11px] text-zinc-500">
                   {t("ai.portfolio.orderingHint")}
@@ -228,7 +226,10 @@ export function PortfolioCopilotCard({
                           }`}
                         >
                           <div className="flex items-center gap-2">
-                            <Chip tone="muted">{t(KIND_LABEL[s.kind])}</Chip>
+                            <AiStatusChip
+                              label={t(KIND_LABEL[s.kind])}
+                              tone="neutral"
+                            />
                             <p className="text-sm font-medium text-zinc-900">
                               {stripOpaqueIdsFromCopilotText(s.title)}
                             </p>
@@ -282,29 +283,24 @@ export function PortfolioCopilotCard({
                                 )}
                               </Link>
                             )}
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const text = [
-                                  stripOpaqueIdsFromCopilotText(s.title),
-                                  s.detail ? stripOpaqueIdsFromCopilotText(s.detail) : "",
-                                  ...(s.artworkIds ?? []).map(
-                                    (id, idx) =>
-                                      `- ${titleForChip(id, idx)} (/artwork/${id})`,
-                                  ),
-                                ]
-                                  .filter(Boolean)
-                                  .join("\n");
-                                copyToClipboard(text);
-                                markAiAccepted(aiEventId, {
-                                  feature: "portfolio_copilot",
-                                  via: "copy",
-                                });
-                              }}
-                              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500"
-                            >
-                              {t("ai.portfolio.copyChecklist")}
-                            </button>
+                            <AiCopyButton
+                              text={[
+                                stripOpaqueIdsFromCopilotText(s.title),
+                                s.detail
+                                  ? stripOpaqueIdsFromCopilotText(s.detail)
+                                  : "",
+                                ...(s.artworkIds ?? []).map(
+                                  (id, idx) =>
+                                    `- ${titleForChip(id, idx)} (/artwork/${id})`,
+                                ),
+                              ]
+                                .filter(Boolean)
+                                .join("\n")}
+                              feature="portfolio_copilot"
+                              aiEventId={aiEventId}
+                              labelKey="ai.portfolio.copyChecklist"
+                              size="md"
+                            />
                             <button
                               type="button"
                               onClick={() =>
@@ -328,6 +324,9 @@ export function PortfolioCopilotCard({
               ))}
             </div>
           )}
+          <div className="mt-3">
+            <AiDisclosureNote />
+          </div>
         </>
       )}
     </SectionFrame>

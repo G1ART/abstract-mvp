@@ -32,6 +32,7 @@ import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type Artwo
 import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
+import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -425,6 +426,10 @@ export default function ExhibitionDetailPage() {
             </header>
 
             {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+
+            <div className="mb-6">
+              <ExhibitionReviewPanel exhibitionId={id} />
+            </div>
 
             <section className="mb-8 rounded-lg border border-zinc-200 bg-white p-4">
               <h2 className="mb-2 text-sm font-medium text-zinc-700">대표 썸네일 (최대 3개)</h2>

@@ -6,6 +6,7 @@ import type { MessageKey } from "@/lib/i18n/messages";
 import { aiApi } from "@/lib/ai/browser";
 import { readTone, writeTone } from "@/lib/ai/tonePrefs";
 import { AiDraftPanel, copyToClipboard } from "./AiDraftPanel";
+import { AiStatusChip } from "./primitives";
 import type { InquiryReplyDraftResult } from "@/lib/ai/types";
 import type { InquiryReplyInput } from "@/lib/ai/contexts";
 
@@ -179,7 +180,7 @@ export function InquiryReplyAssist({
           title={t("ai.disclosure.tooltip")}
         >
           {loading
-            ? t("ai.state.loading")
+            ? t("ai.common.loading")
             : followup
               ? t("ai.inquiry.followupCta")
               : t("ai.inquiry.replyDraftCta")}
@@ -192,22 +193,22 @@ export function InquiryReplyAssist({
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {triageIntent ? (
-              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-700 ring-1 ring-zinc-200/80">
-                {t("ai.inquiry.triageIntent")}: {triageIntent}
-              </span>
+              <AiStatusChip
+                tone="neutral"
+                label={`${t("ai.inquiry.triageIntent")}: ${triageIntent}`}
+              />
             ) : null}
             {triagePriority ? (
-              <span
-                className={
+              <AiStatusChip
+                tone={
                   triagePriority === "time_sensitive"
-                    ? "rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-950"
+                    ? "warn"
                     : triagePriority === "opportunity"
-                      ? "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-950"
-                      : "rounded-full bg-zinc-200/80 px-2 py-0.5 text-[11px] font-medium text-zinc-800"
+                      ? "ok"
+                      : "neutral"
                 }
-              >
-                {t(INQUIRY_PRIORITY_LABEL[triagePriority])}
-              </span>
+                label={t(INQUIRY_PRIORITY_LABEL[triagePriority])}
+              />
             ) : null}
           </div>
           {triageMissing.length > 0 ? (

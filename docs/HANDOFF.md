@@ -2,6 +2,95 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — AI Layer UX Completion NextPatch (existing surfaces migration + Exhibition Review mounting)
+
+`Abstract_AI_Layer_UX_Completion_NextPatch_2026-04-27.md` 대응. 직전 통일 패치에서 회귀 위험 때문에 보류했던 **기존 8개 AI surface** 를 공용 primitives 시스템으로 점진 이전하고, 누락되어 있던 `ExhibitionReviewPanel` 의 페이지 마운팅을 보완했습니다. 데이터 플로우/AI 라우트/외부 API 시그니처는 일체 손대지 않은, **외피·상태·copy·텔레메트리** 정렬 패치입니다.
+
+### P0 — `ExhibitionReviewPanel` 마운팅 (브리프 §3)
+
+전 패치에서 컴포넌트는 만들었지만 페이지에 import 되지 않아 사실상 invisible 했던 문제 해결.
+
+- `src/app/my/exhibitions/[id]/page.tsx` — 헤더(편집/추가/위임 매니저 초대) 액션 줄 직후, 대표 썸네일 섹션 직전에 마운트.
+- `AiSurfaceFrame` 의 `defaultOpen=false` 덕분에 페이지가 무겁게 느껴지지 않음 (collapsed CTA).
+- 한 가지 주의: 패널 내부에서 권한·exhibition fetch 를 자체 처리하므로 부모 페이지의 fetch 와 충돌 없음.
+
+### 마이그레이션 — 기존 4개 Studio Intelligence 카드 (`/my`)
+
+전략: **`SectionFrame` 외피는 유지** (My Studio 그리드는 always-open 가정으로 짜여 있어 fold-default 인 `AiSurfaceFrame` 으로 바꾸면 정보 노출도가 떨어지는 UX 회귀 발생). 내부 동작·문구만 primitives 로 정렬.
+
+| 카드 | 변경 | 보존 |
+|---|---|---|
+| `ProfileCopilotCard` | error → `AiStateBlock`, 모든 copy 버튼 → `AiCopyButton(feature="profile_copilot")`, 하단 `AiDisclosureNote` | completeness 게이지, suggestion 그룹, viewer notes, bio/headline drafts, openSettings 링크 |
+| `PortfolioCopilotCard` | error → `AiStateBlock`, 모든 copy 버튼 → `AiCopyButton(feature="portfolio_copilot")`, kind chip → `AiStatusChip`, 하단 `AiDisclosureNote` | ordering rationale, 그룹화, metadata gaps, mark reviewed, `titleForChip` 휴먼 라벨 (UUID 노출 없음 재확인) |
+| `WeeklyDigestCard` | error → `AiStateBlock`, 하단 `AiDisclosureNote`, 로딩 라벨 통일 | headline / changes / nextActions 링크 |
+| `MatchmakerCard` | error → `AiStateBlock` (degradedReason → AiDegradation shape), role chip → `AiStatusChip`, 하단 `AiDisclosureNote` | peer 리스트, IntroMessageAssist autoOpen, follow/intro_note/exhibition_share/save_for_later 액션 |
+
+UUID 폴백 점검: `PortfolioCopilotCard.titleForChip` 는 `artworkTitles[id]` 없을 시 `t("ai.portfolio.unnamedSlot").replace("{n}", String(slotIndex+1))` 휴먼 폴백 사용. raw `id.slice(0,8)` 노출 없음 확인.
+
+### 마이그레이션 — Draft Assists
+
+- `AiDraftPanel` 은 canonical 로 유지 (브리프 §10.2 "Use AiDraftPanel if it remains canonical"). 두 시스템 중복 회피.
+- `AiDraftPanel` 내부 로딩 라벨 `ai.state.loading` → `ai.common.loading` 정렬.
+- `BioDraftAssist` — 로딩 라벨 정렬. 데이터 플로우/tone 선택/apply UX 그대로.
+- `StatementDraftAssist` — 로딩 라벨 정렬, 인라인 copy 버튼 → `AiCopyButton`, error → `AiStateBlock`.
+- `ExhibitionDraftAssist` — `AiDraftPanel` 이 이미 정렬되어 있어 추가 변경 없음 (kind 토글 + 4종 출력 그대로).
+- `IntroMessageAssist` — sheet/portal/팔로우+발송 흐름은 user-trust-sensitive 라 외형 변경 없음. `errorKey` 도출만 양쪽(InlineDraftView/IntroSheet) 모두 `aiErrorKey()` 로 통일 (이전: 인라인 reason switch).
+
+### 마이그레이션 — `InquiryReplyAssist`
+
+- 트리아주 chip → `AiStatusChip` (intent: neutral, priority: warn / ok / neutral).
+- 로딩 라벨 통일.
+- 중요한 send-after-edit 흐름·`onApply(text, aiEventId)` 시그니처·via:"send" 정책 그대로.
+
+### 변경 / 변경 없음 요약
+
+**변경된 surface (10개):**
+- `ProfileCopilotCard`
+- `PortfolioCopilotCard`
+- `WeeklyDigestCard`
+- `MatchmakerCard`
+- `InquiryReplyAssist`
+- `StatementDraftAssist`
+- `BioDraftAssist` (라벨만)
+- `IntroMessageAssist` (errorKey 통일만)
+- `AiDraftPanel` (라벨만)
+- `src/app/my/exhibitions/[id]/page.tsx` (mount)
+
+**변경 없는 surface:**
+- `ExhibitionDraftAssist` (이미 `AiDraftPanel` 통해 정렬됨)
+- `BoardPitchPackPanel` / `ExhibitionReviewPanel` / `DelegationBriefPanel` (직전 패치에서 이미 primitives 정렬 완료)
+
+### 안 한 것 / 의도적 보류
+
+- 4개 Studio Intelligence 카드의 `SectionFrame → AiSurfaceFrame` 외피 교체는 회귀 위험 큼 (My Studio 그리드 always-open 패턴이 fold-default 와 충돌). 카드별 chrome 은 유지하고 내부 동작만 정렬.
+- `IntroMessageAssist` sheet 내부 DraftItem 의 자체 copy chip 은 selectable/editable 모드와 강결합되어 있어 그대로 유지. `markAiAccepted(via:"copy")` 는 이미 호출됨.
+- 추가 prop 확장 없음 (브리프 §11.1 "current primitives.tsx is intentionally small. Keep it that way").
+
+### 검증
+
+- `npx tsc --noEmit` — 0 errors.
+- `npx eslint <changed files>` — 0 errors (기존 react-hooks/exhaustive-deps 경고 2건은 pre-existing, 본 패치 무관).
+- `npx next build` — production build 성공.
+- 수동 QA 체크리스트 (브리프 §16):
+  - [ ] My Studio 진입 → 4 카드 전 시각적 일관성, 로딩 시 "초안을 정리하는 중…" 표시, copy 버튼 1.5s "복사됨" 토스트.
+  - [ ] Profile Copilot — 미완 프로필에서 suggestion 그룹·bio drafts 표시, 컴플리트 프로필에서 calm empty.
+  - [ ] Portfolio Copilot — 작품 1개 미만 disabled 메시지, 다수일 때 ordering + grouped suggestions, 무제 작품에서 raw UUID 안 보임.
+  - [ ] Weekly Digest — 활동 0 / 활동 있음 양쪽.
+  - [ ] Matchmaker — 다양한 액션 (follow/intro/exhibition_share/save_for_later) 정상.
+  - [ ] Exhibition detail (`/my/exhibitions/[id]`) — Review 패널 헤더 직후 collapsed 상태로 표시, 클릭 → 생성 → checklist + alternative copies + AiCopyButton.
+  - [ ] Inquiry reply 화면 — triage chip 색감 (warn/ok/neutral) 일치.
+  - [ ] Settings → Statement assist — error 시 amber, copy 버튼 정상.
+  - [ ] Bio assist — auto-apply 모드 그대로, applied 시 markAiAccepted via:"apply".
+
+### 워크스페이스 룰 체크
+
+1. **Supabase SQL**: 추가/변경 없음.
+2. **Git push**: `release: ai layer ux completion (mount exhibition review · migrate 4 studio cards · primitives polish)` 메인 푸시 완료.
+3. **HANDOFF.md**: 본 섹션이 그 결과.
+4. **환경 변수**: 추가/변경 없음.
+
+---
+
 ## 2026-04-27 — AI Layer UX/Design Unification (shared primitives + new-panel migration)
 
 `Abstract_AI_Layer_UX_Design_Unification_2026-04-27.md` 대응. 11개 AI surface 가 한 시스템처럼 보이도록 **공용 primitives** 를 도입하고, 가장 새 surface 3개(Board Pitch Pack / Exhibition Review / Delegation Brief) 를 그 primitives 로 정렬했습니다. 기존 surface 8개의 광범위 리팩터는 회귀 위험을 고려해 의도적으로 보류 (브리프 §14 권고).

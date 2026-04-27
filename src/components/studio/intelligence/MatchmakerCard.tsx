@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useCallback, useState } from "react";
 import { SectionFrame } from "@/components/ds/SectionFrame";
 import { SectionTitle } from "@/components/ds/SectionTitle";
-import { Chip } from "@/components/ds/Chip";
 import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "./aiCardState";
+import {
+  AiDisclosureNote,
+  AiStateBlock,
+  AiStatusChip,
+} from "@/components/ai/primitives";
 import { getPeopleRecommendations } from "@/lib/supabase/recommendations";
 import { formatIdentityPair } from "@/lib/identity/format";
 import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
@@ -89,21 +92,19 @@ export function MatchmakerCard({ me, myArtworkTitles }: Props) {
     }
   }, [me, locale]);
 
-  const errorKey = aiErrorKey(
-    degradedReason
-      ? ({
-          degraded: true,
-          reason: degradedReason as
-            | "cap"
-            | "no_key"
-            | "invalid_input"
-            | "timeout"
-            | "parse"
-            | "error"
-            | "unauthorized",
-        })
-      : null,
-  );
+  const degradedShape = degradedReason
+    ? ({
+        degraded: true,
+        reason: degradedReason as
+          | "cap"
+          | "no_key"
+          | "invalid_input"
+          | "timeout"
+          | "parse"
+          | "error"
+          | "unauthorized",
+      } as const)
+    : null;
 
   const dismiss = () => {
     setPeers([]);
@@ -137,7 +138,7 @@ export function MatchmakerCard({ me, myArtworkTitles }: Props) {
               className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:border-zinc-500 disabled:opacity-60"
               title={t("ai.disclosure.tooltip")}
             >
-              {loading ? t("ai.state.loading") : t("ai.matchmaker.cta")}
+              {loading ? t("ai.common.loading") : t("ai.matchmaker.cta")}
             </button>
           </div>
         }
@@ -153,7 +154,7 @@ export function MatchmakerCard({ me, myArtworkTitles }: Props) {
         <p className="text-xs text-zinc-500">{t("ai.matchmaker.empty")}</p>
       )}
 
-      {errorKey && <p className="text-xs text-amber-700">{t(errorKey)}</p>}
+      <AiStateBlock loading={loading} result={degradedShape} />
 
       {peers.length > 0 && (
         <ul className="flex flex-col gap-2">
@@ -217,7 +218,9 @@ export function MatchmakerCard({ me, myArtworkTitles }: Props) {
                       </p>
                     )}
                   </div>
-                  {p.main_role && <Chip tone="muted">{p.main_role}</Chip>}
+                  {p.main_role && (
+                    <AiStatusChip label={p.main_role} tone="neutral" />
+                  )}
                 </div>
                 <p className="mt-2 text-xs text-zinc-600">{rationaleText}</p>
 
@@ -325,6 +328,11 @@ export function MatchmakerCard({ me, myArtworkTitles }: Props) {
             );
           })}
         </ul>
+      )}
+      {peers.length > 0 && (
+        <div className="mt-2">
+          <AiDisclosureNote />
+        </div>
       )}
     </SectionFrame>
   );

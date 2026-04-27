@@ -4,8 +4,7 @@ import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "@/components/studio/intelligence/aiCardState";
-import { copyToClipboard } from "@/components/ai/AiDraftPanel";
+import { AiCopyButton, AiStateBlock } from "@/components/ai/primitives";
 import type { ProfileSuggestionsResult } from "@/lib/ai/types";
 
 type ProfileInputForStatement = {
@@ -43,11 +42,9 @@ export function StatementDraftAssist({ profileInput, onUseDraft }: Props) {
   const { t } = useT();
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProfileSuggestionsResult | null>(null);
-  const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
 
   const trigger = async () => {
     setLoading(true);
-    setCopiedIdx(null);
     const res = await aiApi.profileCopilot({
       profile: { ...profileInput, mode: "statement" },
     });
@@ -56,7 +53,6 @@ export function StatementDraftAssist({ profileInput, onUseDraft }: Props) {
   };
 
   const drafts = (result?.statementDrafts ?? []).filter((d) => typeof d === "string" && d.trim().length > 0);
-  const errorKey = aiErrorKey(result);
   const aiEventId = result?.aiEventId ?? null;
 
   return (
@@ -77,18 +73,16 @@ export function StatementDraftAssist({ profileInput, onUseDraft }: Props) {
           className="rounded border border-zinc-900 bg-white px-3 py-1 text-xs font-medium text-zinc-900 hover:bg-zinc-100 disabled:opacity-50"
         >
           {loading
-            ? t("profile.statement.assist.loading")
+            ? t("ai.common.loading")
             : drafts.length > 0
               ? t("profile.statement.assist.regenerate")
               : t("profile.statement.assist.cta")}
         </button>
       </div>
 
-      {errorKey && (
-        <p className="mt-2 text-[11px] text-amber-700" role="alert">
-          {t(errorKey)}
-        </p>
-      )}
+      <div className="mt-2">
+        <AiStateBlock loading={loading} result={result} />
+      </div>
 
       {drafts.length > 0 && (
         <ul className="mt-3 space-y-3">
@@ -109,19 +103,13 @@ export function StatementDraftAssist({ profileInput, onUseDraft }: Props) {
                 >
                   {t("profile.statement.assist.use")}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    copyToClipboard(draft);
-                    setCopiedIdx(idx);
-                    setTimeout(() => setCopiedIdx((v) => (v === idx ? null : v)), 1500);
-                  }}
-                  className="rounded border border-zinc-300 px-2 py-1 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                >
-                  {copiedIdx === idx
-                    ? t("profile.statement.assist.copied")
-                    : t("profile.statement.assist.copy")}
-                </button>
+                <AiCopyButton
+                  text={draft}
+                  feature="profile_copilot"
+                  aiEventId={aiEventId}
+                  labelKey="profile.statement.assist.copy"
+                  copiedLabelKey="profile.statement.assist.copied"
+                />
               </div>
             </li>
           ))}

@@ -152,7 +152,7 @@ export function AiDraftPanel({
         )}
       </div>
       {loading && (
-        <p className="mt-3 text-xs text-zinc-500">{t("ai.state.loading")}</p>
+        <p className="mt-3 text-xs text-zinc-500">{t("ai.common.loading")}</p>
       )}
       {!loading && errorKey && (
         <p className="mt-3 text-xs text-amber-700">{t(errorKey)}</p>

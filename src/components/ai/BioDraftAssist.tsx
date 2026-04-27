@@ -97,7 +97,7 @@ export function BioDraftAssist({
           title={t("ai.disclosure.tooltip")}
         >
           {loading
-            ? t("ai.state.loading")
+            ? t("ai.common.loading")
             : result
               ? t("ai.bio.refreshCta")
               : t("ai.bio.draftCta")}
