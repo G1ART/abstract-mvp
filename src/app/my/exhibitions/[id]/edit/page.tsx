@@ -28,6 +28,7 @@ import { supabase as supabaseClient } from "@/lib/supabase/client";
 import { getSession } from "@/lib/supabase/auth";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
+import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -328,6 +329,8 @@ export default function EditExhibitionPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && <p className="text-sm text-red-600">{error}</p>}
+
+            <ExhibitionReviewPanel exhibitionId={id} />
 
             <div>
               <label className="mb-1 block text-sm font-medium text-zinc-700">

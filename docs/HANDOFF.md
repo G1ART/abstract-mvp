@@ -2,6 +2,125 @@
 
 Last updated: 2026-04-26
 
+## 2026-04-26 — P1 Profile Identity + AI Workflows
+
+### 요약
+
+작업지시서 *Abstract_P1_Profile_Identity_AI_Workflows_2026-04-24.md* 에 정의된 두 레이어를 **6개 논리적 PR로 분할**해 `main`에 직접 푸시.
+
+- **Layer 1 (P1-0) — Profile Identity Surface**
+  - 프로필 사진 / 커버 이미지 / Artist Statement(+ optional hero image) 신규 컬럼·RPC·Storage·UI.
+  - Settings 업로더, Public Profile 커버 밴드, 탭 위 `ArtistStatementSection` section-card 추가.
+- **Layer 2 — AI Workflow Assistants 3종 (PR4–PR6)**
+  - **Statement 초안 도움** (Profile Copilot 확장, `mode=statement`).
+  - **Board Pitch Pack Assistant** (`/api/ai/board-pitch-pack`).
+  - **Exhibition Review Assistant** (`/api/ai/exhibition-review`).
+  - **Delegation Brief Assistant** (`/api/ai/delegation-brief`).
+
+#### Audit-driven 결정 사항
+
+| 결정 | 이유 |
+|---|---|
+| Statement은 **`UserProfileContent` 탭 위 section-card**, 별도 탭 X | `buildStudioStripTabs` / `parseStudioPortfolio`의 persona·custom·ordering 로직이 얽혀 있어 신규 탭 회귀 위험이 큼 |
+| Storage 경로는 기존 `artworks` 버킷의 `{userId}/profile/{kind}/{uuid}-{name}` | 기존 `can_manage_artworks_storage_path()` RLS와 직매치 — 신규 RLS 마이그레이션 불필요 |
+| AI feature key 3종 신설 + `plan_feature_matrix` 시드는 **모든 plan 허용** | 베타 동안 visible paywall 미노출. quota는 추후 `plan_quota_matrix`로 추가 |
+| Delegation Brief는 `userMayActAs(manage_works)` 가드 재사용 | website-import 라우트와 동일 패턴, cross-profile leak 방지 |
+
+### Supabase SQL 적용 필요
+
+순서대로 SQL Editor 에서 실행:
+
+1. `supabase/migrations/20260430000000_profile_identity_columns.sql` — 5개 nullable 컬럼 추가 (`cover_image_url`, `cover_image_position_y`, `artist_statement`, `artist_statement_hero_image_url`, `artist_statement_updated_at`).
+2. `supabase/migrations/20260430000100_upsert_my_profile_identity.sql` — `upsert_my_profile` RPC 5개 컬럼 분기만 추가, 기존 분기 0 변경.
+3. `supabase/migrations/20260430000200_lookup_profile_identity.sql` — `lookup_profile_by_username` RPC 신규 컬럼 5개를 `jsonb_build_object`에 추가, `is_public=false` short-circuit·`studio_portfolio` 노출 그대로 유지.
+4. `supabase/migrations/20260501000000_p1_ai_feature_keys.sql` — `ai.board_pitch_pack` plan_matrix 시드 (모든 plan).
+5. `supabase/migrations/20260502000000_p1_ai_keys_extra.sql` — `ai.exhibition_review` + `ai.delegation_brief` plan_matrix 시드.
+
+모두 `on conflict do nothing` / additive — 재실행 안전.
+
+### 변경 위치
+
+#### PR1 — DB / RPC / selector / surface foundations
+- `supabase/migrations/20260430000000_profile_identity_columns.sql` (신규)
+- `supabase/migrations/20260430000100_upsert_my_profile_identity.sql` (신규)
+- `supabase/migrations/20260430000200_lookup_profile_identity.sql` (신규)
+- `src/lib/supabase/profiles.ts`: `Profile`, `ProfilePublic`, `BASE_PROFILE_KEYS`, `UpdateProfileBaseParams`, `lookupPublicProfileByUsername` parser, `getMyProfileAsPublic` parser에 5개 필드 추가.
+- `src/lib/supabase/profileSaveUnified.ts`: `BASE_KEYS` 5개 필드 추가.
+- `src/lib/supabase/selectors.ts`: SELECT 컬럼 5개 추가.
+- `src/lib/profile/surface.ts`: `coverImageUrl`, `coverImagePositionY`, `artistStatement`, `artistStatementHeroImageUrl`, `artistStatementUpdatedAt` top-level 노출.
+
+#### PR2 — Storage helpers
+- `src/lib/supabase/storage.ts`: `PROFILE_MEDIA_LIMITS`, `ProfileMediaKind`, `uploadProfileMedia`, `removeProfileMedia` 추가. 기존 `artworks` 버킷 + `can_manage_artworks_storage_path()` 재사용.
+
+#### PR3 — Settings · Studio hero · Public profile UI
+- `src/app/settings/page.tsx`: 프로필 사진 / 커버 / Artist Statement 섹션 신규.
+- `src/components/profile/ProfileMediaUploader.tsx` (신규).
+- `src/components/profile/ProfileCoverBand.tsx` (신규).
+- `src/components/profile/ArtistStatementSection.tsx` (신규).
+- `src/components/UserProfileContent.tsx`: 상단 cover 밴드 + 탭 위 statement section-card 마운트.
+- `src/app/u/[username]/page.tsx`: 5개 필드 패스 통과.
+- `src/lib/i18n/messages.ts`: KR/EN 신규 키 ~25개.
+- 회귀 가드: `buildStudioStripTabs` / `studio_portfolio` JSONB / `getAvatarUrl` 미수정.
+
+#### PR4 — Statement 초안 도움 (Profile Copilot 확장)
+- `src/lib/ai/contexts.ts` `ProfileContextInput` 확장 (`mode?`, `currentStatement?`, `themesDetail?`, `selectedArtworks?`).
+- `src/lib/ai/prompts/index.ts` `PROFILE_STATEMENT_SYSTEM` 신규, `PROFILE_COPILOT_SCHEMA`에 `statementDrafts?: string[]` 추가.
+- `src/lib/ai/types.ts` `ProfileSuggestionsResult.statementDrafts?` 추가.
+- `src/lib/ai/validation.ts` `parseProfileBody`에서 mode 인식.
+- `src/app/api/ai/profile-copilot/route.ts`에서 `mode === "statement"` 분기.
+- `src/components/profile/StatementDraftAssist.tsx` (신규) — Settings statement 영역에 "초안 도움" 버튼.
+- 기존 Profile Copilot 호출자는 mode 미지정 → default = general (회귀 0).
+
+#### PR5 — Board Pitch Pack Assistant (P1-A)
+- `src/lib/entitlements/featureKeys.ts` `ai.board_pitch_pack` 등 3개 신규 키.
+- `src/lib/entitlements/planMatrix.ts` 3개 신규 키 베타 전체 plan 허용.
+- `src/lib/metering/types.ts` + `src/lib/metering/usageKeys.ts` `AI_*_GENERATED` 메터 + 매핑.
+- `src/lib/ai/types.ts` `AiFeatureKey` 확장 + `BoardPitchPackResult`/`ExhibitionReviewResult`/`DelegationBriefResult`.
+- `src/lib/ai/safety.ts` `ALLOWED_FEATURES` 확장.
+- `src/lib/ai/prompts/index.ts` `BOARD_PITCH_PACK_SYSTEM`/`SCHEMA` (가격·소장·발송 정보 노출 X).
+- `src/lib/ai/contexts.ts` `buildBoardPitchPackContext`.
+- `src/lib/ai/validation.ts` `parseBoardPitchPackBody`.
+- `src/lib/ai/browser.ts` `aiApi.boardPitchPack` 추가.
+- `src/app/api/ai/board-pitch-pack/route.ts` (신규) — `shortlists` RLS로 owner/collaborator만 컨텍스트 빌드.
+- `src/components/board/BoardPitchPackPanel.tsx` (신규) — board detail에 collapsed CTA, summary/throughline/missingInfo/drafts/perWork.
+- `src/app/my/shortlists/[id]/page.tsx` 마운트.
+
+#### PR6 — Exhibition Review (P1-B) + Delegation Brief (P1-C)
+- `src/lib/ai/prompts/index.ts` `EXHIBITION_REVIEW_*` / `DELEGATION_BRIEF_*` prompts/schemas.
+- `src/lib/ai/contexts.ts` `buildExhibitionReviewContext` / `buildDelegationBriefContext`.
+- `src/lib/ai/validation.ts` `parseExhibitionReviewBody` / `parseDelegationBriefBody`.
+- `src/lib/ai/browser.ts` `aiApi.exhibitionReview` / `aiApi.delegationBrief`.
+- `src/app/api/ai/exhibition-review/route.ts` (신규) — 권한 가드: curator/host (`projects.curator_id`, `host_profile_id`) 또는 active account/inventory/project-scope delegate(`delegations`).
+- `src/app/api/ai/delegation-brief/route.ts` (신규) — `userMayActAs(manage_works, account|inventory)` 가드. 카운트 4개(미공개 작품, 미응답 inquiries, 전시 cover gap, profile readiness 6 check %)와 principal 메타만 컨텍스트로 송신.
+- `src/components/exhibition/ExhibitionReviewPanel.tsx` (신규) — `/my/exhibitions/[id]/edit`에 마운트.
+- `src/components/delegation/DelegationBriefPanel.tsx` (신규) — `/my/delegations` 활성 account/inventory 위임 행 + `/my`에서 `actingAsProfileId`가 켜져 있을 때 마운트.
+- `supabase/migrations/20260502000000_p1_ai_keys_extra.sql` (신규).
+
+### 권한 / 보안 요약
+
+| 라우트 | 가드 |
+|---|---|
+| `POST /api/ai/profile-copilot` (mode=statement) | 기존 그대로 — `requireUserFromRequest` |
+| `POST /api/ai/board-pitch-pack` | `shortlists` SELECT가 RLS로 owner/collaborator만 통과 → 행이 없으면 404. 가격·collector·소장 정보 미송신 |
+| `POST /api/ai/exhibition-review` | `projects.curator_id == userId` 또는 `host_profile_id == userId` 또는 active account/inventory delegation, 또는 active project-scope delegation(`project_id == exhibitionId`). 미충족 시 403 |
+| `POST /api/ai/delegation-brief` | `userMayActAs(manage_works)` + `scope_type in (account, inventory)` 만 통과. principal 카운트만 컨텍스트, 호출자 본인 데이터 0 송출 |
+
+### Beta paywall 정책
+
+3 신규 AI feature key는 `plan_feature_matrix` 시드에서 모든 plan(free 포함) 허용 → visible paywall 미노출. soft cap / quota 노출은 `plan_quota_matrix`로 추후 추가 가능.
+
+### 환경 변수
+
+- 신규 환경 변수 **없음**. 기존 `OPENAI_API_KEY` 재사용.
+
+### Verified
+
+- `npx tsc --noEmit` : 통과.
+- 기존 Profile Copilot 호출 흐름은 mode 미지정 시 default=general로 회귀 없음 확인.
+- AI 라우트 3종은 모두 `handleAiRoute` 패턴 — soft cap, entitlement gate, ai_events, accept tracking 자동.
+
+---
+
 ## 2026-04-26 — Studio: remove redundant Quick Actions strip
 
 ### 요약

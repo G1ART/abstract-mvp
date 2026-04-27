@@ -49,6 +49,7 @@ import { computeStudioNextActions } from "@/lib/studio/priority";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { hasAnyRole } from "@/lib/identity/roles";
+import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
 
 type Profile = FullProfile;
 
@@ -425,6 +426,13 @@ export default function MyPage() {
               {t("studio.portfolioHelper.workshopLink")}
             </a>
           </div>
+        )}
+
+        {profile && actingAsProfileId && (
+          <DelegationBriefPanel
+            actingAsProfileId={actingAsProfileId}
+            principalName={profile.display_name ?? profile.username ?? null}
+          />
         )}
 
         {profile && (

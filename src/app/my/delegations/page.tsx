@@ -23,6 +23,7 @@ import type { PublicProfile } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
 
 function scopeLabel(scope: string, t: (k: string) => string): string {
   switch (scope) {
@@ -237,8 +238,9 @@ export default function MyDelegationsPage() {
                 return (
                   <li
                     key={d.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3"
+                    className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3"
                   >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="flex flex-wrap items-center gap-2 text-sm text-zinc-700">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${stageTone}`}>
                         {t(stageKey)}
@@ -278,6 +280,16 @@ export default function MyDelegationsPage() {
                         </button>
                       )}
                     </span>
+                  </div>
+                  {d.status === "active" &&
+                    (d.scope_type === "account" || d.scope_type === "inventory") && (
+                      <div className="mt-2">
+                        <DelegationBriefPanel
+                          actingAsProfileId={d.delegator_profile_id}
+                          principalName={name}
+                        />
+                      </div>
+                    )}
                   </li>
                 );
               })}
