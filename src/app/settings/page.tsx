@@ -942,15 +942,29 @@ export default function SettingsPage() {
 
         <div className="mb-6">
           <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.security")}</h2>
-          <Link
-            href="/set-password"
-            className="text-sm text-zinc-600 underline hover:text-zinc-900"
-          >
-            {hasPassword ? t("settings.changePassword") : t("settings.setPassword")}
-          </Link>
-          <p className="mt-1 text-xs text-zinc-500">
-            {hasPassword ? t("settings.changePasswordHint") : t("settings.setPasswordHint")}
-          </p>
+          {/* QA P0.5-C (row 25, follow-up): 비밀번호가 이미 설정된
+              사용자에게는 "이메일과 비밀번호로 로그인할 수 있도록…"
+              안내가 오히려 *비밀번호를 설정하지 않은 것처럼* 보이게
+              해서 혼란을 일으킨다. 이 분기에선 링크 라벨을 "비밀번호
+              재설정 / Reset password" 으로 명확히 좁히고, hint 단락은
+              아예 렌더하지 않는다. 아직 비밀번호를 설정하지 않은
+              사용자에게만 원래의 안내 문구가 노출되도록 유지. 또
+              `hasPassword === null` (auth-state 로딩 중) 동안에는
+              잘못된 라벨이 잠깐 깜빡이지 않도록 링크 자체를 렌더하지
+              않는다. */}
+          {hasPassword !== null && (
+            <Link
+              href="/set-password"
+              className="text-sm text-zinc-600 underline hover:text-zinc-900"
+            >
+              {hasPassword ? t("settings.changePassword") : t("settings.setPassword")}
+            </Link>
+          )}
+          {hasPassword === false && (
+            <p className="mt-1 text-xs text-zinc-500">
+              {t("settings.setPasswordHint")}
+            </p>
+          )}
         </div>
 
         {loading ? (
