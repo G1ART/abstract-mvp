@@ -112,15 +112,35 @@ export function Header() {
   return (
     <>
       {actingAsLabel && (
-        <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-sm text-amber-900">
-          <span>{t("delegation.actingAs").replace("{name}", actingAsLabel)}</span>
-          <button
-            type="button"
-            onClick={clearActingAs}
-            className="font-medium hover:underline"
-          >
-            {t("delegation.switchToMyAccount")}
-          </button>
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 sm:text-sm"
+        >
+          <span className="inline-flex items-center gap-1.5 truncate">
+            <span
+              aria-hidden="true"
+              className="hidden h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500 sm:inline-block"
+            />
+            <span className="truncate">
+              {t("delegation.banner.label").replace("{name}", actingAsLabel)}
+            </span>
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-3">
+            <Link
+              href="/my/delegations"
+              className="font-medium hover:underline"
+            >
+              {t("delegation.banner.viewPermissions")}
+            </Link>
+            <button
+              type="button"
+              onClick={clearActingAs}
+              className="font-medium hover:underline"
+            >
+              {t("delegation.banner.returnToMyAccount")}
+            </button>
+          </span>
         </div>
       )}
       <header className="relative flex h-14 items-center justify-between border-b border-zinc-200 px-4">

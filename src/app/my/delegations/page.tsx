@@ -1,41 +1,96 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { useActingAs } from "@/context/ActingAsContext";
 import {
-  createDelegationInvite,
-  createDelegationInviteForProfile,
   acceptDelegationById,
   declineDelegationById,
   listMyDelegations,
-  revokeDelegation,
+  type DelegationPreset,
   type DelegationWithDetails,
   type ListMyDelegationsResult,
 } from "@/lib/supabase/delegations";
-import { getMyProfile } from "@/lib/supabase/profiles";
 import { getSession } from "@/lib/supabase/auth";
-import { searchPeople } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
-import type { PublicProfile } from "@/lib/supabase/artists";
-import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
-import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
-import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
+import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
+import { DelegationDetailDrawer } from "@/components/delegation/DelegationDetailDrawer";
 
-function scopeLabel(scope: string, t: (k: string) => string): string {
-  switch (scope) {
-    case "account":
-      return t("delegation.inviteScopeAccount");
-    case "project":
-      return t("delegation.inviteScopeProject");
-    case "inventory":
-      return t("delegation.inviteScopeInventory");
-    default:
-      return scope;
+type ReceivedTab = "pending" | "active" | "closed";
+
+function presetTitleKey(p: DelegationPreset | null | undefined): string | null {
+  if (!p) return null;
+  switch (p) {
+    case "operations": return "delegation.preset.operations.title";
+    case "content": return "delegation.preset.content.title";
+    case "review": return "delegation.preset.review.title";
+    case "project_co_edit": return "delegation.preset.projectCoEdit.title";
+    case "project_works_only": return "delegation.preset.projectWorksOnly.title";
+    case "project_review": return "delegation.preset.projectReview.title";
+  }
+}
+
+function statusBucket(status: string): ReceivedTab {
+  if (status === "pending") return "pending";
+  if (status === "active") return "active";
+  return "closed";
+}
+
+function tabLabel(tab: ReceivedTab, t: (k: string) => string): string {
+  if (tab === "pending") return t("delegation.tabPending");
+  if (tab === "active") return t("delegation.tabActive");
+  return t("delegation.tabClosed");
+}
+
+function dateLabel(d: DelegationWithDetails, t: (k: string) => string): string | null {
+  const fmt = (val: string | null | undefined) => {
+    if (!val) return null;
+    try {
+      return new Date(val).toLocaleDateString("ko-KR", {
+        year: "numeric", month: "short", day: "numeric",
+      });
+    } catch {
+      return null;
+    }
+  };
+  if (d.status === "pending" && d.invited_at) {
+    const v = fmt(d.invited_at);
+    return v ? t("delegation.dateInvited").replace("{date}", v) : null;
+  }
+  if (d.status === "active" && d.accepted_at) {
+    const v = fmt(d.accepted_at);
+    return v ? t("delegation.dateAccepted").replace("{date}", v) : null;
+  }
+  if (d.status === "declined" && d.declined_at) {
+    const v = fmt(d.declined_at);
+    return v ? t("delegation.dateDeclined").replace("{date}", v) : null;
+  }
+  if (d.status === "revoked" && d.revoked_at) {
+    const v = fmt(d.revoked_at);
+    return v ? t("delegation.dateRevoked").replace("{date}", v) : null;
+  }
+  return null;
+}
+
+function scopeText(d: DelegationWithDetails, t: (k: string) => string): string {
+  if (d.scope_type === "project") {
+    if (d.project?.title) {
+      return t("delegation.scopeExhibitionPrefix").replace("{title}", d.project.title);
+    }
+    return t("delegation.scopeProject");
+  }
+  return t("delegation.scopeAccount");
+}
+
+function statusToneClasses(status: string): string {
+  switch (status) {
+    case "pending": return "bg-amber-100 text-amber-900";
+    case "active": return "bg-emerald-100 text-emerald-900";
+    default: return "bg-zinc-200 text-zinc-700";
   }
 }
 
@@ -44,23 +99,13 @@ export default function MyDelegationsPage() {
   const { setActingAs } = useActingAs();
   const [data, setData] = useState<ListMyDelegationsResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [revokingId, setRevokingId] = useState<string | null>(null);
-  const [accountInviteEmail, setAccountInviteEmail] = useState("");
-  const [accountInviteSending, setAccountInviteSending] = useState(false);
-  const [accountInviteToast, setAccountInviteToast] = useState<"sent" | "failed" | null>(null);
-  const [myId, setMyId] = useState<string | null>(null);
-  const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<PublicProfile[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
-  const [inviteByProfileToast, setInviteByProfileToast] = useState<
-    | { kind: "sent" }
-    | { kind: "failed"; messageKey: string; raw: string }
-    | null
-  >(null);
+  const [tab, setTab] = useState<ReceivedTab>("pending");
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const [decliningId, setDecliningId] = useState<string | null>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailOwnerView, setDetailOwnerView] = useState(true);
+  const [myId, setMyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: res } = await listMyDelegations();
@@ -73,129 +118,46 @@ export default function MyDelegationsPage() {
   }, [load]);
 
   useEffect(() => {
-    getSession().then(({ data: { session } }) => {
-      if (session?.user?.id) setMyId(session.user.id);
-    });
+    getSession().then(({ data: { session } }) => setMyId(session?.user?.id ?? null));
   }, []);
 
-  const doSearch = useCallback(async () => {
-    const q = searchQ.trim();
-    if (!q) {
-      setSearchResults([]);
-      return;
-    }
-    setSearchLoading(true);
-    const { data: list } = await searchPeople({ q, limit: 10 });
-    setSearchResults(list ?? []);
-    setSearchLoading(false);
-  }, [searchQ]);
+  const received = data?.received ?? [];
+  const sent = data?.sent ?? [];
 
+  const receivedByTab = useMemo(() => {
+    const groups: Record<ReceivedTab, DelegationWithDetails[]> = {
+      pending: [], active: [], closed: [],
+    };
+    for (const d of received) {
+      groups[statusBucket(d.status)].push(d);
+    }
+    return groups;
+  }, [received]);
+
+  // Auto-pick the most relevant tab when there's pending or active.
   useEffect(() => {
-    const t = setTimeout(doSearch, 300);
-    return () => clearTimeout(t);
-  }, [searchQ, doSearch]);
+    if (loading) return;
+    if (receivedByTab.pending.length > 0) setTab("pending");
+    else if (receivedByTab.active.length > 0) setTab("active");
+  }, [loading, receivedByTab.pending.length, receivedByTab.active.length]);
 
-  const filteredSearchResults = myId
-    ? (searchResults ?? []).filter((p) => p.id !== myId)
-    : searchResults ?? [];
-
-  async function handleInviteByProfile(profile: PublicProfile) {
-    setInviteByProfileSending(true);
-    setInviteByProfileToast(null);
-    const { data, error } = await createDelegationInviteForProfile({
-      delegateProfileId: profile.id,
-      scopeType: "account",
-    });
-    setInviteByProfileSending(false);
-    // QA P0.5-F (rows 37, 38): close the dropdown on EVERY click, even
-    // when the RPC errors. Previously the dropdown only cleared on
-    // success, so a failed invite (most often "duplicate" or "self")
-    // looked exactly like the click was ignored. We also surface a
-    // specific reason instead of the generic "초대를 보내지 못했습니다"
-    // so the user can tell whether to retry, pick a different account,
-    // or skip the step entirely.
-    setSearchQ("");
-    setSearchResults([]);
-    if (error || !data) {
-      const classified = classifyDelegationInviteError(error);
-      console.warn("[delegation] invite-by-profile failed", {
-        delegate: profile.id,
-        scope: "account",
-        raw: classified.raw,
-      });
-      setInviteByProfileToast({
-        kind: "failed",
-        messageKey: classified.key,
-        raw: classified.raw,
-      });
-      return;
-    }
-    setInviteByProfileToast({ kind: "sent" });
-    load();
-  }
-
-  async function handleAccept(d: DelegationWithDetails) {
+  const handleAccept = async (d: DelegationWithDetails) => {
     if (!d.id) return;
     setAcceptingId(d.id);
     await acceptDelegationById(d.id);
     setAcceptingId(null);
     load();
-  }
+  };
 
-  async function handleDecline(d: DelegationWithDetails) {
+  const handleDecline = async (d: DelegationWithDetails) => {
     if (!d.id) return;
     setDecliningId(d.id);
     await declineDelegationById(d.id);
     setDecliningId(null);
     load();
-  }
+  };
 
-  async function handleRevoke(d: DelegationWithDetails) {
-    if (!d.id) return;
-    setRevokingId(d.id);
-    await revokeDelegation(d.id);
-    setRevokingId(null);
-    load();
-  }
-
-  async function handleSendAccountInvite() {
-    const email = accountInviteEmail.trim().toLowerCase();
-    if (!email) return;
-    setAccountInviteSending(true);
-    setAccountInviteToast(null);
-    const { data: inv, error: invErr } = await createDelegationInvite({
-      delegateEmail: email,
-      scopeType: "account",
-    });
-    if (invErr || !inv?.invite_token) {
-      setAccountInviteToast("failed");
-      setAccountInviteSending(false);
-      return;
-    }
-    const { data: profile } = await getMyProfile();
-    const inviterName =
-      (profile as { display_name?: string | null; username?: string | null })?.display_name?.trim() ||
-      (profile as { username?: string | null })?.username ||
-      null;
-    const res = await fetch("/api/delegation-invite-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        toEmail: email,
-        inviterName,
-        scopeType: "account",
-        inviteToken: inv.invite_token,
-      }),
-    });
-    setAccountInviteSending(false);
-    setAccountInviteToast(res.ok ? "sent" : "failed");
-    if (res.ok) {
-      setAccountInviteEmail("");
-      load();
-    }
-  }
-
-  function handleManage(d: DelegationWithDetails) {
+  const handleManage = (d: DelegationWithDetails) => {
     const label =
       d.delegator_profile?.display_name?.trim() ||
       (d.delegator_profile?.username ? `@${d.delegator_profile.username}` : null) ||
@@ -206,262 +168,324 @@ export default function MyDelegationsPage() {
     } else {
       window.location.href = "/my";
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <AuthGate>
-        <div className="mx-auto max-w-2xl px-4 py-8">
-          <p className="text-zinc-500">{t("common.loading")}</p>
-        </div>
-      </AuthGate>
-    );
-  }
+  const openDetail = (d: DelegationWithDetails, viewerIsOwner: boolean) => {
+    setDetailOwnerView(viewerIsOwner);
+    setDetailId(d.id);
+  };
 
-  const received = data?.received ?? [];
-  const sent = data?.sent ?? [];
+  const isEmpty = !loading && received.length === 0 && sent.length === 0;
 
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.delegation} />
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <div data-tour="delegation-header" className="mb-6 flex items-start justify-between gap-4">
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <div data-tour="delegation-header" className="mb-2 flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1 pr-2">
-            <h1 className="mb-2 text-xl font-semibold">{t("delegation.myDelegations")}</h1>
-            <p className="text-sm text-zinc-500">{t("delegation.stagesIntro")}</p>
+            <h1 className="mb-2 text-2xl font-semibold tracking-tight text-zinc-900">{t("delegation.myDelegations")}</h1>
+            <p className="text-sm text-zinc-600">{t("delegation.subtitle")}</p>
           </div>
           <TourHelpButton tourId={TOUR_IDS.delegation} />
         </div>
+        <p className="mb-6 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+          {t("delegation.trustNote")}
+        </p>
 
-        <section data-tour="delegation-received" className="mb-8">
-          <h2 className="mb-3 text-sm font-medium text-zinc-500">
-            {t("delegation.received")}
-          </h2>
-          {received.length === 0 ? (
-            <p className="text-sm text-zinc-500">{t("delegation.receivedEmpty")}</p>
-          ) : (
-            <ul className="space-y-3">
-              {received.map((d) => {
-                const name = formatDisplayName(d.delegator_profile);
-                const handle = formatUsername(d.delegator_profile);
-                const scope = scopeLabel(d.scope_type, t);
-                const projectTitle =
-                  d.scope_type === "project" && d.project?.title ? ` — ${d.project.title}` : "";
-                const stageKey = d.status === "pending"
-                  ? "delegation.stagePending"
-                  : d.status === "active"
-                  ? "delegation.stageActive"
-                  : "delegation.stageClosed";
-                const stageTone = d.status === "pending"
-                  ? "bg-amber-100 text-amber-900"
-                  : d.status === "active"
-                  ? "bg-emerald-100 text-emerald-900"
-                  : "bg-zinc-200 text-zinc-700";
-                return (
-                  <li
-                    key={d.id}
-                    className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3"
-                  >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="flex flex-wrap items-center gap-2 text-sm text-zinc-700">
-                      <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${stageTone}`}>
-                        {t(stageKey)}
-                      </span>
-                      <span className="font-medium">{name}</span>
-                      {handle && <span className="text-zinc-500">{handle}</span>}
-                      <span className="text-zinc-500">· {scope}{projectTitle}</span>
-                    </span>
-                    <span className="flex items-center gap-2">
-                      {d.status === "pending" && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleAccept(d)}
-                            disabled={acceptingId === d.id}
-                            className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
-                          >
-                            {acceptingId === d.id ? "..." : t("delegation.accept")}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDecline(d)}
-                            disabled={decliningId === d.id}
-                            className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-                          >
-                            {decliningId === d.id ? "..." : t("delegation.decline")}
-                          </button>
-                        </>
-                      )}
-                      {d.status === "active" && (
-                        <button
-                          type="button"
-                          onClick={() => handleManage(d)}
-                          className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800"
-                        >
-                          {d.scope_type === "project" ? t("exhibition.manageExhibition") : "Manage"}
-                        </button>
-                      )}
-                    </span>
-                  </div>
-                  {d.status === "active" &&
-                    (d.scope_type === "account" || d.scope_type === "inventory") && (
-                      <div className="mt-2">
-                        <DelegationBriefPanel
-                          actingAsProfileId={d.delegator_profile_id}
-                          principalName={name}
-                        />
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+        <div data-tour="delegation-wizard-cta" className="mb-8 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => setWizardOpen(true)}
+            className="rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
+          >
+            {t("delegation.cta.create")}
+          </button>
+        </div>
 
-        <section data-tour="delegation-invite" className="mb-8" ref={searchRef}>
-          <h2 className="mb-3 text-sm font-medium text-zinc-500">{t("delegation.inviteAccountAccess")}</h2>
-          <p className="mb-3 text-sm text-zinc-600">{t("delegation.inviteAccountAccessHint")}</p>
+        {loading ? (
+          <p className="text-sm text-zinc-500">{t("common.loading")}</p>
+        ) : isEmpty ? (
+          <EmptyState onCreate={() => setWizardOpen(true)} />
+        ) : (
+          <>
+            <section data-tour="delegation-received" className="mb-10">
+              <header className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-zinc-900">{t("delegation.received")}</h2>
+              </header>
 
-          <p className="mb-2 text-xs font-medium text-zinc-500">{t("delegation.inviteExistingUser")}</p>
-          <div className="relative mb-4">
-            <input
-              type="text"
-              value={searchQ}
-              onChange={(e) => setSearchQ(e.target.value)}
-              placeholder={t("delegation.searchUserPlaceholder")}
-              className="w-full min-w-[200px] rounded border border-zinc-300 px-3 py-2 text-sm"
-            />
-            {searchLoading && (
-              <p className="mt-1 text-xs text-zinc-400">{t("common.loading")}</p>
-            )}
-            {filteredSearchResults.length > 0 && (
-              <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-zinc-200 bg-white py-1 shadow-lg">
-                {filteredSearchResults.map((p) => (
-                  <li key={p.id}>
+              <div role="tablist" className="mb-3 inline-flex rounded-lg border border-zinc-200 bg-zinc-50 p-1 text-xs">
+                {(["pending", "active", "closed"] as ReceivedTab[]).map((tk) => {
+                  const count = receivedByTab[tk].length;
+                  const active = tab === tk;
+                  return (
                     <button
+                      key={tk}
                       type="button"
-                      onClick={() => handleInviteByProfile(p)}
-                      disabled={inviteByProfileSending}
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setTab(tk)}
+                      className={`rounded-md px-3 py-1.5 ${
+                        active ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500"
+                      }`}
                     >
-                      {p.avatar_url ? (
-                        <img
-                          src={
-                            p.avatar_url.startsWith("http")
-                              ? p.avatar_url
-                              : getArtworkImageUrl(p.avatar_url, "avatar")
-                          }
-                          alt=""
-                          className="h-8 w-8 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
-                          {(p.display_name ?? p.username ?? "?").charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="truncate">
-                        {p.display_name?.trim() || p.username ? `@${p.username}` : p.id.slice(0, 8)}
-                      </span>
-                      {p.username && (
-                        <span className="truncate text-zinc-400">@{p.username}</span>
+                      {tabLabel(tk, t)}
+                      {count > 0 && (
+                        <span className={`ml-1.5 inline-block min-w-4 rounded-full px-1 text-[10px] ${
+                          active ? "bg-zinc-900 text-white" : "bg-zinc-200 text-zinc-600"
+                        }`}>
+                          {count}
+                        </span>
                       )}
                     </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {inviteByProfileToast && (
-            <p
-              className={`mb-3 text-xs ${
-                inviteByProfileToast.kind === "sent"
-                  ? "text-zinc-600"
-                  : "text-amber-600"
-              }`}
-              role={inviteByProfileToast.kind === "sent" ? "status" : "alert"}
-            >
-              {inviteByProfileToast.kind === "sent"
-                ? t("delegation.inviteSentToUser")
-                : t(inviteByProfileToast.messageKey)}
-            </p>
-          )}
+                  );
+                })}
+              </div>
 
-          <p className="mb-2 text-xs font-medium text-zinc-500">{t("delegation.orInviteByEmail")}</p>
-          <div className="flex flex-wrap items-end gap-2">
-            <input
-              type="email"
-              value={accountInviteEmail}
-              onChange={(e) => setAccountInviteEmail(e.target.value)}
-              placeholder={t("delegation.inviteByEmail")}
-              className="min-w-[200px] rounded border border-zinc-300 px-3 py-2 text-sm"
-            />
-            <button
-              type="button"
-              onClick={handleSendAccountInvite}
-              disabled={accountInviteSending || !accountInviteEmail.trim()}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {accountInviteSending ? t("delegation.sending") : t("delegation.sendInvite")}
-            </button>
-          </div>
-          {accountInviteToast && (
-            <p className={`mt-2 text-xs ${accountInviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
-              {accountInviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
-            </p>
-          )}
-        </section>
+              {receivedByTab[tab].length === 0 ? (
+                <p className="text-sm text-zinc-500">{t("delegation.receivedEmpty")}</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {receivedByTab[tab].map((d) => (
+                    <li key={d.id}>
+                      <ReceivedCard
+                        d={d}
+                        t={t}
+                        onAccept={() => handleAccept(d)}
+                        onDecline={() => handleDecline(d)}
+                        onManage={() => handleManage(d)}
+                        onView={() => openDetail(d, false)}
+                        accepting={acceptingId === d.id}
+                        declining={decliningId === d.id}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
-        <section data-tour="delegation-sent">
-          <h2 className="mb-3 text-sm font-medium text-zinc-500">{t("delegation.sent")}</h2>
-          {sent.length === 0 ? (
-            <p className="text-sm text-zinc-500">No invitations sent.</p>
-          ) : (
-            <ul className="space-y-3">
-              {sent.map((d) => {
-                const to =
-                  d.delegate_profile?.display_name?.trim() ||
-                  (d.delegate_profile?.username ? `@${d.delegate_profile.username}` : null) ||
-                  d.delegate_email;
-                const scope = scopeLabel(d.scope_type, t);
-                const projectTitle =
-                  d.scope_type === "project" && d.project?.title ? ` — ${d.project.title}` : "";
-                return (
-                  <li
-                    key={d.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3"
-                  >
-                    <span className="text-sm text-zinc-700">
-                      {to}: {scope}
-                      {projectTitle} {d.status === "pending" && "(pending)"}
-                    </span>
-                    {(d.status === "active" || d.status === "pending") && (
-                      <button
-                        type="button"
-                        onClick={() => handleRevoke(d)}
-                        disabled={revokingId === d.id}
-                        className="text-sm text-red-600 hover:underline disabled:opacity-50"
-                        title={d.status === "pending" ? t("delegation.cancelInvite") : t("delegation.revoke")}
-                      >
-                        {d.status === "pending" ? t("delegation.cancelInvite") : t("delegation.revoke")}
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </section>
+            <section data-tour="delegation-sent">
+              <h2 className="mb-3 text-sm font-semibold text-zinc-900">{t("delegation.sent")}</h2>
+              {sent.length === 0 ? (
+                <p className="text-sm text-zinc-500">{t("delegation.sentEmpty")}</p>
+              ) : (
+                <ul className="space-y-2.5">
+                  {sent.map((d) => (
+                    <li key={d.id}>
+                      <SentCard
+                        d={d}
+                        t={t}
+                        onView={() => openDetail(d, true)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
 
-        <p className="mt-6">
-          {/* QA P0.5-H (row 39): '돌아가기 내 스튜디오' → '내 스튜디오로
-              돌아가기'. We reuse the same back-to-my-studio phrase that
-              the private-profile shell uses so copy stays consistent. */}
+        <p className="mt-10">
           <Link href="/my" className="text-sm font-medium text-zinc-700 hover:text-zinc-900">
             ← {t("profile.privateBackToMy")}
           </Link>
         </p>
       </div>
+
+      <CreateDelegationWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={() => {
+          setWizardOpen(false);
+          load();
+        }}
+      />
+
+      <DelegationDetailDrawer
+        delegationId={detailId}
+        viewerIsOwner={detailOwnerView}
+        onClose={() => setDetailId(null)}
+        onChanged={load}
+      />
     </AuthGate>
+  );
+}
+
+function ReceivedCard({
+  d, t, onAccept, onDecline, onManage, onView, accepting, declining,
+}: {
+  d: DelegationWithDetails;
+  t: (k: string) => string;
+  onAccept: () => void;
+  onDecline: () => void;
+  onManage: () => void;
+  onView: () => void;
+  accepting: boolean;
+  declining: boolean;
+}) {
+  const name = d.delegator_profile?.display_name?.trim() || d.delegator_profile?.username || "—";
+  const handle = d.delegator_profile?.username ? `@${d.delegator_profile.username}` : null;
+  const presetKey = presetTitleKey(d.preset);
+  return (
+    <article className="rounded-xl border border-zinc-200 bg-white p-4">
+      <div className="flex items-start gap-3">
+        <Avatar
+          url={d.delegator_profile?.avatar_url ?? null}
+          fallbackSeed={name}
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold text-zinc-900">{name}</span>
+            {handle && <span className="text-xs text-zinc-500">{handle}</span>}
+            <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${statusToneClasses(d.status)}`}>
+              {t(d.status === "pending"
+                ? "delegation.tabPending"
+                : d.status === "active"
+                ? "delegation.tabActive"
+                : "delegation.tabClosed")}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-zinc-600">{scopeText(d, t)}</p>
+          {presetKey && (
+            <p className="mt-0.5 text-xs text-zinc-500">{t(presetKey)}</p>
+          )}
+          {dateLabel(d, t) && (
+            <p className="mt-0.5 text-[11px] text-zinc-400">{dateLabel(d, t)}</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onView}
+          className="text-xs font-medium text-zinc-600 hover:text-zinc-900"
+        >
+          {t("delegation.actionViewPermissions")}
+        </button>
+        {d.status === "pending" && (
+          <>
+            <button
+              type="button"
+              onClick={onDecline}
+              disabled={declining}
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+            >
+              {declining ? "…" : t("delegation.decline")}
+            </button>
+            <button
+              type="button"
+              onClick={onAccept}
+              disabled={accepting}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {accepting ? "…" : t("delegation.accept")}
+            </button>
+          </>
+        )}
+        {d.status === "active" && (
+          <button
+            type="button"
+            onClick={onManage}
+            className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm text-white hover:bg-zinc-800"
+          >
+            {t("delegation.actionManage")}
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function SentCard({
+  d, t, onView,
+}: {
+  d: DelegationWithDetails;
+  t: (k: string) => string;
+  onView: () => void;
+}) {
+  const to =
+    d.delegate_profile?.display_name?.trim() ||
+    (d.delegate_profile?.username ? `@${d.delegate_profile.username}` : null) ||
+    d.delegate_email;
+  const presetKey = presetTitleKey(d.preset);
+  const statusLabel =
+    d.status === "pending"
+      ? t("delegation.sentBadgePending")
+      : d.status === "active"
+      ? t("delegation.sentBadgeActive")
+      : t("delegation.sentBadgeClosed");
+  return (
+    <article className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white p-4">
+      <Avatar
+        url={d.delegate_profile?.avatar_url ?? null}
+        fallbackSeed={to ?? "?"}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-sm font-semibold text-zinc-900">{to}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${statusToneClasses(d.status)}`}>
+            {statusLabel}
+          </span>
+        </div>
+        <p className="mt-1 text-xs text-zinc-600">{scopeText(d, t)}</p>
+        {presetKey && (
+          <p className="mt-0.5 text-xs text-zinc-500">{t(presetKey)}</p>
+        )}
+        {dateLabel(d, t) && (
+          <p className="mt-0.5 text-[11px] text-zinc-400">{dateLabel(d, t)}</p>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onView}
+        className="rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+      >
+        {t("delegation.actionViewPermissions")}
+      </button>
+    </article>
+  );
+}
+
+function EmptyState({ onCreate }: { onCreate: () => void }) {
+  const { t } = useT();
+  return (
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-6">
+      <p className="text-base font-semibold text-zinc-900">{t("delegation.empty.headline")}</p>
+      <p className="mt-1 text-sm text-zinc-600">{t("delegation.empty.body")}</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <article className="rounded-xl border border-zinc-200 bg-white p-4">
+          <p className="text-sm font-semibold text-zinc-900">{t("delegation.empty.cardAccount.title")}</p>
+          <p className="mt-1 text-xs text-zinc-600">{t("delegation.empty.cardAccount.body")}</p>
+        </article>
+        <article className="rounded-xl border border-zinc-200 bg-white p-4">
+          <p className="text-sm font-semibold text-zinc-900">{t("delegation.empty.cardProject.title")}</p>
+          <p className="mt-1 text-xs text-zinc-600">{t("delegation.empty.cardProject.body")}</p>
+        </article>
+      </div>
+      <button
+        type="button"
+        onClick={onCreate}
+        className="mt-5 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
+      >
+        {t("delegation.cta.create")}
+      </button>
+    </div>
+  );
+}
+
+function Avatar({ url, fallbackSeed }: { url: string | null; fallbackSeed: string }) {
+  const resolved = url
+    ? url.startsWith("http")
+      ? url
+      : getArtworkImageUrl(url, "avatar")
+    : null;
+  if (resolved) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={resolved} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />;
+  }
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-200 text-sm font-medium text-zinc-600">
+      {(fallbackSeed ?? "?").charAt(0).toUpperCase()}
+    </div>
   );
 }

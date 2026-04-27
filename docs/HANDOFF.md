@@ -2,6 +2,40 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Upgrade Phase 2 (Hub IA · 위자드 · 상세 드로어 · acting-as 단일화)
+
+PR1 의 백엔드(스키마·구조화 에러·헬퍼·Activity Log) 위에서 프론트 IA 와 신뢰 카피를 갈아끼움.
+
+### 변경 (프론트)
+
+- `src/app/my/delegations/page.tsx` — Hub 재구성. Trust note + 신뢰 자리 잡힌 헤더, **단일 primary CTA (`새 위임 만들기`)** 가 위자드를 호출, Received 는 `Pending / Active / Closed` 탭(자동 우선 탭 선택), 각 카드에 아바타·범위·**프리셋 라벨**·일자·`수락 / 거절 / 관리하기 / 권한 보기`. Sent 카드는 통일된 상태 칩·`권한 보기`. Empty state 는 두 카드(`계정 운영 함께 관리` / `전시 게시물 공동 관리`)로 가이드. 영문 하드코드 `No invitations sent.` / `(pending)` / `Manage` 모두 i18n 키화. 사용하지 않게 된 인라인 초대 폼·검색 드롭다운 코드 일체 제거 → 위자드로 단일화.
+- `src/components/delegation/CreateDelegationWizard.tsx` — 4단계 위자드(`Scope → (Exhibition pick) → Person → Preset → Review`). Step 1.5 분기는 project 스코프 + 프로젝트 미선택일 때만 자동 노출. Step 2 는 가입 유저 검색(드롭다운, 선택 후 미리보기 카드, 변경 버튼) + 이메일 초대 탭. Step 3 는 스코프에 맞는 프리셋 카드(`PRESET_PERMISSIONS` 단일 출처에서 가져온 권한 미리보기 + 세부 권한 토글 accordion). Step 4 는 정보 요약 + 신뢰 문구 + 280자 메모 + `공유되지 않는 정보` 4종 재확인. 에러는 PR1 의 코드 키워드(`cannot_invite_self / duplicate_pending_invite / ...`) 를 i18n 매핑(`delegation.error.*`) 으로 표시.
+- `src/components/delegation/DelegationDetailDrawer.tsx` — Right-side drawer. `get_delegation_detail` RPC(PR1) 결과로 양측 프로필·범위·프리셋·`할 수 있는 일`·`공유되지 않는 정보`·상태 타임라인(invited / accepted / declined / revoked + 일자)·최근 5개 activity event·active 위임이고 owner 일 때 `위임 해제` CTA(확인 다이얼로그). 위임 해제 후 hub 자동 재로드.
+- `src/components/Header.tsx` — Acting-as strip 정비. 좌측: 작은 도트 + `{name}님 계정 관리 중`(절단 가능한 트렁케이트). 우측: `권한 보기`(허브 deep-link), `내 계정으로 돌아가기`. 모바일 한 줄 컴팩트.
+- `src/components/ActingAsBanner.tsx` 제거 + `src/app/layout.tsx` 마운트 해제 → strip 1개로 단일화. `useActingAs` 컨슈머 동작 변경 없음(시그니처 보존).
+- `src/lib/i18n/messages.ts` — 약 90개 신규 키(EN/KR): trust note, 탭 라벨, 프리셋 라벨/요약, `delegation.permissionLabel.*` 8종, `delegation.deniesShared.*` 4종, 상세 드로어, 위자드 4 step + 부속 카피, empty state 카드, sent 빈상태/배지, banner 라벨/액션, `delegation.error.*` 10종(코드 키워드 i18n).
+
+### 회귀 방지 결과
+
+- 현행 `useActingAs` 컨슈머(/my, exhibitions/new, [id]/edit, upload/bulk, inquiries, claims, useFeatureAccess, listMyExhibitions 등) 모두 시그니처/동작 변경 없음.
+- `acting-as-banner` 투어 타깃은 PR3 에서 `delegation-banner` 로 갱신 예정. 이번 phase 에선 셀렉터만 보존(현 카피는 그대로 작동).
+- 기존 RPC 호출자(이메일 초대·프로필 초대·revoke·accept-by-id·decline-by-id) 모두 PR1 가 호환 시그니처를 유지해 변경 없이 동작.
+
+### 검증
+
+- `npx tsc --noEmit` 통과.
+- 인접 파일 lint 0 issue.
+
+### Supabase SQL 적용 필요
+
+PR1 마이그레이션이 이미 적용되어 있어야 한다(특히 `delegation_status_type` 의 `declined` 값). 추가 SQL 없음.
+
+### 환경 변수
+
+추가/변경 없음.
+
+---
+
 ## 2026-04-27 — Delegation Upgrade Phase 1 (백엔드 토대: 스키마·구조화 에러·헬퍼·Activity Log)
 
 ### 동기
