@@ -2,6 +2,116 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — AI Layer UX/Design Unification (shared primitives + new-panel migration)
+
+`Abstract_AI_Layer_UX_Design_Unification_2026-04-27.md` 대응. 11개 AI surface 가 한 시스템처럼 보이도록 **공용 primitives** 를 도입하고, 가장 새 surface 3개(Board Pitch Pack / Exhibition Review / Delegation Brief) 를 그 primitives 로 정렬했습니다. 기존 surface 8개의 광범위 리팩터는 회귀 위험을 고려해 의도적으로 보류 (브리프 §14 권고).
+
+### 새로 도입한 공용 primitives — `src/components/ai/primitives.tsx` (단일 파일)
+
+| 컴포넌트 | 역할 |
+|---|---|
+| `AiSurfaceFrame` | 모든 AI 패널의 공통 collapsible 프레임. Eyebrow / title / subtitle / chevron / 내부 spacing. `defaultOpen=false` 로 fold-default. |
+| `AiStateBlock` | loading / degraded / empty 상태를 통일 카피로 렌더. 내부적으로 `aiErrorKey` 를 사용해 11개 reason → i18n 매핑. |
+| `AiCopyButton` | clipboard 복사 + `markAiAccepted({ feature, via: "copy", ...meta })` best-effort. 1.5s "복사됨" 토스트 inline. |
+| `AiResultSection` | 패널 내부 sub-section 의 라벨/`tone="warn"`/optional collapsible. |
+| `AiDisclosureNote` | 한 줄 humble 디스클로저 (`ai.common.disclosure`). |
+| `AiStatusChip` | severity / kind / draft 라벨용 chip. tone: neutral/suggest/warn/ok/draft. |
+
+설계 원칙:
+- 단일 파일로 응집 — 7개 파일로 쪼개지 않음 (브리프 §4 "If fewer files are cleaner, combine them").
+- props 표면 작게 유지 — 패널이 특수 마크업 필요하면 frame 안에서 직접 렌더하라 (no over-abstraction).
+- `aiCardState.aiErrorKey` 가 canonical reason→i18n 매퍼. primitives 가 그걸 re-export 만.
+
+### `ai.common.*` i18n family 신설 (EN + KO)
+
+`messages.ts` 에 11개 키 추가 — 모든 AI primitives 가 참조:
+- `ai.common.loading` / `ai.common.regenerate` / `ai.common.dismiss`
+- `ai.common.copy` / `ai.common.copied`
+- `ai.common.empty` / `ai.common.disclosure` / `ai.common.degradedFallback`
+- `ai.common.unauthorized` / `ai.common.noAutoApply`
+
+기존 `ai.error.*` / `ai.action.*` / `ai.state.*` 은 이미 11개 reason 모두 커버하고 있어 그대로 둠. `ai.common.*` 은 primitives 의 기본값이고, 패널별 카피(예: `boards.pitchPack.cta`)는 그대로 살림.
+
+### 신규 3개 패널 → primitives 로 migration
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/board/BoardPitchPackPanel.tsx` | `AiSurfaceFrame` + `AiStateBlock` + `AiResultSection` + `AiStatusChip(draft)` + `AiCopyButton` + `AiDisclosureNote`. `itemCount` 0/1 helper 그대로 유지. perWork 섹션은 5개 초과 시 collapsible. |
+| `src/components/exhibition/ExhibitionReviewPanel.tsx` | 동일 primitives 적용. severity → `AiStatusChip` tone 매핑(`info→neutral`, `suggest→suggest`, `warn→warn`). 코드(예: `missing_title`) 노출 제거 — 사용자에게 raw 식별자가 보이지 않도록. |
+| `src/components/delegation/DelegationBriefPanel.tsx` | 동일 primitives 적용. calm-state 카드 유지(`delegation.brief.calmTitle/Detail`). watchItems 는 `tone="warn"` 결과 섹션. |
+
+세 패널 모두:
+- `AiSurfaceFrame` 의 collapse-by-default 로 above-the-fold density 압박 없음 (브리프 §3.1).
+- CTA 라벨이 idle ↔ regenerate 로 자연스럽게 토글 (`ai.common.regenerate`).
+- copy / dismiss 만 가능 — auto publish/send/edit 절대 없음 (§2.2).
+
+### 의도적으로 건드리지 않은 영역 (회귀 위험 관리)
+
+브리프 §14: "Do not refactor every AI component so aggressively that the patch becomes unstable."
+
+| Surface | 현 상태 | 결정 |
+|---|---|---|
+| `ProfileCopilotCard` | grouped suggestions / viewer notes / 카피 버튼 / 채택 추적 모두 함수적. SectionFrame 사용. | 보류 |
+| `PortfolioCopilotCard` | `id.slice(0,8)` raw UUID 갭은 이미 `ai.portfolio.unnamedSlot` ("Untitled work {n}") 친화 폴백으로 닫혀 있음 (감사 결과). | 추가 작업 불필요 |
+| `WeeklyDigestCard`, `MatchmakerCard` | 자체 SectionFrame 사용 + `aiErrorKey` 통합. tone humble. | 보류 |
+| `ExhibitionDraftAssist`, `InquiryReplyAssist`, `BioDraftAssist`, `IntroMessageAssist` | 모두 `AiDraftPanel` 사용 — copy/apply UX 와 reason 매핑이 이미 일관됨. | 보류 |
+
+이 8개 surface 는 다음 패치에서 점진적으로 primitives 로 옮길 수 있도록 primitives API 가 호환적입니다. 한 번에 묶어 옮기지 않은 이유는 (a) `AiDraftPanel` 의 apply/replace/append 모드가 풍부해 1대1 대체가 비자명, (b) Profile/Portfolio Copilot 의 grouped suggestions UI 가 단순 frame 으로 매핑되지 않음, (c) 대량 surface 변경은 회귀 risk가 큼.
+
+### 보안 / 권한 / 텔레메트리 — 변동 없음
+
+- 컨텍스트 빌드와 권한 가드는 라우트 측에 그대로 (`board-pitch-pack` / `exhibition-review` / `delegation-brief`).
+- `markAiAccepted({ feature, via: "copy", meta })` 는 primitives `AiCopyButton` 안에서 best-effort 호출. 텔레메트리 실패가 UX 를 차단하지 않음 (§5.4).
+- 클라이언트가 모델로 보내는 데이터: 라우트 입력은 모두 ID + locale 만. body 내 비밀 텍스트 없음 (§10.1 그대로).
+
+### Manual QA matrix (수동 점검 권장)
+
+#### Board Pitch Pack (`/my/shortlists/[id]`)
+1. 빈 보드 → 패널 펼치면 `boards.pitchPack.emptyHelper` 만 렌더, CTA 노출 안 됨.
+2. 1개 보드 → CTA + `singleItemHint` 함께 노출.
+3. 2개 이상 → `초안 만들기` 클릭 → summary / throughline / drafts(chip="요약/콜드 메일/월 텍스트") + 각 항목 옆 복사버튼.
+4. 키 부재 (degraded `no_key`) → `ai.common.degradedFallback` 류 amber 안내 + deterministic missingInfo 검출 작동.
+5. 키 있음 → 정상 모델 응답.
+6. 모바일 너비 → frame chevron / chip 모두 wrap 정상.
+
+#### Exhibition Review (`/my/exhibitions/[id]/edit`)
+1. 비어 있는 전시 → 검토하기 → readiness 낮음 + warn/suggest issues 표시.
+2. 잘 채워진 전시 → readiness 100% 또는 가까움.
+3. issue 의 suggestion 옆 복사버튼이 1.5s "복사됨" 토스트 표시 + telemetry 호출.
+4. degraded → amber 안내 + deterministic 7-check 결과.
+
+#### Delegation Brief (`/my` 에서 acting-as 활성 시)
+1. 우선순위 / watch items 모두 0 → calm 카드 표시 (`delegation.brief.calmTitle`).
+2. 미답변 inquiries 등 → priorities 카드 + open 링크 (자체 라우트).
+3. draftMessage 있을 때 복사 → telemetry 호출 + 토스트.
+
+### 회귀 점검 (Regression checklist 기준)
+
+`npx tsc --noEmit` ✅ / `npx eslint` (수정 파일 4개) ✅. 다음 surface 수동 sanity:
+- My Studio 로드 (Profile/Portfolio/Digest/Matchmaker) — 변경 없음.
+- 보드 / 전시 편집 — 변경 없음.
+- 알림 / 위임 acting-as / inquiry reply — 변경 없음.
+
+### Non-goals (브리프 §15 — 본 패치에서 미구현, 향후 archived)
+
+Art Care Passport, Service Cards, Local Art Circuit, Fair Match, Collective Signal, venue/provider profiles, PDF export, automatic email send, automatic exhibition edits, global AI chat, billing/paywall changes, mobile push.
+
+### Files changed
+- `src/components/ai/primitives.tsx` (신규)
+- `src/components/board/BoardPitchPackPanel.tsx` (rewrite, props 동일)
+- `src/components/exhibition/ExhibitionReviewPanel.tsx` (rewrite, props 동일)
+- `src/components/delegation/DelegationBriefPanel.tsx` (rewrite, props 동일)
+- `src/lib/i18n/messages.ts` (`ai.common.*` 11개 키 EN + KO)
+- `docs/HANDOFF.md` (이 섹션)
+
+### 워크스페이스 룰 체크
+1. **Supabase SQL**: 추가/수정된 `.sql` 없음 → "Supabase SQL 돌려야 할 것은 없음".
+2. **Git push**: `release: AI layer UX/design unification (primitives + new-panel migration)` 메인 직커밋.
+3. **HANDOFF.md**: 본 섹션이 최상단에 추가됨.
+4. **환경 변수**: 추가/변경 없음.
+
+---
+
 ## 2026-04-27 — P1 AI Workflow Surface Integration (deterministic fallback + helper/calm states)
 
 `Abstract_P1_AI_Workflow_Surface_Integration_2026-04-27.md` 작업지시서 대응. 인프라(라우트·타입·프롬프트·feature/usage keys·메터·permission guards)는 이전 패치로 **이미 모두 wired** 되어 있었음. 이번 패치는 surface integration / polish 만:

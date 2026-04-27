@@ -4,9 +4,14 @@ import { useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { aiApi } from "@/lib/ai/browser";
-import { markAiAccepted } from "@/lib/ai/accept";
-import { aiErrorKey } from "@/components/studio/intelligence/aiCardState";
-import { copyToClipboard } from "@/components/ai/AiDraftPanel";
+import {
+  AiSurfaceFrame,
+  AiStateBlock,
+  AiResultSection,
+  AiCopyButton,
+  AiStatusChip,
+  AiDisclosureNote,
+} from "@/components/ai/primitives";
 import type {
   BoardPitchPackDraft,
   BoardPitchPackDraftKind,
@@ -16,10 +21,12 @@ import type {
 type Props = {
   boardId: string;
   /**
-   * Total number of items currently saved in the board (artworks +
-   * exhibitions). Used only for client-side gating: zero items disables
-   * the CTA in favour of a helper line, single item shows a soft hint
-   * that drafts work better with multiple items.
+   * Total items currently saved in the board (artworks + exhibitions).
+   * Drives the helper-state gating per
+   * `Abstract_P1_AI_Workflow_Surface_Integration_2026-04-27.md` §4.3:
+   *   - 0 items: no CTA, helper line only.
+   *   - 1 item:  CTA + soft hint that drafts are richer with 2+ items.
+   *   - 2+:      normal flow.
    */
   itemCount?: number;
 };
@@ -33,27 +40,30 @@ const KIND_LABEL: Record<BoardPitchPackDraftKind, MessageKey> = {
 /**
  * P1-A — Board Pitch Pack panel.
  *
- * Renders as a calm, collapsed CTA on the board detail page; only fires
- * the model on explicit click. Outputs are copy-only — Abstract never
- * pastes anything back into the board, never sends outreach. The panel
- * never displays price / collection info; the API also never sends it.
+ * Calm collapsed CTA on the board detail page; only fires the model on
+ * explicit click. Outputs are copy-only — Abstract never pastes anything
+ * back into the board, never sends outreach. The panel never displays
+ * price/collection info; the API also never sends it.
+ *
+ * UX system alignment (`Abstract_AI_Layer_UX_Design_Unification_2026-04-27.md`):
+ * - Wraps in `AiSurfaceFrame` for consistent collapsible chrome.
+ * - Uses `AiStateBlock` for loading/error so all three new panels share
+ *   the same offline copy.
+ * - Uses `AiCopyButton` so adoption telemetry is wired identically across
+ *   surfaces.
  */
 export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
   const { t, locale } = useT();
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<BoardPitchPackResult | null>(null);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   const trigger = async () => {
     setLoading(true);
-    setCopiedKey(null);
     const res = await aiApi.boardPitchPack({ boardId, locale });
     setResult(res);
     setLoading(false);
   };
 
-  const errorKey = aiErrorKey(result);
   const aiEventId = result?.aiEventId ?? null;
   const drafts: BoardPitchPackDraft[] = (result?.drafts ?? []).filter(
     (d) => d && typeof d.body === "string" && d.body.trim().length > 0,
@@ -65,33 +75,14 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
     (m) => typeof m === "string" && m.trim().length > 0,
   );
 
-  const onCopy = (key: string, text: string) => {
-    copyToClipboard(text);
-    setCopiedKey(key);
-    void markAiAccepted(aiEventId, { feature: "board_pitch_pack", via: "copy" });
-    setTimeout(() => setCopiedKey((v) => (v === key ? null : v)), 1500);
-  };
-
   return (
-    <section className="mb-6 rounded-xl border border-zinc-200 bg-gradient-to-b from-white to-zinc-50/60 p-4">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 text-left"
-      >
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-zinc-900">
-            {t("boards.pitchPack.title")}
-          </p>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            {t("boards.pitchPack.hint")}
-          </p>
-        </div>
-        <span className="shrink-0 text-xs text-zinc-500">{open ? "▲" : "▼"}</span>
-      </button>
-
-      {open && (
-        <div className="mt-3 space-y-3">
+    <AiSurfaceFrame
+      title={t("boards.pitchPack.title")}
+      subtitle={t("boards.pitchPack.hint")}
+      className="mb-6"
+    >
+      {() => (
+        <>
           {typeof itemCount === "number" && itemCount === 0 ? (
             <p className="rounded border border-dashed border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-600">
               {t("boards.pitchPack.emptyHelper")}
@@ -105,14 +96,12 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
                 className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 {loading
-                  ? t("boards.pitchPack.loading")
+                  ? t("ai.common.loading")
                   : drafts.length > 0
-                    ? t("boards.pitchPack.regenerate")
+                    ? t("ai.common.regenerate")
                     : t("boards.pitchPack.cta")}
               </button>
-              <span className="text-[11px] text-zinc-500">
-                {t("boards.pitchPack.disclaimer")}
-              </span>
+              <AiDisclosureNote />
             </div>
           )}
 
@@ -122,11 +111,7 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
             </p>
           )}
 
-          {errorKey && (
-            <p className="text-xs text-amber-700" role="alert">
-              {t(errorKey)}
-            </p>
-          )}
+          <AiStateBlock loading={loading} result={result} />
 
           {(result?.summary || result?.throughline) && (
             <div className="rounded border border-zinc-200 bg-white p-3 text-sm">
@@ -135,7 +120,9 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
                   <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
                     {t("boards.pitchPack.summaryLabel")}
                   </p>
-                  <p className="mt-1 whitespace-pre-line text-zinc-800">{result.summary}</p>
+                  <p className="mt-1 whitespace-pre-line text-zinc-800">
+                    {result.summary}
+                  </p>
                 </div>
               )}
               {result?.throughline && (
@@ -150,85 +137,73 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
           )}
 
           {missingInfo.length > 0 && (
-            <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">
-                {t("boards.pitchPack.missingInfoLabel")}
-              </p>
-              <ul className="mt-1 list-disc space-y-0.5 pl-5 text-amber-900">
-                {missingInfo.slice(0, 5).map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </div>
+            <AiResultSection
+              title={t("boards.pitchPack.missingInfoLabel")}
+              tone="warn"
+            >
+              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+                <ul className="list-disc space-y-0.5 pl-5 text-amber-900">
+                  {missingInfo.slice(0, 5).map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </div>
+            </AiResultSection>
           )}
 
           {drafts.length > 0 && (
-            <div>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                {t("boards.pitchPack.draftsLabel")}
-              </p>
+            <AiResultSection title={t("boards.pitchPack.draftsLabel")}>
               <ul className="space-y-2">
                 {drafts.slice(0, 3).map((draft, idx) => {
-                  const key = `draft-${idx}`;
                   const labelKey = KIND_LABEL[draft.kind] ?? "boards.pitchPack.kind.summary";
                   return (
                     <li
-                      key={key}
+                      key={`draft-${idx}`}
                       className="rounded border border-zinc-200 bg-white p-3 text-sm leading-relaxed text-zinc-800"
                     >
                       <div className="mb-1 flex items-center justify-between gap-2">
-                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-600">
-                          {t(labelKey)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => onCopy(key, draft.body)}
-                          className="rounded border border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                        >
-                          {copiedKey === key
-                            ? t("boards.pitchPack.copied")
-                            : t("boards.pitchPack.copy")}
-                        </button>
+                        <AiStatusChip label={t(labelKey)} tone="draft" />
+                        <AiCopyButton
+                          text={draft.body}
+                          feature="board_pitch_pack"
+                          aiEventId={aiEventId}
+                          meta={{ kind: draft.kind }}
+                        />
                       </div>
                       <p className="whitespace-pre-line">{draft.body}</p>
                     </li>
                   );
                 })}
               </ul>
-            </div>
+            </AiResultSection>
           )}
 
           {perWork.length > 0 && (
-            <div>
-              <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-                {t("boards.pitchPack.perWorkLabel")}
-              </p>
+            <AiResultSection
+              title={t("boards.pitchPack.perWorkLabel")}
+              collapsible
+              defaultOpen={perWork.length <= 4}
+            >
               <ul className="space-y-1 text-sm text-zinc-800">
-                {perWork.slice(0, 6).map((p, i) => {
-                  const key = `pw-${i}`;
-                  return (
-                    <li
-                      key={key}
-                      className="flex items-start justify-between gap-2 rounded border border-zinc-200 bg-white px-3 py-2"
-                    >
-                      <span className="flex-1">{p.line}</span>
-                      <button
-                        type="button"
-                        onClick={() => onCopy(key, p.line)}
-                        className="shrink-0 rounded border border-zinc-300 px-2 py-0.5 text-[11px] text-zinc-700 hover:bg-zinc-100"
-                      >
-                        {copiedKey === key
-                          ? t("boards.pitchPack.copied")
-                          : t("boards.pitchPack.copy")}
-                      </button>
-                    </li>
-                  );
-                })}
+                {perWork.slice(0, 6).map((p, i) => (
+                  <li
+                    key={`pw-${i}`}
+                    className="flex items-start justify-between gap-2 rounded border border-zinc-200 bg-white px-3 py-2"
+                  >
+                    <span className="flex-1">{p.line}</span>
+                    <AiCopyButton
+                      text={p.line}
+                      feature="board_pitch_pack"
+                      aiEventId={aiEventId}
+                      meta={{ kind: "per_work" }}
+                    />
+                  </li>
+                ))}
               </ul>
-            </div>
+            </AiResultSection>
           )}
-        </div>
+        </>
       )}
-    </section>
+    </AiSurfaceFrame>
   );
 }
