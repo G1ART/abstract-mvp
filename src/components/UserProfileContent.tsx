@@ -28,6 +28,8 @@ import { ArtworkCard } from "./ArtworkCard";
 import { SortableArtworkCard } from "./SortableArtworkCard";
 import { Chip, EmptyState } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
+import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
+import { ArtistStatementSection } from "@/components/profile/ArtistStatementSection";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
 
@@ -331,6 +333,10 @@ export function UserProfileContent({
           {t("profile.updatedBanner")}
         </div>
       )}
+      <ProfileCoverBand
+        coverImagePath={profile.cover_image_url ?? null}
+        positionY={profile.cover_image_position_y ?? 50}
+      />
       <div className="mb-8 flex flex-col gap-4">
         <div className="flex items-start gap-4">
           <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full bg-zinc-200">
@@ -383,6 +389,12 @@ export function UserProfileContent({
           </p>
         )}
       </div>
+
+      <ArtistStatementSection
+        statement={profile.artist_statement ?? null}
+        heroImagePath={profile.artist_statement_hero_image_url ?? null}
+        isOwner={isOwner}
+      />
 
       {stripPublic.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">

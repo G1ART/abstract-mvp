@@ -31,10 +31,33 @@ const BASE_KEYS = new Set([
   "artist_statement_hero_image_url",
 ]);
 
+/**
+ * Keys for which `null` / `""` is meaningful to forward to the RPC as an
+ * explicit clear. The RPC uses `nullif(trim(...), '')` for these, so the
+ * column actually becomes NULL in the row. Anything else still gets stripped
+ * by compactPatch (preserving the existing 23502 / "do not clobber" behavior
+ * for required base fields like display_name, education, roles, etc.).
+ */
+const NULLABLE_BASE_KEYS = new Set([
+  "cover_image_url",
+  "artist_statement",
+  "artist_statement_hero_image_url",
+  // avatar_url existed before P1-0 but had no remove-UI affordance; we make
+  // its clear path safe now too so future "Remove photo" works.
+  "avatar_url",
+]);
+
 /** Strip null/undefined/"" and empty []/{} so we never send education:null (prevents 23502). */
 function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
+    const isClearableNull =
+      NULLABLE_BASE_KEYS.has(k) &&
+      (v === null || (typeof v === "string" && v.trim() === ""));
+    if (isClearableNull) {
+      out[k] = null;
+      continue;
+    }
     if (v === undefined || v === null) continue;
     if (typeof v === "string" && v.trim() === "") continue;
     if (Array.isArray(v) && v.length === 0) continue;

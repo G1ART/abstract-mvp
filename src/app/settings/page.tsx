@@ -29,6 +29,8 @@ import {
 } from "@/lib/profile/taxonomy";
 import { BuildStamp } from "@/components/BuildStamp";
 import { BioDraftAssist } from "@/components/ai/BioDraftAssist";
+import { ProfileMediaUploader } from "@/components/profile/ProfileMediaUploader";
+import { updateMyProfileBasePatch } from "@/lib/supabase/profiles";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -253,6 +255,18 @@ export default function SettingsPage() {
   const [acquisitionChannels, setAcquisitionChannels] = useState<string[]>([]);
   const [affiliation, setAffiliation] = useState("");
   const [programFocus, setProgramFocus] = useState<string[]>([]);
+  // P1-0 identity surface state. Image paths + cover focus + statement text.
+  // Image paths and cover focus persist immediately on change (auto-save) so
+  // the upload UX is snappy; statement text saves with the main form Save.
+  const [coverImagePath, setCoverImagePath] = useState<string | null>(null);
+  const [coverPositionY, setCoverPositionY] = useState<number>(50);
+  const [statement, setStatement] = useState<string>("");
+  const [statementHeroPath, setStatementHeroPath] = useState<string | null>(null);
+  const [identityNotice, setIdentityNotice] = useState<string | null>(null);
+  const [identityErr, setIdentityErr] = useState<string | null>(null);
+  const [statementSaving, setStatementSaving] = useState(false);
+  const [statementSavedAt, setStatementSavedAt] = useState<number | null>(null);
+  const [uid, setUid] = useState<string | null>(null);
   const [profileDetailsOpen, setProfileDetailsOpen] = useState(false);
   const [hasOpenedDetails, setHasOpenedDetails] = useState(false);
   const profileDetailsRef = useRef<HTMLDivElement>(null);
@@ -316,6 +330,12 @@ export default function SettingsPage() {
           setIsPublic(p.is_public ?? true);
           const ed = (p.education as EducationEntry[] | null) ?? [];
           setEducation(ed.length ? ed : [{ school: "", program: "", year: "", type: null }]);
+          setUid(p.id ?? null);
+          setCoverImagePath(p.cover_image_url ?? null);
+          const cy = p.cover_image_position_y;
+          setCoverPositionY(typeof cy === "number" && Number.isFinite(cy) ? cy : 50);
+          setStatement(p.artist_statement ?? "");
+          setStatementHeroPath(p.artist_statement_hero_image_url ?? null);
         }
         if (d) {
           setCareerStage(d.career_stage ?? "");
@@ -550,6 +570,93 @@ export default function SettingsPage() {
       setSaving(false);
     }
   }
+
+  // ── P1-0 identity auto-save ────────────────────────────────────────────
+  // Persist a single base field via the unified RPC. Used for media path
+  // changes (avatar/cover/statement-hero) and the cover focal slider —
+  // anywhere we want immediate feedback rather than waiting on Save.
+  const persistIdentityField = useCallback(
+    async (patch: Partial<{
+      avatar_url: string | null;
+      cover_image_url: string | null;
+      cover_image_position_y: number | null;
+      artist_statement: string | null;
+      artist_statement_hero_image_url: string | null;
+    }>) => {
+      setIdentityErr(null);
+      const { error: e } = await updateMyProfileBasePatch(patch);
+      if (e) {
+        const msg =
+          (e as { message?: string } | null)?.message ?? "save failed";
+        setIdentityErr(msg);
+        return false;
+      }
+      setIdentityNotice(t("settings.saveSuccess"));
+      setTimeout(() => setIdentityNotice(null), 1500);
+      return true;
+    },
+    [t]
+  );
+
+  const handleAvatarChange = useCallback(
+    async (nextPath: string | null) => {
+      const ok = await persistIdentityField({ avatar_url: nextPath });
+      if (ok) setAvatarUrl(nextPath);
+    },
+    [persistIdentityField]
+  );
+
+  const handleCoverChange = useCallback(
+    async (nextPath: string | null) => {
+      const ok = await persistIdentityField({ cover_image_url: nextPath });
+      if (ok) setCoverImagePath(nextPath);
+    },
+    [persistIdentityField]
+  );
+
+  const handleStatementHeroChange = useCallback(
+    async (nextPath: string | null) => {
+      const ok = await persistIdentityField({
+        artist_statement_hero_image_url: nextPath,
+      });
+      if (ok) setStatementHeroPath(nextPath);
+    },
+    [persistIdentityField]
+  );
+
+  // Slider commit (mouseUp / touchEnd / keyUp) — debounced auto-save.
+  const handleCoverPositionCommit = useCallback(
+    async (value: number) => {
+      const clamped = Math.min(100, Math.max(0, Math.round(value)));
+      setCoverPositionY(clamped);
+      await persistIdentityField({ cover_image_position_y: clamped });
+    },
+    [persistIdentityField]
+  );
+
+  // Statement: save on blur. Compares to last-loaded value to skip no-op writes.
+  const statementInitialRef = useRef<string>("");
+  useEffect(() => {
+    statementInitialRef.current = statement;
+    // Only initialize once on first load — not on every change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
+  const handleStatementBlur = useCallback(async () => {
+    const next = statement.trim();
+    const prev = (statementInitialRef.current ?? "").trim();
+    if (next === prev) return;
+    setStatementSaving(true);
+    const ok = await persistIdentityField({
+      artist_statement: next.length > 0 ? next : null,
+    });
+    setStatementSaving(false);
+    if (ok) {
+      statementInitialRef.current = next;
+      setStatementSavedAt(Date.now());
+      setTimeout(() => setStatementSavedAt(null), 2000);
+    }
+  }, [statement, persistIdentityField]);
 
   function addEducation() {
     setEducation((prev) => [...prev, { school: "", program: "", year: "", type: null }]);
@@ -815,6 +922,134 @@ export default function SettingsPage() {
               </div>
               <p className="mt-2 text-xs text-zinc-500">{t("profile.completenessHint")}</p>
             </div>
+
+            {/* P1-0 Profile identity surface (auto-save for media + slider, on-blur for statement). */}
+            {uid && (
+              <section
+                id="statement"
+                className="space-y-5 rounded-lg border border-zinc-200 bg-white p-4"
+              >
+                <header>
+                  <h2 className="text-sm font-semibold text-zinc-900">
+                    {t("settings.identity.title")}
+                  </h2>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {t("settings.identity.intro")}
+                  </p>
+                </header>
+
+                <ProfileMediaUploader
+                  kind="avatar"
+                  value={avatarUrl}
+                  onChange={handleAvatarChange}
+                  userId={uid}
+                  label={t("settings.identity.avatar")}
+                  hint={t("settings.identity.avatarHint")}
+                  shape="square"
+                />
+
+                <div className="space-y-3">
+                  <ProfileMediaUploader
+                    kind="cover"
+                    value={coverImagePath}
+                    onChange={handleCoverChange}
+                    userId={uid}
+                    label={t("settings.identity.cover")}
+                    hint={t("settings.identity.coverHint")}
+                    shape="wide"
+                  />
+                  {coverImagePath && (
+                    <div>
+                      <label
+                        htmlFor="coverPositionY"
+                        className="mb-1 block text-xs font-medium text-zinc-700"
+                      >
+                        {t("settings.identity.coverReposition")}
+                      </label>
+                      <input
+                        id="coverPositionY"
+                        type="range"
+                        min={0}
+                        max={100}
+                        step={1}
+                        value={coverPositionY}
+                        onChange={(e) => setCoverPositionY(Number(e.target.value))}
+                        onMouseUp={(e) =>
+                          handleCoverPositionCommit(Number((e.target as HTMLInputElement).value))
+                        }
+                        onTouchEnd={(e) =>
+                          handleCoverPositionCommit(Number((e.target as HTMLInputElement).value))
+                        }
+                        onKeyUp={(e) =>
+                          handleCoverPositionCommit(Number((e.target as HTMLInputElement).value))
+                        }
+                        className="w-full max-w-md"
+                      />
+                      <p className="text-xs text-zinc-500">
+                        {t("settings.identity.coverRepositionHint")}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="artistStatement"
+                    className="block text-sm font-medium text-zinc-800"
+                  >
+                    {t("settings.identity.statement")}
+                  </label>
+                  <textarea
+                    id="artistStatement"
+                    value={statement}
+                    onChange={(e) => setStatement(e.target.value)}
+                    onBlur={handleStatementBlur}
+                    placeholder={t("profile.statement.placeholder")}
+                    rows={6}
+                    maxLength={4000}
+                    className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                  />
+                  <div className="flex items-center justify-between text-xs text-zinc-500">
+                    <span>
+                      {t("profile.statement.lengthHint")
+                        .replace("{count}", String(statement.length))
+                        .replace("{max}", "4000")}
+                    </span>
+                    <span aria-live="polite">
+                      {statementSaving
+                        ? t("profile.media.uploading")
+                        : statementSavedAt
+                          ? t("settings.saveSuccess")
+                          : ""}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    {t("settings.identity.statementHint")}
+                  </p>
+                </div>
+
+                <ProfileMediaUploader
+                  kind="statement"
+                  value={statementHeroPath}
+                  onChange={handleStatementHeroChange}
+                  userId={uid}
+                  label={t("settings.identity.statementHero")}
+                  hint={t("settings.identity.statementHeroHint")}
+                  shape="wide"
+                />
+
+                {identityErr && (
+                  <p className="text-xs text-red-600" role="alert">
+                    {identityErr}
+                  </p>
+                )}
+                {identityNotice && (
+                  <p className="text-xs text-green-700" aria-live="polite">
+                    {identityNotice}
+                  </p>
+                )}
+              </section>
+            )}
 
             <div className="flex items-center justify-between">
               <label htmlFor="isPublic" className="text-sm font-medium">
