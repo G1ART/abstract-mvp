@@ -2,6 +2,122 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Handoff-Parity Hardening (감사·랜딩·드로어 라벨 정리)
+
+GPT 감사 결과로 내려온 parity hardening 작업지시서 (`Abstract_Delegation_Handoff_Parity_Hardening_2026-04-27.md`) 대응. **DB 측 explicit-accept 트리거가 이미 정확하다는 verdict** 가 나왔으므로 이 패치는 트리거를 다시 건드리지 않고, 그 위에서 발생한 **app-side parity 갭** 만 정확히 닫음.
+
+### 1. 감사 결과 — 이미 잘 되어 있어 손대지 않은 영역
+
+| 영역 | 상태 |
+|---|---|
+| 알림 유니온 4종 (`delegation_invite_received`/`accepted`/`declined`/`revoked`) | `src/lib/supabase/notifications.ts` 에 이미 등록됨. 누락 없음. |
+| 알림 라벨 (영·한, 계정/프로젝트 분기) | `src/app/notifications/page.tsx` + `messages.ts` 에 이미 정의. 누락 없음. |
+| 알림 라우팅 (모두 `/my/delegations` 으로 수렴) | 이미 보수적으로 통일. 누락 없음. |
+| ActingAsContext stale probe | PR-B 에서 mount/focus/visibility 시점 RPC 검증 + 10s rate-limit + Header rose-tinted 배너 완비. |
+| account preset RLS (`account_review` 가 write 못함) | PR-A 의 `has_active_account_delegate_perm` 헬퍼와 `*_writer` RLS 마이그레이션이 artworks/artwork_images/projects/exhibition_works/claims/can_reply_to_price_inquiry 모두 커버. |
+| project manage destination 리졸버 | PR-B 의 `resolveManageDestination` 이 `project_co_edit→/edit`, `project_works_only→/add`, `project_review→stay+notice` 로 라우팅. (스펙은 `project_review→/my/exhibitions/[id]` 였지만 해당 페이지는 풀 편집 surface 라 리뷰-only 가 들어가도 의미가 없음. 공개 exhibition 라우트가 별도로 존재하지 않으므로 inline notice 가 가장 정직한 UX 라고 판단. 의도적 deviation.) |
+| 이메일 실패 fallback (copy-link) | PR-C 의 fallback 패널 완비. |
+| Feature key entitlements (`delegation.account/project/permission_presets/activity_log`) | `featureKeys.ts` + `planMatrix.ts` + 시드 마이그레이션 모두 정상. 베타에서 paywall 0. |
+
+### 2. 실제 닫은 갭 (P0)
+
+#### 2-1. `get_delegation_by_token` 가 `status = 'pending'` 필터로 dead-code 만들고 있던 그레이스풀 분기 (P0-B)
+
+**문제**: PR-A 가 `/invites/delegation` 페이지에 `info.status === 'active' | 'declined' | 'revoked' | 'expired'` 분기를 추가했는데, 정작 RPC 가 pending 만 반환해서 그 분기가 한 번도 실행되지 않음. 모든 non-pending 토큰은 "invalid or expired" 로 떨어졌음.
+
+**해결**: 신규 SQL `supabase/migrations/20260506000000_get_delegation_by_token_full.sql` — `status` 필터 제거 + `preset` 필드 추가. 보안 검토: 토큰 보유자는 이미 랜딩 페이지에 접근 가능하므로 scope/preset/owner profile 같은 공개 가능한 메타만 추가로 노출되며, 이메일 매칭/audit metadata 등은 여전히 노출 안 함.
+
+#### 2-2. `/invites/delegation` 가 preset/permissions/denials 표시 안 함 (P0-B §4.3)
+
+**문제**: 랜딩 페이지가 inviter 와 scope 만 표시. 사용자가 "내가 무엇을 수락하는지" 모른 채 클릭하게 됨.
+
+**해결**: `src/app/invites/delegation/page.tsx` 전체 리라이트.
+- preset 카드 (예: "운영 파트너", "검토 / 열람") 표시.
+- "할 수 있는 일" 리스트 — `PRESET_PERMISSIONS[preset]` 로 i18n 라벨 출력.
+- "공유되지 않는 것" denials 4종 (로그인 비밀번호, 결제, 계정 삭제, 새 위임 생성) 고정 노출.
+- 거절 버튼이 더 이상 단순히 hub 로 라우팅하지 않고 `declineDelegationById` RPC 를 실제 호출. RPC 가 `not_found_or_not_pending` 반환 시 (= 트리거가 아직 link 못 했거나 중간에 다른 탭에서 처리됨) 조용히 hub 로 라우팅 (destructive 한 토스트 노출 안 함).
+- 수락 RPC 가 `already_used` 코드를 반환하면 `load()` 다시 호출 → 정확한 already-active/declined/revoked 화면으로 자동 전환 (race 처리).
+
+#### 2-3. 이메일 본문이 explicit-accept 의도를 흐리게 표현 (P0-B §4.4)
+
+**문제**: 기존 카피 ("To accept, log in or sign up..." / "수락하려면 이 이메일로 로그인하거나 가입한 뒤") 가 가입 자체로 활성화된다고 오해할 여지.
+
+**해결**: `src/app/api/delegation-invite-email/route.ts`
+- EN 본문: "After signing in or creating an account with this email, you can review the delegation scope and accept or decline." + "Signing up alone does not activate access — you'll explicitly review and accept on the next screen."
+- KR 본문: "이 이메일 주소로 가입하거나 로그인하면 위임 내용을 확인하고 수락할 수 있어요." + "가입만으로는 권한이 활성화되지 않아요. 다음 화면에서 직접 확인 후 수락해야 활성화됩니다."
+- 버튼 라벨도 "Accept invitation / 초대 수락하기" → "Review the invitation / 초대 내용 확인하기" 로 변경 (수락은 랜딩 페이지에서 명시적으로 한다는 의미를 강화).
+- 메일 제목도 "invited you to review a delegation" / "위임 내용을 보내셨어요 — 확인 후 수락해 주세요" 로 다듬음.
+
+#### 2-4. `DelegationDetailDrawer` 가 알 수 없는 event_type 을 raw i18n key 로 표시 (P0-D §6.5)
+
+**문제**: PR-A 트리거가 추가한 `invite_linked_at_signup` 과 PR-C RPC 트윈이 emit 하는 `delegated_artwork_*`/`delegated_exhibition_*`/`delegated_inquiry_replied` 가 i18n 라벨이 없어서 사용자에게 `delegation.event.delegated_artwork_published` 같은 raw 문자열로 노출됨.
+
+**해결**:
+- `src/lib/i18n/messages.ts`: 13 종 새 이벤트 라벨 (영·한). lifecycle 4종 + signup-link 1종 + delegated mutation 11종 + `unknown` fallback 1종 = 총 17 키 × 2 언어 = 34 항목.
+- `src/components/delegation/DelegationDetailDrawer.tsx`: `eventLabel()` 헬퍼 추가. `t()` 가 raw key 를 그대로 반환하면 (i18n miss) `delegation.event.unknown` 로 폴백. 어떤 event_type 도 raw 문자열로 노출되지 않음.
+
+### 3. P0-D 부분 연결 vs deferral 결정
+
+스펙 §6.2 의 Option A 는 artwork create/update/publish/delete + exhibition update + works add/remove/reorder + inquiry reply 모두 연결 권장.
+
+**현재 연결된 surface**:
+- `artwork.create_draft` (acting-as 전용 forProfileId 진입점) → `delegated_artwork_created`
+- `exhibition.create` (acting-as 전용 forProfileId 진입점) → `delegated_exhibition_created`
+- `inquiry.reply` (artist 가 본인이 아니면 acting-as) → `delegated_inquiry_replied`
+
+**아직 연결되지 않은 surface (deferred)**:
+- artwork update / publish / delete: 함수 시그니처에 `forProfileId` 가 없고 RLS 가 `artist_id` 매칭으로 가드. 시그니처 확장은 본 패치의 trust hardening 범위를 넘어가는 변경이라 deferral.
+- exhibition update / works add/remove/reorder: 동일하게 시그니처 확장 + 호출자리 다수 변경 필요.
+
+**오해 방지 조치**: detail drawer copy 가 이미 `delegation.detail.recentActivity` ("최근 위임 활동" / "Recent activity") 로 되어 있어 "모든 활동 기록" 같은 misleading copy 는 없음. 추가로 unknown fallback 이 들어왔으므로, 향후 surface 연결 시 라벨을 messages.ts 에 추가만 하면 자동으로 정상 표시됨.
+
+### 4. 변경 파일 요약
+
+| 영역 | 파일 |
+|---|---|
+| SQL | `supabase/migrations/20260506000000_get_delegation_by_token_full.sql` (idempotent · additive) |
+| UI | `src/app/invites/delegation/page.tsx` (리라이트: preset/denials/explicit decline/race 처리) |
+| UI | `src/components/delegation/DelegationDetailDrawer.tsx` (event label fallback) |
+| Lib | `src/lib/supabase/delegations.ts` (`GetDelegationByTokenResult.preset` 추가) |
+| API | `src/app/api/delegation-invite-email/route.ts` (EN·KR explicit-accept 카피) |
+| i18n | `src/lib/i18n/messages.ts` (13 새 event 라벨 × 2 언어) |
+
+### 5. Supabase SQL — 실행
+
+```
+20260506000000_get_delegation_by_token_full.sql
+```
+
+idempotent · additive (기존 `get_delegation_by_token` 을 CREATE OR REPLACE 로 덮어쓰며, 인터페이스는 forward-compatible — 클라이언트가 `preset` 을 모르면 무시할 뿐 깨지지 않음).
+
+### 6. 환경 변수
+
+추가/변경 없음.
+
+### 7. QA 체크리스트
+
+| # | 시나리오 | 기대 |
+|---|---|---|
+| 1 | 이메일 invite 토큰 클릭 → 미인증 상태 | 로그인/가입 CTA + 시나리오·inviter·scope 표시 (preset 은 인증 후 노출). |
+| 2 | 1 후 가입 → 트리거가 link → 자동 redirect → 랜딩 인증 상태 | preset 카드 + "할 수 있는 일" + "공유되지 않는 것" 4종 + accept/decline 버튼 모두 노출. |
+| 3 | 2 에서 accept | `delegations.status = active` 로 전환, `/my/delegations` 로 이동, A 가 알림 수신. |
+| 4 | 2 에서 decline | `delegations.status = declined`, `/my/delegations` 로 이동, A 가 알림 수신. |
+| 5 | 이미 active 인 토큰 다시 열기 | "이 위임은 이미 활성 상태입니다" + "위임 페이지 열기" CTA. |
+| 6 | revoked / declined / expired 인 토큰 다시 열기 | 각 상태별 정확한 메시지 노출. RPC 가 더 이상 `{found:false}` 로 떨어지지 않음. |
+| 7 | 두 탭에서 동시에 accept → 한쪽이 먼저 성공 | 두 번째 탭은 `already_used` 응답을 받아 `load()` 재호출 → already-active 화면으로 자연스럽게 전환. |
+| 8 | A 가 B 에게 위임 → B 가 acting-as 로 작품 생성 → A 의 detail drawer 열기 | "Recent activity" 섹션에 `작품을 등록했어요 / Created an artwork` 표시. raw key 노출 없음. |
+| 9 | DB 가 향후 새 event_type 을 추가 (i18n 미정의) → drawer 열기 | `위임 활동이 기록되었어요 / Delegation activity was recorded` 으로 graceful 표시. |
+| 10 | 이메일 발송 직후 SendGrid 미리보기 | EN/KR 본문 모두 "review the delegation scope and accept or decline" / "위임 내용을 확인하고 수락할 수 있어요" 카피로 explicit-accept 의도가 분명하게 보여야 함. |
+
+### 8. 보안 노트
+
+- `get_delegation_by_token` 의 status 필터를 풀었지만, 새로 노출되는 필드는 `status` 와 `preset` 뿐. `delegator_profile_id` / `delegate_profile_id` / `permissions` 배열 / 이메일 / 토큰 / audit metadata 는 여전히 미노출. 토큰 보유자는 이미 랜딩 페이지에 진입할 수 있으므로 escalation 경로 없음.
+- `declineDelegationById` 는 `delegate_profile_id = auth.uid()` 가드로 다른 사용자가 임의 거절할 수 없음. 트리거가 link 하지 못한 (= delegate_profile_id 가 NULL 인) 경우 `not_found_or_not_pending` 반환 → 클라이언트는 silent 하게 hub 로 라우팅.
+- `acceptDelegationByToken` 의 race 처리는 정보 누설 없음 — `already_used` 만 반환하고 client 가 재조회.
+- 이메일 본문에 토큰 URL 만 노출. SMTP 실패 시 PR-C fallback 패널이 동일 URL 을 노출하지만, 양쪽 모두 동일 신뢰 모델 (sender 가 이미 토큰 보유).
+
+---
+
 ## 2026-04-27 — Delegation Final Hardening · PR-C (이메일 실패 fallback + delegated mutation 감사 로그)
 
 P1 trust 마무리. 새 SQL 1 개 (best-effort audit hook RPC) + 클라이언트 변경 2 곳.

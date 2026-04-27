@@ -260,7 +260,7 @@ function DetailBody({
           <ul className="space-y-1.5 text-sm text-zinc-700">
             {detail.events.slice(0, 5).map((e) => (
               <li key={e.id} className="flex items-baseline justify-between gap-3">
-                <span className="truncate">{t(`delegation.event.${e.event_type}`)}</span>
+                <span className="truncate">{eventLabel(t, e.event_type)}</span>
                 <span className="shrink-0 text-xs text-zinc-400">{formatDate(e.created_at)}</span>
               </li>
             ))}
@@ -269,6 +269,28 @@ function DetailBody({
       )}
     </>
   );
+}
+
+/**
+ * Resolve a delegation_activity_events.event_type to a human-readable
+ * label. Two-tier strategy:
+ *
+ *   1. Try `delegation.event.<type>` — known lifecycle/mutation events
+ *      have explicit i18n entries.
+ *   2. If `useT()` returns the literal key (the i18n miss sentinel),
+ *      fall back to `delegation.event.unknown` so users never see raw
+ *      keys in the audit drawer.
+ *
+ * Server-side we are conservative about which event_types we emit, but
+ * future migrations may add new ones; the fallback prevents a regression
+ * window where a new event surfaces as a debug-looking string.
+ */
+function eventLabel(t: (k: string) => string, eventType: string): string {
+  if (!eventType) return t("delegation.event.unknown");
+  const key = `delegation.event.${eventType}`;
+  const candidate = t(key);
+  if (candidate && candidate !== key) return candidate;
+  return t("delegation.event.unknown");
 }
 
 function statusKey(status: string): string {

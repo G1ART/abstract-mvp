@@ -74,6 +74,13 @@ export type GetDelegationByTokenResult = {
   delegate_email?: string;
   scope_type?: DelegationScopeType;
   status?: string;
+  /**
+   * Permission preset granted by this invite. Surfaced to the
+   * invite-landing page so the recipient can review WHAT they are
+   * accepting before clicking "accept". Older invites created before
+   * presets existed will report null here.
+   */
+  preset?: DelegationPreset | null;
   delegator?: { id: string; username: string | null; display_name: string | null };
   project?: { id: string; title: string } | null;
 };
