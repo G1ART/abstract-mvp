@@ -22,6 +22,7 @@ export const TOUR_IDS = {
   people: "people.main",
   delegation: "delegation.main",
   network: "network.main",
+  publicProfile: "profile.public",
 } as const;
 
 export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
@@ -29,7 +30,7 @@ export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
 export const TOURS: Record<TourId, TourDefinition> = {
   [TOUR_IDS.studio]: {
     id: TOUR_IDS.studio,
-    version: 6,
+    version: 7,
     titleKey: "tour.studio.title",
     introKey: "tour.studio.intro",
     requiredAnchors: ["studio-hero", "studio-operating-grid"],
@@ -248,6 +249,44 @@ export const TOURS: Record<TourId, TourDefinition> = {
         titleKey: "tour.delegation.sent.title",
         bodyKey: "tour.delegation.sent.body",
         placement: "top",
+      },
+    ],
+  },
+
+  [TOUR_IDS.publicProfile]: {
+    id: TOUR_IDS.publicProfile,
+    version: 1,
+    titleKey: "tour.publicProfile.title",
+    introKey: "tour.publicProfile.intro",
+    requiredAnchors: ["public-profile-tab-strip"],
+    steps: [
+      {
+        id: "tabs",
+        target: "public-profile-tab-strip",
+        titleKey: "tour.publicProfile.tabs.title",
+        bodyKey: "tour.publicProfile.tabs.body",
+        placement: "bottom",
+      },
+      {
+        id: "reorder-artworks",
+        target: "public-profile-reorder-button",
+        titleKey: "tour.publicProfile.reorderArtworks.title",
+        bodyKey: "tour.publicProfile.reorderArtworks.body",
+        placement: "bottom",
+      },
+      {
+        id: "exhibitions",
+        target: "public-profile-exhibitions-controls",
+        titleKey: "tour.publicProfile.exhibitions.title",
+        bodyKey: "tour.publicProfile.exhibitions.body",
+        placement: "bottom",
+      },
+      {
+        id: "studio-link",
+        target: "public-profile-back-to-studio",
+        titleKey: "tour.publicProfile.studioLink.title",
+        bodyKey: "tour.publicProfile.studioLink.body",
+        placement: "bottom",
       },
     ],
   },

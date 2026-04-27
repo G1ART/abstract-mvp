@@ -2,6 +2,56 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — 전시 정렬 토글(A) + 직접 정렬 저장(B) + 공개 프로필 미리보기 가이드 투어
+
+### 동기
+
+작품 reorder 는 공개 프로필이 단일 기준점 — 그러나 전시(`exhibition`)는 정렬 옵션도, 직접 정렬 저장도 없었음. 동시에 사용자가 *"탭 관리는 어디서 하고, 작품 순서는 어디서 바꾸지?"* 의 경계를 시각적으로 알 수 없었던 문제도 함께 해결.
+
+세 갈래로 정리 — A) 정렬 토글 / B) 직접 정렬 저장 / C) 가이드 투어로 경계 명시.
+
+### 변경
+
+| 파일 | 변경 |
+|---|---|
+| `supabase/migrations/p0_profile_exhibition_orders.sql` | **신규 테이블** `profile_exhibition_orders(profile_id, exhibition_id, sort_order, updated_at)` + RLS(읽기 공개 / 쓰기 본인). `profile_artwork_orders` 와 동일한 형태·정책. |
+| `src/lib/exhibitions/sort.ts` | 신규. `ExhibitionSortMode = manual / registered_desc / start_date_desc / start_date_asc`. `sortExhibitions()` 와 `defaultExhibitionSortMode()` 가 공개 프로필과 `/my` 양쪽에서 같은 결과를 보장. |
+| `src/lib/supabase/exhibitions.ts` | `getProfileExhibitionOrders` / `applyProfileExhibitionOrdering` / `updateMyProfileExhibitionOrder` / `clearMyProfileExhibitionOrder` 추가. `updateMyArtworkOrder` 와 동일하게 wipe + insert. |
+| `src/components/exhibitions/ExhibitionSortDropdown.tsx` | 양쪽 페이지가 공유하는 컴팩트 `<select>`. manual 옵션은 저장된 직접 정렬이 있을 때만 표시. |
+| `src/components/SortableExhibitionRow.tsx` | dnd-kit 기반 reorder 행 — 그립 핸들만 인터랙티브, 카드 내비게이션 무력화(작품 reorder 와 동일 패턴). |
+| `src/app/u/[username]/page.tsx` | 서버에서 `getProfileExhibitionOrders` 한 번 더 가져와 `exhibitionOrderEntries` 로 클라이언트에 직렬화 전달. |
+| `src/components/UserProfileContent.tsx` | 전시 탭에 정렬 토글 + (오너) 순서 변경 버튼/드래그 영역/저장·취소·초기화 추가. `?mode=reorder&tab=exhibitions` 딥링크 진입 시 자동 reorder 모드. **공개 프로필 가이드 투어 트리거 + 도움말 버튼** + "내 스튜디오에서 탭 관리" 백링크 — 모두 `isOwner` 가드. `data-tour` 앵커 4종 추가(`public-profile-tab-strip` / `-reorder-button` / `-exhibitions-controls` / `-back-to-studio`). |
+| `src/components/studio/StudioPortfolioPanel.tsx` | 전시 탭 헤더에 동일 정렬 토글과 `studio.portfolio.reorderOnPublic` 딥링크(이전엔 작품 탭에만) 추가. mount 시 `getProfileExhibitionOrders` 로 manual 옵션 가시성 판단. |
+| `src/lib/tours/tourRegistry.ts` | 신규 `TOUR_IDS.publicProfile` (`profile.public`) — 4 step(tabs / reorder-artworks / exhibitions / studio-link). `TOUR_IDS.studio` 의 `portfolio-tabs` 카피 갱신, `version 6 → 7`. |
+| `src/lib/tours/tourKoCopy.ts` | `profile.public:*` 한국어 카피 4종 + studio.portfolioTabs 한국어 카피 갱신(탭 관리 vs 작품 reorder 경계 명시). |
+| `src/lib/i18n/messages.ts` | EN/KO 신규: `exhibition.sort.*`, `exhibition.reorder.*`, `studio.portfolio.backToStudio`, `tour.publicProfile.*`. `tour.studio.portfolioTabs.body` 갱신. |
+
+### 사용 흐름
+
+1. **정렬 토글**: 양쪽 페이지의 전시 헤더에 등록순/시작일순(최신·오래된) — 즉시 적용. 저장된 직접 정렬이 있으면 `직접 정렬` 옵션이 자동으로 노출되고 기본값.
+2. **직접 정렬 저장**: 공개 프로필 미리보기에서 "순서 변경" → 드래그 → "순서 저장". `/my` 의 같은 토글에서 `직접 정렬` 옵션이 켜지고, `/u/{username}` 방문자도 같은 순서로 보게 됨.
+3. **`/my` → 공개 프로필 미리보기 딥링크**: 전시 탭 헤더의 `공개 프로필에서 순서 변경 →` 버튼은 `?mode=reorder&tab=exhibitions` 로 직행 → 진입 즉시 reorder 모드.
+4. **가이드 투어**:
+   - `/my` 의 portfolio-tabs 스텝 카피가 *"탭 관리는 여기, 작품 순서는 공개 프로필 미리보기에서"* 로 갱신(version bump 로 기존 사용자에게도 한 번 다시 보임).
+   - 공개 프로필 미리보기의 오너 뷰에 신규 투어(자동 + 우상단 도움말 버튼) — tabs / artwork reorder / exhibitions sort+reorder / 스튜디오 백링크 4 step.
+
+### Supabase SQL 적용 필요
+
+- **`supabase/migrations/p0_profile_exhibition_orders.sql` 를 SQL Editor 에서 한 번 실행해주세요.** 테이블·인덱스·4종 RLS 정책이 생성됩니다(`profile_artwork_orders` 와 동일 형식).
+
+### 환경 변수 변경
+
+- 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과, 변경 파일 `eslint` 통과(기존 사전 경고 외 신규 0).
+- 정렬 모드 전환 시 같은 데이터로 `/my` ↔ `/u/{username}` 결과 일치.
+- `?mode=reorder&tab=exhibitions` 딥링크 → 즉시 전시 reorder 모드 진입(오너 + 전시 ≥ 2 조건 만족 시).
+- 공개 프로필 가이드 투어는 `isOwner` 일 때만 자동 발동 / 도움말 버튼도 오너에게만 노출.
+
+---
+
 ## 2026-04-27 — Profile media uploader UX (즉시 피드백 + 라이브 커버 크롭 미리보기)
 
 ### 동기

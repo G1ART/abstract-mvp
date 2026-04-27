@@ -21,11 +21,24 @@ import type { ProfilePublic } from "@/lib/supabase/profiles";
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { canEditArtwork, getArtworkImageUrl, updateMyArtworkOrder, getProfileArtworkOrders, applyProfileOrdering } from "@/lib/supabase/artworks";
 import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
+import {
+  updateMyProfileExhibitionOrder,
+  clearMyProfileExhibitionOrder,
+} from "@/lib/supabase/exhibitions";
+import {
+  defaultExhibitionSortMode,
+  sortExhibitions,
+  type ExhibitionSortMode,
+} from "@/lib/exhibitions/sort";
 import { getLikedArtworkIds } from "@/lib/supabase/likes";
 import { ProfileActions } from "./ProfileActions";
 import { ProfileViewTracker } from "./ProfileViewTracker";
 import { ArtworkCard } from "./ArtworkCard";
 import { SortableArtworkCard } from "./SortableArtworkCard";
+import { SortableExhibitionRow } from "./SortableExhibitionRow";
+import { ExhibitionSortDropdown } from "@/components/exhibitions/ExhibitionSortDropdown";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { Chip, EmptyState } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
@@ -50,6 +63,12 @@ type Props = {
   profile: ProfilePublic;
   artworks: ArtworkWithLikes[];
   exhibitions?: ExhibitionWithCredits[];
+  /**
+   * Profile-specific manual exhibition order, serialized as `[id, sort_order]`
+   * tuples (Maps don't survive RSC -> client serialization). When non-empty
+   * we honor it as the default sort.
+   */
+  exhibitionOrderEntries?: Array<[string, number]>;
   initialReorderMode?: boolean;
   /** Raw `?tab=` (e.g. `exhibitions`, `all`, `CREATED`, `custom-<uuid>`) */
   initialTabParam?: string | null;
@@ -65,6 +84,7 @@ export function UserProfileContent({
   profile,
   artworks,
   exhibitions = [],
+  exhibitionOrderEntries,
   initialReorderMode = false,
   initialTabParam = null,
 }: Props) {
@@ -79,7 +99,29 @@ export function UserProfileContent({
   const [localArtworks, setLocalArtworks] = useState<ArtworkWithLikes[]>(artworks);
   const [saving, setSaving] = useState(false);
   const [savedToast, setSavedToast] = useState(false);
+  const [savedToastMsg, setSavedToastMsg] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  // Exhibition manual order map (rebuilt only when the prop changes).
+  const initialExhibitionOrderMap = useMemo(
+    () => new Map<string, number>(exhibitionOrderEntries ?? []),
+    [exhibitionOrderEntries]
+  );
+  const [exhibitionOrderMap, setExhibitionOrderMap] = useState<Map<string, number>>(
+    initialExhibitionOrderMap
+  );
+  useEffect(() => {
+    setExhibitionOrderMap(initialExhibitionOrderMap);
+  }, [initialExhibitionOrderMap]);
+
+  // Exhibition sort + reorder UI state.
+  const [exhibitionSortMode, setExhibitionSortMode] = useState<ExhibitionSortMode>(() =>
+    defaultExhibitionSortMode(initialExhibitionOrderMap)
+  );
+  const [exhibitionReorderMode, setExhibitionReorderMode] = useState(false);
+  const [exhibitionDraft, setExhibitionDraft] = useState<ExhibitionWithCredits[]>([]);
+  const [exhibitionSaving, setExhibitionSaving] = useState(false);
+  const [exhibitionSaveError, setExhibitionSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     setLocalArtworks(artworks);
@@ -97,8 +139,27 @@ export function UserProfileContent({
   }, [initialTabParam, exhibitions.length, artworks.length]);
 
   useEffect(() => {
-    if (initialReorderMode && isOwner && artworks.length > 0) setReorderMode(true);
-  }, [initialReorderMode, isOwner, artworks.length]);
+    if (!initialReorderMode || !isOwner) return;
+    if (active.kind === "persona" && active.tab === "exhibitions") {
+      if (exhibitions.length >= 2 && !exhibitionReorderMode) {
+        setExhibitionDraft(
+          sortExhibitions(exhibitions, exhibitionSortMode, exhibitionOrderMap)
+        );
+        setExhibitionReorderMode(true);
+      }
+      return;
+    }
+    if (artworks.length > 0) setReorderMode(true);
+  }, [
+    initialReorderMode,
+    isOwner,
+    artworks.length,
+    active,
+    exhibitions,
+    exhibitionSortMode,
+    exhibitionOrderMap,
+    exhibitionReorderMode,
+  ]);
 
   useEffect(() => {
     function resolveOwner(sessionUserId: string | undefined): void {
@@ -203,6 +264,7 @@ export function UserProfileContent({
       return;
     }
     setReorderMode(false);
+    setSavedToastMsg(null);
     setSavedToast(true);
     setTimeout(() => setSavedToast(false), 2000);
     router.refresh();
@@ -213,6 +275,80 @@ export function UserProfileContent({
     setLocalArtworks(artworks);
     setSaveError(null);
   }, [artworks]);
+
+  const sortedExhibitions = useMemo(
+    () => sortExhibitions(exhibitions, exhibitionSortMode, exhibitionOrderMap),
+    [exhibitions, exhibitionSortMode, exhibitionOrderMap]
+  );
+
+  const handleExhibitionDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active: a, over } = event;
+      if (!over || a.id === over.id) return;
+      setExhibitionDraft((prev) => {
+        const oldIdx = prev.findIndex((e) => e.id === a.id);
+        const newIdx = prev.findIndex((e) => e.id === over.id);
+        if (oldIdx === -1 || newIdx === -1) return prev;
+        const next = [...prev];
+        const [removed] = next.splice(oldIdx, 1);
+        next.splice(newIdx, 0, removed);
+        return next;
+      });
+    },
+    []
+  );
+
+  const handleExhibitionReorderStart = useCallback(() => {
+    if (exhibitions.length < 2) return;
+    setExhibitionDraft(sortedExhibitions);
+    setExhibitionReorderMode(true);
+    setExhibitionSaveError(null);
+  }, [exhibitions.length, sortedExhibitions]);
+
+  const handleExhibitionReorderCancel = useCallback(() => {
+    setExhibitionReorderMode(false);
+    setExhibitionDraft([]);
+    setExhibitionSaveError(null);
+  }, []);
+
+  const handleExhibitionReorderSave = useCallback(async () => {
+    if (!isOwner) return;
+    setExhibitionSaving(true);
+    setExhibitionSaveError(null);
+    const orderedIds = exhibitionDraft.map((e) => e.id);
+    const { error } = await updateMyProfileExhibitionOrder(orderedIds, profile.id);
+    setExhibitionSaving(false);
+    if (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setExhibitionSaveError(msg);
+      return;
+    }
+    const nextMap = new Map<string, number>();
+    orderedIds.forEach((id, idx) => nextMap.set(id, idx));
+    setExhibitionOrderMap(nextMap);
+    setExhibitionSortMode("manual");
+    setExhibitionReorderMode(false);
+    setExhibitionDraft([]);
+    setSavedToastMsg(t("exhibition.reorder.saved"));
+    setSavedToast(true);
+    setTimeout(() => setSavedToast(false), 2000);
+    router.refresh();
+  }, [exhibitionDraft, isOwner, profile.id, router, t]);
+
+  const handleExhibitionClearManual = useCallback(async () => {
+    if (!isOwner) return;
+    setExhibitionSaving(true);
+    setExhibitionSaveError(null);
+    const { error } = await clearMyProfileExhibitionOrder(profile.id);
+    setExhibitionSaving(false);
+    if (error) {
+      setExhibitionSaveError(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    setExhibitionOrderMap(new Map());
+    setExhibitionSortMode("registered_desc");
+    router.refresh();
+  }, [isOwner, profile.id, router]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -402,8 +538,39 @@ export function UserProfileContent({
         />
       )}
 
+      {isOwner && (
+        <>
+          <TourTrigger tourId={TOUR_IDS.publicProfile} />
+          <div className="mb-3 flex items-center justify-end gap-2">
+            <Link
+              href="/my"
+              data-tour="public-profile-back-to-studio"
+              className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/70 px-2.5 py-1 text-[11px] font-medium text-zinc-600 shadow-sm hover:border-zinc-300 hover:bg-white hover:text-zinc-900"
+            >
+              <svg
+                aria-hidden
+                viewBox="0 0 16 16"
+                className="h-3 w-3"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9.5 4l-4 4 4 4" />
+              </svg>
+              {t("studio.portfolio.backToStudio")}
+            </Link>
+            <TourHelpButton tourId={TOUR_IDS.publicProfile} />
+          </div>
+        </>
+      )}
+
       {stripPublic.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">
+        <div
+          className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2"
+          data-tour="public-profile-tab-strip"
+        >
           {stripPublic.map((row) => (
             <button
               key={row.key}
@@ -433,6 +600,7 @@ export function UserProfileContent({
             type="button"
             onClick={() => { setReorderMode(true); setSaveError(null); }}
             aria-label={t("profile.reorder")}
+            data-tour="public-profile-reorder-button"
             className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             <svg
@@ -471,16 +639,118 @@ export function UserProfileContent({
             </button>
           </div>
         )}
+        {isExhibitionsView && exhibitions.length > 0 && !exhibitionReorderMode && (
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-tour="public-profile-exhibitions-controls"
+          >
+            <ExhibitionSortDropdown
+              value={exhibitionSortMode}
+              onChange={setExhibitionSortMode}
+              showManual={exhibitionOrderMap.size > 0}
+            />
+            {isOwner && exhibitions.length >= 2 && (
+              <button
+                type="button"
+                onClick={handleExhibitionReorderStart}
+                aria-label={t("exhibition.reorder.start")}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+              >
+                <svg
+                  aria-hidden
+                  viewBox="0 0 16 16"
+                  className="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 5h8M4 8h8M4 11h8" />
+                  <path d="M2 3l1.2 1.2M14 3l-1.2 1.2M2 13l1.2-1.2M14 13l-1.2-1.2" />
+                </svg>
+                {t("exhibition.reorder.start")}
+              </button>
+            )}
+            {isOwner && exhibitionOrderMap.size > 0 && (
+              <button
+                type="button"
+                onClick={handleExhibitionClearManual}
+                disabled={exhibitionSaving}
+                className="text-xs text-zinc-500 underline hover:text-zinc-700 disabled:opacity-50"
+              >
+                {t("exhibition.reorder.clear")}
+              </button>
+            )}
+          </div>
+        )}
+        {isExhibitionsView && exhibitionReorderMode && isOwner && (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={handleExhibitionReorderSave}
+              disabled={exhibitionSaving}
+              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {t("exhibition.reorder.save")}
+            </button>
+            <button
+              type="button"
+              onClick={handleExhibitionReorderCancel}
+              disabled={exhibitionSaving}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            >
+              {t("exhibition.reorder.cancel")}
+            </button>
+          </div>
+        )}
       </div>
       {!isExhibitionsView && reorderMode && isOwner && (
         <p className="mb-4 text-sm text-zinc-500">{t("profile.reorderHint")}</p>
       )}
+      {isExhibitionsView && exhibitionReorderMode && isOwner && (
+        <p className="mb-4 text-sm text-zinc-500">{t("exhibition.reorder.hint")}</p>
+      )}
       {isExhibitionsView ? (
         exhibitions.length === 0 ? (
           <EmptyState title={t("exhibition.emptyList")} size="sm" />
+        ) : exhibitionReorderMode && isOwner ? (
+          <>
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleExhibitionDragEnd}
+            >
+              <SortableContext
+                items={exhibitionDraft.map((e) => e.id)}
+                strategy={rectSortingStrategy}
+              >
+                <ul className="space-y-2">
+                  {exhibitionDraft.map((ex) => (
+                    <SortableExhibitionRow key={ex.id} exhibition={ex} />
+                  ))}
+                </ul>
+              </SortableContext>
+            </DndContext>
+            {exhibitionSaveError && (
+              <div className="mt-4 flex items-center gap-3 rounded border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-800">
+                <span>
+                  {t("exhibition.reorder.failed")}: {exhibitionSaveError}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleExhibitionReorderSave}
+                  disabled={exhibitionSaving}
+                  className="rounded bg-red-600 px-3 py-1 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {t("common.retry")}
+                </button>
+              </div>
+            )}
+          </>
         ) : (
           <ul className="space-y-2">
-            {exhibitions.map((ex) => {
+            {sortedExhibitions.map((ex) => {
               const firstCover = (ex.cover_image_paths ?? [])[0];
               return (
                 <li key={ex.id}>
@@ -581,7 +851,7 @@ export function UserProfileContent({
       )}
       {savedToast && (
         <div className="fixed bottom-4 right-4 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
-          {t("common.saved")}
+          {savedToastMsg ?? t("common.saved")}
         </div>
       )}
       </main>

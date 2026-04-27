@@ -27,6 +27,7 @@ export const TOUR_KO_HEADER: Record<string, string> = {
   "people.main": "사람 찾기",
   "delegation.main": "위임 안내",
   "network.main": "네트워크 안내",
+  "profile.public": "공개 프로필 미리보기",
 };
 
 /** `${tourId}:${stepId}` → title + body */
@@ -61,7 +62,24 @@ export const TOUR_KO_STEP: Record<string, { title: string; body: string }> = {
   },
   "studio.main:portfolio-tabs": {
     title: "탭으로 정리하기",
-    body: '탭 옆 순서 변경(↕)으로 순서를 바꾸고, 설정(⚙)에서 기본 탭 이름을 바꾸거나 나만의 탭을 만들고 공개 프로필에 어떤 탭을 보일지 정할 수 있어요. 작품을 선택한 뒤 "탭으로 이동"으로 테마나 카테고리별로 묶을 수도 있어요.',
+    body: '여기서는 탭 구성을 다뤄요. ↕로 탭 순서를 바꾸고, ⚙에서 기본 탭 이름을 바꾸거나 나만의 탭을 만들고 공개 여부를 정할 수 있어요. 탭 안의 작품 순서는 "공개 프로필 미리보기"에서 [순서 변경] 버튼으로 바꾸면 돼요. 방문자에게 보이는 진열은 그 페이지가 단일 기준점이에요.',
+  },
+
+  "profile.public:tabs": {
+    title: "내 스튜디오와 같은 탭 구성",
+    body: "여기 탭은 내 스튜디오에서 설정한 그대로예요. 탭 추가·이름 변경·순서·공개 여부는 내 스튜디오에서, 탭 안에 무엇이 어떤 순서로 보이는지는 이 페이지에서 정해요.",
+  },
+  "profile.public:reorder-artworks": {
+    title: "작품 순서는 여기서",
+    body: "[순서 변경]을 누르면 활성 탭 안에서 작품을 드래그해 배치할 수 있어요. 방문자는 정확히 이 순서로 보게 돼요. 탭이 섞여 보이면 내 스튜디오에서 새 탭으로 분리해도 좋아요.",
+  },
+  "profile.public:exhibitions": {
+    title: "전시 정렬과 순서 변경",
+    body: "등록순/시작일순으로 빠르게 바꾸거나, [순서 변경]으로 직접 정한 순서를 저장할 수 있어요. 단순 정렬은 잠깐 보는 용도이고, 직접 정렬은 프로필에 저장돼요.",
+  },
+  "profile.public:studio-link": {
+    title: "탭 관리는 내 스튜디오에서",
+    body: "탭을 새로 만들거나, 이름을 바꾸거나, 공개 여부를 끄는 일은 내 스튜디오에서 해요. 이 버튼으로 언제든 바로 이동할 수 있어요.",
   },
 
   "upload.main:tabs": {

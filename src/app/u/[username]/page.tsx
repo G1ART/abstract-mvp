@@ -10,7 +10,11 @@ import {
   getProfileArtworkOrders,
   applyProfileOrdering,
 } from "@/lib/supabase/artworks";
-import { listExhibitionsForProfile, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import {
+  listExhibitionsForProfile,
+  getProfileExhibitionOrders,
+  type ExhibitionWithCredits,
+} from "@/lib/supabase/exhibitions";
 import { getServerLocale, getT } from "@/lib/i18n/server";
 import { UserProfileContent } from "@/components/UserProfileContent";
 
@@ -94,11 +98,23 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const { data: profileOrderMap } = await getProfileArtworkOrders(p.id, artworkIds);
   const orderedArtworks = applyProfileOrdering(artworks, profileOrderMap ?? new Map());
 
+  // Profile-specific manual exhibition order (used as the default sort
+  // when the owner has saved one; otherwise the toggle hides "Custom order").
+  const exList = (exhibitions ?? []) as ExhibitionWithCredits[];
+  const exhibitionOrderResult = await getProfileExhibitionOrders(
+    p.id,
+    exList.map((e) => e.id)
+  );
+  const exhibitionOrderEntries = Array.from(
+    (exhibitionOrderResult.data ?? new Map<string, number>()).entries()
+  );
+
   return (
     <UserProfileContent
       profile={p}
       artworks={orderedArtworks ?? []}
-      exhibitions={(exhibitions ?? []) as ExhibitionWithCredits[]}
+      exhibitions={exList}
+      exhibitionOrderEntries={exhibitionOrderEntries}
       initialReorderMode={mode === "reorder"}
       initialTabParam={tabParam ?? null}
     />

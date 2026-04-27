@@ -18,6 +18,13 @@ import {
 } from "@/lib/provenance/personaTabs";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import type { ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
+import { getProfileExhibitionOrders } from "@/lib/supabase/exhibitions";
+import {
+  defaultExhibitionSortMode,
+  sortExhibitions,
+  type ExhibitionSortMode,
+} from "@/lib/exhibitions/sort";
+import { ExhibitionSortDropdown } from "@/components/exhibitions/ExhibitionSortDropdown";
 import { updateMyProfileDetails } from "@/lib/supabase/profileDetails";
 import { EmptyState } from "@/components/ds/EmptyState";
 import { StudioPortfolioManageModal } from "@/components/studio/StudioPortfolioManageModal";
@@ -81,6 +88,34 @@ export function StudioPortfolioPanel({
   const [tabOrderSaving, setTabOrderSaving] = useState(false);
   const [manageOpen, setManageOpen] = useState(false);
   const [moveSaving, setMoveSaving] = useState(false);
+  const [exhibitionOrderMap, setExhibitionOrderMap] = useState<Map<string, number>>(
+    new Map()
+  );
+  const [exhibitionSortMode, setExhibitionSortMode] = useState<ExhibitionSortMode>(
+    "registered_desc"
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const ids = exhibitions.map((e) => e.id);
+    if (ids.length === 0) {
+      setExhibitionOrderMap(new Map());
+      return () => {
+        cancelled = true;
+      };
+    }
+    getProfileExhibitionOrders(profile.id, ids).then(({ data }) => {
+      if (cancelled) return;
+      const map = data ?? new Map<string, number>();
+      setExhibitionOrderMap(map);
+      setExhibitionSortMode((prev) =>
+        prev === "registered_desc" ? defaultExhibitionSortMode(map) : prev
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [profile.id, exhibitions]);
 
   const roles = (profile.roles ?? []) as string[];
   const portfolio = useMemo(
@@ -263,6 +298,11 @@ export function StudioPortfolioPanel({
     [stripRows]
   );
 
+  const sortedExhibitions = useMemo(
+    () => sortExhibitions(exhibitions, exhibitionSortMode, exhibitionOrderMap),
+    [exhibitions, exhibitionSortMode, exhibitionOrderMap]
+  );
+
   return (
     <section aria-label={t("studio.portfolio.title")} className="mb-6">
       {hasAnyContent && (
@@ -274,9 +314,11 @@ export function StudioPortfolioPanel({
         </div>
       )}
 
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-zinc-900">{sectionTitle}</h2>
-        {activePersonaTab !== "exhibitions" && artworks.length > 0 && renderBulkControls()}
+        {activePersonaTab === "exhibitions" && exhibitions.length > 0
+          ? renderExhibitionControls()
+          : activePersonaTab !== "exhibitions" && artworks.length > 0 && renderBulkControls()}
       </div>
 
       {renderBody()}
@@ -441,6 +483,42 @@ export function StudioPortfolioPanel({
     );
   }
 
+  function renderExhibitionControls() {
+    const reorderHref = profile.username
+      ? `/u/${profile.username}?mode=reorder&tab=exhibitions`
+      : null;
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        <ExhibitionSortDropdown
+          value={exhibitionSortMode}
+          onChange={setExhibitionSortMode}
+          showManual={exhibitionOrderMap.size > 0}
+        />
+        {reorderHref && (
+          <Link
+            href={reorderHref}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            <svg
+              aria-hidden
+              viewBox="0 0 16 16"
+              className="h-3.5 w-3.5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M4 5h8M4 8h8M4 11h8" />
+              <path d="M2 3l1.2 1.2M14 3l-1.2 1.2M2 13l1.2-1.2M14 13l-1.2-1.2" />
+            </svg>
+            {t("studio.portfolio.reorderOnPublic")}
+          </Link>
+        )}
+      </div>
+    );
+  }
+
   function renderBulkControls() {
     const customTabs = portfolio.custom_tabs ?? [];
     if (!selectMode) {
@@ -567,7 +645,7 @@ export function StudioPortfolioPanel({
     if (active.kind === "persona" && active.tab === "exhibitions") {
       return (
         <ul className="space-y-2">
-          {exhibitions.map((ex) => {
+          {sortedExhibitions.map((ex) => {
             const firstCover = (ex.cover_image_paths ?? [])[0];
             return (
               <li key={ex.id}>

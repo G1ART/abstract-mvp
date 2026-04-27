@@ -494,6 +494,116 @@ export async function listExhibitionsForProfile(profileId: string): Promise<{
   return { data: merged, error: null };
 }
 
+/**
+ * Get profile-specific sort orders for exhibitions (manual reorder mode).
+ * Returns an `exhibition_id -> sort_order` map. Mirrors `getProfileArtworkOrders`.
+ */
+export async function getProfileExhibitionOrders(
+  profileId: string,
+  exhibitionIds: string[]
+): Promise<{ data: Map<string, number>; error: unknown }> {
+  if (exhibitionIds.length === 0) return { data: new Map(), error: null };
+
+  const { data, error } = await supabase
+    .from("profile_exhibition_orders")
+    .select("exhibition_id, sort_order")
+    .eq("profile_id", profileId)
+    .in("exhibition_id", exhibitionIds);
+
+  if (error) return { data: new Map(), error };
+
+  const orderMap = new Map<string, number>();
+  (data ?? []).forEach((row: { exhibition_id: string; sort_order: number }) => {
+    orderMap.set(row.exhibition_id, row.sort_order);
+  });
+  return { data: orderMap, error: null };
+}
+
+/**
+ * Apply a profile-specific manual ordering to exhibitions.
+ * Rows present in the order map are placed first (ascending sort_order); rows
+ * missing from the map fall back to `created_at` desc, preserving existing
+ * defaults for newly added exhibitions.
+ */
+export function applyProfileExhibitionOrdering(
+  rows: ExhibitionWithCredits[],
+  orderMap: Map<string, number>
+): ExhibitionWithCredits[] {
+  return [...rows].sort((a, b) => {
+    const ao = orderMap.get(a.id);
+    const bo = orderMap.get(b.id);
+    if (ao !== undefined && bo !== undefined) return ao - bo;
+    if (ao !== undefined) return -1;
+    if (bo !== undefined) return 1;
+    return (
+      new Date(b.created_at ?? 0).getTime() -
+      new Date(a.created_at ?? 0).getTime()
+    );
+  });
+}
+
+/**
+ * Persist a manual ordering of exhibitions for the current profile.
+ * Only the profile owner may write. Mirrors `updateMyArtworkOrder` semantics:
+ * we wipe + re-insert so removed ids no longer pin sort.
+ */
+export async function updateMyProfileExhibitionOrder(
+  orderedIds: string[],
+  profileId?: string
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+  if (orderedIds.length === 0) return { error: null };
+
+  const targetProfileId = profileId ?? session.user.id;
+  if (targetProfileId !== session.user.id) {
+    return { error: new Error("Only the profile owner may save manual ordering") };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("profile_exhibition_orders")
+    .delete()
+    .eq("profile_id", targetProfileId)
+    .in("exhibition_id", orderedIds);
+  if (deleteError) return { error: deleteError };
+
+  const orders = orderedIds.map((id, idx) => ({
+    profile_id: targetProfileId,
+    exhibition_id: id,
+    sort_order: idx,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error: insertError } = await supabase
+    .from("profile_exhibition_orders")
+    .insert(orders);
+  if (insertError) return { error: insertError };
+
+  return { error: null };
+}
+
+/** Clear any saved manual ordering of exhibitions for the current profile. */
+export async function clearMyProfileExhibitionOrder(
+  profileId?: string
+): Promise<{ error: unknown }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) return { error: new Error("Not authenticated") };
+
+  const targetProfileId = profileId ?? session.user.id;
+  if (targetProfileId !== session.user.id) {
+    return { error: new Error("Only the profile owner may clear manual ordering") };
+  }
+
+  const { error } = await supabase
+    .from("profile_exhibition_orders")
+    .delete()
+    .eq("profile_id", targetProfileId);
+  return { error };
+}
+
 /** Get one exhibition by id (for detail/edit). */
 export async function getExhibitionById(id: string): Promise<{
   data: ExhibitionWithCredits | null;
