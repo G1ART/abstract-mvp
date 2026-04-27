@@ -15,6 +15,9 @@ export const USAGE_KEYS = {
   AI_PORTFOLIO_COPILOT_GENERATED: "ai.portfolio_copilot.generated",
   AI_STUDIO_DIGEST_GENERATED: "ai.studio_digest.generated",
   AI_MATCHMAKER_RATIONALES_GENERATED: "ai.matchmaker_rationales.generated",
+  AI_BOARD_PITCH_PACK_GENERATED: "ai.board_pitch_pack.generated",
+  AI_EXHIBITION_REVIEW_GENERATED: "ai.exhibition_review.generated",
+  AI_DELEGATION_BRIEF_GENERATED: "ai.delegation_brief.generated",
   AI_ACCEPTED: "ai.accepted",
   // Boards
   BOARD_CREATED: "board.created",
@@ -55,6 +58,9 @@ export const AI_FEATURE_TO_METER_KEY: Record<string, string> = {
   portfolio_copilot: USAGE_KEYS.AI_PORTFOLIO_COPILOT_GENERATED,
   studio_digest: USAGE_KEYS.AI_STUDIO_DIGEST_GENERATED,
   matchmaker_rationales: USAGE_KEYS.AI_MATCHMAKER_RATIONALES_GENERATED,
+  board_pitch_pack: USAGE_KEYS.AI_BOARD_PITCH_PACK_GENERATED,
+  exhibition_review: USAGE_KEYS.AI_EXHIBITION_REVIEW_GENERATED,
+  delegation_brief: USAGE_KEYS.AI_DELEGATION_BRIEF_GENERATED,
 };
 
 /** Maps a canonical AI feature key to the entitlement feature key that
@@ -68,4 +74,7 @@ export const AI_FEATURE_TO_ENTITLEMENT_KEY: Record<string, string> = {
   portfolio_copilot: "ai.studio_intelligence",
   studio_digest: "ai.studio_intelligence",
   matchmaker_rationales: "ai.studio_intelligence",
+  board_pitch_pack: "ai.board_pitch_pack",
+  exhibition_review: "ai.exhibition_review",
+  delegation_brief: "ai.delegation_brief",
 };

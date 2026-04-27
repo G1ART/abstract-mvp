@@ -5,7 +5,10 @@ import type {
   AiDegradation,
   AiFeatureKey,
   BioDraftResult,
+  BoardPitchPackResult,
+  DelegationBriefResult,
   ExhibitionDraftResult,
+  ExhibitionReviewResult,
   InquiryReplyDraftResult,
   IntroMessageDraftResult,
   MatchmakerRationalesResult,
@@ -23,6 +26,9 @@ const FEATURE_TO_PATH: Record<AiFeatureKey, string> = {
   inquiry_reply_draft: "/api/ai/inquiry-reply-draft",
   intro_message_draft: "/api/ai/intro-message-draft",
   matchmaker_rationales: "/api/ai/matchmaker-rationales",
+  board_pitch_pack: "/api/ai/board-pitch-pack",
+  exhibition_review: "/api/ai/exhibition-review",
+  delegation_brief: "/api/ai/delegation-brief",
 };
 
 export type CallAiOptions = {
@@ -200,6 +206,27 @@ export const aiApi = {
       "matchmaker_rationales",
       body,
       { rationales: [] },
+      opts,
+    ),
+  boardPitchPack: (body: Record<string, unknown>, opts?: CallAiOptions) =>
+    callAi<BoardPitchPackResult>(
+      "board_pitch_pack",
+      body,
+      { summary: "", throughline: "", missingInfo: [], drafts: [] },
+      opts,
+    ),
+  exhibitionReview: (body: Record<string, unknown>, opts?: CallAiOptions) =>
+    callAi<ExhibitionReviewResult>(
+      "exhibition_review",
+      body,
+      { readiness: 0, issues: [] },
+      opts,
+    ),
+  delegationBrief: (body: Record<string, unknown>, opts?: CallAiOptions) =>
+    callAi<DelegationBriefResult>(
+      "delegation_brief",
+      body,
+      { priorities: [], watchItems: [] },
       opts,
     ),
 };

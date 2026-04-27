@@ -358,3 +358,134 @@ export function buildMatchmakerRationaleContext(
     `candidates: ${JSON.stringify(candidates)}`,
   ].join("\n");
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-A — Board Pitch Pack
+// ─────────────────────────────────────────────────────────────────────
+
+export type BoardPitchPackArtwork = {
+  id: string;
+  title?: string | null;
+  year?: string | number | null;
+  medium?: string | null;
+  themes?: string[] | null;
+};
+
+export type BoardPitchPackExhibition = {
+  id: string;
+  title?: string | null;
+  year?: string | number | null;
+  venue?: string | null;
+};
+
+export type BoardPitchPackInput = {
+  locale?: string | null;
+  boardTitle?: string | null;
+  boardDescription?: string | null;
+  /** Curator-supplied editorial note (optional). */
+  editorialNote?: string | null;
+  artworks?: BoardPitchPackArtwork[];
+  exhibitions?: BoardPitchPackExhibition[];
+};
+
+export function buildBoardPitchPackContext(input: BoardPitchPackInput): string {
+  const artworks = (input.artworks ?? []).slice(0, 12).map((a) => ({
+    id: a.id,
+    title: a.title ?? "",
+    year: a.year ?? "",
+    medium: a.medium ?? "",
+    themes: (a.themes ?? []).slice(0, 4),
+  }));
+  const exhibitions = (input.exhibitions ?? []).slice(0, 6).map((e) => ({
+    id: e.id,
+    title: e.title ?? "",
+    year: e.year ?? "",
+    venue: e.venue ?? "",
+  }));
+  return [
+    `locale: ${input.locale ?? "ko"}`,
+    `board_title: ${(input.boardTitle ?? "").slice(0, 200)}`,
+    `board_description: ${(input.boardDescription ?? "").slice(0, 600)}`,
+    `editorial_note: ${(input.editorialNote ?? "").slice(0, 600)}`,
+    `artworks: ${JSON.stringify(artworks)}`,
+    `exhibitions: ${JSON.stringify(exhibitions)}`,
+  ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-B — Exhibition Review
+// ─────────────────────────────────────────────────────────────────────
+
+export type ExhibitionReviewInput = {
+  locale?: string | null;
+  title?: string | null;
+  description?: string | null;
+  startDate?: string | null;
+  endDate?: string | null;
+  venueLabel?: string | null;
+  curatorLabel?: string | null;
+  hostLabel?: string | null;
+  hasCover?: boolean;
+  workCount?: number;
+  works?: ArtworkLite[];
+  /** Optional curatorial wall-text or artist note already in the draft. */
+  wallText?: string | null;
+};
+
+export function buildExhibitionReviewContext(input: ExhibitionReviewInput): string {
+  const works = (input.works ?? []).slice(0, 12).map((a) => ({
+    id: a.id,
+    title: a.title ?? "",
+    year: a.year ?? "",
+    medium: a.medium ?? "",
+  }));
+  return [
+    `locale: ${input.locale ?? "ko"}`,
+    `title: ${(input.title ?? "").slice(0, 200)}`,
+    `description: ${(input.description ?? "").slice(0, 800)}`,
+    `wall_text: ${(input.wallText ?? "").slice(0, 800)}`,
+    `start_date: ${input.startDate ?? ""}`,
+    `end_date: ${input.endDate ?? ""}`,
+    `venue: ${input.venueLabel ?? ""}`,
+    `curator: ${input.curatorLabel ?? ""}`,
+    `host: ${input.hostLabel ?? ""}`,
+    `has_cover: ${input.hasCover ? "true" : "false"}`,
+    `work_count: ${input.workCount ?? works.length}`,
+    `works: ${JSON.stringify(works)}`,
+  ].join("\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-C — Delegation Brief
+// ─────────────────────────────────────────────────────────────────────
+
+export type DelegationBriefInput = {
+  locale?: string | null;
+  /** Effective profile display name + username for natural references. */
+  principalDisplayName?: string | null;
+  principalUsername?: string | null;
+  /** Calendar/operations counts. All optional, all default to 0. */
+  incompleteDraftCount?: number;
+  unansweredInquiryCount?: number;
+  oldestUnansweredInquiryDays?: number;
+  exhibitionGapsCount?: number;
+  upcomingExhibitionsCount?: number;
+  profileReadinessPercent?: number;
+  /** Whether the principal's profile is currently public. */
+  profileIsPublic?: boolean;
+};
+
+export function buildDelegationBriefContext(input: DelegationBriefInput): string {
+  return [
+    `locale: ${input.locale ?? "ko"}`,
+    `principal_display_name: ${(input.principalDisplayName ?? "").slice(0, 120)}`,
+    `principal_username: ${(input.principalUsername ?? "").slice(0, 64)}`,
+    `incomplete_draft_count: ${input.incompleteDraftCount ?? 0}`,
+    `unanswered_inquiry_count: ${input.unansweredInquiryCount ?? 0}`,
+    `oldest_unanswered_inquiry_days: ${input.oldestUnansweredInquiryDays ?? 0}`,
+    `exhibition_gaps_count: ${input.exhibitionGapsCount ?? 0}`,
+    `upcoming_exhibitions_count: ${input.upcomingExhibitionsCount ?? 0}`,
+    `profile_readiness_percent: ${input.profileReadinessPercent ?? 0}`,
+    `profile_is_public: ${input.profileIsPublic ? "true" : "false"}`,
+  ].join("\n");
+}

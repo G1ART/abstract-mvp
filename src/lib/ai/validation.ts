@@ -545,3 +545,79 @@ export function parseMatchmakerBody(raw: unknown): ValidationResult<{
     },
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-A — Board Pitch Pack body
+// ─────────────────────────────────────────────────────────────────────
+
+export type BoardPitchPackBody = {
+  boardId: string;
+  locale: AiLocale;
+};
+
+export function parseBoardPitchPackBody(raw: unknown): ValidationResult<BoardPitchPackBody> {
+  if (!isRecord(raw)) return { ok: false, reason: "missing_board" };
+  const boardId =
+    typeof raw.boardId === "string" && raw.boardId.trim()
+      ? raw.boardId.trim().slice(0, 64)
+      : null;
+  if (!boardId) return { ok: false, reason: "missing_board" };
+  return {
+    ok: true,
+    value: {
+      boardId,
+      locale: parseLocale(raw.locale),
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-B — Exhibition Review body
+// ─────────────────────────────────────────────────────────────────────
+
+export type ExhibitionReviewBody = {
+  exhibitionId: string;
+  locale: AiLocale;
+};
+
+export function parseExhibitionReviewBody(raw: unknown): ValidationResult<ExhibitionReviewBody> {
+  if (!isRecord(raw)) return { ok: false, reason: "missing_exhibition" };
+  const exhibitionId =
+    typeof raw.exhibitionId === "string" && raw.exhibitionId.trim()
+      ? raw.exhibitionId.trim().slice(0, 64)
+      : null;
+  if (!exhibitionId) return { ok: false, reason: "missing_exhibition" };
+  return {
+    ok: true,
+    value: {
+      exhibitionId,
+      locale: parseLocale(raw.locale),
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// P1-C — Delegation Brief body
+// ─────────────────────────────────────────────────────────────────────
+
+export type DelegationBriefBody = {
+  /** The principal (effective profile) the operator is acting as. */
+  actingAsProfileId: string;
+  locale: AiLocale;
+};
+
+export function parseDelegationBriefBody(raw: unknown): ValidationResult<DelegationBriefBody> {
+  if (!isRecord(raw)) return { ok: false, reason: "missing_acting_as" };
+  const actingAsProfileId =
+    typeof raw.actingAsProfileId === "string" && raw.actingAsProfileId.trim()
+      ? raw.actingAsProfileId.trim().slice(0, 64)
+      : null;
+  if (!actingAsProfileId) return { ok: false, reason: "missing_acting_as" };
+  return {
+    ok: true,
+    value: {
+      actingAsProfileId,
+      locale: parseLocale(raw.locale),
+    },
+  };
+}

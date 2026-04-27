@@ -217,4 +217,84 @@ export type AiFeatureKey =
   | "exhibition_draft"
   | "inquiry_reply_draft"
   | "intro_message_draft"
-  | "matchmaker_rationales";
+  | "matchmaker_rationales"
+  | "board_pitch_pack"
+  | "exhibition_review"
+  | "delegation_brief";
+
+/**
+ * P1-A — Board Pitch Pack: a small "press kit" for an existing board so
+ * curators/galleries can copy a 3-paragraph summary, a single throughline,
+ * and a per-work pitch line without leaking price / collection info.
+ */
+export type BoardPitchPackDraftKind = "summary" | "outreach" | "wall_text";
+
+export type BoardPitchPackDraft = {
+  kind: BoardPitchPackDraftKind;
+  body: string;
+};
+
+export type BoardPitchPackResult = AiDegradation & {
+  /** 1–2 sentence elevator summary of the board's editorial throughline. */
+  summary: string;
+  /** Single sentence the artist or gallery can re-use as a "what is this?" line. */
+  throughline: string;
+  /** Specific facts the model would have liked but the board didn't supply. */
+  missingInfo: string[];
+  /** Up to 3 free-form passages, e.g. summary / outreach / wall text. */
+  drafts: BoardPitchPackDraft[];
+  /**
+   * Optional per-work talking points keyed by artwork id from the board.
+   * Each entry is one sentence; never includes price or collection info.
+   */
+  perWork?: Array<{ artworkId: string; line: string }>;
+};
+
+/**
+ * P1-B — Exhibition Review: a pre-publish review for an exhibition draft.
+ * The model returns a checklist of editorial gaps + 2–3 alternative copy
+ * blocks the curator can paste back into the exhibition editor.
+ */
+export type ExhibitionReviewSeverity = "info" | "suggest" | "warn";
+
+export type ExhibitionReviewIssue = {
+  id: string;
+  severity: ExhibitionReviewSeverity;
+  /** Short label e.g. "missing_dates", "wall_text_thin". */
+  code: string;
+  /** Human prose. */
+  message: string;
+  /** Suggested fix copy (optional). */
+  suggestion?: string;
+};
+
+export type ExhibitionReviewResult = AiDegradation & {
+  readiness: number; // 0-100
+  issues: ExhibitionReviewIssue[];
+  /** Optional revised copy blocks (title / description / wall_text variants). */
+  drafts?: { kind: ExhibitionDraftKind; body: string }[];
+};
+
+/**
+ * P1-C — Delegation Brief: a calm, prioritised brief for an operator
+ * (delegate) acting on behalf of an artist. Only effective-profile
+ * signals are sent to the model — never another principal's data.
+ */
+export type DelegationBriefPriority = {
+  id: string;
+  /** Free-form headline e.g. "Fill 3 incomplete drafts". */
+  title: string;
+  /** Why this matters in one sentence. */
+  reason: string;
+  /** Optional path the operator can deep-link to. */
+  href?: string;
+};
+
+export type DelegationBriefResult = AiDegradation & {
+  /** 2–4 prioritised actions the operator should take this session. */
+  priorities: DelegationBriefPriority[];
+  /** "Watch items" — risks the operator should keep an eye on. */
+  watchItems: string[];
+  /** Optional draft message the operator can paste back to the principal. */
+  draftMessage?: string;
+};

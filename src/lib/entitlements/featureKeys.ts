@@ -25,6 +25,12 @@ export const FEATURE_KEYS = [
   "ai.exhibition_copy_assist",
   "ai.intro_assist",
   "ai.studio_intelligence",
+  // P1 AI workflow assistants — additive. plan_matrix seeds them open
+  // for every plan during beta so no visible paywall appears; ceilings
+  // can be added later via plan_quota_matrix without code changes.
+  "ai.board_pitch_pack",
+  "ai.exhibition_review",
+  "ai.delegation_brief",
 
   // Boards (shortlists + rooms)
   "board.pro_create",

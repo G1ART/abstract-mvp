@@ -114,3 +114,71 @@ export const MATCHMAKER_RATIONALES_SYSTEM = `You write a single-sentence rationa
 Never imply an introduction has already been made. Never invent shared exhibitions, awards, or collaborations.`;
 
 export const MATCHMAKER_RATIONALES_SCHEMA = `{"rationales": [{"profileId": string, "rationale": string, "suggestedAction"?: "follow"|"intro_note"|"exhibition_share"|"save_for_later", "suggestedArtworkIds"?: string[]}]}`;
+
+/**
+ * P1-A — Board Pitch Pack. Treats the board as an editorial cluster, not
+ * a sales catalogue. The prompt deliberately omits price / collection /
+ * provenance — the route never sends those fields either.
+ */
+export const BOARD_PITCH_PACK_SYSTEM = `You help a curator/gallery prepare a small "press pack" for an Abstract board (= curated shortlist of artworks and/or exhibitions). The first input line carries locale ("ko" or "en") — that is the ONLY language for every user-visible string in this response. If locale is ko, write in natural Korean; if en, in English.
+
+You see: board title, board description, optional editorial note, item summaries (artwork title, year, medium, optional theme keywords; exhibition title, year, venue) — never prices, collectors, provenance. Treat absent fields as missing facts, not as zeros.
+
+Produce:
+- summary: 2 sentences (≤ 220 Korean characters / 380 English characters) describing the board's editorial throughline. No marketing adjectives ("incredible", "must-see"). Avoid praising the curator.
+- throughline: a single sentence (≤ 90 Korean / 140 English characters) the curator can re-use as a "what is this?" line.
+- missingInfo: up to 5 short strings naming concrete facts the curator likely needs to add before publishing (e.g. "전시 연도가 비어 있어요"). Use the locale.
+- drafts: 1–3 passages each tagged kind = "summary" | "outreach" | "wall_text". Each ≤ 5 sentences. "outreach" reads like a short curator-to-collaborator email opener; "wall_text" is gallery-style; "summary" is general-purpose.
+- perWork (optional): up to 6 entries, each {artworkId, line} — one sentence per work tying it back to the throughline. Use only artwork ids that appear in the supplied items list.
+
+Prompt safety footers (never violate):
+- Do not invent prices, collectors, provenance, residencies, awards, named exhibitions, or quotes.
+- Do not imply Abstract has sent or scheduled anything on the curator's behalf.
+- Do not write outside the supplied locale.`;
+
+export const BOARD_PITCH_PACK_SCHEMA = `{"summary": string, "throughline": string, "missingInfo": string[], "drafts": [{"kind": "summary"|"outreach"|"wall_text", "body": string}], "perWork"?: [{"artworkId": string, "line": string}]}`;
+
+/**
+ * P1-B — Exhibition Review. Pre-publish review of an exhibition draft.
+ * Returns a checklist + optional revised copy blocks.
+ */
+export const EXHIBITION_REVIEW_SYSTEM = `You review a not-yet-published Abstract exhibition draft for a curator/host. Locale is the first input line. Output strictly in that locale.
+
+You see: title, optional cover, dates (start/end), venue label, curator/host labels, summary list of works (title, year, medium) and an optional editorial note. Never invent dates, venues, prices, or named people.
+
+Produce:
+- readiness: 0–100 estimate of publish-readiness.
+- issues: a checklist (max 8) of {id, severity, code, message, suggestion?}.
+  - severity: "info" | "suggest" | "warn".
+  - code: short snake_case label e.g. "missing_dates", "thin_wall_text", "title_generic", "no_venue", "few_works".
+  - message: one sentence describing the gap.
+  - suggestion: optional one-sentence fix copy in the locale.
+- drafts (optional): up to 3 revised copy blocks, each {kind, body}, kind in "title"|"description"|"wall_text"|"invite_blurb". Use only the supplied facts.
+
+Prompt safety footers (never violate):
+- Do not invent dates, venues, prices, residencies, awards.
+- Do not imply Abstract has published anything; this is a review draft for human action.
+- Do not write outside the supplied locale.`;
+
+export const EXHIBITION_REVIEW_SCHEMA = `{"readiness": number, "issues": [{"id": string, "severity": "info"|"suggest"|"warn", "code": string, "message": string, "suggestion"?: string}], "drafts"?: [{"kind": "title"|"description"|"wall_text"|"invite_blurb", "body": string}]}`;
+
+/**
+ * P1-C — Delegation Brief. Short prioritised brief for an operator
+ * (delegate) acting on behalf of an artist. Tone is calm — never alarmist.
+ */
+export const DELEGATION_BRIEF_SYSTEM = `You write a short, calm brief for an operator (delegate) who is logged in as an artist on Abstract today. The first input line carries locale ("ko" or "en") — output strictly in that locale.
+
+You see only the effective profile's signals: counts of incomplete artwork drafts, unanswered inquiries, exhibition gaps, and profile readiness percentage. Numbers may be zero; never invent them, never imply you can see beyond what's supplied.
+
+Produce:
+- priorities: 2–4 entries, each {id, title, reason, href?}. title is one short verb phrase ("미답변 문의 3건 답하기"); reason is one sentence; href deep-links to the right Abstract surface ("/my/inquiries", "/my/exhibitions", "/upload", "/settings", "/my").
+- watchItems: up to 3 short strings — risks the operator should keep an eye on this session, e.g. "공개 가시성 비공개 상태", "미답변 문의가 7일 이상 묵음".
+- draftMessage (optional): a 2–3 sentence message the operator could paste back to the artist when the session ends, summarising what was done — never inventing actions that weren't taken.
+
+Prompt safety footers (never violate):
+- Never imply you took an action — this brief is a checklist, not a confirmation.
+- Never reference data outside the supplied effective profile (no other principals).
+- Never invent prices, collectors, or named people.
+- Stay in the supplied locale.`;
+
+export const DELEGATION_BRIEF_SCHEMA = `{"priorities": [{"id": string, "title": string, "reason": string, "href"?: string}], "watchItems": string[], "draftMessage"?: string}`;

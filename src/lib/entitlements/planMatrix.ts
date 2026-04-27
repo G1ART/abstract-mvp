@@ -35,6 +35,11 @@ export const PLAN_FEATURE_MATRIX: Record<FeatureKey, PlanKey[]> = {
   "ai.exhibition_copy_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
   "ai.intro_assist": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
   "ai.studio_intelligence": ["artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  // P1 AI workflow assistants — beta-friendly, every plan including free.
+  // Visible paywalls intentionally avoided; quotas may be added later.
+  "ai.board_pitch_pack": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.exhibition_review": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "ai.delegation_brief": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
 
   // Boards
   "board.pro_create": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],

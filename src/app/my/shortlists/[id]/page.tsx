@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
+import { BoardPitchPackPanel } from "@/components/board/BoardPitchPackPanel";
 import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import { useT } from "@/lib/i18n/useT";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
@@ -234,6 +235,8 @@ function ShortlistDetailContent() {
           {t("boards.share.resetLink")}
         </button>
       </div>
+
+      <BoardPitchPackPanel boardId={id} />
 
       {/* People */}
       <div className="mb-6">

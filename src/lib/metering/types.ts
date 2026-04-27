@@ -17,6 +17,9 @@ export type UsageEventKey =
   | "ai.portfolio_copilot.generated"
   | "ai.studio_digest.generated"
   | "ai.matchmaker_rationales.generated"
+  | "ai.board_pitch_pack.generated"
+  | "ai.exhibition_review.generated"
+  | "ai.delegation_brief.generated"
   | "ai.accepted"
   // Boards / shortlists
   | "board.created"
