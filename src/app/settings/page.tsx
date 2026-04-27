@@ -30,6 +30,7 @@ import {
 import { BuildStamp } from "@/components/BuildStamp";
 import { BioDraftAssist } from "@/components/ai/BioDraftAssist";
 import { ProfileMediaUploader } from "@/components/profile/ProfileMediaUploader";
+import { StatementDraftAssist } from "@/components/profile/StatementDraftAssist";
 import { updateMyProfileBasePatch } from "@/lib/supabase/profiles";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
@@ -229,7 +230,7 @@ function TaxonomyChipSelect({
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
   const [username, setUsername] = useState<string | null>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const initialUsernameRef = useRef<string>("");
@@ -1026,6 +1027,21 @@ export default function SettingsPage() {
                   <p className="text-xs text-zinc-500">
                     {t("settings.identity.statementHint")}
                   </p>
+                  <StatementDraftAssist
+                    profileInput={{
+                      display_name: displayName || null,
+                      role: mainRole || null,
+                      bio: bio || null,
+                      themes,
+                      mediums,
+                      city: city || null,
+                      locale,
+                      currentStatement: statement || null,
+                    }}
+                    onUseDraft={(draft) => {
+                      setStatement(draft);
+                    }}
+                  />
                 </div>
 
                 <ProfileMediaUploader

@@ -21,10 +21,22 @@ export type ProfileContextInput = {
     views7d?: number;
     views30d?: number;
   };
+  /**
+   * P1-0 Statement extension. When `mode === "statement"`, the route picks
+   * the statement system prompt and the model returns 2-3 statementDrafts
+   * grounded in the supplied themes/mediums/selectedArtworks.
+   */
+  mode?: "general" | "statement";
+  /** Existing statement (if any) so the model can re-anchor instead of inventing. */
+  currentStatement?: string | null;
+  /** Optional themes detail (richer than the chip slugs) the user has elaborated on. */
+  themesDetail?: string | null;
+  /** Optional artworks the artist wants the statement to gesture at by title. */
+  selectedArtworks?: { title?: string | null; year?: string | number | null; medium?: string | null }[];
 };
 
 export function buildProfileCopilotContext(input: ProfileContextInput): string {
-  const lines = [
+  const base: string[] = [
     `display_name: ${input.display_name ?? ""}`,
     `username: ${input.username ?? ""}`,
     `role: ${input.role ?? ""}`,
@@ -35,7 +47,18 @@ export function buildProfileCopilotContext(input: ProfileContextInput): string {
     `locale: ${input.locale ?? "ko"}`,
     `counts: ${JSON.stringify(input.counts ?? {})}`,
   ];
-  return lines.join("\n");
+  if (input.mode === "statement") {
+    base.push(`mode: statement`);
+    base.push(`current_statement: ${(input.currentStatement ?? "").slice(0, 1200)}`);
+    base.push(`themes_detail: ${(input.themesDetail ?? "").slice(0, 600)}`);
+    const works = (input.selectedArtworks ?? []).slice(0, 6).map((a) => ({
+      title: a.title ?? "",
+      year: a.year ?? "",
+      medium: a.medium ?? "",
+    }));
+    base.push(`selected_artworks: ${JSON.stringify(works)}`);
+  }
+  return base.join("\n");
 }
 
 export type ArtworkLite = {

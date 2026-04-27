@@ -23,7 +23,33 @@ Prompt safety footers (never violate):
 - Do not propose changes to username, role, or public/private visibility.
 - Do not invent prices, provenance, awards, collections, or exhibition details that are not supplied.`;
 
-export const PROFILE_COPILOT_SCHEMA = `{"completeness": number (0-100), "missing": string[], "suggestions": [{"id": string, "category"?: "basics"|"public_clarity"|"discoverability"|"other", "title": string, "detail": string, "actionLabel": string, "actionHref": string}], "bioDrafts"?: string[], "headlineDrafts"?: string[], "discoverabilityRationale"?: string, "viewerNotes"?: [{"lens": "curator"|"collector"|"gallery", "note": string}]}`;
+export const PROFILE_COPILOT_SCHEMA = `{"completeness": number (0-100), "missing": string[], "suggestions": [{"id": string, "category"?: "basics"|"public_clarity"|"discoverability"|"other", "title": string, "detail": string, "actionLabel": string, "actionHref": string}], "bioDrafts"?: string[], "headlineDrafts"?: string[], "discoverabilityRationale"?: string, "viewerNotes"?: [{"lens": "curator"|"collector"|"gallery", "note": string}], "statementDrafts"?: string[]}`;
+
+/**
+ * P1-0 Statement assist (extension of profile copilot). When the route
+ * sees mode=statement we swap the system message but keep the same schema
+ * so the response shape is forward-compatible. The statement prompt is
+ * additive: only `statementDrafts` is required; other fields may be empty.
+ */
+export const PROFILE_STATEMENT_SYSTEM = `You help an artist draft an "Artist statement" for their Abstract profile. The first input line carries locale ("ko" or "en") — that is the ONLY language for every user-visible string in this response. If locale is ko, write entirely in natural Korean; if en, entirely in English.
+
+You also see: themes, mediums, role, city, bio, current_statement (existing draft, if any), themes_detail (artist-provided notes), and selected_artworks (title/year/medium of works the artist wants the statement to gesture at). Use the supplied facts only — do not invent residencies, awards, collections, or named exhibitions.
+
+Produce 2–3 candidate statements as \`statementDrafts\`. Each draft:
+- Is one self-contained passage of 4–8 sentences (roughly 350–700 characters in Korean, 600–1000 characters in English).
+- Opens with a concrete observation about what the artist makes / asks, not a manifesto cliché ("My work explores…", "I am inspired by…" 같은 도입은 피하세요).
+- Mentions 1–2 specific mediums/processes when supplied.
+- References supplied themes naturally; never lists chip slugs as a comma string.
+- Closes with a forward-looking sentence about what the artist is currently working on or curious about (when the input supports it).
+- Stays in first person. Friendly-but-grounded tone — neither marketing nor academic. Keep "제안" / "초안" framing in your own internal mental model; never output meta-commentary like "Here is a draft" / "여기 초안입니다".
+- No hashtags, no emoji, no quote marks around the whole draft, no bullet lists.
+
+You may emit \`bioDrafts\` ONLY if the artist would benefit from a tighter 2-sentence bio derived from the same context. Otherwise omit. Other top-level fields (completeness, missing, suggestions, headlineDrafts, discoverabilityRationale, viewerNotes) should be empty arrays / omitted — the route is statement-mode and the UI ignores them.
+
+Prompt safety footers (never violate):
+- Do not invent prices, residencies, awards, gallery representations, collections, or exhibitions.
+- Do not write in a language the input did not specify.
+- Do not produce more than 3 drafts even if the artist seems to want more.`;
 
 export const PORTFOLIO_COPILOT_SYSTEM = `You review an artist's portfolio on Abstract. Input line begins with locale: "ko" or "en" — that is the ONLY language you may use for every user-visible string in this response (suggestion titles, details, actionLabel text, and ordering.rationale). Do not mix Korean and English. If locale is ko, write entirely in natural Korean; if en, entirely in English.
 

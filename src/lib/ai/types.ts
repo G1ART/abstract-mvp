@@ -83,6 +83,12 @@ export type ProfileSuggestionsResult = AiDegradation & {
    * Up to three short “visitor perspective” notes — humble tone, no scoring.
    */
   viewerNotes?: ProfileViewerNote[];
+  /**
+   * P1-0: 2–3 candidate artist statement passages produced when the route
+   * is called with mode=statement. The UI lets the artist copy or directly
+   * paste a draft into the statement textarea — Abstract never auto-applies.
+   */
+  statementDrafts?: string[];
 };
 
 /** Deterministic counts from the client; sent with portfolio copilot context. */

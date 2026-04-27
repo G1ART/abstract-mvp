@@ -3,6 +3,7 @@ import { buildProfileCopilotContext, type ProfileContextInput } from "@/lib/ai/c
 import {
   PROFILE_COPILOT_SCHEMA,
   PROFILE_COPILOT_SYSTEM,
+  PROFILE_STATEMENT_SYSTEM,
 } from "@/lib/ai/prompts";
 import type { ProfileSuggestionsResult } from "@/lib/ai/types";
 import { parseProfileBody } from "@/lib/ai/validation";
@@ -19,17 +20,26 @@ export async function POST(req: Request) {
     },
     async buildPromptInput({ body }) {
       const user = buildProfileCopilotContext(body);
+      const isStatement = body.mode === "statement";
       return {
-        system: PROFILE_COPILOT_SYSTEM,
+        system: isStatement ? PROFILE_STATEMENT_SYSTEM : PROFILE_COPILOT_SYSTEM,
         user,
         schemaHint: PROFILE_COPILOT_SCHEMA,
-        fallback: () => ({
-        completeness: 0,
-        missing: [],
-        suggestions: [],
-        bioDrafts: [],
-        headlineDrafts: [],
-      }),
+        fallback: () =>
+          isStatement
+            ? {
+                completeness: 0,
+                missing: [],
+                suggestions: [],
+                statementDrafts: [],
+              }
+            : {
+                completeness: 0,
+                missing: [],
+                suggestions: [],
+                bioDrafts: [],
+                headlineDrafts: [],
+              },
       };
     },
   });

@@ -188,6 +188,31 @@ function parsePortfolioMetadataGaps(v: unknown): PortfolioMetadataGaps {
   };
 }
 
+type ParsedArtworkLite = { title: string; year: string | number | null; medium: string | null };
+
+function parseArtworksLite(v: unknown, max = 6): ParsedArtworkLite[] {
+  if (!Array.isArray(v)) return [];
+  const out: ParsedArtworkLite[] = [];
+  for (const item of v.slice(0, max)) {
+    if (!isRecord(item)) continue;
+    const title = trimOrNull(item.title, 200) ?? "";
+    if (!title) continue;
+    const yearRaw = item.year;
+    const year =
+      typeof yearRaw === "number"
+        ? yearRaw
+        : typeof yearRaw === "string"
+          ? trimOrNull(yearRaw, 16)
+          : null;
+    out.push({
+      title,
+      year: year ?? null,
+      medium: trimOrNull(item.medium, 200),
+    });
+  }
+  return out;
+}
+
 export function parseProfileBody(raw: unknown): ValidationResult<{
   display_name: string | null;
   username: string | null;
@@ -198,10 +223,16 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
   city: string | null;
   locale: AiLocale;
   counts: { artworks?: number; exhibitions?: number; followers?: number; views7d?: number };
+  mode: "general" | "statement";
+  currentStatement: string | null;
+  themesDetail: string | null;
+  selectedArtworks: ParsedArtworkLite[];
 }> {
   if (!isRecord(raw) || !isRecord(raw.profile)) return { ok: false, reason: "missing_profile" };
   const p = raw.profile;
   const counts = isRecord(p.counts) ? p.counts : {};
+  const modeRaw = typeof p.mode === "string" ? p.mode : "general";
+  const mode: "general" | "statement" = modeRaw === "statement" ? "statement" : "general";
   return {
     ok: true,
     value: {
@@ -219,6 +250,10 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
         followers: numberOrNull(counts.followers) ?? 0,
         views7d: numberOrNull(counts.views7d) ?? 0,
       },
+      mode,
+      currentStatement: trimOrNull(p.currentStatement, 4000),
+      themesDetail: trimOrNull(p.themesDetail, 1200),
+      selectedArtworks: parseArtworksLite(p.selectedArtworks, 6),
     },
   };
 }
