@@ -2,6 +2,54 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Upgrade Phase 1 (백엔드 토대: 스키마·구조화 에러·헬퍼·Activity Log)
+
+### 동기
+
+위임(Delegation)은 단순 초대 폼이 아니라 *"계정 운영 함께 관리·전시 게시물 공동 관리"* 를 안전하게 공유할 수 있는 **유료 등급 핵심 기능 후보**다. 이를 위해 (a) 스키마에 라이프사이클 필드와 `declined`/`expired` 상태가 빠져 있고, (b) RPC 가 영문 문장으로만 에러를 던져 클라이언트가 텍스트 매칭으로 분기하던 구조를 정리. (c) `acting_context_events` 외 위임 라이프사이클을 기록할 감사 로그가 부재했다.
+
+이번 phase 는 **백엔드만** 손봤고, 프론트는 동작 호환을 유지(추후 phase 2 에서 IA / wizard / drawer 적용 예정).
+
+### 변경 (백엔드)
+
+| 영역 | 파일 | 변경 |
+|---|---|---|
+| **스키마** | `supabase/migrations/20260503000000_delegations_phase1_schema.sql` | `delegation_status_type` 에 `declined`·`expired` 추가(additive). `delegation_preset_type` enum 신설(`operations / content / review / project_co_edit / project_works_only / project_review`). `delegations` 에 `invited_at / accepted_at / declined_at / revoked_at / expires_at / invited_by / revoked_by / note / preset` 컬럼 추가 후 `invited_at = created_at` 백필. `delegation_preset_permissions(p)` SQL 함수가 권한의 단일 출처. `delegation_preset_is_valid_for_scope(preset, scope)` 헬퍼. |
+| **RPC 재작성** | `supabase/migrations/20260503000100_delegations_phase1_rpcs.sql` | `create_delegation_invite` / `_for_profile` 에 `p_preset` / `p_note` (default null) 옵션 추가. preset 이 있으면 `permissions[]` 를 서버측에서 맵으로 덮어써 클라이언트가 임의 권한을 주입할 수 없음(보안 단일 출처). 모든 RPC 의 `raise exception` 메시지가 안정 lowercase 코드 키워드(`cannot_invite_self / duplicate_pending_invite / project_not_found / permission_denied / invalid_scope / missing_email / delegate_not_found`)로 정리. `accept_*` 는 `accepted_at` 기록, `decline_delegation_by_id` 는 **상태를 `declined` 로** 기록(이전엔 `revoked` 로 폴백되었음). `revoke_delegation` 은 `revoked_at` + `revoked_by` 기록. `list_my_delegations` 는 라이프사이클 일자·preset·note 까지 반환. |
+| **권한 헬퍼** | `supabase/migrations/20260503000200_delegation_permission_helpers.sql` | `is_active_account_delegate(owner, delegate)`, `is_active_project_delegate(project, delegate)`, `has_account_delegate_permission(owner, delegate, perm)`, `has_project_delegate_permission(project, delegate, perm)` 4종을 SECURITY DEFINER 로 추가. 기존 정책의 인라인 EXISTS 본문은 변경 없음(병행 운영). |
+| **Activity log** | `supabase/migrations/20260503000300_delegation_activity_events.sql` | `delegation_activity_events` 테이블 + RLS(참여자만 읽기, 직접 INSERT 차단). `record_delegation_event(...)` SECURITY DEFINER 헬퍼. 라이프사이클 RPC(create / accept-by-id / accept-by-token / decline / revoke / 트리거 자동 수락) 가 본인 트랜잭션 안에서 이벤트 1건 append. `get_delegation_detail(id)` RPC: 위임 + 양측 프로필 + 프로젝트 + 최근 25건 이벤트를 묶어 드로어용 페이로드 반환. |
+| **TS 클라이언트 호환** | `src/lib/supabase/delegations.ts` | `DelegationStatus` 에 `declined / expired` 추가. `DelegationPreset` / `ACCOUNT_PRESETS` / `PROJECT_PRESETS` / `PRESET_PERMISSIONS` export. `createDelegationInvite*` 시그니처에 `preset` / `note` 옵션. `getDelegationDetail` 신규. 라이프사이클 일자 필드 매핑. |
+| **에러 분류 호환** | `src/lib/delegation/inviteErrors.ts` | 새 코드 키워드(`cannot_invite_self / duplicate_pending_invite / ...`) 우선 매칭, 영문 레거시 문장은 fallback. i18n 매핑은 phase 2 에서 `delegation.error.<code>` 키로 확장 예정. |
+
+### 회귀 방지
+
+- 정책 본문 / 정책 이름 변경 없음 (`projects_update_curator_or_delegate` 등 그대로).
+- 기존 RPC 호출자(`createDelegationInviteForProfile`, `acceptDelegationById`, `declineDelegationById`, `revokeDelegation`, `listMyDelegations`) 시그니처는 모두 호환 유지(추가 파라미터는 default null).
+- 프론트 텍스트 매칭(`classifyDelegationInviteError`)은 신규 코드 + 레거시 영문 문장 둘 다 인식하도록 양방향 호환.
+- `delegations` 의 기존 `'revoked'` 행(과거 거절 포함)은 그대로 보존(읽기 전용).
+
+### 검증
+
+- `npx tsc --noEmit` 통과.
+- 마이그레이션은 모두 `if not exists / create or replace` 패턴, idempotent.
+
+### Supabase SQL 적용 필요
+
+**예** — 다음 4개 마이그레이션을 SQL Editor 에서 순서대로 실행:
+
+1. `20260503000000_delegations_phase1_schema.sql`
+2. `20260503000100_delegations_phase1_rpcs.sql`
+3. `20260503000200_delegation_permission_helpers.sql`
+4. `20260503000300_delegation_activity_events.sql`
+
+`ALTER TYPE ... ADD VALUE` 가 포함되어 있어 phase 2 마이그레이션 적용 전에 1번이 반드시 commit 되어 있어야 한다(Postgres 는 같은 트랜잭션 안에서 새 enum 값을 사용할 수 없음).
+
+### 환경 변수
+
+추가/변경 없음.
+
+---
+
 ## 2026-04-27 — QA Stabilization P0.5 (프로필 저장·온보딩 루프·비공개 미리보기·위임)
 
 ### 동기
