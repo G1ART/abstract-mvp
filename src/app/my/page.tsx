@@ -36,6 +36,7 @@ import {
 } from "@/lib/supabase/exhibitions";
 import { getProfileById } from "@/lib/supabase/profiles";
 import { getBoardSaveSignals, type BoardSaveSignal } from "@/lib/supabase/shortlists";
+import { listMyDelegations } from "@/lib/supabase/delegations";
 import {
   StudioHero,
   StudioHeroPanel,
@@ -67,6 +68,7 @@ export default function MyPage() {
   const [pendingClaimsCount, setPendingClaimsCount] = useState(0);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
   const [boardSaveSignal, setBoardSaveSignal] = useState<BoardSaveSignal | null>(null);
+  const [pendingInboundDelegations, setPendingInboundDelegations] = useState<number>(0);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
   const [, setLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -176,24 +178,40 @@ export default function MyPage() {
       }
 
       if (profileData?.id) {
-        const [countRes, inquiryCountRes, claimsCountRes, messagesUnread, boardSignalRes] =
-          await Promise.all([
-            getProfileViewsCount(profileData.id, 7),
-            getMyPriceInquiryCount(effectiveProfileId ?? undefined),
-            getMyPendingClaimsCount(effectiveProfileId ?? undefined),
-            effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
-            // Only meaningful for the authenticated user's own artwork set.
-            // When acting-as a gallery, suppress to avoid leaking wrong
-            // scope; the signal is scoped to auth.uid()'s works regardless.
-            effectiveProfileId
-              ? Promise.resolve({ data: { boards_count: 0, savers_count: 0 }, error: null })
-              : getBoardSaveSignals(),
-          ]);
+        const [
+          countRes,
+          inquiryCountRes,
+          claimsCountRes,
+          messagesUnread,
+          boardSignalRes,
+          delegationsRes,
+        ] = await Promise.all([
+          getProfileViewsCount(profileData.id, 7),
+          getMyPriceInquiryCount(effectiveProfileId ?? undefined),
+          getMyPendingClaimsCount(effectiveProfileId ?? undefined),
+          effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
+          // Only meaningful for the authenticated user's own artwork set.
+          // When acting-as a gallery, suppress to avoid leaking wrong
+          // scope; the signal is scoped to auth.uid()'s works regardless.
+          effectiveProfileId
+            ? Promise.resolve({ data: { boards_count: 0, savers_count: 0 }, error: null })
+            : getBoardSaveSignals(),
+          // Pending inbound count only for the real user; when acting-as,
+          // delegate-side context belongs to the original session, not the
+          // managed account. RPC scopes by auth.uid() either way.
+          effectiveProfileId
+            ? Promise.resolve({ data: { sent: [], received: [] }, error: null })
+            : listMyDelegations(),
+        ]);
         setProfileViewsCount(countRes.data);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
         setUnreadMessagesCount(messagesUnread ?? 0);
         setBoardSaveSignal(boardSignalRes.data ?? null);
+        const received = delegationsRes.data?.received ?? [];
+        setPendingInboundDelegations(
+          received.filter((d) => d.status === "pending").length
+        );
         if (effectiveProfileId) {
           const { data: exData } = await listExhibitionsForProfile(profileData.id);
           setExhibitions(
@@ -398,6 +416,7 @@ export default function MyPage() {
                   publicHref={profile.username ? `/u/${profile.username}` : null}
                   followersCount={stats?.followersCount ?? 0}
                   followingCount={stats?.followingCount ?? 0}
+                  pendingInboundDelegations={pendingInboundDelegations}
                 />
               }
               rail={<StudioNextStepsRail actions={studioActions} />}

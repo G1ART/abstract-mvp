@@ -2,6 +2,64 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Upgrade Phase 5 (My Studio 메인 승격 · 펜딩 도트 배지)
+
+위임 진입점을 우상단 아바타 드롭다운에서 **My Studio 좌상단 액션 트라이어드**로 승격. "프로필 편집 / 공개 프로필 미리보기 / 위임" 세 secondary 버튼이 같은 시각 무게로 모여 **소유자-관리 클러스터**를 형성. 글로벌 탭 (피드/사람/업로드) 추가 안 — IA tier mismatch 회피.
+
+### 결정 근거 (요약)
+
+(1) 글로벌 탭 승격 vs (2) My Studio 액션 행 vs (3) Hybrid 검토 결과 **(2) 채택 + 도트 배지 보강**:
+
+- **Tier mismatch**: 글로벌 탭은 *daily primary loops* (소비/발견/창작) 자리. 위임은 *administrative surface* — Notion/Linear/Slack/GitHub 모두 admin 자리에 배치.
+- **Attention budget**: 10–20% 사용자가 가끔 쓰는 기능에 100% 사용자의 시야를 영구 점유시키는 비대칭 비용 회피.
+- **Empty-state misfire**: 글로벌 탭 = "클릭=즉시 가치" 계약. 위임 빈 화면은 그 약속을 위반.
+- **Mental model 보존**: "피드/사람/업로드" 콘텐츠 동사 3 종 분류 학습 보호.
+- **다른 진입점 충분**: PR2-4 에서 종 알림 라우팅, acting-as strip "권한 보기", 전시 in-context CTA, 아바타 드롭다운 escape hatch 모두 작동 중.
+
+### 변경
+
+| 영역 | 파일 | 변경 |
+|---|---|---|
+| **My Studio 메인 진입점** | `src/components/studio/StudioHero.tsx` | 액션 행에 secondary 버튼 1 개 추가 (`/my/delegations`). "프로필 편집 / 공개 프로필 미리보기 / 위임" 트라이어드 완성. `data-tour="studio-delegations"` 앵커도 같이 (향후 투어 v8 에서 활용 가능). |
+| **펜딩 인바운드 도트 배지** | `src/components/studio/StudioHero.tsx` | 새 prop `pendingInboundDelegations`. `> 0` 일 때 버튼 우상단에 `bg-rose-500 h-2 w-2` 도트 1 개 (ring-2 ring-white). 숫자 뱃지는 의도적으로 회피 — 카운트는 허브 안쪽에서 보여줌. aria-label 로 스크린리더에도 신호. |
+| **카운트 fetch** | `src/app/my/page.tsx` | 기존 5 개 병렬 fetch 군에 `listMyDelegations()` 추가 (총 6 개로). 클라이언트에서 `received.filter(d => d.status === "pending").length` 로 카운트 산정. 새 SQL/RPC 추가 없음. **acting-as 컨텍스트에선 fetch 스킵** (대리 활동 중엔 본인 위임 도트 노출하지 않음). |
+| **i18n** | `src/lib/i18n/messages.ts` | `studio.hero.delegations` (한: "위임", 영: "Delegations"), `studio.hero.delegationsPendingDot` (한·영) 추가. "권한 위임" 같은 어드민 톤 회피. |
+
+### 진입점 매트릭스 (이번 패치 후)
+
+| 진입점 | 의도 | 상태 |
+|---|---|---|
+| **My Studio 액션 버튼 "위임"** | 발신 거점 — 내가 위임을 시작할 단일 자리 | ✅ 신규 (이번 PR) |
+| 전시 페이지 "전시 권한 공유" CTA | 스코프 단위 in-context 단축 | ✅ PR3 |
+| 헤더 acting-as strip "권한 보기" | 대리 활동 중 컨텍스트 진입 | ✅ PR2 |
+| 헤더 종 → 위임 알림 클릭 | 수신/응답 진입 | ✅ PR4 |
+| 우상단 아바타 드롭다운 | escape hatch · power-user 단축 | ✅ 유지 |
+| ~~글로벌 탭~~ | — | ❌ 채택 안 |
+
+### 회귀 방지 / QA 체크리스트
+
+- 본인 계정으로 `/my` 진입 → "프로필 편집 / 공개 프로필 미리보기 / 위임" 3 버튼이 같은 톤으로 노출.
+- 위임 버튼 클릭 → `/my/delegations` 이동.
+- 받은 pending 위임이 있을 때 → 버튼 우상단에 작은 점, aria-label 보강.
+- 받은 pending 0 → 점 미표시.
+- acting-as 모드 진입 (다른 계정 대리) → 위임 버튼은 그대로 표시되되 도트는 표시되지 않음 (RPC 호출 자체를 스킵).
+- 모바일 너비에서 액션 행 자연 줄바꿈 (flex-wrap).
+- 다른 위임 진입점 4 종 (전시 CTA, acting-as strip, 종 알림, 아바타 드롭다운) 변동 없음.
+
+### Supabase SQL 적용 필요
+
+**없음**. 이번 패치는 클라이언트 전용. 새 RPC/스키마/RLS 변경 없음.
+
+### 환경 변수
+
+추가/변경 없음.
+
+### 검증
+
+`npx tsc --noEmit` 통과. lint 0 issue (변경 파일 기준).
+
+---
+
 ## 2026-04-27 — Delegation Upgrade Phase 4 (in-app 알림 · 위자드 SMTP 회복)
 
 PR3 직후 검수 중 발견된 두 가지 갭을 닫는다. (1) 위임 라이프사이클이 `public.notifications` 행을 만들지 않아 온보딩된 위임 대상자에게 인앱 알림이 전혀 도달하지 않던 문제, (2) 새 `CreateDelegationWizard` 의 email 탭이 RPC 만 호출하고 `/api/delegation-invite-email` SMTP 엔드포인트를 누락해 외부 초대 메일이 실제로 발송되지 않던 문제. 인앱 알림은 1차 채널, 이메일은 비온보딩 사용자만을 위한 보조 채널이라는 정책을 코드와 일치시킨다.

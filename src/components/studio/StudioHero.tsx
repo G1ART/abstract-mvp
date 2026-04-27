@@ -26,6 +26,12 @@ type Props = {
    */
   followersCount?: number | null;
   followingCount?: number | null;
+  /**
+   * If > 0, a small dot badge is rendered on the Delegations action button
+   * to surface inbound invites awaiting user response. We deliberately
+   * avoid numeric badges here — the count lives inside the hub.
+   */
+  pendingInboundDelegations?: number | null;
 };
 
 function avatarUrl(v: string | null | undefined): string | null {
@@ -47,6 +53,7 @@ export function StudioHero({
   publicHref,
   followersCount,
   followingCount,
+  pendingInboundDelegations,
 }: Props) {
   const { t } = useT();
   const identity = formatIdentityPair(profile);
@@ -155,6 +162,24 @@ export function StudioHero({
                 {t("studio.hero.previewPublic")}
               </Link>
             )}
+            <Link
+              href="/my/delegations"
+              data-tour="studio-delegations"
+              aria-label={
+                (pendingInboundDelegations ?? 0) > 0
+                  ? `${t("studio.hero.delegations")} · ${t("studio.hero.delegationsPendingDot")}`
+                  : t("studio.hero.delegations")
+              }
+              className="relative rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              {t("studio.hero.delegations")}
+              {(pendingInboundDelegations ?? 0) > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute -right-1 -top-1 inline-block h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white"
+                />
+              )}
+            </Link>
           </div>
         </div>
       </div>
