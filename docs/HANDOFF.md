@@ -1,6 +1,43 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
+
+## 2026-04-27 — Hotfix: 프로필 사진/커버 업로드 42804, Statement 비-아티스트 가시성
+
+### 증상
+
+- 프로필 편집 페이지에서 프로필 사진 / 커버 이미지를 고르면 화면 하단에 빨간 글씨로 `CASE types main_role and text cannot be matched` 가 뜨고 저장이 안 됨.
+- 이어서 하단 "저장" 버튼을 누르면 *"저장할 변경 사항이 없습니다"* (UI 상의 변경 없음으로 인지) — 실제로는 위 RPC 실패 때문에 `coverImagePath` / `avatarUrl` 상태가 서버 반영되지 않은 상태.
+- 비-아티스트(큐레이터·컬렉터·갤러리스트) 유저에게도 "작가의 말 / Statement" 편집란이 노출되어 의미 없음.
+
+### 원인
+
+1. `supabase/migrations/20260430000100_upsert_my_profile_identity.sql` 가 P1-0 새 컬럼을 위해 `upsert_my_profile()` 을 `create or replace` 했는데, **2025년 핫픽스 `p0_fix_main_role_case_cast.sql` 의 `main_role text → public.main_role enum cast` 패치를 같이 가져오지 않음**.
+   - 결과적으로 `main_role` 라인이 `case ... then text else enum end` 형태가 되어 PostgreSQL 42804 (CASE types main_role and text cannot be matched)를 던짐.
+   - 이 RPC는 `saveProfileUnified` 단일 SSOT라서 base 패치 한 줄을 보내는 모든 호출(아바타·커버·statement hero auto-save 포함)이 일괄 실패.
+2. Settings 페이지가 `main_role` 무관하게 Statement 텍스트 영역 / Statement 초안 도움 / Statement Hero 업로더를 노출. 공개 프로필 (`UserProfileContent`) 도 동일.
+
+### 패치
+
+| 파일 | 변경 |
+|---|---|
+| `supabase/migrations/20260430000100_upsert_my_profile_identity.sql` | `v_main_role text` 변수 + `v_main_role::public.main_role` 캐스팅 패턴을 `p0_fix_main_role_case_cast.sql` 에서 가져와 P1-0 컬럼 분기와 합침. 향후 이 RPC 재생성 시 enum cast 보존하라는 코멘트 추가. |
+| `src/lib/identity/roles.ts` | `isArtistRole({ main_role, roles })` 헬퍼 신설 — `main_role === "artist"` 또는 `roles[]` 에 `"artist"` 포함 (= 하이브리드 포함). |
+| `src/app/settings/page.tsx` | Statement textarea + length hint + saving badge + `<StatementDraftAssist>` + Statement Hero 업로더 묶음을 `isArtistRole({ main_role: mainRole, roles })` 로 가드. 아바타·커버는 그대로 노출. |
+| `src/components/UserProfileContent.tsx` | 공개 프로필의 `<ArtistStatementSection>` 도 `isArtistRole(...)` 로 가드. 비-아티스트 프로필에서는 read view 와 owner write-prompt 모두 미노출. |
+
+### Supabase SQL 적용 필요
+
+- `supabase/migrations/20260430000100_upsert_my_profile_identity.sql` **재실행 필수** (`create or replace function` 이라 재실행 안전, 그러나 이미 한 번 적용된 잘못된 정의를 덮어써야 42804 가 사라짐).
+- 다른 신규/수정 SQL은 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 기존 `getMyProfile()` 의 `main_role` / `roles` 컬럼 셀렉트는 그대로라 추가 컬럼·인덱스 변경 없음.
+- 환경 변수 변경 없음.
+
+---
 
 ## 2026-04-26 — P1 Profile Identity + AI Workflows
 

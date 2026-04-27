@@ -1,8 +1,15 @@
 -- P1-0: extend upsert_my_profile() to accept the five new identity columns.
 --
--- This is a drop-in replacement of supabase/migrations/p0_profile_ssot_single_rpc.sql
--- with the cover/statement branches appended. All other branches are
+-- This is a drop-in replacement that combines:
+--   - p0_profile_ssot_single_rpc.sql      (original SSOT contract)
+--   - p0_fix_main_role_case_cast.sql      (42804 fix: text -> public.main_role enum)
+-- and appends the cover/statement branches. All other branches are
 -- byte-for-byte identical so the active SSOT save path keeps working.
+--
+-- IMPORTANT: when you regenerate this RPC for a future patch, **always**
+-- preserve the v_main_role text cast pattern from p0_fix_main_role_case_cast.
+-- Without it, every base-patch save raises:
+--   42804: CASE types main_role and text cannot be matched
 
 create or replace function public.upsert_my_profile(
   p_base jsonb,
@@ -17,13 +24,21 @@ as $$
 declare
   v_uid uuid := auth.uid();
   v_row jsonb;
+  v_username text;
+  v_main_role text;
 begin
   if v_uid is null then
     raise exception 'auth.uid() is null';
   end if;
 
-  -- Ensure row exists. If profiles.username is NOT NULL and has no default/trigger,
-  -- this insert may fail for new users. Existing users will be fine.
+  v_username := case
+    when (p_base ? 'username') and nullif(trim(lower(p_base->>'username')), '') is not null
+    then nullif(trim(lower(p_base->>'username')), '')
+    else null
+  end;
+
+  v_main_role := nullif(trim(coalesce(p_base->>'main_role', '')), '');
+
   insert into public.profiles (id, is_public, roles, profile_completeness, profile_details, profile_updated_at, updated_at)
   values (v_uid, true, '{}'::text[], coalesce(p_completeness, 0), coalesce(p_details, '{}'::jsonb), now(), now())
   on conflict (id) do nothing;
@@ -37,13 +52,12 @@ begin
       website      = case when (p_base ? 'website') then nullif(trim(p_base->>'website'), '') else p.website end,
       avatar_url   = case when (p_base ? 'avatar_url') then nullif(trim(p_base->>'avatar_url'), '') else p.avatar_url end,
       is_public    = case when (p_base ? 'is_public') then coalesce((p_base->>'is_public')::boolean, p.is_public) else p.is_public end,
-      main_role    = case when (p_base ? 'main_role') then nullif(trim(p_base->>'main_role'), '') else p.main_role end,
+      main_role    = case when v_main_role is not null then v_main_role::public.main_role else p.main_role end,
       roles        = case when (p_base ? 'roles') and jsonb_typeof(p_base->'roles') = 'array' then
                       (select coalesce(array_agg(x), p.roles) from jsonb_array_elements_text(p_base->'roles') as x)
                     else p.roles end,
       education    = case when (p_base ? 'education') then (p_base->'education') else p.education end,
-      -- optional: allow onboarding to set username via p_base
-      username     = case when (p_base ? 'username') then nullif(trim(lower(p_base->>'username')), '') else p.username end,
+      username     = coalesce(v_username, p.username),
       -- ── P1-0 identity columns (additive) ───────────────────────────────
       cover_image_url = case when (p_base ? 'cover_image_url')
         then nullif(trim(p_base->>'cover_image_url'), '')

@@ -30,6 +30,7 @@ import { Chip, EmptyState } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
 import { ArtistStatementSection } from "@/components/profile/ArtistStatementSection";
+import { isArtistRole } from "@/lib/identity/roles";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
 
@@ -390,11 +391,16 @@ export function UserProfileContent({
         )}
       </div>
 
-      <ArtistStatementSection
-        statement={profile.artist_statement ?? null}
-        heroImagePath={profile.artist_statement_hero_image_url ?? null}
-        isOwner={isOwner}
-      />
+      {/* Statement section is artist-only (incl. hybrid). For non-artist
+          profiles (curator / collector / gallerist) we suppress the surface
+          entirely — both the visible read view and the owner write-prompt. */}
+      {isArtistRole({ main_role: profile.main_role ?? null, roles }) && (
+        <ArtistStatementSection
+          statement={profile.artist_statement ?? null}
+          heroImagePath={profile.artist_statement_hero_image_url ?? null}
+          isOwner={isOwner}
+        />
+      )}
 
       {stripPublic.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2">

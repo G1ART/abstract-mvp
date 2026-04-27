@@ -32,6 +32,7 @@ import { BioDraftAssist } from "@/components/ai/BioDraftAssist";
 import { ProfileMediaUploader } from "@/components/profile/ProfileMediaUploader";
 import { StatementDraftAssist } from "@/components/profile/StatementDraftAssist";
 import { updateMyProfileBasePatch } from "@/lib/supabase/profiles";
+import { isArtistRole } from "@/lib/identity/roles";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -993,66 +994,75 @@ export default function SettingsPage() {
                   )}
                 </div>
 
-                <div className="space-y-2">
-                  <label
-                    htmlFor="artistStatement"
-                    className="block text-sm font-medium text-zinc-800"
-                  >
-                    {t("settings.identity.statement")}
-                  </label>
-                  <textarea
-                    id="artistStatement"
-                    value={statement}
-                    onChange={(e) => setStatement(e.target.value)}
-                    onBlur={handleStatementBlur}
-                    placeholder={t("profile.statement.placeholder")}
-                    rows={6}
-                    maxLength={4000}
-                    className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
-                  />
-                  <div className="flex items-center justify-between text-xs text-zinc-500">
-                    <span>
-                      {t("profile.statement.lengthHint")
-                        .replace("{count}", String(statement.length))
-                        .replace("{max}", "4000")}
-                    </span>
-                    <span aria-live="polite">
-                      {statementSaving
-                        ? t("profile.media.uploading")
-                        : statementSavedAt
-                          ? t("settings.saveSuccess")
-                          : ""}
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-500">
-                    {t("settings.identity.statementHint")}
-                  </p>
-                  <StatementDraftAssist
-                    profileInput={{
-                      display_name: displayName || null,
-                      role: mainRole || null,
-                      bio: bio || null,
-                      themes,
-                      mediums,
-                      city: city || null,
-                      locale,
-                      currentStatement: statement || null,
-                    }}
-                    onUseDraft={(draft) => {
-                      setStatement(draft);
-                    }}
-                  />
-                </div>
+                {/* Artist Statement (작가의 말) is only relevant for users
+                    who identify as artists — including hybrid users that hold
+                    "artist" alongside other roles. For curators / collectors /
+                    gallerists, hide the editor, the AI draft assist, and the
+                    statement-hero uploader entirely so the surface stays calm. */}
+                {isArtistRole({ main_role: mainRole, roles }) && (
+                  <>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="artistStatement"
+                        className="block text-sm font-medium text-zinc-800"
+                      >
+                        {t("settings.identity.statement")}
+                      </label>
+                      <textarea
+                        id="artistStatement"
+                        value={statement}
+                        onChange={(e) => setStatement(e.target.value)}
+                        onBlur={handleStatementBlur}
+                        placeholder={t("profile.statement.placeholder")}
+                        rows={6}
+                        maxLength={4000}
+                        className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                      />
+                      <div className="flex items-center justify-between text-xs text-zinc-500">
+                        <span>
+                          {t("profile.statement.lengthHint")
+                            .replace("{count}", String(statement.length))
+                            .replace("{max}", "4000")}
+                        </span>
+                        <span aria-live="polite">
+                          {statementSaving
+                            ? t("profile.media.uploading")
+                            : statementSavedAt
+                              ? t("settings.saveSuccess")
+                              : ""}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-500">
+                        {t("settings.identity.statementHint")}
+                      </p>
+                      <StatementDraftAssist
+                        profileInput={{
+                          display_name: displayName || null,
+                          role: mainRole || null,
+                          bio: bio || null,
+                          themes,
+                          mediums,
+                          city: city || null,
+                          locale,
+                          currentStatement: statement || null,
+                        }}
+                        onUseDraft={(draft) => {
+                          setStatement(draft);
+                        }}
+                      />
+                    </div>
 
-                <ProfileMediaUploader
-                  kind="statement"
-                  value={statementHeroPath}
-                  onChange={handleStatementHeroChange}
-                  userId={uid}
-                  label={t("settings.identity.statementHero")}
-                  hint={t("settings.identity.statementHeroHint")}
-                  shape="wide"
-                />
+                    <ProfileMediaUploader
+                      kind="statement"
+                      value={statementHeroPath}
+                      onChange={handleStatementHeroChange}
+                      userId={uid}
+                      label={t("settings.identity.statementHero")}
+                      hint={t("settings.identity.statementHeroHint")}
+                      shape="wide"
+                    />
+                  </>
+                )}
 
                 {identityErr && (
                   <p className="text-xs text-red-600" role="alert">

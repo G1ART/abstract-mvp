@@ -45,6 +45,27 @@ export function hasAnyRole(subject: {
   return normalizeRoleList(subject.roles ?? []).length > 0;
 }
 
+/**
+ * True when the subject identifies as an artist (pure artist or hybrid).
+ * Hybrid users carry "artist" alongside other roles in `roles[]`, so we
+ * accept either main_role === "artist" OR "artist" present in roles[].
+ *
+ * Used to gate artist-specific surfaces (Artist Statement editor, Statement
+ * draft assist, public statement section/tab) on profiles where they would
+ * be noise for non-artist viewers (curators, collectors, gallerists).
+ */
+export function isArtistRole(subject: {
+  main_role?: string | null;
+  roles?: readonly (string | null | undefined)[] | null;
+} | null | undefined): boolean {
+  if (!subject) return false;
+  const main = typeof subject.main_role === "string"
+    ? subject.main_role.trim().toLowerCase()
+    : null;
+  if (main === "artist") return true;
+  return normalizeRoleList(subject.roles ?? []).includes("artist");
+}
+
 /** i18n label for a role key. Falls back to the key itself on unknown. */
 export function roleLabel(
   key: RoleKey | null | undefined,
