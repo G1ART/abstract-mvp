@@ -21,6 +21,96 @@ export const maxDuration = 60;
 const REQUIRED_PERMISSION = "manage_works";
 
 /**
+ * Deterministic, model-free fallback for the brief. Emits priorities
+ * derived from the actual server-side counts so the operator still has
+ * a working checklist when the LLM is unavailable. Numbers are never
+ * invented — every entry references a count we measured in this same
+ * request and links to the right surface inside Abstract.
+ */
+function buildDelegationBriefFallback(
+  ctx: DelegationBriefInput,
+): DelegationBriefResult {
+  const isKo = ctx.locale === "ko";
+  const priorities: DelegationBriefResult["priorities"] = [];
+  const watchItems: string[] = [];
+
+  const unanswered = ctx.unansweredInquiryCount ?? 0;
+  const oldestDays = ctx.oldestUnansweredInquiryDays ?? 0;
+  const drafts = ctx.incompleteDraftCount ?? 0;
+  const exhGaps = ctx.exhibitionGapsCount ?? 0;
+  const readiness = ctx.profileReadinessPercent ?? 100;
+
+  if (unanswered > 0) {
+    priorities.push({
+      id: "inquiries",
+      title: isKo
+        ? `미답변 문의 ${unanswered}건 답하기`
+        : `Reply to ${unanswered} open inquir${unanswered === 1 ? "y" : "ies"}`,
+      reason: isKo
+        ? "응답이 늦어질수록 협업 가능성이 멀어져요."
+        : "Each unanswered inquiry cools off quickly.",
+      href: "/my/inquiries",
+    });
+    if (oldestDays >= 7) {
+      watchItems.push(
+        isKo
+          ? `가장 오래된 미답변 문의가 ${oldestDays}일 지났어요.`
+          : `Oldest open inquiry is ${oldestDays} days old.`,
+      );
+    }
+  }
+
+  if (drafts > 0) {
+    priorities.push({
+      id: "drafts",
+      title: isKo
+        ? `미공개 작품 ${drafts}점 정리`
+        : `Polish ${drafts} unpublished work${drafts === 1 ? "" : "s"}`,
+      reason: isKo
+        ? "이미지·메타데이터를 다듬어 공개 후보로 옮길 수 있어요."
+        : "Each can be moved to public after image and metadata cleanup.",
+      href: "/my",
+    });
+  }
+
+  if (exhGaps > 0) {
+    priorities.push({
+      id: "exhibitions",
+      title: isKo
+        ? `전시 ${exhGaps}건 커버 이미지 보완`
+        : `Add covers to ${exhGaps} exhibition${exhGaps === 1 ? "" : "s"}`,
+      reason: isKo
+        ? "전시 카드의 첫인상은 대표 이미지로 결정돼요."
+        : "Cover images carry the first impression of an exhibition card.",
+      href: "/my/exhibitions",
+    });
+  }
+
+  if (readiness < 70) {
+    priorities.push({
+      id: "profile",
+      title: isKo
+        ? `프로필 완성도 정리 (${readiness}%)`
+        : `Tighten profile readiness (${readiness}%)`,
+      reason: isKo
+        ? "공개 프로필의 짧은 소개·작가의 말·테마/매체를 보완하면 도움이 됩니다."
+        : "A tighter bio, statement, and themes/mediums help discoverability.",
+      href: "/profile/edit",
+    });
+  }
+
+  if (ctx.profileIsPublic === false) {
+    watchItems.push(
+      isKo
+        ? "공개 프로필이 비공개 상태예요."
+        : "Public profile is currently hidden.",
+    );
+  }
+
+  return { priorities: priorities.slice(0, 4), watchItems: watchItems.slice(0, 3) };
+}
+
+/**
  * Mirrors `userMayActAs` in the website-import session route. The brief
  * is account-level (multiple projects worth of signal) so we require an
  * active account/inventory delegation, not a project-scope grant.
@@ -215,7 +305,7 @@ export async function POST(req: Request) {
         system: DELEGATION_BRIEF_SYSTEM,
         user: buildDelegationBriefContext(ctx),
         schemaHint: DELEGATION_BRIEF_SCHEMA,
-        fallback: () => ({ priorities: [], watchItems: [] }),
+        fallback: () => buildDelegationBriefFallback(ctx),
       };
     },
   });

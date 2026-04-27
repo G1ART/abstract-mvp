@@ -2,6 +2,95 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — P1 AI Workflow Surface Integration (deterministic fallback + helper/calm states)
+
+`Abstract_P1_AI_Workflow_Surface_Integration_2026-04-27.md` 작업지시서 대응. 인프라(라우트·타입·프롬프트·feature/usage keys·메터·permission guards)는 이전 패치로 **이미 모두 wired** 되어 있었음. 이번 패치는 surface integration / polish 만:
+
+### Audit 결과 — 이미 정상이라 건드리지 않은 영역
+| 영역 | 상태 |
+|---|---|
+| `POST /api/ai/board-pitch-pack` | shortlists RLS 위에 owner/collaborator 만 컨텍스트 빌드. 이미 안전. |
+| `POST /api/ai/exhibition-review` | curator/host 또는 active account/inventory/project-scope delegate 가드. 이미 안전. |
+| `POST /api/ai/delegation-brief` | `userMayActAs(manage_works, account|inventory)` 가드 + 모든 카운트가 `actingAsProfileId` 로만 조회 (operator 본인 데이터 누출 없음). 이미 안전. |
+| Feature keys (`ai.board_pitch_pack`/`ai.exhibition_review`/`ai.delegation_brief`) | `featureKeys.ts` + `planMatrix.ts` 에 모든 플랜 free 포함 등록. 베타 paywall 0. |
+| Usage keys (`ai.*.generated`) + `AI_FEATURE_TO_METER_KEY` | 이미 등록. 라우트가 자동 미터링. |
+| Accept tracking | 세 패널 모두 `markAiAccepted({ feature, via: "copy" })` 가 wired. |
+| Mounting | `/my/shortlists/[id]` (Board), `/my/exhibitions/[id]/edit` (Exhibition), `/my` 의 acting-as 시 (Delegation) — 모두 이미 마운트. |
+| Humble copy / no autopilot | i18n 카피가 "초안", "제안", "확인이 필요해요" 등 humble 톤. 자동 발송/적용 없음. |
+
+### 닫은 갭 (Polish)
+
+#### 1. 결정론적 fallback (브리프 §3.4 / §5.10)
+**문제**: 세 라우트 모두 `fallback: () => ({ ... 빈 배열 })` 을 반환. OpenAI 키 부재(`no_key`)나 모델 실패 시 사용자가 빈 패널만 보게 됨 → 브리프가 명시한 "AI fails: still show deterministic checklist from actual fields. Do not show fake prose." 위반.
+
+**해결**: 세 라우트의 `fallback()` 이 *서버 측에서 이미 빌드한 ctx* 를 그대로 사용해 결정론적 result 를 생성. 모델이 죽어도 사용자는 실제 작품/전시/카운트 기반의 체크리스트와 요약을 받음.
+
+- **`src/app/api/ai/board-pitch-pack/route.ts` `buildBoardPitchPackFallback()`**
+  - `summary`: `이 보드는 작품 N점, 전시 M점을 묶고 있어요.` (보드 제목/카운트만 사용)
+  - `missingInfo`: 보드 설명 비어있는지, 작품 메타데이터 누락 점수, 항목 < 2 인지를 점검해서 한국어/영어 카피로 출력.
+  - `drafts: []`, `throughline: ""` — 가짜 prose 절대 생성 안 함.
+
+- **`src/app/api/ai/exhibition-review/route.ts` `buildExhibitionReviewFallback()`**
+  - 7개 결정론적 체크 (title / dates / venue / curator-or-host / cover / works-linked / few-works) 를 `ctx` 의 실제 필드값으로 평가.
+  - `readiness` = passed/total 비율로 계산 (gentle bar 그대로 유지, 브리프 §5.8 의 "No numeric score unless already designed very gently" 충족).
+  - `description` 체크는 의도적으로 제외 — `projects` 테이블에 `description` 컬럼이 없음 (P0 schema). 데이터가 들어오면 추후 추가.
+
+- **`src/app/api/ai/delegation-brief/route.ts` `buildDelegationBriefFallback()`**
+  - 미답변 inquiry / 미공개 작품 / 전시 cover gap / profile readiness < 70% 4개 조건을 카운트로 평가, 최대 4개 priorities 와 최대 3개 watchItems 생성.
+  - 모든 priority 가 실제 라우트로 deep-link (`/my/inquiries`, `/my`, `/my/exhibitions`, `/profile/edit`).
+  - `oldestUnansweredInquiryDays >= 7` 이면 watchItem 으로 추가 노출.
+  - `profileIsPublic === false` 면 watchItem 으로 추가.
+
+#### 2. Board Pitch Pack 0/1 items helper (브리프 §4.3)
+**문제**: 빈 보드에서도 CTA 가 그대로 노출되어 클릭 시 의미 없는 호출 발생.
+
+**해결**: `BoardPitchPackPanel` 에 optional `itemCount` prop 추가, `/my/shortlists/[id]/page.tsx` 가 `items.length` 를 전달.
+- 0 items → CTA 가 helper line 으로 대체 (`작품이나 전시를 2개 이상 담으면 보드 초안을 만들 수 있어요.`).
+- 1 item → CTA 는 노출하되 그 아래 `항목이 2개 이상일 때 더 풍부한 초안이 만들어져요.` 힌트.
+- 2+ items → 기존 동작 그대로.
+
+#### 3. Delegation Brief calm state (브리프 §6.6)
+**문제**: AI 가 정상 응답했지만 priorities/watchItems 가 모두 비어있을 때 (= 작가 계정이 깨끗할 때) 패널이 그냥 침묵.
+
+**해결**: `DelegationBriefPanel` 에 결과가 있고 errorKey 가 없을 때 priorities/watchItems 모두 비어있으면 calm state 카드 (`지금 급한 작업은 많지 않습니다. / 프로필·작품·문의가 정돈되어 있어요. ...`) 노출. 자동 발송/실행 절대 없음.
+
+### 추가/변경 i18n 키 (en + ko 양쪽)
+- `boards.pitchPack.emptyHelper`, `boards.pitchPack.singleItemHint`
+- `delegation.brief.calmTitle`, `delegation.brief.calmDetail`
+
+### 의도적 미구현 (브리프 §15 의 non-goals 와 일치)
+- Mode selector tabs (curator_memo / collector_note / gallery_internal / email_pitch) — 현재 prompt schema 가 `summary | outreach | wall_text` 3종 kind 로 충분히 커버. 새 mode 도입은 prompt 재설계가 필요해 다음 사이클로 보류.
+- `completenessChecks[]` shape 마이그레이션 — 현재 `issues[].severity` 가 동일한 의미 (info / suggest / warn ↔ complete / could_improve / missing) 를 이미 표현. UI 변경 없이 운영. 추후 데이터 모델이 풍부해지면 전환 검토.
+- `headline` / `priority: time_sensitive | high_value` 메타 — 현재 패널이 carousel/severity-tier 없이도 충분히 읽힘. 데이터 시그널이 더 쌓이면 추가.
+- Exhibition `description` 체크 — 컬럼 부재로 deterministic check 에서 제외. P2 에서 schema 추가 시 함께 enable.
+
+### 수정 파일
+- `src/app/api/ai/board-pitch-pack/route.ts` — `buildBoardPitchPackFallback()` 추가, `fallback` wired.
+- `src/app/api/ai/exhibition-review/route.ts` — `buildExhibitionReviewFallback()` 추가, `fallback` wired.
+- `src/app/api/ai/delegation-brief/route.ts` — `buildDelegationBriefFallback()` 추가, `fallback` wired.
+- `src/components/board/BoardPitchPackPanel.tsx` — `itemCount` prop, 0/1 items helper.
+- `src/components/delegation/DelegationBriefPanel.tsx` — calm state 카드.
+- `src/app/my/shortlists/[id]/page.tsx` — `itemCount={items.length}` 전달.
+- `src/lib/i18n/messages.ts` — 4개 키 (en + ko).
+
+### Verified
+- `npx tsc --noEmit` clean.
+- `npx eslint` clean (touched files).
+- Supabase SQL 변경 없음. 환경 변수 변경 없음.
+
+### Manual QA 메모
+| 케이스 | 기대 동작 |
+|---|---|
+| 0-item 보드에서 패널 열기 | helper line 만 노출, CTA 없음 |
+| 1-item 보드 | CTA + 단일항목 힌트 |
+| 2+ item 보드 | 기존 동작 (CTA → 결과) |
+| `OPENAI_API_KEY` 미설정으로 보드 호출 | `degraded.reason="no_key"` + `summary="이 보드는 작품 N점..."` + missingInfo 체크리스트 |
+| 동일 조건으로 전시 review | `degraded.reason="no_key"` + 7개 체크 기반 `readiness%` + 미통과 항목 issues |
+| 동일 조건으로 delegation brief | `degraded.reason="no_key"` + 4개 카운트 기반 priorities + watchItems |
+| 작가 계정이 깨끗한 채 acting-as → AI 정상 응답 | calm state 카드 노출 |
+
+---
+
 ## 2026-04-27 — Delegation Handoff-Parity Hardening (감사·랜딩·드로어 라벨 정리)
 
 GPT 감사 결과로 내려온 parity hardening 작업지시서 (`Abstract_Delegation_Handoff_Parity_Hardening_2026-04-27.md`) 대응. **DB 측 explicit-accept 트리거가 이미 정확하다는 verdict** 가 나왔으므로 이 패치는 트리거를 다시 건드리지 않고, 그 위에서 발생한 **app-side parity 갭** 만 정확히 닫음.

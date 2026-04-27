@@ -236,7 +236,7 @@ function ShortlistDetailContent() {
         </button>
       </div>
 
-      <BoardPitchPackPanel boardId={id} />
+      <BoardPitchPackPanel boardId={id} itemCount={items.length} />
 
       {/* People */}
       <div className="mb-6">

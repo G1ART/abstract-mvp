@@ -105,6 +105,20 @@ export function DelegationBriefPanel({ actingAsProfileId, principalName }: Props
             </p>
           )}
 
+          {result &&
+            !errorKey &&
+            priorities.length === 0 &&
+            watchItems.length === 0 && (
+              <div className="rounded border border-zinc-200 bg-white p-3 text-sm text-zinc-700">
+                <p className="font-medium text-zinc-900">
+                  {t("delegation.brief.calmTitle")}
+                </p>
+                <p className="mt-1 text-xs text-zinc-600">
+                  {t("delegation.brief.calmDetail")}
+                </p>
+              </div>
+            )}
+
           {priorities.length > 0 && (
             <div>
               <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">

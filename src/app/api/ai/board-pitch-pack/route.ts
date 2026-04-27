@@ -18,6 +18,72 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
+ * Deterministic, model-free fallback. Used when the OpenAI key is absent
+ * or the upstream model fails — the user still gets a useful structural
+ * snapshot of their board plus a "missing info" checklist so they can
+ * keep working. Never invents prose; the route only ever pastes counts
+ * and verbatim board fields.
+ */
+function buildBoardPitchPackFallback(ctx: BoardPitchPackInput): BoardPitchPackResult {
+  const isKo = ctx.locale === "ko";
+  const artworkN = ctx.artworks?.length ?? 0;
+  const exhibitionN = ctx.exhibitions?.length ?? 0;
+  const totalN = artworkN + exhibitionN;
+
+  const summary = (() => {
+    if (totalN === 0) {
+      return isKo
+        ? "보드에 담긴 항목이 아직 없어요."
+        : "This board has no items yet.";
+    }
+    const titleClause = ctx.boardTitle
+      ? isKo
+        ? `"${ctx.boardTitle}" 보드는 `
+        : `"${ctx.boardTitle}" groups `
+      : isKo
+        ? "이 보드는 "
+        : "This board groups ";
+    const itemsClause = isKo
+      ? `작품 ${artworkN}점${exhibitionN > 0 ? `과 전시 ${exhibitionN}건` : ""}을 묶고 있어요.`
+      : `${artworkN} artwork${artworkN === 1 ? "" : "s"}${exhibitionN > 0 ? ` and ${exhibitionN} exhibition${exhibitionN === 1 ? "" : "s"}` : ""}.`;
+    return titleClause + itemsClause;
+  })();
+
+  const missingInfo: string[] = [];
+  if (!ctx.boardDescription || ctx.boardDescription.trim().length === 0) {
+    missingInfo.push(
+      isKo
+        ? "보드 설명이 비어 있어요. 한 줄 메시지로 묶음의 의도를 적어 두면 도움이 됩니다."
+        : "Board description is empty — a one-line statement helps anchor the throughline.",
+    );
+  }
+  const artworksMissingMeta = (ctx.artworks ?? []).filter(
+    (a) => !a.title || !a.year || !a.medium,
+  ).length;
+  if (artworksMissingMeta > 0) {
+    missingInfo.push(
+      isKo
+        ? `작품 ${artworksMissingMeta}점에 제목/연도/매체 중 일부 정보가 비어 있어요.`
+        : `${artworksMissingMeta} artwork${artworksMissingMeta === 1 ? "" : "s"} missing title, year, or medium.`,
+    );
+  }
+  if (totalN < 2) {
+    missingInfo.push(
+      isKo
+        ? "초안을 풍부하게 만들려면 작품이나 전시를 2개 이상 담아 주세요."
+        : "Add at least two items for richer drafts.",
+    );
+  }
+
+  return {
+    summary,
+    throughline: "",
+    missingInfo,
+    drafts: [],
+  };
+}
+
+/**
  * P1-A — Board Pitch Pack route.
  *
  * Authorisation: relies on `shortlists` RLS — the user's own boards or
@@ -111,12 +177,7 @@ export async function POST(req: Request) {
         system: BOARD_PITCH_PACK_SYSTEM,
         user: buildBoardPitchPackContext(ctx),
         schemaHint: BOARD_PITCH_PACK_SCHEMA,
-        fallback: () => ({
-          summary: "",
-          throughline: "",
-          missingInfo: [],
-          drafts: [],
-        }),
+        fallback: () => buildBoardPitchPackFallback(ctx),
       };
     },
   });

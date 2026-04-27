@@ -15,6 +15,13 @@ import type {
 
 type Props = {
   boardId: string;
+  /**
+   * Total number of items currently saved in the board (artworks +
+   * exhibitions). Used only for client-side gating: zero items disables
+   * the CTA in favour of a helper line, single item shows a soft hint
+   * that drafts work better with multiple items.
+   */
+  itemCount?: number;
 };
 
 const KIND_LABEL: Record<BoardPitchPackDraftKind, MessageKey> = {
@@ -31,7 +38,7 @@ const KIND_LABEL: Record<BoardPitchPackDraftKind, MessageKey> = {
  * pastes anything back into the board, never sends outreach. The panel
  * never displays price / collection info; the API also never sends it.
  */
-export function BoardPitchPackPanel({ boardId }: Props) {
+export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
   const { t, locale } = useT();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -85,23 +92,35 @@ export function BoardPitchPackPanel({ boardId }: Props) {
 
       {open && (
         <div className="mt-3 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={trigger}
-              disabled={loading}
-              className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
-            >
-              {loading
-                ? t("boards.pitchPack.loading")
-                : drafts.length > 0
-                  ? t("boards.pitchPack.regenerate")
-                  : t("boards.pitchPack.cta")}
-            </button>
-            <span className="text-[11px] text-zinc-500">
-              {t("boards.pitchPack.disclaimer")}
-            </span>
-          </div>
+          {typeof itemCount === "number" && itemCount === 0 ? (
+            <p className="rounded border border-dashed border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-600">
+              {t("boards.pitchPack.emptyHelper")}
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={trigger}
+                disabled={loading}
+                className="rounded bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                {loading
+                  ? t("boards.pitchPack.loading")
+                  : drafts.length > 0
+                    ? t("boards.pitchPack.regenerate")
+                    : t("boards.pitchPack.cta")}
+              </button>
+              <span className="text-[11px] text-zinc-500">
+                {t("boards.pitchPack.disclaimer")}
+              </span>
+            </div>
+          )}
+
+          {typeof itemCount === "number" && itemCount === 1 && (
+            <p className="text-[11px] text-zinc-500">
+              {t("boards.pitchPack.singleItemHint")}
+            </p>
+          )}
 
           {errorKey && (
             <p className="text-xs text-amber-700" role="alert">

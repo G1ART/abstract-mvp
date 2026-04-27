@@ -1595,6 +1595,8 @@ export const messages = {
     "boards.pitchPack.copy": "Copy",
     "boards.pitchPack.copied": "Copied",
     "boards.pitchPack.disclaimer": "AI-drafted. Please review before sharing.",
+    "boards.pitchPack.emptyHelper": "Save at least two artworks or exhibitions before drafting a board packet.",
+    "boards.pitchPack.singleItemHint": "Drafts work better with two or more items — add another to round out the pack.",
 
     "exhibition.review.title": "Exhibition readiness review",
     "exhibition.review.hint": "An optional, opinionated checklist of editorial gaps and suggested copy. Nothing is auto-applied.",
@@ -1624,6 +1626,8 @@ export const messages = {
     "delegation.brief.copied": "Copied",
     "delegation.brief.open": "Open",
     "delegation.brief.disclaimer": "AI-drafted. Operator decides what to act on.",
+    "delegation.brief.calmTitle": "Nothing urgent right now.",
+    "delegation.brief.calmDetail": "Profile, drafts, and inquiries look clean. You could spot-check upcoming exhibitions or media coverage if you have time.",
 
     "tour.next": "Next",
     "tour.prev": "Back",
@@ -3349,6 +3353,8 @@ export const messages = {
     "boards.pitchPack.copy": "복사",
     "boards.pitchPack.copied": "복사됨",
     "boards.pitchPack.disclaimer": "AI 초안이에요. 공유 전 한번 검토해 주세요.",
+    "boards.pitchPack.emptyHelper": "작품이나 전시를 2개 이상 담으면 보드 초안을 만들 수 있어요.",
+    "boards.pitchPack.singleItemHint": "항목이 2개 이상일 때 더 풍부한 초안이 만들어져요.",
 
     "exhibition.review.title": "전시 점검",
     "exhibition.review.hint": "비어 있는 항목과 보완하면 좋을 카피를 짧게 짚어드려요. 자동으로 반영하지는 않아요.",
@@ -3378,6 +3384,8 @@ export const messages = {
     "delegation.brief.copied": "복사됨",
     "delegation.brief.open": "열기",
     "delegation.brief.disclaimer": "AI 제안이에요. 무엇을 실행할지는 직접 결정해 주세요.",
+    "delegation.brief.calmTitle": "지금 급한 작업은 많지 않습니다.",
+    "delegation.brief.calmDetail": "프로필·작품·문의가 정돈되어 있어요. 시간이 되면 다가오는 전시나 미디어 자료를 한 번 더 점검해 볼 수 있어요.",
 
     "tour.next": "다음",
     "tour.prev": "이전",

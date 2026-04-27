@@ -18,6 +18,103 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
+ * Deterministic fallback: when the model is unavailable we still return
+ * a useful checklist computed from real exhibition fields. No prose is
+ * invented; each issue references a known-missing or known-thin field.
+ */
+function buildExhibitionReviewFallback(
+  ctx: ExhibitionReviewInput,
+): ExhibitionReviewResult {
+  const isKo = ctx.locale === "ko";
+  const issues: ExhibitionReviewResult["issues"] = [];
+
+  const checks: Array<{
+    id: string;
+    code: string;
+    pass: boolean;
+    severity: "info" | "suggest" | "warn";
+    msgKo: string;
+    msgEn: string;
+  }> = [
+    {
+      id: "title",
+      code: "missing_title",
+      pass: typeof ctx.title === "string" && ctx.title.trim().length > 0,
+      severity: "warn",
+      msgKo: "전시 제목이 비어 있어요.",
+      msgEn: "The exhibition title is empty.",
+    },
+    {
+      id: "dates",
+      code: "missing_dates",
+      pass: !!ctx.startDate && !!ctx.endDate,
+      severity: "warn",
+      msgKo: "전시 기간(시작/종료일)이 채워져 있지 않아요.",
+      msgEn: "Start or end date is missing.",
+    },
+    {
+      id: "venue",
+      code: "missing_venue",
+      pass: typeof ctx.venueLabel === "string" && ctx.venueLabel.trim().length > 0,
+      severity: "suggest",
+      msgKo: "전시 장소(또는 호스트)가 적혀 있지 않아요.",
+      msgEn: "Venue or host label is empty.",
+    },
+    {
+      id: "curator",
+      code: "missing_curator_or_host",
+      pass:
+        (typeof ctx.curatorLabel === "string" && ctx.curatorLabel.trim().length > 0) ||
+        (typeof ctx.hostLabel === "string" && ctx.hostLabel.trim().length > 0),
+      severity: "suggest",
+      msgKo: "큐레이터 또는 주최자 정보가 없어요.",
+      msgEn: "No curator or host attached.",
+    },
+    {
+      id: "cover",
+      code: "missing_cover",
+      pass: ctx.hasCover === true,
+      severity: "suggest",
+      msgKo: "대표 이미지(커버)가 비어 있어요. 전시 카드에 가장 먼저 보이는 이미지예요.",
+      msgEn: "No cover image — this is the first thing visitors see on the card.",
+    },
+    {
+      id: "works",
+      code: "no_linked_works",
+      pass: (ctx.workCount ?? 0) > 0,
+      severity: "warn",
+      msgKo: "참여 작품이 아직 연결되어 있지 않아요.",
+      msgEn: "No participating works linked yet.",
+    },
+    {
+      id: "few_works",
+      code: "few_works",
+      pass: (ctx.workCount ?? 0) === 0 || (ctx.workCount ?? 0) >= 3,
+      severity: "info",
+      msgKo: "참여 작품이 1–2점이에요. 가능하다면 더 추가해 보세요.",
+      msgEn: "Only 1–2 works linked — add more if you can.",
+    },
+  ];
+
+  for (const c of checks) {
+    if (!c.pass) {
+      issues.push({
+        id: c.id,
+        severity: c.severity,
+        code: c.code,
+        message: isKo ? c.msgKo : c.msgEn,
+      });
+    }
+  }
+
+  const total = checks.length;
+  const passed = checks.filter((c) => c.pass).length;
+  const readiness = Math.round((passed / total) * 100);
+
+  return { readiness, issues };
+}
+
+/**
  * P1-B — Exhibition Review route.
  *
  * Authorisation: relies on `projects` RLS (row visible only to curator,
@@ -131,7 +228,7 @@ export async function POST(req: Request) {
         system: EXHIBITION_REVIEW_SYSTEM,
         user: buildExhibitionReviewContext(ctx),
         schemaHint: EXHIBITION_REVIEW_SCHEMA,
-        fallback: () => ({ readiness: 0, issues: [] }),
+        fallback: () => buildExhibitionReviewFallback(ctx),
       };
     },
   });
