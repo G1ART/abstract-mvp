@@ -34,6 +34,12 @@ export type Profile = {
   residencies?: unknown;
   exhibitions?: unknown;
   awards?: unknown;
+  // P1-0 Profile Identity Surface
+  cover_image_url?: string | null;
+  cover_image_position_y?: number | null;
+  artist_statement?: string | null;
+  artist_statement_hero_image_url?: string | null;
+  artist_statement_updated_at?: string | null;
 };
 
 export type ProfilePublic = {
@@ -49,6 +55,12 @@ export type ProfilePublic = {
   is_public?: boolean;
   /** Subset of profile_details exposed on public username lookup (portfolio tabs only). */
   studio_portfolio?: Record<string, unknown> | null;
+  // P1-0 Profile Identity Surface (public projection)
+  cover_image_url?: string | null;
+  cover_image_position_y?: number | null;
+  artist_statement?: string | null;
+  artist_statement_hero_image_url?: string | null;
+  artist_statement_updated_at?: string | null;
 };
 
 export async function lookupPublicProfileByUsername(username: string): Promise<{
@@ -88,9 +100,29 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     is_public: raw?.is_public === true,
     studio_portfolio:
       sp != null && typeof sp === "object" && !Array.isArray(sp) ? (sp as Record<string, unknown>) : null,
+    cover_image_url: stringFieldOrNull(raw?.cover_image_url),
+    cover_image_position_y: numberFieldOrNull(raw?.cover_image_position_y),
+    artist_statement: stringFieldOrNull(raw?.artist_statement),
+    artist_statement_hero_image_url: stringFieldOrNull(raw?.artist_statement_hero_image_url),
+    artist_statement_updated_at: stringFieldOrNull(raw?.artist_statement_updated_at),
   };
 
   return { data: parsed, isPrivate: false, notFound: false, error: null };
+}
+
+function stringFieldOrNull(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function numberFieldOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 export async function checkUsernameExists(
@@ -202,6 +234,11 @@ export async function getMyProfileAsPublic(): Promise<{
     is_public: row?.is_public === true,
     studio_portfolio:
       sp != null && typeof sp === "object" && !Array.isArray(sp) ? (sp as Record<string, unknown>) : null,
+    cover_image_url: stringFieldOrNull(row?.cover_image_url),
+    cover_image_position_y: numberFieldOrNull(row?.cover_image_position_y),
+    artist_statement: stringFieldOrNull(row?.artist_statement),
+    artist_statement_hero_image_url: stringFieldOrNull(row?.artist_statement_hero_image_url),
+    artist_statement_updated_at: stringFieldOrNull(row?.artist_statement_updated_at),
   };
   return { data: parsed, error: null };
 }
@@ -248,6 +285,11 @@ export type UpdateProfileParams = {
   awards?: unknown[] | null;
   profile_completeness?: number | null;
   profile_updated_at?: string | null;
+  // P1-0 identity surface
+  cover_image_url?: string | null;
+  cover_image_position_y?: number | null;
+  artist_statement?: string | null;
+  artist_statement_hero_image_url?: string | null;
 };
 
 /** Base-only columns for profiles table (no details). */
@@ -263,6 +305,11 @@ const BASE_PROFILE_KEYS = [
   "education",
   "profile_completeness",
   "profile_updated_at",
+  // P1-0 identity surface
+  "cover_image_url",
+  "cover_image_position_y",
+  "artist_statement",
+  "artist_statement_hero_image_url",
 ] as const;
 
 export type UpdateProfileBaseParams = {
@@ -277,6 +324,11 @@ export type UpdateProfileBaseParams = {
   education?: EducationEntry[] | null;
   profile_completeness?: number | null;
   profile_updated_at?: string | null;
+  // P1-0 identity surface
+  cover_image_url?: string | null;
+  cover_image_position_y?: number | null;
+  artist_statement?: string | null;
+  artist_statement_hero_image_url?: string | null;
 };
 
 /** Update only base profile fields via RPC (no direct PATCH). */
@@ -332,6 +384,7 @@ export async function updateMyProfile(partial: UpdateProfileParams) {
   const baseKeys = [
     "display_name", "bio", "location", "website", "avatar_url", "main_role", "roles", "is_public",
     "education", "profile_completeness", "profile_updated_at",
+    "cover_image_url", "cover_image_position_y", "artist_statement", "artist_statement_hero_image_url",
   ] as const;
   const detailKeys = [
     "career_stage", "age_band", "city", "region", "country", "themes", "mediums", "styles",

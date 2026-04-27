@@ -49,6 +49,12 @@ export type ProfileSurface = {
   roles: readonly RoleKey[];
   completeness: number | null;
   details: ProfileSurfaceDetails;
+  // P1-0 identity surface (top-level for easy UI consumption).
+  coverImageUrl: string | null;
+  coverImagePositionY: number | null;
+  artistStatement: string | null;
+  artistStatementHeroImageUrl: string | null;
+  artistStatementUpdatedAt: string | null;
 };
 
 function stringOrNull(v: unknown): string | null {
@@ -165,7 +171,21 @@ export function getProfileSurface(profile: Profile | null | undefined): ProfileS
     roles,
     completeness: profile.profile_completeness ?? null,
     details,
+    coverImageUrl: stringOrNull(profile.cover_image_url),
+    coverImagePositionY: numberOrNull(profile.cover_image_position_y),
+    artistStatement: stringOrNull(profile.artist_statement),
+    artistStatementHeroImageUrl: stringOrNull(profile.artist_statement_hero_image_url),
+    artistStatementUpdatedAt: stringOrNull(profile.artist_statement_updated_at),
   };
+}
+
+function numberOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
 }
 
 /**

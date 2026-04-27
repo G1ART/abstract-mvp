@@ -24,6 +24,11 @@ const BASE_KEYS = new Set([
   "roles",
   "education",
   "username",
+  // P1-0 identity surface (mirrors BASE_PROFILE_KEYS in profiles.ts)
+  "cover_image_url",
+  "cover_image_position_y",
+  "artist_statement",
+  "artist_statement_hero_image_url",
 ]);
 
 /** Strip null/undefined/"" and empty []/{} so we never send education:null (prevents 23502). */
