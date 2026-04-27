@@ -11,7 +11,11 @@ export type NotificationType =
   | "new_work"
   | "connection_message"
   | "board_save"
-  | "board_public";
+  | "board_public"
+  | "delegation_invite_received"
+  | "delegation_accepted"
+  | "delegation_declined"
+  | "delegation_revoked";
 
 export type NotificationRow = {
   id: string;

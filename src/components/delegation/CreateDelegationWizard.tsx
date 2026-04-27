@@ -17,6 +17,7 @@ import { searchPeople, type PublicProfile } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
 import { getSession } from "@/lib/supabase/auth";
+import { getMyProfile } from "@/lib/supabase/me";
 
 type WizardScope = "account" | "project";
 
@@ -96,6 +97,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [myId, setMyId] = useState<string | null>(null);
+  const [myDisplayName, setMyDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -119,6 +121,10 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
   useEffect(() => {
     if (!open) return;
     getSession().then(({ data: { session } }) => setMyId(session?.user?.id ?? null));
+    getMyProfile().then(({ data }) => {
+      const name = data?.display_name?.trim() || data?.username || null;
+      setMyDisplayName(name);
+    });
   }, [open]);
 
   useEffect(() => {
@@ -245,6 +251,38 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
           setSubmitting(false);
           return;
         }
+        // Fire SMTP email so external/non-onboarded recipients actually get the
+        // invite. RPC creates the row + token, this hop carries it to inbox.
+        // We surface a non-blocking warning if email fails — the invite row
+        // still exists and is reachable from the hub.
+        try {
+          const resp = await fetch("/api/delegation-invite-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              toEmail: person.email,
+              inviterName: myDisplayName,
+              scopeType: scope,
+              projectTitle: scope === "project" ? projectTitle : null,
+              inviteToken: data.invite_token,
+            }),
+          });
+          if (!resp.ok) {
+            console.warn("delegation-invite-email failed", resp.status);
+            setError(t("delegation.error.email_send_failed"));
+            // Keep submitting=false so user can read message, but the row
+            // is already created. They can re-share the link from the hub.
+            setSubmitting(false);
+            onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
+            return;
+          }
+        } catch (emailErr) {
+          console.warn("delegation-invite-email threw", emailErr);
+          setError(t("delegation.error.email_send_failed"));
+          setSubmitting(false);
+          onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
+          return;
+        }
         onCreated?.({ id: data.id, invite_token: data.invite_token, scope: scope as DelegationScopeType });
       } else {
         setError(t("delegation.error.unknown"));
@@ -258,7 +296,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [note, customPermissions, preset, person, scope, projectId, onCreated, onClose, t]);
+  }, [note, customPermissions, preset, person, scope, projectId, projectTitle, myDisplayName, onCreated, onClose, t]);
 
   if (!open) return null;
 

@@ -2,6 +2,67 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Upgrade Phase 4 (in-app 알림 · 위자드 SMTP 회복)
+
+PR3 직후 검수 중 발견된 두 가지 갭을 닫는다. (1) 위임 라이프사이클이 `public.notifications` 행을 만들지 않아 온보딩된 위임 대상자에게 인앱 알림이 전혀 도달하지 않던 문제, (2) 새 `CreateDelegationWizard` 의 email 탭이 RPC 만 호출하고 `/api/delegation-invite-email` SMTP 엔드포인트를 누락해 외부 초대 메일이 실제로 발송되지 않던 문제. 인앱 알림은 1차 채널, 이메일은 비온보딩 사용자만을 위한 보조 채널이라는 정책을 코드와 일치시킨다.
+
+### 변경
+
+| 영역 | 파일 | 변경 |
+|---|---|---|
+| **DB · 알림 타입 확장** | `supabase/migrations/20260504000000_delegation_notification_types.sql` | `notifications_type_check` 에 4종 추가: `delegation_invite_received / delegation_accepted / delegation_declined / delegation_revoked`. 기존 11종은 그대로. 트랜잭션 안에서 `drop constraint if exists` → `add constraint` 로 재정의해 idempotent. |
+| **DB · 라이프사이클 RPC 알림 INSERT** | `supabase/migrations/20260504000100_delegation_notification_inserts.sql` | 6개 라이프사이클 RPC 와 auth-signup 트리거를 `create or replace` 로 재정의해 마지막에 `_record_delegation_notification(...)` 한 줄을 추가. 모든 status 전환·activity event 로직은 그대로 보존. payload 에는 `delegation_id, scope_type, project_id, project_title, preset` 을 담아 알림 페이지에서 추가 조회 없이 렌더 가능. `create_delegation_invite`(이메일 기반) 는 초대 이메일이 이미 가입된 `auth.users` 에 매칭될 때만 즉시 인앱 알림을 만들고, 아닌 경우엔 가입 트리거 시점에 `delegation_accepted` 알림이 보내짐(자동 수락 경로). `revoke_delegation` 은 `delegate_profile_id` 가 있을 때만 인앱 알림(이메일만 가진 pending 초대는 in-app 받을 사람이 없음). |
+| **TS · 알림 타입** | `src/lib/supabase/notifications.ts` | `NotificationType` 유니언에 4종 추가. 기존 select/normalize 경로는 변경 없음. |
+| **알림 페이지 렌더러** | `src/app/notifications/page.tsx` | `notificationLabel` 에 4 케이스 추가(scope 별 분기 포함). `notificationLink` 는 4종 모두 `/my/delegations` 로 라우팅. PR3 에서 미리 추가해둔 `notifications.delegation*Text` i18n 키를 그대로 사용. |
+| **위자드 · SMTP 호출 회복** | `src/components/delegation/CreateDelegationWizard.tsx` | 위자드 오픈 시 `getMyProfile()` 로 `myDisplayName` 조회 → submit() 의 email 분기에서 RPC 성공 후 `fetch("/api/delegation-invite-email", { toEmail, inviterName, scopeType, projectTitle, inviteToken })` 발송. 메일 실패는 **non-blocking**: 위임 행은 이미 만들어졌으므로 `onCreated` 는 그대로 호출하되 `delegation.error.email_send_failed` 카피로 사용자에게 안내(허브에서 토큰 링크 재공유 가능). 가입 유저(person.kind === "user") 분기는 영향 없음 — 인앱 알림이 1차 채널. |
+
+### 알림 라우팅 정책 요약
+
+- **수신자가 이미 온보딩 멤버**: 인앱 알림 즉시 발송 + 종 카운트 증가. SMTP 미발송. 위임 허브 (`/my/delegations`) 로 클릭 라우팅.
+- **수신자가 비온보딩(이메일만)**: 위자드 email 탭 → 1) RPC 가 token 포함 행 생성 → 2) SMTP 발송 → 3) 가입/로그인 후 `handle_auth_user_created_link_delegations` 트리거가 자동 수락 + delegator 에게 `delegation_accepted` 인앱 알림. 즉 비온보딩 → 온보딩 전환 시점부터는 동일한 인앱 채널로 통합.
+
+### 이메일 템플릿 수정 위치 (운영자 안내)
+
+위임 초대 메일의 모양/카피를 바꾸려면 **`src/app/api/delegation-invite-email/route.ts`** 한 곳만 보면 된다.
+
+- `buildHtml(payload, acceptUrl)` — 영문 본문 (line 11–38)
+- `buildHtmlKo(payload, acceptUrl)` — 한국어 본문 (line 40–67). 한 메일에 두 본문이 `<hr/>` 로 결합되어 발송된다(`html = buildHtml + "<hr/>" + buildHtmlKo`).
+- 제목: `subjectEn` / `subjectKo` (line 126–127). SendGrid `personalizations.subject` 에 `${subjectEn} / ${subjectKo}` 로 합쳐 발송.
+- 발신자 (`From`): `INVITE_FROM_EMAIL` 환경 변수. `"Brand <noreply@domain>"` 또는 단일 이메일 형식 모두 허용.
+- 수신 링크 도메인: `getAppBase()` 가 `NEXT_PUBLIC_APP_URL` → `VERCEL_URL` → `FALLBACK_APP_BASE` 순으로 결정. vercel.com 차단·https 강제 가드 포함.
+- SendGrid API 키: `SENDGRID_API_KEY`.
+- 페이로드 시그니처(클라이언트→API): `{ toEmail, inviterName?, scopeType: "account"|"project"|"inventory", projectTitle?, inviteToken }` — 위자드가 그대로 보냄.
+
+수정 후에는 dev 또는 staging 에서 본인 이메일로 한 번 발송해 시각 검수를 권장한다(SendGrid 활동 로그도 같이 확인).
+
+### 회귀 방지 / QA 체크리스트
+
+- 가입 유저에게 `account` 위임 보내기 → 수신자 종 알림 1, `/notifications` 에서 “…님이 계정 운영을 함께 맡아달라고 위임을 보내셨어요” 표시, 클릭 시 `/my/delegations` 이동.
+- 가입 유저에게 `project` 위임 보내기 → 수신자 알림 본문에 전시 제목이 들어가 표시(`/my/exhibitions/[id]/edit` 의 “전시 권한 공유” 진입 경로도 동일 결과).
+- 가입 유저가 수락 → delegator 에게 `delegation_accepted` 알림.
+- 가입 유저가 거절 → delegator 에게 `delegation_declined` 알림.
+- delegator 가 active 위임 해제 → delegate 에게 `delegation_revoked` 알림.
+- 비온보딩 이메일로 보낼 때:
+  - SendGrid 환경 변수 정상 → 메일 도착, 위자드는 정상 종료, `/my/delegations` 의 sent 목록에 pending 행 표시.
+  - SendGrid 키 누락/실패 → 위자드 마지막 페이지에 `delegation.error.email_send_failed` 안내, 행은 이미 생성되어 있어 sent 목록에 노출. 허브에서 토큰 재발송 경로(추가 작업 영역)로 이어질 수 있음.
+- 비온보딩 → 가입 시 `handle_auth_user_created_link_delegations` 트리거가 자동 수락 + delegator 인앱 알림. 새 가입자는 위임이 이미 active 인 상태로 허브에 진입.
+- 알림 종 unread count 는 4종 모두 자동 반영(`getUnreadCount` 가 type-agnostic).
+
+### Supabase SQL 적용 필요 (이번 패치)
+
+- `supabase/migrations/20260504000000_delegation_notification_types.sql` — `notifications_type_check` 확장 (idempotent, 데이터 이동 없음)
+- `supabase/migrations/20260504000100_delegation_notification_inserts.sql` — 6 RPC + 1 trigger 재정의 (`create or replace`, idempotent). 의존: 20260503 시리즈 4개가 먼저 적용되어 있어야 함.
+
+### 환경 변수
+
+추가/변경 없음. 메일 발송에 이미 사용 중인 `SENDGRID_API_KEY`, `INVITE_FROM_EMAIL`, `NEXT_PUBLIC_APP_URL` 그대로 사용.
+
+### 검증
+
+`npx tsc --noEmit` 통과. lint 0 issue.
+
+---
+
 ## 2026-04-27 — Delegation Upgrade Phase 3 (전시 in-context CTA · 엔타이틀먼트 · 투어 v3 · 알림 카피 · 종합 정리)
 
 PR1(백엔드 토대)·PR2(프론트 IA·위자드·드로어·acting-as 단일화) 위에 **사용자 진입점**을 마무리하고, **엔타이틀먼트 키 / 투어 / 알림 / 문서**까지 묶어 위임 업그레이드 시리즈를 닫는다.

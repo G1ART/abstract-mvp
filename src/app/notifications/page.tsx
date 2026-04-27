@@ -63,6 +63,21 @@ function notificationLabel(
         .replace("{shortlistTitle}", shortlistTitle)
         .replace("{title}", title);
     }
+    case "delegation_invite_received": {
+      const scope = row.payload?.scope_type as string | undefined;
+      const projectTitle = (row.payload?.project_title as string | undefined) ?? "";
+      const key =
+        scope === "project"
+          ? "notifications.delegationInviteReceivedProjectText"
+          : "notifications.delegationInviteReceivedText";
+      return t(key).replace("{name}", name).replace("{title}", projectTitle);
+    }
+    case "delegation_accepted":
+      return t("notifications.delegationAcceptedText").replace("{name}", name);
+    case "delegation_declined":
+      return t("notifications.delegationDeclinedText").replace("{name}", name);
+    case "delegation_revoked":
+      return t("notifications.delegationRevokedText").replace("{name}", name);
     default:
       return "";
   }
@@ -97,6 +112,14 @@ function notificationLink(
     // private, so we never link to it directly regardless of plan.
     if (row.artwork_id) return `/artwork/${row.artwork_id}`;
     return null;
+  }
+  if (
+    row.type === "delegation_invite_received" ||
+    row.type === "delegation_accepted" ||
+    row.type === "delegation_declined" ||
+    row.type === "delegation_revoked"
+  ) {
+    return "/my/delegations";
   }
   if (row.artwork_id) return `/artwork/${row.artwork_id}`;
   return null;
