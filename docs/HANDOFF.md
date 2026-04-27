@@ -2,6 +2,89 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Final Hardening · PR-B (project preset destination 매퍼 + acting-as stale 검증 훅)
+
+P0 클라이언트 신뢰 갭 마무리. 새 SQL 1 개 (read-only probe RPC) + 클라이언트 변경.
+
+### 1. P0-E — project preset → manage destination 매퍼
+
+**문제**: 위임 허브에서 "관리하기" 버튼이 모든 project-scope 위임을 무조건 `/my/exhibitions/{id}/add` 로 보냄. 두 가지 잘못:
+- `project_review` (보기 전용) 사용자도 `/add` 화면으로 떨어져 → 작품 추가 시도 → RLS 거절 토스트 → 사용자 혼란.
+- `project_co_edit` 는 메타데이터 편집까지 허용되는데도 좁은 `/add` 화면으로 떨어짐.
+
+**해결**:
+- `src/lib/delegation/manageDestination.ts` (신규): `resolveManageDestination(d)` 가 preset 별 destination 결정.
+  - `project_review` → `{ kind: "stay", messageKey: "delegation.manage.reviewOnly" }` (acting-as 활성화 안 함)
+  - `project_works_only` → `/my/exhibitions/{id}/add` (acting-as on)
+  - `project_co_edit` → `/my/exhibitions/{id}/edit` (acting-as on)
+  - `account_review` → stay + 동일 안내
+  - `account_operations`/`account_content` → `/my` (acting-as on)
+  - 레거시/null preset → 안전 fallback (편집 화면 + acting-as on; RLS 가 잡음)
+- `/my/delegations` 페이지의 `handleManage` 가 위 헬퍼 사용. stay 인 경우 새 inline 배너 (`manageNotice`) 로 사용자에게 친절히 안내, acting-as 는 활성화하지 않음.
+- 새 i18n 키 (영·한): `delegation.manage.reviewOnly`, `delegation.manage.missingProject`, `common.dismiss`.
+
+### 2. P0-F — acting-as stale validation hook
+
+**문제**: `actingAsProfileId` 가 `localStorage` 에만 저장되어, delegator 가 위임을 회수해도 사용자 세션의 "관리 중" 배너는 그대로 남음. 그 상태에서 mutation 시도하면 RLS 거절 → 이상한 토스트 → 사용자 신뢰도 하락.
+
+**해결**:
+- 신규 SQL `supabase/migrations/20260505000300_delegation_acting_as_probe.sql`:
+  - `is_active_delegate_of(p_owner_profile_id) returns boolean` — auth.uid() 기준, scope 무관, status='active' 만 매치. 가벼운 read-only 프로브.
+- `src/lib/supabase/delegations.ts`: `isActiveDelegateOf(ownerId)` 래퍼 추가.
+- `src/context/ActingAsContext.tsx`:
+  - 새 effect: 마운트, `window focus`, `document visibilitychange="visible"` 시점에 프로브 호출.
+  - **rate-limit**: 최근 검증 결과를 ref 에 저장, 같은 target 에 대해 10초 이내 중복 호출 차단. 라우트 전환마다는 호출 안 함 (오버헤드 회피).
+  - 프로브 결과 `false` 면 조용히 state 클리어 + `staleCleared` 플래그 set.
+  - 새로 set 된 직후 (`setActingAs` 직후) 는 trusted window 로 두어 race 방지.
+  - 에러 시 절대 클리어 안 함 (네트워크 일시 장애에 banner 가 잘못 닫히지 않도록).
+- `src/components/Header.tsx`:
+  - `staleCleared` 플래그 시 한 줄 rose-tinted notice 노출. 6 초 후 자동 dismiss + 사용자가 직접 닫을 수도 있음.
+  - 새 i18n 키 (영·한): `delegation.banner.staleCleared`.
+
+### 3. 변경 파일 요약 (PR-B)
+
+| 영역 | 파일 |
+|---|---|
+| SQL | `20260505000300_delegation_acting_as_probe.sql` |
+| 라이브러리 | `src/lib/delegation/manageDestination.ts` (신규) |
+| | `src/lib/supabase/delegations.ts` (`isActiveDelegateOf`) |
+| 컨텍스트 | `src/context/ActingAsContext.tsx` (probe effect, staleCleared) |
+| UI | `src/components/Header.tsx` (stale notice strip) |
+| | `src/app/my/delegations/page.tsx` (resolveManageDestination, manageNotice) |
+| i18n | `src/lib/i18n/messages.ts` (영·한 5 키) |
+
+### 4. Supabase SQL — 실행 (PR-B)
+
+```
+20260505000300_delegation_acting_as_probe.sql
+```
+
+Idempotent · additive. PR-A 마이그레이션 이후에 실행.
+
+### 5. 환경 변수
+
+추가/변경 없음.
+
+### 6. QA 체크리스트
+
+| # | 시나리오 | 기대 |
+|---|---|---|
+| 1 | A 가 B 에게 `project_review` 위임 → B 의 위임 허브에서 "관리하기" | 페이지 위쪽에 노란 inline 배너 ("보기 전용 위임"). acting-as 비활성. URL 그대로. |
+| 2 | A 가 B 에게 `project_co_edit` 위임 → "관리하기" | acting-as 활성, `/my/exhibitions/{id}/edit` 로 이동. |
+| 3 | A 가 B 에게 `project_works_only` 위임 → "관리하기" | acting-as 활성, `/my/exhibitions/{id}/add` 로 이동. |
+| 4 | A 가 B 에게 `account_operations` 위임 → "관리하기" | acting-as 활성, `/my` 로 이동. (변동 없음) |
+| 5 | A 가 B 에게 `account_review` 위임 → "관리하기" | inline 배너만. acting-as 비활성. |
+| 6 | B 가 acting-as 로 A 의 계정 관리 중 → A 가 다른 탭에서 위임 회수 → B 가 페이지로 돌아옴 (focus) | 1-2 초 안에 acting-as 자동 클리어 + 핑크 stale 배너 표시. 6 초 후 자동 사라짐. |
+| 7 | 6 의 흐름 후 B 가 다시 mutation 시도 | 본인 계정 컨텍스트에서 시도되며, 본인 권한대로 작동. |
+| 8 | 네트워크 장애 시 RPC 실패 | acting-as 그대로 유지. 사용자가 모르는 사이에 banner 사라지지 않음. |
+
+### 7. 미구현 (PR-C 예정)
+
+- 이메일 발송 실패 시 fallback (초대 링크 복사) UI.
+- 위임 mutation 활동 로그 (artworks/exhibitions/inquiries 의 변경을 `delegation_activity_events` 에 기록).
+
+---
+
 ## 2026-04-27 — Delegation Final Hardening · PR-A (account-scope 권한 강제 + explicit-accept 이메일 정책)
 
 위임 P0 보안·신뢰 갭 첫 라운드. 두 가지 핵심: (1) account-scope 위임이 프리셋 권한과 무관하게 모든 쓰기를 허용하던 RLS 헬퍼 폭(broad)을 좁힘. (2) 이메일 초대를 받은 사용자가 가입만으로 자동 활성화되던 흐름을 **explicit accept** 로 통일.

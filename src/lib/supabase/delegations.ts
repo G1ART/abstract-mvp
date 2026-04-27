@@ -213,6 +213,23 @@ export async function listMyDelegations(): Promise<{
   };
 }
 
+/**
+ * Lightweight server-side check used by `ActingAsProvider` to detect
+ * a stale local "acting as" target. Returns true iff the current
+ * session user holds AT LEAST one ACTIVE delegation against `ownerId`
+ * (any scope, any preset). Failures are swallowed by the caller —
+ * we never want a flaky probe to clear a legitimately-active banner.
+ */
+export async function isActiveDelegateOf(
+  ownerId: string
+): Promise<{ data: boolean | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("is_active_delegate_of", {
+    p_owner_profile_id: ownerId,
+  });
+  if (error) return { data: null, error };
+  return { data: Boolean(data), error: null };
+}
+
 /** Fetch a delegation detail bundle (delegation + parties + project + events). */
 export async function getDelegationDetail(
   delegationId: string

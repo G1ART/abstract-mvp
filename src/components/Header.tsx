@@ -107,10 +107,41 @@ export function Header() {
   }
 
   const loggedIn = !!session;
-  const { actingAsLabel, clearActingAs } = useActingAs();
+  const {
+    actingAsLabel,
+    clearActingAs,
+    staleCleared,
+    acknowledgeStaleCleared,
+  } = useActingAs();
+
+  // Auto-dismiss the stale-cleared notice after a few seconds so it
+  // doesn't linger as visual debt. The provider keeps the flag until
+  // we acknowledge — this guarantees the user gets at least one render
+  // pass with it visible even on slow networks.
+  useEffect(() => {
+    if (!staleCleared) return;
+    const handle = window.setTimeout(() => acknowledgeStaleCleared(), 6000);
+    return () => window.clearTimeout(handle);
+  }, [staleCleared, acknowledgeStaleCleared]);
 
   return (
     <>
+      {staleCleared && !actingAsLabel && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 border-b border-rose-200 bg-rose-50 px-4 py-1.5 text-xs text-rose-900 sm:text-sm"
+        >
+          <span className="truncate">{t("delegation.banner.staleCleared")}</span>
+          <button
+            type="button"
+            onClick={acknowledgeStaleCleared}
+            className="shrink-0 font-medium hover:underline"
+          >
+            {t("common.dismiss")}
+          </button>
+        </div>
+      )}
       {actingAsLabel && (
         <div
           role="status"

@@ -19,6 +19,7 @@ import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
 import { DelegationDetailDrawer } from "@/components/delegation/DelegationDetailDrawer";
+import { resolveManageDestination } from "@/lib/delegation/manageDestination";
 
 type ReceivedTab = "pending" | "active" | "closed";
 
@@ -106,6 +107,7 @@ export default function MyDelegationsPage() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailOwnerView, setDetailOwnerView] = useState(true);
   const [myId, setMyId] = useState<string | null>(null);
+  const [manageNotice, setManageNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const { data: res } = await listMyDelegations();
@@ -158,16 +160,24 @@ export default function MyDelegationsPage() {
   };
 
   const handleManage = (d: DelegationWithDetails) => {
+    const dest = resolveManageDestination(d);
+    if (dest.kind === "stay") {
+      // View-only presets and edge cases: don't activate acting-as,
+      // just surface a friendly inline note. Acting-as is for mutation
+      // contexts; entering it for a view-only delegation would be
+      // misleading and would also re-bind the global "Acting as" strip.
+      setManageNotice(dest.messageKey);
+      return;
+    }
     const label =
       d.delegator_profile?.display_name?.trim() ||
       (d.delegator_profile?.username ? `@${d.delegator_profile.username}` : null) ||
       "Account";
-    setActingAs(d.delegator_profile_id, label ?? "Account");
-    if (d.scope_type === "project" && d.project_id) {
-      window.location.href = `/my/exhibitions/${d.project_id}/add`;
-    } else {
-      window.location.href = "/my";
+    if (dest.activateActingAs) {
+      setActingAs(d.delegator_profile_id, label ?? "Account");
     }
+    setManageNotice(null);
+    window.location.href = dest.href;
   };
 
   const openDetail = (d: DelegationWithDetails, viewerIsOwner: boolean) => {
@@ -191,6 +201,23 @@ export default function MyDelegationsPage() {
         <p className="mb-6 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
           {t("delegation.trustNote")}
         </p>
+
+        {manageNotice && (
+          <div
+            role="status"
+            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+          >
+            <span>{t(manageNotice)}</span>
+            <button
+              type="button"
+              onClick={() => setManageNotice(null)}
+              className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+              aria-label={t("common.dismiss")}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <div data-tour="delegation-wizard-cta" className="mb-8 flex items-center justify-between gap-3">
           <button
