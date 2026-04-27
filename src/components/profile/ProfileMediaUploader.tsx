@@ -17,7 +17,11 @@ type Props = {
   kind: ProfileMediaKind;
   /** Current storage path (or empty/null if none). Storage path, not URL. */
   value: string | null | undefined;
-  /** Called with the new storage path on successful upload, or null when the user clears the image. */
+  /**
+   * Called with the new storage path on successful upload, or null when the
+   * user clears the image. **MUST throw on persistence failure** — the uploader
+   * relies on rejection here to switch into the "save failed" UI branch.
+   */
   onChange: (nextPath: string | null) => Promise<void> | void;
   /** Authenticated user id — must match auth.uid() for RLS. */
   userId: string;
@@ -29,6 +33,17 @@ type Props = {
   shape?: "square" | "wide";
   /** When true the remove button is hidden (e.g. avatar fallback exists upstream). */
   hideRemove?: boolean;
+  /**
+   * Optional vertical focal point (0–100) applied to the wide preview as
+   * `object-position: center {y}%`. Used to mirror the live cover crop
+   * exactly the way it'll render on the public profile.
+   */
+  objectPositionY?: number;
+  /**
+   * Optional caption shown directly under a wide preview, e.g.
+   * "공개 프로필에서 이렇게 보여요" — confirms the preview = published crop.
+   */
+  previewCaption?: string;
 };
 
 const SHAPE_CLASSES: Record<"square" | "wide", { box: string; img: string }> = {
@@ -39,6 +54,18 @@ const SHAPE_CLASSES: Record<"square" | "wide", { box: string; img: string }> = {
   },
 };
 
+const SUCCESS_KEY: Record<ProfileMediaKind, string> = {
+  avatar: "profile.media.savedAvatar",
+  cover: "profile.media.savedCover",
+  statement: "profile.media.savedStatement",
+};
+
+const REMOVE_KEY: Record<ProfileMediaKind, string> = {
+  avatar: "profile.media.removedAvatar",
+  cover: "profile.media.removedCover",
+  statement: "profile.media.removedStatement",
+};
+
 function resolvePreviewUrl(path: string | null | undefined): string | null {
   if (!path || !path.trim()) return null;
   if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("blob:")) {
@@ -47,13 +74,22 @@ function resolvePreviewUrl(path: string | null | undefined): string | null {
   return getArtworkImageUrl(path, "medium");
 }
 
+function clampFocal(v: number | undefined): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 50;
+  if (v < 0) return 0;
+  if (v > 100) return 100;
+  return v;
+}
+
 /**
  * Uploader for profile media (avatar / cover / statement hero).
  *
- * Owns its own busy + error state but never persists the path itself — the
- * parent decides where the storage path lands (avatar_url, cover_image_url,
+ * Owns its own busy/success/error state but never persists the path itself —
+ * the parent decides where the storage path lands (avatar_url, cover_image_url,
  * artist_statement_hero_image_url). The uploader does best-effort cleanup of
- * the previous path on replace + clear.
+ * the previous path on replace + clear, and surfaces an inline localized
+ * success/error badge so the user gets immediate feedback without having to
+ * scroll to the section-bottom or click "저장".
  */
 export function ProfileMediaUploader({
   kind,
@@ -64,12 +100,16 @@ export function ProfileMediaUploader({
   hint,
   shape = "square",
   hideRemove,
+  objectPositionY,
+  previewCaption,
 }: Props) {
   const { t } = useT();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [successKey, setSuccessKey] = useState<string | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -79,11 +119,25 @@ export function ProfileMediaUploader({
     };
   }, [localPreview]);
 
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  const flashSuccess = useCallback((key: string) => {
+    setErr(null);
+    setSuccessKey(key);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    successTimerRef.current = setTimeout(() => setSuccessKey(null), 2500);
+  }, []);
+
   const previewUrl = localPreview ?? resolvePreviewUrl(value);
 
   const onPick = useCallback(
     async (file: File) => {
       setErr(null);
+      setSuccessKey(null);
       const objectUrl = URL.createObjectURL(file);
       setLocalPreview(objectUrl);
       setBusy(true);
@@ -94,6 +148,7 @@ export function ProfileMediaUploader({
         if (previousPath && previousPath !== nextPath) {
           await removeProfileMedia(previousPath);
         }
+        flashSuccess(SUCCESS_KEY[kind]);
       } catch (e) {
         if (e instanceof ProfileMediaValidationError) {
           if (e.code === "size") {
@@ -104,7 +159,9 @@ export function ProfileMediaUploader({
             setErr(e.message);
           }
         } else {
-          setErr(t("profile.media.errorGeneric"));
+          const msg =
+            (e as { message?: string } | null)?.message?.trim() || "";
+          setErr(msg.length > 0 ? msg : t("profile.media.errorGeneric"));
           console.error("[profile media] upload failed", e);
         }
         URL.revokeObjectURL(objectUrl);
@@ -114,27 +171,38 @@ export function ProfileMediaUploader({
         if (inputRef.current) inputRef.current.value = "";
       }
     },
-    [kind, userId, value, onChange, t]
+    [kind, userId, value, onChange, t, flashSuccess]
   );
 
   const onRemove = useCallback(async () => {
     setErr(null);
+    setSuccessKey(null);
     setBusy(true);
     try {
       const previousPath = value ?? null;
       await onChange(null);
       if (previousPath) await removeProfileMedia(previousPath);
       setLocalPreview(null);
+      flashSuccess(REMOVE_KEY[kind]);
     } catch (e) {
-      setErr(t("profile.media.errorGeneric"));
+      const msg = (e as { message?: string } | null)?.message?.trim() || "";
+      setErr(msg.length > 0 ? msg : t("profile.media.errorGeneric"));
       console.error("[profile media] remove failed", e);
     } finally {
       setBusy(false);
     }
-  }, [value, onChange, t]);
+  }, [value, onChange, t, kind, flashSuccess]);
 
   const shapeClasses = SHAPE_CLASSES[shape];
   const accept = "image/jpeg,image/png,image/webp";
+  const focal = clampFocal(objectPositionY);
+  // Only the wide cover preview tracks the focal slider; square avatars are
+  // always center-cropped server-side, so applying objectPosition would be
+  // misleading. Statement heroes don't expose a focal slider yet.
+  const previewStyle =
+    shape === "wide" && typeof objectPositionY === "number"
+      ? { objectPosition: `center ${focal}%` }
+      : undefined;
 
   return (
     <div className="space-y-2">
@@ -152,6 +220,7 @@ export function ProfileMediaUploader({
               height={shape === "square" ? 96 : 160}
               sizes={shape === "square" ? "96px" : "(max-width: 480px) 100vw, 480px"}
               className={shapeClasses.img}
+              style={previewStyle}
               unoptimized={previewUrl.startsWith("blob:")}
             />
           ) : (
@@ -184,10 +253,29 @@ export function ProfileMediaUploader({
             </button>
           )}
           {hint && <p className="text-xs text-zinc-500">{hint}</p>}
-          {err && <p className="text-xs text-red-600" role="alert">{err}</p>}
-          {busy && <p className="text-xs text-zinc-500">{t("profile.media.uploading")}</p>}
+          {busy && <p className="text-xs text-zinc-500" aria-live="polite">{t("profile.media.uploading")}</p>}
+          {!busy && successKey && (
+            <p
+              className="rounded bg-green-50 px-2 py-1 text-xs font-medium text-green-700"
+              role="status"
+              aria-live="polite"
+            >
+              {t(successKey)}
+            </p>
+          )}
+          {err && (
+            <p
+              className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-700"
+              role="alert"
+            >
+              {err}
+            </p>
+          )}
         </div>
       </div>
+      {shape === "wide" && previewUrl && previewCaption && (
+        <p className="text-xs text-zinc-500">{previewCaption}</p>
+      )}
     </div>
   );
 }

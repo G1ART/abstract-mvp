@@ -577,6 +577,13 @@ export default function SettingsPage() {
   // Persist a single base field via the unified RPC. Used for media path
   // changes (avatar/cover/statement-hero) and the cover focal slider —
   // anywhere we want immediate feedback rather than waiting on Save.
+  // Persists a single base field via the unified RPC and **throws** on
+  // failure so child uploaders can switch into their own "save failed"
+  // branch (the previous bool-return API kept errors hidden from the
+  // ProfileMediaUploader, which was the source of the silent "no changes
+  // to save" UX). Section-level identityErr/identityNotice are still set
+  // for the slider + statement on-blur paths that don't have their own
+  // inline feedback strip.
   const persistIdentityField = useCallback(
     async (patch: Partial<{
       avatar_url: string | null;
@@ -591,47 +598,52 @@ export default function SettingsPage() {
         const msg =
           (e as { message?: string } | null)?.message ?? "save failed";
         setIdentityErr(msg);
-        return false;
+        throw new Error(msg);
       }
       setIdentityNotice(t("settings.saveSuccess"));
       setTimeout(() => setIdentityNotice(null), 1500);
-      return true;
     },
     [t]
   );
 
   const handleAvatarChange = useCallback(
     async (nextPath: string | null) => {
-      const ok = await persistIdentityField({ avatar_url: nextPath });
-      if (ok) setAvatarUrl(nextPath);
+      await persistIdentityField({ avatar_url: nextPath });
+      setAvatarUrl(nextPath);
     },
     [persistIdentityField]
   );
 
   const handleCoverChange = useCallback(
     async (nextPath: string | null) => {
-      const ok = await persistIdentityField({ cover_image_url: nextPath });
-      if (ok) setCoverImagePath(nextPath);
+      await persistIdentityField({ cover_image_url: nextPath });
+      setCoverImagePath(nextPath);
     },
     [persistIdentityField]
   );
 
   const handleStatementHeroChange = useCallback(
     async (nextPath: string | null) => {
-      const ok = await persistIdentityField({
+      await persistIdentityField({
         artist_statement_hero_image_url: nextPath,
       });
-      if (ok) setStatementHeroPath(nextPath);
+      setStatementHeroPath(nextPath);
     },
     [persistIdentityField]
   );
 
   // Slider commit (mouseUp / touchEnd / keyUp) — debounced auto-save.
+  // identityErr is already set inside persistIdentityField on failure, so we
+  // just swallow the rejection here to avoid an unhandled promise rejection.
   const handleCoverPositionCommit = useCallback(
     async (value: number) => {
       const clamped = Math.min(100, Math.max(0, Math.round(value)));
       setCoverPositionY(clamped);
-      await persistIdentityField({ cover_image_position_y: clamped });
+      try {
+        await persistIdentityField({ cover_image_position_y: clamped });
+      } catch {
+        /* surfaced via identityErr badge below */
+      }
     },
     [persistIdentityField]
   );
@@ -649,14 +661,17 @@ export default function SettingsPage() {
     const prev = (statementInitialRef.current ?? "").trim();
     if (next === prev) return;
     setStatementSaving(true);
-    const ok = await persistIdentityField({
-      artist_statement: next.length > 0 ? next : null,
-    });
-    setStatementSaving(false);
-    if (ok) {
+    try {
+      await persistIdentityField({
+        artist_statement: next.length > 0 ? next : null,
+      });
       statementInitialRef.current = next;
       setStatementSavedAt(Date.now());
       setTimeout(() => setStatementSavedAt(null), 2000);
+    } catch {
+      /* surfaced via identityErr badge below */
+    } finally {
+      setStatementSaving(false);
     }
   }, [statement, persistIdentityField]);
 
@@ -959,6 +974,8 @@ export default function SettingsPage() {
                     label={t("settings.identity.cover")}
                     hint={t("settings.identity.coverHint")}
                     shape="wide"
+                    objectPositionY={coverPositionY}
+                    previewCaption={t("settings.identity.coverPreviewCaption")}
                   />
                   {coverImagePath && (
                     <div>
@@ -986,8 +1003,9 @@ export default function SettingsPage() {
                           handleCoverPositionCommit(Number((e.target as HTMLInputElement).value))
                         }
                         className="w-full max-w-md"
+                        aria-describedby="coverPositionYHint"
                       />
-                      <p className="text-xs text-zinc-500">
+                      <p id="coverPositionYHint" className="text-xs text-zinc-500">
                         {t("settings.identity.coverRepositionHint")}
                       </p>
                     </div>

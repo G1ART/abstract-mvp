@@ -2,6 +2,38 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Profile media uploader UX (즉시 피드백 + 라이브 커버 크롭 미리보기)
+
+### 동기
+
+42804 핫픽스로 RPC는 정상 동작 — 그러나 직접 사용해보니 업로더 UX가 모호해 다음 두 문제가 남아 있었음:
+
+- 사진을 골라도 *"진짜 등록됐나?"* 가 시각적으로 확인되지 않음. 하단 "저장"을 누르면 *"저장할 변경 사항이 없습니다"* 가 떠서 오히려 사용자에게 *실패한 것 같다*는 오해를 줌.
+- 커버 이미지의 세로 포커스 슬라이더를 움직여도, 공개 프로필에서 어느 부분이 잘려 보일지 즉각적으로 직관적으로 확인할 방법이 없음.
+
+### 변경
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/profile/ProfileMediaUploader.tsx` | 업로드/제거 직후 종류별 인라인 성공 배지(`프로필 사진이 저장되었어요` / `커버 이미지가 저장되었어요` / `작가의 말 이미지가 저장되었어요`) 표시(2.5초). 실패 시 빨간 배지로 메시지 노출. **`onChange` 계약을 "실패 시 throw" 로 명문화** — 부모가 RPC 에러를 throw 하면 업로더가 catch 해서 자체 에러 UI 로 분기. 새 prop `objectPositionY?: number` 로 wide 미리보기에 `object-position: center {y}%` 적용 → 슬라이더와 동일 데이터로 라이브 크롭 반영. 새 prop `previewCaption?: string` 로 미리보기 아래 보조 문구 노출. |
+| `src/app/settings/page.tsx` | `persistIdentityField` 가 RPC 에러 시 `throw` 하도록 변경(예전 `return false` API 는 업로더에 에러 전달 불가). `handleAvatarChange` / `handleCoverChange` / `handleStatementHeroChange` 단순화. `handleCoverPositionCommit` / `handleStatementBlur` 는 try/catch 로 감싸 unhandled rejection 방지(에러는 섹션 하단 `identityErr` 로 그대로 노출). 커버 업로더에 `objectPositionY={coverPositionY}` 와 `previewCaption` 전달 → 슬라이더 드래그 시 미리보기가 **공개 프로필 크롭과 100% 동일한 비율(`aspect-[3/1]`)** 로 즉시 갱신. |
+| `src/lib/i18n/messages.ts` | EN/KO 신규 키: `profile.media.savedAvatar` · `savedCover` · `savedStatement` · `removedAvatar` · `removedCover` · `removedStatement` · `settings.identity.coverPreviewCaption`. |
+
+### Supabase SQL 적용 필요
+
+- 없음.
+
+### 환경 변수 변경
+
+- 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과, 린트 깨끗.
+- 공개 프로필 `<ProfileCoverBand>` 가 `aspect-[3/1]` + `object-position: center {focal}%` 라서 settings 의 wide 미리보기(`aspect-[3/1] w-full max-w-md`)와 같은 좌표계를 공유 — 미리보기가 곧 게시 결과.
+
+---
+
 ## 2026-04-27 — Hotfix: 프로필 사진/커버 업로드 42804, Statement 비-아티스트 가시성
 
 ### 증상
