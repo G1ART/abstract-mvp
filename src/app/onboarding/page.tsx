@@ -86,7 +86,12 @@ function OnboardingInner() {
     // No identity metadata is passed at signup. Identity is completed
     // downstream at `/onboarding/identity`. This keeps the account-
     // creation step fast and low-cognitive-load.
-    const { data, error: err } = await signUpWithPassword(email.trim(), password);
+    const { data, error: err } = await signUpWithPassword(
+      email.trim(),
+      password,
+      undefined,
+      nextPath
+    );
     setLoading(false);
 
     if (err) {

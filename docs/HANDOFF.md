@@ -2,6 +2,113 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Final Hardening · PR-A (account-scope 권한 강제 + explicit-accept 이메일 정책)
+
+위임 P0 보안·신뢰 갭 첫 라운드. 두 가지 핵심: (1) account-scope 위임이 프리셋 권한과 무관하게 모든 쓰기를 허용하던 RLS 헬퍼 폭(broad)을 좁힘. (2) 이메일 초대를 받은 사용자가 가입만으로 자동 활성화되던 흐름을 **explicit accept** 로 통일.
+
+### 1. P0-D — account-scope RLS 가 preset permission 을 강제
+
+**문제**: `is_account_delegate_of(owner)` 가 status=active 만 보고 permissions[] 를 보지 않아서, `account_review` (`view` 만 보유) 프리셋 위임자도 artworks/projects/exhibition_works/claims 의 INSERT/UPDATE/DELETE 가 실제로는 허용되었음. 프리셋이 "view only" 라는 사용자 약속과 백엔드가 어긋난 상태.
+
+**해결**: 새 마이그레이션 2 개로 헬퍼 추가 + write 정책 교체. SELECT 정책은 의도적으로 그대로 유지 (review 도 보기 권한 필요).
+
+| 파일 | 내용 |
+|---|---|
+| `supabase/migrations/20260505000000_delegation_account_perm_helpers.sql` | 새 SQL helper 2 종: `has_active_account_delegate_perm(owner, perm)`, `is_active_account_delegate_writer(owner)`. 둘 다 `auth.uid()` 앵커, security definer, status='active' 만 매치. RLS 본문에서 짧게 호출 가능. |
+| `supabase/migrations/20260505000100_delegation_account_rls_writer.sql` | 8 개 정책 drop+recreate (이름 보존). 매핑: `manage_artworks` → artworks/artwork_images, `manage_works`/`edit_metadata` → projects, `manage_works` → exhibition_works, `manage_claims` → claims update/delete. `can_reply_to_price_inquiry` 함수도 account-delegate 분기에 `manage_inquiries` 체크 추가. |
+
+**프리셋 → 권한 → 효과 매트릭스**:
+
+| 프리셋 | 보유 permission | 작품 CRUD | 전시 CRUD | exhibition_works | claims 처리 | 문의 답변 | 작품/전시/문의 보기 |
+|---|---|---|---|---|---|---|---|
+| `account_operations` | view, edit_metadata, manage_works, manage_artworks, manage_inquiries, manage_claims | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `account_content` | view, edit_metadata, manage_works, manage_artworks | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| `account_review` | view | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+**회귀 안전성**:
+- 정책 이름 보존 → 다른 마이그레이션에서 backref 없음.
+- owner-side 정책 (`*_owner_*`) 와 project-scope 위임 정책 모두 미수정.
+- SELECT 정책 미수정 → review 프리셋 사용자의 보기 경험 그대로.
+- `is_account_delegate_of(owner)` 함수 자체는 그대로 둠 — 다른 곳에서 단순 "active account delegate 인지" 만 묻는 read-only 분기 (예: profiles_select_account_delegate) 에서 계속 사용. write 자리에서만 새 헬퍼로 교체.
+- Project-scope 위임 (curator/host) 의 RLS 는 이전 PR에서 이미 permission-aware 였음.
+
+### 2. P0-C — 이메일 초대 = explicit accept 통일
+
+**문제**: 이메일 초대 본문(영·한)과 `/invites/delegation` 랜딩 페이지는 "가입 또는 로그인 후 수락 버튼을 눌러야 한다" 고 말하지만, `handle_auth_user_created_link_delegations` 트리거는 가입 시점에 자동으로 status='active' + accepted_at 설정 → 사용자가 의식하지 못한 사이에 활성 위임자가 되어 있음. 신뢰 갭.
+
+**해결**:
+- `supabase/migrations/20260505000200_delegation_explicit_accept.sql`: 트리거 함수 재정의. 이제 가입 시점엔 **`delegate_profile_id` 만 채움**. status=pending 유지, accepted_at NULL. activity event 도 `invite_accepted` → `invite_linked_at_signup` 으로 분리해 감사 추적이 흐려지지 않게.
+- 가입자 본인에게 in-app `delegation_invite_received` 알림 발사 → 이메일 링크를 다시 안 열어도 알림센터에서 확인 가능.
+
+**가입 → 온보딩 → 위임 스페이스 흐름 (매끄러운 진입)**:
+
+```
+이메일 초대 메일 → /invites/delegation?token=XYZ
+  └ 비로그인 → /onboarding?next=/invites/delegation?token=XYZ
+        └ 가입 → 즉시 세션 모드 → /onboarding/identity?next=…
+              └ identity 완료 → routeByAuthState → /invites/delegation?token=XYZ (수락 화면)
+        └ 가입 → 이메일 확인 모드 → 메일 링크 클릭 → /auth/callback?next=…
+              └ session 생성 → routeByAuthState → /onboarding/identity?next=…
+                    └ identity 완료 → /invites/delegation?token=XYZ (수락 화면)
+```
+
+기존 결함이었던 "이메일 확인 모드에서 next 파라미터 손실" 도 같이 보강:
+- `signUpWithPassword(email, password, metadata?, nextPath?)` 에 `nextPath` 인자 추가.
+- `/onboarding/page.tsx` 가 가입 시 nextPath 를 `emailRedirectTo` 로 함께 인코딩.
+
+**`/invites/delegation` 페이지 그레이스풀 처리**:
+
+토큰이 이미 사용된 경우 (active/declined/revoked/expired) 의 메시지가 모두 "유효하지 않거나 만료" 하나로 뭉쳐 있던 것을 상태별로 분기 + 위임 허브로 보내는 단일 CTA 추가. 새 i18n 키 5 개 (영·한): `delegation.alreadyActive`, `alreadyDeclined`, `alreadyRevoked`, `alreadyExpired`, `openHub`. 또한 accept 성공 후 라우팅을 단순화 — 항상 `/my/delegations` 로 (preset 별 destination 매핑은 PR-B 작업).
+
+**백필 정책**: 기존 자동활성화된 행을 회수 (`status='active'` → pending) 하지 **않음**. 이미 활성 위임을 보고 있던 사용자에게 갑자기 "수락 대기" 상태로 돌리면 더 큰 혼란. 새 트리거는 **새 가입자**만 영향.
+
+### 3. 변경 파일 요약
+
+| 영역 | 파일 |
+|---|---|
+| SQL (Supabase 적용 필요) | `20260505000000_delegation_account_perm_helpers.sql` (helpers) |
+| | `20260505000100_delegation_account_rls_writer.sql` (write policies) |
+| | `20260505000200_delegation_explicit_accept.sql` (signup trigger) |
+| 클라이언트 | `src/app/invites/delegation/page.tsx` (status별 분기, accept 후 라우팅 단순화) |
+| | `src/app/onboarding/page.tsx` (signUpWithPassword 에 nextPath 전달) |
+| 라이브러리 | `src/lib/supabase/auth.ts` (signUpWithPassword 에 옵셔널 nextPath 인자) |
+| i18n | `src/lib/i18n/messages.ts` (영·한 5 키) |
+
+### 4. Supabase SQL — 실행 순서 (PR-A)
+
+```
+20260505000000_delegation_account_perm_helpers.sql
+20260505000100_delegation_account_rls_writer.sql
+20260505000200_delegation_explicit_accept.sql
+```
+
+세 파일 모두 idempotent (`create or replace`, `drop policy if exists`). 순서대로 실행. **PR-A 의 순수 SQL 변경분만이며**, 이전 PR1-4 의 마이그레이션이 모두 적용된 상태에서만 실행 가능 (특히 `delegations`, `delegation_activity_events` 테이블, `_record_delegation_notification` 함수).
+
+### 5. 환경 변수
+
+추가/변경 없음.
+
+### 6. QA 체크리스트
+
+| # | 시나리오 | 기대 |
+|---|---|---|
+| 1 | 새 사용자 A 에게 `account_review` 프리셋 위임 → A 로 acting-as → 작품 업로드 시도 | RLS 거절 (403/no insert). 작품/전시/문의는 보기는 가능. |
+| 2 | A 에게 `account_content` 위임 → 작품·전시 편집 가능, claims/문의 답변 불가 | manage_artworks/manage_works O, manage_claims/manage_inquiries X. |
+| 3 | A 에게 `account_operations` 위임 → 모든 작업 가능 | 회귀 없이 기존과 동일. |
+| 4 | 비온보딩 사용자에게 이메일 초대 발송 → 링크 클릭 → 가입 → identity 완료 | `/invites/delegation?token=…` 수락 화면 자동 도착. status=pending. |
+| 5 | 4) 후 수락 클릭 | active 전환 + delegator 에게 `delegation_accepted` 알림. |
+| 6 | 4) 의 가입자가 수락 안 하고 로그인 | 알림센터에 `delegation_invite_received` 떠 있음. 클릭 시 위임 허브로. |
+| 7 | 이미 active 인 토큰 링크 재방문 | "이미 활성 상태" 메시지 + 위임 허브 CTA. |
+| 8 | declined/revoked 토큰 링크 방문 | 각각의 친절 메시지 표시. |
+| 9 | 이메일 확인 모드(자동 sign-in OFF) 가입 → 메일 링크 클릭 | `/auth/callback?next=…` 통과해 위임 페이지 정착. |
+
+### 7. 미구현 (다음 PR 에서 처리)
+
+- **PR-B**: project preset 별 manage destination 매퍼, acting-as stale validation hook.
+- **PR-C**: 이메일 발송 실패 fallback (초대 링크 복사), 위임 mutation activity logs.
+
+---
+
 ## 2026-04-27 — Delegation Upgrade Phase 5 (My Studio 메인 승격 · 펜딩 도트 배지)
 
 위임 진입점을 우상단 아바타 드롭다운에서 **My Studio 좌상단 액션 트라이어드**로 승격. "프로필 편집 / 공개 프로필 미리보기 / 위임" 세 secondary 버튼이 같은 시각 무게로 모여 **소유자-관리 클러스터**를 형성. 글로벌 탭 (피드/사람/업로드) 추가 안 — IA tier mismatch 회피.

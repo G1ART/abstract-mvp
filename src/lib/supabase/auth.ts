@@ -23,9 +23,23 @@ export type SignUpMetadata = {
 export async function signUpWithPassword(
   email: string,
   password: string,
-  metadata?: SignUpMetadata
+  metadata?: SignUpMetadata,
+  /**
+   * Optional in-app path to land on after the user clicks the
+   * confirmation link. Critical for delegation invite signups so the
+   * `?token=` parameter survives the email round-trip:
+   *   /onboarding?next=/invites/delegation?token=ABC
+   *     → confirmation email → /auth/callback?next=/invites/delegation?token=ABC
+   *     → identity-finish (?next=…) → /invites/delegation?token=ABC
+   * Only relative paths are honored (validated via `safeNextPath`
+   * upstream).
+   */
+  nextPath?: string | null
 ) {
-  const emailRedirectTo = `${getAuthOrigin()}/auth/callback`;
+  const base = `${getAuthOrigin()}/auth/callback`;
+  const emailRedirectTo = nextPath
+    ? `${base}?next=${encodeURIComponent(nextPath)}`
+    : base;
   return supabase.auth.signUp({
     email,
     password,

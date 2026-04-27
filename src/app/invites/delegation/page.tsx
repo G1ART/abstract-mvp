@@ -5,11 +5,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
-import { getMyProfile } from "@/lib/supabase/profiles";
 import {
   getDelegationByToken,
   acceptDelegationByToken,
-  listMyDelegations,
 } from "@/lib/supabase/delegations";
 import type { GetDelegationByTokenResult } from "@/lib/supabase/delegations";
 
@@ -74,15 +72,11 @@ function InvitesDelegationInner() {
     }
     if (data?.ok) {
       setAccepted(true);
-      const { data: list } = await listMyDelegations();
-      const received = list?.received ?? [];
-      if (received.length > 1) {
-        router.replace("/my/delegations");
-      } else if (received.length === 1 && info.scope_type === "project" && info.project?.id) {
-        router.replace(`/my/exhibitions/${info.project.id}/add`);
-      } else {
-        router.replace("/my/delegations");
-      }
+      // Always land in the delegation hub after a successful accept.
+      // The hub already provides per-delegation deep-link buttons whose
+      // destinations follow the project preset (review vs co-edit), so
+      // routing here would have to duplicate that logic.
+      router.replace("/my/delegations");
       return;
     }
     if (data?.reason === "email_mismatch") {
@@ -100,7 +94,7 @@ function InvitesDelegationInner() {
     );
   }
 
-  if (!info?.found || info.status !== "pending") {
+  if (!info?.found) {
     return (
       <div className="mx-auto max-w-md px-4 py-12">
         <h1 className="mb-4 text-xl font-semibold">{t("delegation.inviteTitle")}</h1>
@@ -108,6 +102,50 @@ function InvitesDelegationInner() {
         <Link href="/" className="mt-6 inline-block text-sm font-medium text-zinc-700 underline">
           ← {t("common.backTo")} {t("common.home")}
         </Link>
+      </div>
+    );
+  }
+
+  // Graceful handling for non-pending statuses: instead of a generic
+  // "invalid or expired" we surface the actual state and route the user
+  // to the most useful next step. Especially important now that signup
+  // links a delegation row but keeps it pending — users may revisit a
+  // token link after they've already accepted/declined elsewhere.
+  if (info.status && info.status !== "pending") {
+    const statusBody = (() => {
+      switch (info.status) {
+        case "active":
+          return t("delegation.alreadyActive");
+        case "declined":
+          return t("delegation.alreadyDeclined");
+        case "revoked":
+          return t("delegation.alreadyRevoked");
+        case "expired":
+          return t("delegation.alreadyExpired");
+        default:
+          return t("delegation.invalidOrExpired");
+      }
+    })();
+    const ctaHref =
+      info.status === "active" ? "/my/delegations" : "/my/delegations";
+    return (
+      <div className="mx-auto max-w-md px-4 py-12">
+        <h1 className="mb-4 text-xl font-semibold">{t("delegation.inviteTitle")}</h1>
+        <p className="text-zinc-600">{statusBody}</p>
+        <div className="mt-6 flex gap-3">
+          <Link
+            href={ctaHref}
+            className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800"
+          >
+            {t("delegation.openHub")}
+          </Link>
+          <Link
+            href="/"
+            className="rounded border border-zinc-300 px-4 py-2 text-sm hover:bg-zinc-50"
+          >
+            {t("common.home")}
+          </Link>
+        </div>
       </div>
     );
   }
