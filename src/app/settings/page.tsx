@@ -940,37 +940,12 @@ export default function SettingsPage() {
           <BuildStamp />
         </div>
 
-        <div className="mb-6">
-          <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("settings.security")}</h2>
-          {/* QA P0.5-C (row 25, follow-up): 비밀번호가 이미 설정된
-              사용자에게는 "이메일과 비밀번호로 로그인할 수 있도록…"
-              안내가 오히려 *비밀번호를 설정하지 않은 것처럼* 보이게
-              해서 혼란을 일으킨다. 이 분기에선 링크 라벨을 "비밀번호
-              재설정 / Reset password" 으로 좁히고, hint 단락은 아예
-              렌더하지 않는다. 단, `hasPassword === null` 은 auth-state
-              RPC 로딩 중 또는 일시적 오류 일 수 있는데, 이전 버전에선
-              이 케이스에서 링크 자체를 숨겨버려 "보안만 보이고 기능이
-              없다" 는 사용자 체감 문제가 있었음 — 그래서 null 일 때도
-              링크는 *항상* 노출하고, `/set-password` 페이지가 두 케이스
-              (최초 설정 / 재설정) 를 모두 처리한다는 사실에 의존해
-              "비밀번호 재설정" 을 안전한 기본값으로 사용한다. 아직
-              비밀번호 미설정 (`hasPassword === false`) 으로 명시적으로
-              확인된 사용자에게만 "비밀번호 설정" 라벨 + 안내 문구가
-              노출된다. */}
-          <Link
-            href="/set-password"
-            className="text-sm text-zinc-600 underline hover:text-zinc-900"
-          >
-            {hasPassword === false
-              ? t("settings.setPassword")
-              : t("settings.changePassword")}
-          </Link>
-          {hasPassword === false && (
-            <p className="mt-1 text-xs text-zinc-500">
-              {t("settings.setPasswordHint")}
-            </p>
-          )}
-        </div>
+        {/* QA P0.5-C (row 25, follow-up²): 비밀번호 재설정은 자주 쓰는
+            기능이 아니라 [프로필 편집] 최상단을 차지할 만큼 중요하지
+            않다. 페이지 최하단 [로그아웃] 옆으로 옮겨 "쓸 일이 있을 때
+            찾을 수 있는" 위치에 둔다. 비밀번호 미설정 사용자(주로
+            매직링크 가입) 의 경우엔 같은 버튼이 "비밀번호 설정" 으로
+            라벨링되며, 그 케이스에 한해서만 안내 문구가 표시된다. */}
 
         {loading ? (
           <p className="text-zinc-600">{t("common.loading")}</p>
@@ -1599,16 +1574,31 @@ export default function SettingsPage() {
         )}
 
         <div className="mt-12 border-t border-zinc-200 pt-8">
-          <button
-            type="button"
-            onClick={async () => {
-              await signOut();
-              router.replace("/login");
-            }}
-            className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
-          >
-            {t("nav.logout")}
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={async () => {
+                await signOut();
+                router.replace("/login");
+              }}
+              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              {t("nav.logout")}
+            </button>
+            <Link
+              href="/set-password"
+              className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              {hasPassword === false
+                ? t("settings.setPassword")
+                : t("settings.changePassword")}
+            </Link>
+          </div>
+          {hasPassword === false && (
+            <p className="mt-2 text-xs text-zinc-500">
+              {t("settings.setPasswordHint")}
+            </p>
+          )}
         </div>
       </main>
     </AuthGate>
