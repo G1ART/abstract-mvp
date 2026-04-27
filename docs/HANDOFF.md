@@ -2,6 +2,37 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Reorder 튕김·Supabase 에러 표기·"작가 → 아티스트" 통일 핫픽스
+
+### 동기
+
+직전 패치에서 도입한 공개 프로필 reorder 흐름에서 두 가지 회귀 + 한국어 카피 비일관성 한 가지가 동시에 보고됨.
+
+### 변경
+
+| 파일 | 변경 |
+|---|---|
+| `src/components/UserProfileContent.tsx` | (1) `?mode=reorder` 딥링크용 자동 reorder 활성화 effect 를 `useRef` 로 **일회성** 처리. 직전엔 deps 에 `artworks` / `exhibitions` 가 들어 있어 저장 직후 `router.refresh()` 가 새 배열 레퍼런스를 내려줄 때마다 effect 가 재발동 → reorder 모드로 *"튕김"*. 이제 마운트 후 한 번만 활성화. (2) 작품/전시 reorder save·clear 의 에러 표기를 `formatErrorMessage()` 로 교체 — 직전엔 Supabase `PostgrestError` 가 `Error` 인스턴스가 아니라 `String(error)` 가 `"[object Object]"` 가 되어 실제 사유(권한·테이블 누락·RLS)가 가려졌음. |
+| `src/lib/errors/format.ts` | 신규. `PostgrestError` 의 `message / details / hint / code` 와 일반 `Error` / 문자열을 통일된 사람-친화 문자열로 풀어주는 헬퍼. 다른 reorder 위치에서도 재사용 가능. |
+| `src/lib/i18n/messages.ts` | 한국어 `role.artist` `"작가" → "아티스트"`, `artwork.artistFallback` `"작가" → "아티스트"`, `exhibition.stepArtists` `"작가" → "아티스트"`, `app.description` 의 `"작가·콜렉터" → "아티스트·콜렉터"`. People 페이지에서 이미 "아티스트"로 보였던 것과 통일. 영문 카피·*"작가의 말 / 작가에게 메시지"* 같은 문장형 사용은 그대로 유지(role chip 만 정리). |
+
+### 검증
+
+- 작품 reorder 저장 → 토스트 후 reorder 종료 상태 유지(튕김 없음).
+- 전시 reorder 저장 → 마이그레이션 미적용/RLS 거부 시 실제 사유가 메시지에 노출.
+- 공개 프로필 chip / 피드 by-line / 전시 step 1 모두 "아티스트"로 표기.
+- `npx tsc --noEmit` 통과.
+
+### Supabase SQL
+
+- 이번 핫픽스는 SQL 변경 없음 — *단 직전 패치의* `supabase/migrations/p0_profile_exhibition_orders.sql` *을 아직 실행하지 않았다면 지금 실행해야 전시 reorder 가 정상 작동합니다.* 미적용 상태에서는 새 에러 헬퍼가 *"relation … does not exist"* 같은 정확한 사유를 보여줍니다.
+
+### 환경 변수
+
+- 변경 없음.
+
+---
+
 ## 2026-04-27 — 전시 정렬 토글(A) + 직접 정렬 저장(B) + 공개 프로필 미리보기 가이드 투어
 
 ### 동기

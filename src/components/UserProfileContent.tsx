@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -39,6 +39,7 @@ import { SortableExhibitionRow } from "./SortableExhibitionRow";
 import { ExhibitionSortDropdown } from "@/components/exhibitions/ExhibitionSortDropdown";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { formatErrorMessage } from "@/lib/errors/format";
 import { Chip, EmptyState } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
@@ -138,18 +139,29 @@ export function UserProfileContent({
     }
   }, [initialTabParam, exhibitions.length, artworks.length]);
 
+  /**
+   * One-shot auto-activation for `?mode=reorder` URLs. Without the ref
+   * gate this effect re-fires after every save (router.refresh changes
+   * the artwork/exhibition prop reference) and snaps the user back into
+   * reorder mode right after they leave it.
+   */
+  const autoReorderActivatedRef = useRef(false);
   useEffect(() => {
+    if (autoReorderActivatedRef.current) return;
     if (!initialReorderMode || !isOwner) return;
     if (active.kind === "persona" && active.tab === "exhibitions") {
-      if (exhibitions.length >= 2 && !exhibitionReorderMode) {
-        setExhibitionDraft(
-          sortExhibitions(exhibitions, exhibitionSortMode, exhibitionOrderMap)
-        );
-        setExhibitionReorderMode(true);
-      }
+      if (exhibitions.length < 2) return;
+      autoReorderActivatedRef.current = true;
+      setExhibitionDraft(
+        sortExhibitions(exhibitions, exhibitionSortMode, exhibitionOrderMap)
+      );
+      setExhibitionReorderMode(true);
       return;
     }
-    if (artworks.length > 0) setReorderMode(true);
+    if (artworks.length > 0) {
+      autoReorderActivatedRef.current = true;
+      setReorderMode(true);
+    }
   }, [
     initialReorderMode,
     isOwner,
@@ -158,7 +170,6 @@ export function UserProfileContent({
     exhibitions,
     exhibitionSortMode,
     exhibitionOrderMap,
-    exhibitionReorderMode,
   ]);
 
   useEffect(() => {
@@ -259,8 +270,7 @@ export function UserProfileContent({
     const { error } = await updateMyArtworkOrder(orderedIds, profile.id);
     setSaving(false);
     if (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      setSaveError(msg);
+      setSaveError(formatErrorMessage(error));
       return;
     }
     setReorderMode(false);
@@ -319,8 +329,7 @@ export function UserProfileContent({
     const { error } = await updateMyProfileExhibitionOrder(orderedIds, profile.id);
     setExhibitionSaving(false);
     if (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      setExhibitionSaveError(msg);
+      setExhibitionSaveError(formatErrorMessage(error));
       return;
     }
     const nextMap = new Map<string, number>();
@@ -342,7 +351,7 @@ export function UserProfileContent({
     const { error } = await clearMyProfileExhibitionOrder(profile.id);
     setExhibitionSaving(false);
     if (error) {
-      setExhibitionSaveError(error instanceof Error ? error.message : String(error));
+      setExhibitionSaveError(formatErrorMessage(error));
       return;
     }
     setExhibitionOrderMap(new Map());
