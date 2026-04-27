@@ -208,6 +208,9 @@ export const messages = {
     "delegation.switchToMyAccount": "Switch to my account",
     "delegation.inviteManager": "Invite manager",
     "delegation.inviteManagerHint": "Invite someone by email to share upload and edit rights for this exhibition.",
+    "delegation.shareExhibitionAccess": "Share exhibition access",
+    "delegation.shareExhibitionAccessHint": "Invite someone you trust to co-edit this exhibition. You can revoke access at any time.",
+    "delegation.shareExhibitionAccessCta": "Share access",
     "delegation.inviteAccountAccess": "Invite account access",
     "delegation.inviteAccountAccessHint": "Invite a manager or assistant by email to manage your account (uploads, exhibitions, claims, price inquiries). They cannot change your profile or login.",
     "delegation.inviteByEmail": "Email",
@@ -1486,6 +1489,11 @@ export const messages = {
     "connection.composer.blocked": "Monthly limit reached — upgrade to keep sending",
     "connection.signal.unread": "{count} new messages",
     "notifications.connectionMessageText": "{name} sent you a message",
+    "notifications.delegationInviteReceivedText": "{name} invited you to help manage their account",
+    "notifications.delegationInviteReceivedProjectText": "{name} invited you to co-manage the exhibition “{title}”",
+    "notifications.delegationAcceptedText": "{name} accepted your delegation invitation",
+    "notifications.delegationDeclinedText": "{name} declined your delegation invitation",
+    "notifications.delegationRevokedText": "{name} revoked a delegation",
     "notifications.boardSaveText": "Someone saved your work '{title}' to a board",
     "notifications.boardSaveTextPaid": "{name} saved your work '{title}' to a board",
     "notifications.boardPublicText": "A board featuring your work '{title}' is now public",
@@ -1686,16 +1694,19 @@ export const messages = {
     "tour.delegation.intro": "Share the operating load without sharing who you are.",
     "tour.delegation.what.title": "Delegate operations, not identity",
     "tour.delegation.what.body":
-      "Invite trusted collaborators to help run your account — uploads, exhibitions, inquiries — without handing over who you are.",
-    "tour.delegation.invite.title": "Invite a collaborator",
-    "tour.delegation.invite.body":
-      "Invite an existing Abstract member or send an email invite to someone new.",
+      "Invite people you trust to help run your account. Login, billing, and account deletion are never shared — only the operating surfaces you choose.",
+    "tour.delegation.wizard.title": "Create a new delegation",
+    "tour.delegation.wizard.body":
+      "Tap Create new delegation to walk through four steps: scope (whole account or a specific exhibition) → person → permission preset → review. The final step shows clearly what is and isn't shared.",
     "tour.delegation.received.title": "Invitations to you",
     "tour.delegation.received.body":
-      "Offers to act on someone else's behalf arrive here. Accept only what you truly intend to manage.",
+      "Pending, active, and closed invitations land here. Use View permissions to see exactly what would be shared before you accept.",
     "tour.delegation.sent.title": "Your active delegations",
     "tour.delegation.sent.body":
-      "Everything you've delegated stays visible and revocable here — no surprises.",
+      "Every delegation you've created stays visible here. View permissions opens a detail drawer with timeline and recent activity, and Revoke ends access instantly.",
+    "tour.delegation.acting.title": "When you're acting on another account",
+    "tour.delegation.acting.body":
+      "After accepting, a single amber strip stays at the top of every page. View permissions reminds you what you can do, and Return to my account switches back instantly.",
 
     "tour.network.title": "Network",
     "tour.network.intro": "Both sides of your graph, lightly organized.",
@@ -1918,6 +1929,9 @@ export const messages = {
     "delegation.switchToMyAccount": "내 계정으로 전환",
     "delegation.inviteManager": "관리자 초대",
     "delegation.inviteManagerHint": "이 전시의 작품 추가·수정 권한을 공유할 관리자를 이메일로 초대할 수 있습니다.",
+    "delegation.shareExhibitionAccess": "전시 권한 공유",
+    "delegation.shareExhibitionAccessHint": "신뢰할 수 있는 분에게 이 전시의 공동 편집 권한을 공유할 수 있습니다. 언제든지 해제할 수 있어요.",
+    "delegation.shareExhibitionAccessCta": "권한 공유하기",
     "delegation.inviteAccountAccess": "계정 관리 권한 초대",
     "delegation.inviteAccountAccessHint": "매니저·어시스턴트를 이메일로 초대해 계정 전반(업로드, 전시, 클레임, 가격 문의)을 관리하게 할 수 있습니다. 프로필·로그인 설정은 위임되지 않습니다.",
     "delegation.inviteByEmail": "이메일",
@@ -3197,6 +3211,11 @@ export const messages = {
     "connection.composer.blocked": "이번 달 한도를 모두 썼어요 — 업그레이드 후 다시 보낼 수 있어요",
     "connection.signal.unread": "새 메시지 {count}개",
     "notifications.connectionMessageText": "{name}님이 메시지를 보냈어요",
+    "notifications.delegationInviteReceivedText": "{name}님이 계정 운영을 함께 맡아달라고 위임을 보내셨어요",
+    "notifications.delegationInviteReceivedProjectText": "{name}님이 전시 〈{title}〉의 공동 관리를 부탁드렸어요",
+    "notifications.delegationAcceptedText": "{name}님이 위임 요청을 수락하셨어요",
+    "notifications.delegationDeclinedText": "{name}님이 위임 요청을 거절하셨어요",
+    "notifications.delegationRevokedText": "{name}님이 위임을 해제하셨어요",
     "notifications.boardSaveText": "누군가 회원님의 작품 〈{title}〉을(를) 보드에 담았어요",
     "notifications.boardSaveTextPaid": "{name}님이 회원님의 작품 〈{title}〉을(를) 보드에 담았어요",
     "notifications.boardPublicText": "회원님의 작품 〈{title}〉이(가) 담긴 보드가 공개되었어요",
@@ -3397,16 +3416,19 @@ export const messages = {
     "tour.delegation.intro": "내 정체성은 지키되, 운영의 무게는 함께 나눌 수 있어요.",
     "tour.delegation.what.title": "계정 운영만 함께, 정체성은 그대로",
     "tour.delegation.what.body":
-      "신뢰할 수 있는 사람에게 계정 운영을 함께 맡길 수 있어요. 업로드·전시·문의 같은 실무를 나눠도, 나의 정체성은 그대로예요.",
-    "tour.delegation.invite.title": "협업자 초대",
-    "tour.delegation.invite.body":
-      "Abstract 회원을 바로 초대하거나, 이메일로 새 초대장을 보낼 수 있어요.",
+      "신뢰할 수 있는 분에게 계정 운영을 함께 맡길 수 있어요. 로그인·결제·계정 삭제처럼 정체성 영역은 절대 공유되지 않고, 업로드·전시·문의 같은 실무만 나눌 수 있어요.",
+    "tour.delegation.wizard.title": "새 위임 만들기",
+    "tour.delegation.wizard.body":
+      "[새 위임 만들기]를 누르면 4단계 안내가 시작돼요. 범위(계정 전체/특정 전시) → 사람 → 권한 묶음 → 검토 순으로 진행되고, 마지막 단계에서 어떤 정보가 공유되고 어떤 정보는 공유되지 않는지 한 번 더 보여드려요.",
     "tour.delegation.received.title": "내게 온 초대",
     "tour.delegation.received.body":
-      "다른 사람을 대신해 일해달라는 요청이 이곳에 도착해요. 정말 맡을 것만 수락해 주세요.",
+      "다른 분이 보낸 위임 요청이 대기·수락·종료 탭으로 정리돼 도착해요. [권한 보기]로 어떤 권한이 공유되는지 미리 확인하고, 정말 맡을 것만 수락해 주세요.",
     "tour.delegation.sent.title": "내가 만든 위임",
     "tour.delegation.sent.body":
-      "내가 맡긴 모든 위임은 여기서 보이고, 언제든 회수할 수 있어요. 숨겨진 연결은 없어요.",
+      "내가 맡긴 모든 위임은 이곳에서 카드로 보이고, [권한 보기]에서 활동 기록까지 확인하거나 언제든 [위임 해제]로 회수할 수 있어요. 숨겨진 연결은 없어요.",
+    "tour.delegation.acting.title": "다른 계정으로 작업 중일 때",
+    "tour.delegation.acting.body":
+      "위임을 수락한 후 다른 분의 계정으로 작업하실 때는 화면 상단에 노란 띠가 항상 떠 있어요. [권한 보기]로 가능한 작업을 다시 확인할 수 있고, [내 계정으로 돌아가기]로 즉시 본인 계정으로 돌아올 수 있어요.",
 
     "tour.network.title": "네트워크 안내",
     "tour.network.intro": "그래프의 양쪽을 가볍게 정리해둔 공간이에요.",

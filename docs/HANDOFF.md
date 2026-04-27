@@ -2,6 +2,115 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Delegation Upgrade Phase 3 (전시 in-context CTA · 엔타이틀먼트 · 투어 v3 · 알림 카피 · 종합 정리)
+
+PR1(백엔드 토대)·PR2(프론트 IA·위자드·드로어·acting-as 단일화) 위에 **사용자 진입점**을 마무리하고, **엔타이틀먼트 키 / 투어 / 알림 / 문서**까지 묶어 위임 업그레이드 시리즈를 닫는다.
+
+### 변경
+
+| 영역 | 파일 | 변경 |
+|---|---|---|
+| **전시 in-context CTA** | `src/app/my/exhibitions/[id]/edit/page.tsx`, `src/app/my/exhibitions/[id]/add/page.tsx` | 기존 인라인 *Invite manager* 폼(이메일 + 가입 유저 검색 드롭다운, 약 130줄 × 2 페이지) 제거. 같은 자리에 secondary 버튼 `전시 권한 공유 / Share exhibition access` 1개로 단일화. 클릭 시 `CreateDelegationWizard` 가 `initialScope=project`, `initialProjectId=id`, `initialPreset=project_co_edit` 로 프리필되어 Step 1·2 (스코프 / 전시 선택) 가 자동 단축. 위임 보안 단일 출처는 PR1 의 `delegation_preset_permissions` 가 그대로 유지. 폼 제거에 따라 `searchPeople / createDelegationInvite / createDelegationInviteForProfile / classifyDelegationInviteError / PublicProfile / getArtworkImageUrl` import 와 `delegateEmail / inviteSending / inviteToast / delegateSearchQ / delegateSearchResults / inviteByProfile* / handleInviteManagerByProfile / doDelegateSearch` 등 약 40개 state·헬퍼가 함께 정리됨. |
+| **엔타이틀먼트 4종** | `src/lib/entitlements/featureKeys.ts`, `src/lib/entitlements/planMatrix.ts`, `supabase/migrations/20260503000400_delegation_feature_keys.sql` | `delegation.account / delegation.project / delegation.permission_presets / delegation.activity_log` 네 키 추가. 베타에선 모든 플랜(free 포함)에 열어두어 **가시 페이월 없음**. `plan_quota_matrix` 항목은 의도적으로 미설정(브리프 §13.3 "설계만, 노출 금지"). DB 시드는 idempotent `on conflict do nothing`. |
+| **투어 v3** | `src/lib/tours/tourRegistry.ts`, `src/lib/tours/tourKoCopy.ts`, `src/lib/i18n/messages.ts` | `delegation.main` 투어를 4스텝 → **5스텝**으로 갱신(`delegation-header → delegation-wizard-cta → delegation-received → delegation-sent → acting-as-banner`). version 2 → 3 으로 bump 해 기존 사용자에게도 1회 자동 재노출. 한국어는 `tourKoCopy.ts` 에 하드 카피로 박아 넣어 글리프 깨짐 방지(P1 회귀 케이스 그대로 보존). 영어는 `tour.delegation.*` i18n. `Header` 의 acting-as strip 에 `data-tour="acting-as-banner"` 앵커 추가. |
+| **알림 카피** | `src/lib/i18n/messages.ts` | `notifications.delegationInviteReceivedText / delegationInviteReceivedProjectText / delegationAcceptedText / delegationDeclinedText / delegationRevokedText` 5종(EN·KR) 추가. 알림 라우팅 인프라 자체는 변경 없음(키만 선반영). |
+| **CTA 카피** | `src/lib/i18n/messages.ts` | `delegation.shareExhibitionAccess / shareExhibitionAccessHint / shareExhibitionAccessCta` 3종(EN·KR) 추가. 기존 `delegation.inviteManager*` 키는 다른 화면(투어·이메일 본문 등)에서 참조될 수 있어 **삭제하지 않고 보존**. |
+
+### DelegationScope · 프리셋 단일 출처
+
+| 스코프 | 프리셋 | 권한 묶음 (`delegation_preset_permissions(p)`) |
+|---|---|---|
+| account | `operations` | `view, edit_metadata, manage_works, manage_artworks, manage_inquiries, manage_claims` |
+| account | `content` | `view, edit_metadata, manage_works, manage_artworks` |
+| account | `review` | `view` |
+| project | `project_co_edit` | `view, edit_metadata, manage_works` |
+| project | `project_works_only` | `view, manage_works` |
+| project | `project_review` | `view` |
+| (예약) | `inventory` | UI 노출 보류 — enum/RLS는 보존, 위자드/허브에서 비노출 |
+
+클라이언트가 위자드에서 `permissions[]` 를 직접 보내도 RPC 가 `preset` 이 있으면 **서버측에서 이 맵으로 덮어쓴다** → 권한 단일 출처는 항상 SQL 함수.
+
+### 에러 코드 → i18n 매핑
+
+| RPC 에러 코드 | i18n 키 |
+|---|---|
+| `cannot_invite_self` | `delegation.error.cannotInviteSelf` |
+| `duplicate_pending_invite` | `delegation.error.duplicatePendingInvite` |
+| `already_active` | `delegation.error.alreadyActive` |
+| `delegate_not_found` | `delegation.error.delegateNotFound` |
+| `project_not_found` | `delegation.error.projectNotFound` |
+| `permission_denied` | `delegation.error.permissionDenied` |
+| `invalid_scope` | `delegation.error.invalidScope` |
+| `missing_email` | `delegation.error.missingEmail` |
+| `email_send_failed` | `delegation.error.emailSendFailed` |
+| `unknown` | `delegation.error.unknown` |
+
+### 보안 체크리스트 (브리프 §15)
+
+- [x] 권한 단일 출처: `delegation_preset_permissions(p)` SQL 함수. 클라이언트 `permissions[]` 는 preset이 주어지면 서버가 덮어씀.
+- [x] 정체성 영역(로그인·결제·계정 삭제·다른 위임) 은 어떤 프리셋에도 포함되지 않음. 위자드 검토 단계에서 `delegation.deniesShared.*` 4종으로 명시.
+- [x] `record_delegation_event` 는 `SECURITY DEFINER` 만 호출, 일반 INSERT 차단(RLS).
+- [x] `delegation_activity_events` 읽기는 양측 참여자만(RLS `select` 정책).
+- [x] `decline_delegation_by_id` 가 별도 `declined` 상태로 기록 → 과거 거절(`revoked` 폴백) 과 구분 가능.
+- [x] `revoke_delegation` 은 `revoked_at` + `revoked_by = auth.uid()` 기록.
+- [x] 기존 RLS 정책 본문·정책 이름 변경 없음. 새 헬퍼 함수는 병행 운영.
+- [x] 인벤토리 스코프는 enum/RLS 보존, UI 비노출(악의적 직접 RPC 호출 시에도 RLS는 그대로 적용).
+
+### 수동 QA 절차
+
+**계정 위임 (account)**
+
+1. /my/delegations → `새 위임 만들기` → Step 1 `계정 운영 함께 관리` 선택 → Step 2 가입 유저 검색 → Step 3 `operations` 프리셋 → Step 4 메모 작성 → 전송. 카드가 Sent 에 즉시 등장하는지.
+2. 본인 검색해서 self-invite 시도 → 에러 (`delegation.error.cannotInviteSelf`) 표시 + 드롭다운 닫힘.
+3. 같은 사람 두 번 초대 → `duplicatePendingInvite` 에러.
+4. 수신자 계정으로 로그인 → Pending 탭 → `권한 보기` 로 드로어 열림 → `수락` → Active 탭 이동.
+5. 위임자 계정에서 `권한 보기` → 타임라인에 `invited_at / accepted_at` 노출 → `위임 해제` → Closed 탭 이동.
+6. 수신자 계정에서 acting-as strip 노출 확인 → `내 계정으로 돌아가기` 동작.
+
+**전시 위임 (project)**
+
+1. `/my/exhibitions/[id]/edit` 또는 `/add` → 새 `전시 권한 공유` 버튼 클릭 → 위자드가 Step 3(프리셋) 부터 시작되는지(스코프/프로젝트 프리필 확인).
+2. `project_co_edit` 으로 전송 → 수신자가 수락 → 수신자 계정에서 해당 전시의 작품 추가/메타 편집이 가능한지.
+3. `project_review` 로 변경 시 작품 추가가 막히고 보기만 되는지(브리프 §3.2 권한 표).
+4. 위임 해제 즉시 acting-as strip 사라지고 더 이상 해당 전시에 쓸 수 없는지.
+
+**투어 (v3)**
+
+1. /my/delegations 첫 진입 시 5스텝 투어 자동 노출. 우상단 `가이드 보기` 로 재실행.
+2. KR/EN 모두 글리프 깨짐 없음(한국어는 `tourKoCopy.ts` 하드 카피).
+
+### 회귀 방지 결과
+
+- 인접 페이지 폼 저장 로직 변경 없음(전시 메타·삭제·작품 추가 모두 분리되어 있음). 단일화는 위임 영역 한정.
+- 기존 `delegation.inviteManager*` i18n 키는 보존(다른 화면이 참조할 수 있음).
+- 투어 version bump 외에 사용자 onboarding 진입점/스튜디오/업로드 투어 변경 없음.
+- `useActingAs` 컨슈머(/my, exhibitions/new, [id]/edit, upload/bulk, inquiries, claims, useFeatureAccess) 시그니처/동작 변경 없음.
+
+### 검증
+
+- `npx tsc --noEmit` 통과.
+- 인접 파일 lint 0 issue.
+
+### Supabase SQL 적용 필요
+
+**예 — 1개 마이그레이션을 SQL Editor 에서 실행:**
+
+1. `20260503000400_delegation_feature_keys.sql` (idempotent, 추가만, 회귀 위험 없음)
+
+PR1 마이그레이션 4개(스키마·RPC·헬퍼·activity log)는 이미 적용되어 있어야 한다.
+
+### 환경 변수
+
+추가/변경 없음.
+
+### 미구현 / 보류
+
+- 이메일 발송 인프라(예: 거절·해제 알림 발송)는 기존 인프라 유지. 알림 i18n 키만 선반영.
+- `inventory` 스코프는 UI 비노출 유지. 향후 별도 결정 시 위자드에 카드 추가만으로 활성화 가능.
+- `plan_quota_matrix` 의 위임 4종 쿼터는 의도적으로 비워둠(베타 가시화 금지).
+
+---
+
 ## 2026-04-27 — Delegation Upgrade Phase 2 (Hub IA · 위자드 · 상세 드로어 · acting-as 단일화)
 
 PR1 의 백엔드(스키마·구조화 에러·헬퍼·Activity Log) 위에서 프론트 IA 와 신뢰 카피를 갈아끼움.

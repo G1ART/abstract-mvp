@@ -78,6 +78,13 @@ export const PLAN_FEATURE_MATRIX: Record<FeatureKey, PlanKey[]> = {
   // Delegation
   "delegation.operator_invite": ["artist_pro", "hybrid_pro", "gallery_workspace"],
   "delegation.multi_scope": ["gallery_workspace"],
+  // Delegation UX Permissions Upgrade (2026-04-27) — beta-friendly: open to
+  // every plan including free. Quotas (`plan_quota_matrix`) intentionally
+  // unset so no visible paywall appears; ceilings can be added later.
+  "delegation.account": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "delegation.project": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "delegation.permission_presets": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
+  "delegation.activity_log": ["free", "artist_pro", "discovery_pro", "hybrid_pro", "gallery_workspace"],
 };
 
 export type QuotaRule = {

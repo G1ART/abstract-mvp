@@ -24,18 +24,13 @@ import {
   createClaimForExistingArtist,
   createExternalArtistAndClaim,
 } from "@/lib/provenance/rpc";
-import {
-  createDelegationInvite,
-  createDelegationInviteForProfile,
-} from "@/lib/supabase/delegations";
 import { getExhibitionById } from "@/lib/supabase/exhibitions";
-import type { PublicProfile } from "@/lib/supabase/artists";
 import { getSession } from "@/lib/supabase/auth";
 import { setPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { listShortlistItems } from "@/lib/supabase/shortlists";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
-import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
+import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
 
 type Participant = {
   id: string;
@@ -79,19 +74,9 @@ export default function AddWorkToExhibitionPage() {
   // 작품 검색 (제목/설명/매체/키워드 기반 텍스트 검색; 자연어 검색의 1차 버전)
   const [workQuery, setWorkQuery] = useState("");
 
-  // 전시 관리자 위임 초대
-  const [delegateEmail, setDelegateEmail] = useState("");
-  const [inviteSending, setInviteSending] = useState(false);
-  const [inviteToast, setInviteToast] = useState<"sent" | "failed" | null>(null);
-  const [delegateSearchQ, setDelegateSearchQ] = useState("");
-  const [delegateSearchResults, setDelegateSearchResults] = useState<PublicProfile[]>([]);
-  const [delegateSearchLoading, setDelegateSearchLoading] = useState(false);
-  const [inviteByProfileSending, setInviteByProfileSending] = useState(false);
-  const [inviteByProfileToast, setInviteByProfileToast] = useState<
-    | { kind: "sent" }
-    | { kind: "failed"; messageKey: string; raw: string }
-    | null
-  >(null);
+  // 전시 권한 공유 위자드
+  const [shareWizardOpen, setShareWizardOpen] = useState(false);
+  const [shareToast, setShareToast] = useState<"sent" | null>(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [exhibitionTitle, setExhibitionTitle] = useState<string | null>(null);
 
@@ -247,60 +232,6 @@ export default function AddWorkToExhibitionPage() {
     };
   }, [artistSearch]);
 
-  const doDelegateSearch = useCallback(async () => {
-    const q = delegateSearchQ.trim();
-    if (!q) {
-      setDelegateSearchResults([]);
-      return;
-    }
-    setDelegateSearchLoading(true);
-    const { data } = await searchPeople({ q, limit: 10 });
-    setDelegateSearchResults((data ?? []) as PublicProfile[]);
-    setDelegateSearchLoading(false);
-  }, [delegateSearchQ]);
-
-  useEffect(() => {
-    const t = setTimeout(doDelegateSearch, 300);
-    return () => clearTimeout(t);
-  }, [delegateSearchQ, doDelegateSearch]);
-
-  const filteredDelegateResults = myId
-    ? delegateSearchResults.filter((p) => p.id !== myId)
-    : delegateSearchResults;
-
-  async function handleInviteManagerByProfile(profile: PublicProfile) {
-    if (!id) return;
-    setInviteByProfileSending(true);
-    setInviteByProfileToast(null);
-    const { data, error } = await createDelegationInviteForProfile({
-      delegateProfileId: profile.id,
-      scopeType: "project",
-      projectId: id,
-      permissions: ["view", "edit_metadata", "manage_works"],
-    });
-    setInviteByProfileSending(false);
-    // QA P0.5-F (rows 37, 38): always close the dropdown so click is
-    // visibly acknowledged, and surface a specific failure reason.
-    setDelegateSearchQ("");
-    setDelegateSearchResults([]);
-    if (error || !data) {
-      const classified = classifyDelegationInviteError(error);
-      console.warn("[delegation] invite-by-profile failed", {
-        delegate: profile.id,
-        scope: "project",
-        projectId: id,
-        raw: classified.raw,
-      });
-      setInviteByProfileToast({
-        kind: "failed",
-        messageKey: classified.key,
-        raw: classified.raw,
-      });
-      return;
-    }
-    setInviteByProfileToast({ kind: "sent" });
-  }
-
   const filteredArtworks = useMemo(() => {
     const q = workQuery.trim().toLowerCase();
     const hasParticipants = participants.length > 0;
@@ -407,130 +338,27 @@ export default function AddWorkToExhibitionPage() {
           </button>
         </div>
 
-        {/* Invite manager (delegation) */}
+        {/* 전시 권한 공유 (in-context CTA) */}
         <div id="invite" className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
-          <p className="mb-2 text-xs font-medium text-zinc-700">{t("delegation.inviteManager")}</p>
-          <p className="mb-3 text-xs text-zinc-500">{t("delegation.inviteManagerHint")}</p>
-
-          <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.inviteExistingUser")}</p>
-          <div className="relative mb-3">
-            <input
-              type="text"
-              value={delegateSearchQ}
-              onChange={(e) => setDelegateSearchQ(e.target.value)}
-              placeholder={t("delegation.searchUserPlaceholder")}
-              className="w-full min-w-[200px] rounded border border-zinc-300 px-3 py-2 text-sm"
-            />
-            {delegateSearchLoading && (
-              <p className="mt-1 text-xs text-zinc-400">{t("common.loading")}</p>
-            )}
-            {filteredDelegateResults.length > 0 && (
-              <ul className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded border border-zinc-200 bg-white py-1 shadow-lg">
-                {filteredDelegateResults.map((p) => (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      onClick={() => handleInviteManagerByProfile(p)}
-                      disabled={inviteByProfileSending}
-                      className="flex w-full items-center gap-3 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
-                    >
-                      {p.avatar_url ? (
-                        <img
-                          src={
-                            p.avatar_url.startsWith("http")
-                              ? p.avatar_url
-                              : getArtworkImageUrl(p.avatar_url, "avatar")
-                          }
-                          alt=""
-                          className="h-8 w-8 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-200 text-xs text-zinc-500">
-                          {(p.display_name ?? p.username ?? "?").charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="truncate">
-                        {p.display_name?.trim() || (p.username ? `@${p.username}` : p.id.slice(0, 8))}
-                      </span>
-                      {p.username && (
-                        <span className="truncate text-zinc-400">@{p.username}</span>
-                      )}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          {inviteByProfileToast && (
-            <p
-              className={`mb-3 text-xs ${
-                inviteByProfileToast.kind === "sent"
-                  ? "text-zinc-600"
-                  : "text-amber-600"
-              }`}
-              role={inviteByProfileToast.kind === "sent" ? "status" : "alert"}
-            >
-              {inviteByProfileToast.kind === "sent"
-                ? t("delegation.inviteSentToUser")
-                : t(inviteByProfileToast.messageKey)}
-            </p>
-          )}
-
-          <p className="mb-2 text-xs font-medium text-zinc-600">{t("delegation.orInviteByEmail")}</p>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="email"
-              value={delegateEmail}
-              onChange={(e) => setDelegateEmail(e.target.value)}
-              placeholder={t("delegation.inviteByEmail")}
-              className="min-w-[180px] flex-1 rounded border border-zinc-300 px-3 py-2 text-sm"
-            />
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-zinc-700">{t("delegation.shareExhibitionAccess")}</p>
+              <p className="mt-1 text-xs text-zinc-500">{t("delegation.shareExhibitionAccessHint")}</p>
+            </div>
             <button
               type="button"
-              disabled={inviteSending || !delegateEmail.trim()}
-              onClick={async () => {
-                const email = delegateEmail.trim();
-                if (!email) return;
-                setInviteSending(true);
-                setInviteToast(null);
-                const { data: inv, error: invErr } = await createDelegationInvite({
-                  delegateEmail: email,
-                  scopeType: "project",
-                  projectId: id,
-                });
-                if (invErr || !inv?.invite_token) {
-                  setInviteToast("failed");
-                  setInviteSending(false);
-                  return;
-                }
-                const { data: profile } = await getMyProfile();
-                const inviterName =
-                  (profile as { display_name?: string | null; username?: string | null })?.display_name?.trim() ||
-                  (profile as { username?: string | null })?.username ||
-                  null;
-                const res = await fetch("/api/delegation-invite-email", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    toEmail: email,
-                    inviterName,
-                    scopeType: "project",
-                    projectTitle: exhibitionTitle,
-                    inviteToken: inv.invite_token,
-                  }),
-                });
-                setInviteSending(false);
-                setInviteToast(res.ok ? "sent" : "failed");
-                if (res.ok) setDelegateEmail("");
+              onClick={() => {
+                setShareToast(null);
+                setShareWizardOpen(true);
               }}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="shrink-0 rounded border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
             >
-              {inviteSending ? t("delegation.sending") : t("delegation.sendInvite")}
+              {t("delegation.shareExhibitionAccessCta")}
             </button>
           </div>
-          {inviteToast && (
-            <p className={`mt-2 text-xs ${inviteToast === "sent" ? "text-zinc-600" : "text-amber-600"}`}>
-              {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
+          {shareToast === "sent" && (
+            <p className="mt-3 text-xs text-zinc-600" role="status">
+              {t("delegation.inviteSentToUser")}
             </p>
           )}
         </div>
@@ -1043,6 +871,20 @@ export default function AddWorkToExhibitionPage() {
           </section>
         )}
       </main>
+      {shareWizardOpen && (
+        <CreateDelegationWizard
+          open={shareWizardOpen}
+          onClose={() => setShareWizardOpen(false)}
+          onCreated={() => {
+            setShareWizardOpen(false);
+            setShareToast("sent");
+          }}
+          initialScope="project"
+          initialProjectId={id}
+          initialProjectTitle={exhibitionTitle ?? undefined}
+          initialPreset="project_co_edit"
+        />
+      )}
     </AuthGate>
   );
 }

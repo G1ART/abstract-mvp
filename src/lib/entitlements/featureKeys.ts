@@ -69,6 +69,11 @@ export const FEATURE_KEYS = [
   // Delegation (personal operator invite)
   "delegation.operator_invite",
   "delegation.multi_scope",
+  // Delegation UX Permissions Upgrade (2026-04-27)
+  "delegation.account",
+  "delegation.project",
+  "delegation.permission_presets",
+  "delegation.activity_log",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];

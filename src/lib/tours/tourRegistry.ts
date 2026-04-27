@@ -217,10 +217,10 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.delegation]: {
     id: TOUR_IDS.delegation,
-    version: 2,
+    version: 3,
     titleKey: "tour.delegation.title",
     introKey: "tour.delegation.intro",
-    requiredAnchors: ["delegation-invite"],
+    requiredAnchors: ["delegation-header"],
     steps: [
       {
         id: "what",
@@ -230,11 +230,11 @@ export const TOURS: Record<TourId, TourDefinition> = {
         placement: "bottom",
       },
       {
-        id: "invite",
-        target: "delegation-invite",
-        titleKey: "tour.delegation.invite.title",
-        bodyKey: "tour.delegation.invite.body",
-        placement: "top",
+        id: "wizard",
+        target: "delegation-wizard-cta",
+        titleKey: "tour.delegation.wizard.title",
+        bodyKey: "tour.delegation.wizard.body",
+        placement: "bottom",
       },
       {
         id: "received",
@@ -249,6 +249,13 @@ export const TOURS: Record<TourId, TourDefinition> = {
         titleKey: "tour.delegation.sent.title",
         bodyKey: "tour.delegation.sent.body",
         placement: "top",
+      },
+      {
+        id: "acting",
+        target: "acting-as-banner",
+        titleKey: "tour.delegation.acting.title",
+        bodyKey: "tour.delegation.acting.body",
+        placement: "bottom",
       },
     ],
   },

@@ -115,6 +115,7 @@ export function Header() {
         <div
           role="status"
           aria-live="polite"
+          data-tour="acting-as-banner"
           className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-900 sm:text-sm"
         >
           <span className="inline-flex items-center gap-1.5 truncate">
