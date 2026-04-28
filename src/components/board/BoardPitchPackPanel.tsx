@@ -12,6 +12,7 @@ import {
   AiStatusChip,
   AiDisclosureNote,
 } from "@/components/ai/primitives";
+import { AiFeedbackChips } from "@/components/beta";
 import type {
   BoardPitchPackDraft,
   BoardPitchPackDraftKind,
@@ -201,6 +202,15 @@ export function BoardPitchPackPanel({ boardId, itemCount }: Props) {
                 ))}
               </ul>
             </AiResultSection>
+          )}
+
+          {result && (
+            <AiFeedbackChips
+              pageKey="ai.board_pitch_pack"
+              contextType="shortlist"
+              contextId={boardId}
+              aiEventId={aiEventId}
+            />
           )}
         </>
       )}

@@ -103,10 +103,28 @@ export function TourProvider({ children }: { children: ReactNode }) {
       }
 
       const filtered: TourStep[] = [];
+      const missing: string[] = [];
       for (const step of tour.steps) {
         if (step.guard && !step.guard()) continue;
         const el = findTourTarget(step.target) ?? (await waitForTourTarget(step.target, 400));
-        if (el) filtered.push(step);
+        if (el) {
+          filtered.push(step);
+        } else {
+          missing.push(`${step.id}@${step.target}`);
+        }
+      }
+      // Dev-only: surface missing anchors so UI changes that detach a tour
+      // step are caught early. Production users still get a graceful tour
+      // (missing steps are silently skipped).
+      if (
+        missing.length > 0 &&
+        typeof process !== "undefined" &&
+        process.env?.NODE_ENV !== "production"
+      ) {
+        console.warn(
+          `[tour:${tour.id}] missing anchors:`,
+          missing.join(", "),
+        );
       }
       if (filtered.length === 0) return;
 

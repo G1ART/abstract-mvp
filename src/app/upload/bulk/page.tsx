@@ -36,6 +36,7 @@ import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { WebsiteImportPanel } from "@/components/upload/WebsiteImportPanel";
 import { BulkUploadGuidance } from "@/components/upload/BulkUploadGuidance";
+import { BetaFeedbackPrompt } from "@/components/beta";
 import { formatBulkFileUploadFailure } from "@/lib/upload/formatUploadError";
 import {
   BULK_MAX_FILES_PER_BATCH,
@@ -839,18 +840,20 @@ export default function BulkUploadPage() {
           <>
         <BulkUploadGuidance t={t} pendingCount={pendingFiles.length} draftCount={drafts.length} />
 
-        <WebsiteImportPanel
-          t={t}
-          actingAsProfileId={actingAsProfileId}
-          drafts={drafts}
-          stagedArtworkIds={stagedArtworkIds}
-          onApplied={fetchDrafts}
-          onApplyToast={(n) => {
-            setToast(t("bulk.wi.appliedToast").replace("{n}", String(n)));
-            setTimeout(() => setToast(null), 3200);
-          }}
-          onSessionReset={() => setStagedArtworkIds([])}
-        />
+        <div data-tour="upload-website-import">
+          <WebsiteImportPanel
+            t={t}
+            actingAsProfileId={actingAsProfileId}
+            drafts={drafts}
+            stagedArtworkIds={stagedArtworkIds}
+            onApplied={fetchDrafts}
+            onApplyToast={(n) => {
+              setToast(t("bulk.wi.appliedToast").replace("{n}", String(n)));
+              setTimeout(() => setToast(null), 3200);
+            }}
+            onSessionReset={() => setStagedArtworkIds([])}
+          />
+        </div>
 
         {/* Tips accordion */}
         <div className="mb-6 rounded-lg border border-zinc-200">
@@ -1393,6 +1396,7 @@ export default function BulkUploadPage() {
         )}
           </>
         )}
+        <BetaFeedbackPrompt pageKey="bulk_upload" />
       </main>
     </AuthGate>
   );

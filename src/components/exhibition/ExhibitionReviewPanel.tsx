@@ -12,6 +12,7 @@ import {
   AiStatusChip,
   AiDisclosureNote,
 } from "@/components/ai/primitives";
+import { AiFeedbackChips } from "@/components/beta";
 import type {
   ExhibitionReviewResult,
   ExhibitionReviewSeverity,
@@ -176,6 +177,15 @@ export function ExhibitionReviewPanel({ exhibitionId }: Props) {
                 ))}
               </ul>
             </AiResultSection>
+          )}
+
+          {result && (
+            <AiFeedbackChips
+              pageKey="ai.exhibition_review"
+              contextType="exhibition"
+              contextId={exhibitionId}
+              aiEventId={aiEventId}
+            />
           )}
         </>
       )}

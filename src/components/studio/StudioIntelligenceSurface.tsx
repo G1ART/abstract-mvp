@@ -196,6 +196,7 @@ export function StudioIntelligenceSurface({
   return (
     <section
       aria-labelledby="studio-intelligence-title"
+      data-tour="studio-ai-helpers"
       className="mb-6 flex flex-col gap-3"
     >
       <header className="flex items-baseline justify-between gap-3">

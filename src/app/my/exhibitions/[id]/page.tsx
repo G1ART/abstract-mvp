@@ -33,6 +33,9 @@ import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { BetaFeedbackPrompt } from "@/components/beta";
 
 const STATUS_LABELS: Record<string, string> = {
   planned: "exhibition.statusPlanned",
@@ -376,14 +379,18 @@ export default function ExhibitionDetailPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <Link href="/my?tab=exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("profile.privateBackToMy")}
-          </Link>
-          <span className="text-zinc-400">|</span>
-          <Link href="/my/exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
-            {t("exhibition.myExhibitions")}
-          </Link>
+        <TourTrigger tourId={TOUR_IDS.exhibitionDetail} />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link href="/my?tab=exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
+              ← {t("profile.privateBackToMy")}
+            </Link>
+            <span className="text-zinc-400">|</span>
+            <Link href="/my/exhibitions" className="text-sm text-zinc-600 hover:text-zinc-900">
+              {t("exhibition.myExhibitions")}
+            </Link>
+          </div>
+          <TourHelpButton tourId={TOUR_IDS.exhibitionDetail} />
         </div>
 
         {loading ? (
@@ -392,7 +399,7 @@ export default function ExhibitionDetailPage() {
           <p className="text-zinc-600">{error ?? "Exhibition not found."}</p>
         ) : (
           <>
-            <header className="mb-8">
+            <header data-tour="exhibition-detail-header" className="mb-8">
               <h1 className="text-xl font-semibold text-zinc-900">{exhibition.title}</h1>
               <p className="mt-1 text-sm text-zinc-500">
                 {exhibition.start_date && exhibition.end_date
@@ -427,7 +434,7 @@ export default function ExhibitionDetailPage() {
 
             {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
 
-            <div className="mb-6">
+            <div data-tour="exhibition-detail-review" className="mb-6">
               <ExhibitionReviewPanel exhibitionId={id} />
             </div>
 
@@ -548,7 +555,7 @@ export default function ExhibitionDetailPage() {
             )}
 
             {byArtist.length > 0 && (
-              <section className="mb-8">
+              <section data-tour="exhibition-detail-media" className="mb-8">
                 <h2 className="mb-3 text-sm font-medium text-zinc-700">{t("exhibition.byArtist")} · Drag & Drop</h2>
                 <div className="space-y-6">
                   {byArtist.map(({ artistId, artistName, list }) => (
@@ -753,6 +760,11 @@ export default function ExhibitionDetailPage() {
             </section>
           </>
         )}
+        <BetaFeedbackPrompt
+          pageKey="exhibition_detail"
+          contextType="exhibition"
+          contextId={id}
+        />
       </main>
     </AuthGate>
   );

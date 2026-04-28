@@ -6,6 +6,9 @@ import { useParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { BoardPitchPackPanel } from "@/components/board/BoardPitchPackPanel";
 import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { BetaFeedbackPrompt } from "@/components/beta";
 import { useT } from "@/lib/i18n/useT";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
@@ -155,9 +158,13 @@ function ShortlistDetailContent() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <Link href="/my/shortlists" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-        ← {t("boards.title")}
-      </Link>
+      <TourTrigger tourId={TOUR_IDS.boardDetail} />
+      <div className="mb-6 flex items-center justify-between gap-2">
+        <Link href="/my/shortlists" className="inline-block text-sm text-zinc-600 hover:text-zinc-900">
+          ← {t("boards.title")}
+        </Link>
+        <TourHelpButton tourId={TOUR_IDS.boardDetail} />
+      </div>
 
       {/* Title / Description */}
       {editingTitle ? (
@@ -170,7 +177,7 @@ function ShortlistDetailContent() {
           </div>
         </div>
       ) : (
-        <div className="mb-4">
+        <div data-tour="board-detail-header" className="mb-4">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-zinc-900">{shortlist.title}</h1>
             <button type="button" onClick={() => setEditingTitle(true)} className="text-xs text-zinc-500 hover:text-zinc-800">{t("common.edit")}</button>
@@ -224,7 +231,7 @@ function ShortlistDetailContent() {
       })()}
 
       {/* Share */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
+      <div data-tour="board-detail-share" className="mb-6 flex flex-wrap items-center gap-2">
         <button type="button" onClick={copyShareLink} className="rounded border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50">
           {linkCopied ? t("boards.share.copied") : t("boards.share.copy")}
         </button>
@@ -236,7 +243,9 @@ function ShortlistDetailContent() {
         </button>
       </div>
 
-      <BoardPitchPackPanel boardId={id} itemCount={items.length} />
+      <div data-tour="board-detail-pitch-pack">
+        <BoardPitchPackPanel boardId={id} itemCount={items.length} />
+      </div>
 
       {/* People */}
       <div className="mb-6">
@@ -288,12 +297,12 @@ function ShortlistDetailContent() {
 
       {/* Items grid */}
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 p-6 text-center">
+        <div data-tour="board-detail-items" className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 p-6 text-center">
           <p className="text-sm text-zinc-600">{t("boards.empty")}</p>
           <p className="mt-1 text-xs text-zinc-500">{t("boards.emptyHint")}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div data-tour="board-detail-items" className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           {items.map((item) => (
             <div key={item.id} className="group relative rounded-lg border border-zinc-200 bg-white p-2">
               {item.artwork_id && item.artwork ? (
@@ -353,6 +362,11 @@ function ShortlistDetailContent() {
         tone="destructive"
         onConfirm={() => void handleConfirmRemoveCollaborator()}
         onCancel={() => setPendingRemoveCollabId(null)}
+      />
+      <BetaFeedbackPrompt
+        pageKey="board_detail"
+        contextType="shortlist"
+        contextId={id}
       />
     </main>
   );

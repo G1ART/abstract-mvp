@@ -31,6 +31,8 @@ import { BuildStamp } from "@/components/BuildStamp";
 import { BioDraftAssist } from "@/components/ai/BioDraftAssist";
 import { ProfileMediaUploader } from "@/components/profile/ProfileMediaUploader";
 import { StatementDraftAssist } from "@/components/profile/StatementDraftAssist";
+import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { updateMyProfileBasePatch } from "@/lib/supabase/profiles";
 import { isArtistRole } from "@/lib/identity/roles";
 
@@ -935,9 +937,13 @@ export default function SettingsPage() {
   return (
     <AuthGate>
       <main className="mx-auto max-w-xl px-4 py-8">
+        <TourTrigger tourId={TOUR_IDS.profileIdentity} />
         <div className="mb-6 flex items-start justify-between gap-4">
           <h1 className="min-w-0 flex-1 pr-2 text-xl font-semibold">{t("settings.title")}</h1>
-          <BuildStamp />
+          <div className="flex items-center gap-2">
+            <TourHelpButton tourId={TOUR_IDS.profileIdentity} />
+            <BuildStamp />
+          </div>
         </div>
 
         {/* QA P0.5-C (row 25, follow-up²): 비밀번호 재설정은 자주 쓰는
@@ -982,17 +988,19 @@ export default function SettingsPage() {
                   </p>
                 </header>
 
-                <ProfileMediaUploader
-                  kind="avatar"
-                  value={avatarUrl}
-                  onChange={handleAvatarChange}
-                  userId={uid}
-                  label={t("settings.identity.avatar")}
-                  hint={t("settings.identity.avatarHint")}
-                  shape="square"
-                />
+                <div data-tour="profile-identity-avatar">
+                  <ProfileMediaUploader
+                    kind="avatar"
+                    value={avatarUrl}
+                    onChange={handleAvatarChange}
+                    userId={uid}
+                    label={t("settings.identity.avatar")}
+                    hint={t("settings.identity.avatarHint")}
+                    shape="square"
+                  />
+                </div>
 
-                <div className="space-y-3">
+                <div data-tour="profile-identity-cover" className="space-y-3">
                   <ProfileMediaUploader
                     kind="cover"
                     value={coverImagePath}
@@ -1046,7 +1054,7 @@ export default function SettingsPage() {
                     statement-hero uploader entirely so the surface stays calm. */}
                 {isArtistRole({ main_role: mainRole, roles }) && (
                   <>
-                    <div className="space-y-2">
+                    <div data-tour="profile-identity-statement" className="space-y-2">
                       <label
                         htmlFor="artistStatement"
                         className="block text-sm font-medium text-zinc-800"
@@ -1196,7 +1204,7 @@ export default function SettingsPage() {
               />
             </div>
 
-            <div>
+            <div data-tour="profile-identity-bio">
               <label htmlFor="bio" className="mb-1 block text-sm font-medium">
                 {t("settings.bio")}
               </label>

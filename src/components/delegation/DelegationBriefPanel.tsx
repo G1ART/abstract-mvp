@@ -11,6 +11,7 @@ import {
   AiCopyButton,
   AiDisclosureNote,
 } from "@/components/ai/primitives";
+import { AiFeedbackChips } from "@/components/beta";
 import type { DelegationBriefResult } from "@/lib/ai/types";
 
 type Props = {
@@ -168,6 +169,15 @@ export function DelegationBriefPanel({
                 </div>
               </div>
             </AiResultSection>
+          )}
+
+          {result && (
+            <AiFeedbackChips
+              pageKey="ai.delegation_brief"
+              contextType="delegation"
+              contextId={actingAsProfileId}
+              aiEventId={aiEventId}
+            />
           )}
         </>
       )}

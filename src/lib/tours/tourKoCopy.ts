@@ -24,6 +24,9 @@ export const TOUR_KO_HEADER: Record<string, string> = {
   "studio.main": "스튜디오 안내",
   "upload.main": "업로드 안내",
   "exhibition.create": "전시 게시물 안내",
+  "exhibition.detail": "전시 게시물 관리",
+  "board.detail": "보드 안내",
+  "profile.identity": "프로필 정체성 안내",
   "people.main": "사람 찾기",
   "delegation.main": "위임 안내",
   "network.main": "네트워크 안내",
@@ -63,6 +66,62 @@ export const TOUR_KO_STEP: Record<string, { title: string; body: string }> = {
   "studio.main:portfolio-tabs": {
     title: "탭으로 정리하기",
     body: '여기서는 탭 구성을 다뤄요. ↕로 탭 순서를 바꾸고, ⚙에서 기본 탭 이름을 바꾸거나 나만의 탭을 만들고 공개 여부를 정할 수 있어요. 탭 안의 작품 순서는 "공개 프로필 미리보기"에서 [순서 변경] 버튼으로 바꾸면 돼요. 방문자에게 보이는 진열은 그 페이지가 단일 기준점이에요.',
+  },
+  "studio.main:ai-helpers": {
+    title: "AI는 옆에서 거드는 역할이에요",
+    body: "프로필·작품·전시 카드는 초안과 체크리스트를 돕는 보조자예요. 자동으로 수정·발행·전송하는 일은 없고, [복사] 같은 버튼을 눌러야 비로소 반영돼요.",
+  },
+
+  "upload.main:website-import": {
+    title: "홈페이지에서 가져오기",
+    body: "이미지를 먼저 올린 뒤 홈페이지 URL을 주면 캡션과 이미지를 함께 살펴봐 매칭 후보를 정리해드려요. 결과는 검토해서 [적용]을 눌러야 반영되고, 자동으로 공개되지는 않아요.",
+  },
+
+  "board.detail:header": {
+    title: "보드 한눈에 살피기",
+    body: "보드는 작품·전시를 한데 모아 검토·공유·다음 전시 준비에 쓰는 묶음이에요. 제목과 메모를 자유롭게 다듬어 보드의 의도를 분명히 해주세요.",
+  },
+  "board.detail:share": {
+    title: "공유 링크와 협업",
+    body: "공유 링크를 켜고 끄거나 토큰을 새로 발급할 수 있어요. 받은 분은 별도 로그인 없이 살펴볼 수 있고, 협업자는 따로 초대하면 함께 편집할 수 있어요.",
+  },
+  "board.detail:pitch-pack": {
+    title: "보드 → 피치 팩",
+    body: "보드의 흐름·이메일 초안·작품별 설명을 한 묶음으로 정리해드려요. 결과는 항상 초안이고, 그대로 보내거나 발행하지 않아요. [복사]·[붙여넣기]는 사용자가 결정해요.",
+  },
+  "board.detail:items": {
+    title: "보드 안의 항목",
+    body: "여기에 모인 작품·전시는 보드의 흐름 그 자체예요. 항목을 추가·정리하면 위쪽 [전시 게시물로 만들기]나 [피치 팩]에 자연스럽게 이어져요.",
+  },
+
+  "exhibition.detail:header": {
+    title: "전시 게시물 관리",
+    body: "여기는 이미 만든 전시 게시물을 다듬는 공간이에요. 정보 수정, 작품 추가/제거, 권한 공유까지 한 화면에서 다룰 수 있어요.",
+  },
+  "exhibition.detail:review": {
+    title: "전시 기록 검토",
+    body: "전시 게시물의 빠진 정보·약한 부분을 가볍게 점검해드려요. 결과는 항상 제안이고, 사용자가 검토해 직접 반영해주세요.",
+  },
+  "exhibition.detail:media": {
+    title: "참여 작가별 미디어",
+    body: "참여 작가별로 작품·설치 전경 이미지를 정리하고 순서를 바꿀 수 있어요. 드래그로 의도한 흐름대로 배치해주세요.",
+  },
+
+  "profile.identity:avatar": {
+    title: "프로필 사진",
+    body: "공개 프로필 곳곳에 노출되는 작은 사진이에요. 정사각형으로 잘리니 얼굴/로고가 가운데 오게 골라주세요. 올리면 즉시 미리보기가 갱신돼요.",
+  },
+  "profile.identity:cover": {
+    title: "커버 이미지",
+    body: "공개 프로필 상단 띠로 보이는 큰 이미지예요. 슬라이더로 노출 위치를 위·아래로 옮길 수 있고, 미리보기로 잘리는 영역을 바로 확인할 수 있어요.",
+  },
+  "profile.identity:bio": {
+    title: "짧은 소개",
+    body: "처음 만나는 사람에게 건네는 한두 줄 인사예요. 무엇을 하는 사람인지, 어디에서 어떻게 일하는지 가볍게 적어주세요.",
+  },
+  "profile.identity:statement": {
+    title: "작가의 말 (Artist Statement)",
+    body: "내 작업의 맥락·관심·태도를 깊이 있게 풀어내는 글이에요. 짧은 소개와 달리 호흡이 길고, 큐레이터·컬렉터가 작업을 이해할 때 큰 도움이 돼요. 필요하면 AI로 초안을 받아 다듬어보세요.",
   },
 
   "profile.public:tabs": {

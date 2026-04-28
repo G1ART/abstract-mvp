@@ -19,6 +19,9 @@ export const TOUR_IDS = {
   studio: "studio.main",
   upload: "upload.main",
   exhibitionCreate: "exhibition.create",
+  exhibitionDetail: "exhibition.detail",
+  boardDetail: "board.detail",
+  profileIdentity: "profile.identity",
   people: "people.main",
   delegation: "delegation.main",
   network: "network.main",
@@ -30,7 +33,7 @@ export type TourId = (typeof TOUR_IDS)[keyof typeof TOUR_IDS];
 export const TOURS: Record<TourId, TourDefinition> = {
   [TOUR_IDS.studio]: {
     id: TOUR_IDS.studio,
-    version: 7,
+    version: 8,
     titleKey: "tour.studio.title",
     introKey: "tour.studio.intro",
     requiredAnchors: ["studio-hero", "studio-operating-grid"],
@@ -91,12 +94,23 @@ export const TOURS: Record<TourId, TourDefinition> = {
         bodyKey: "tour.studio.portfolioTabs.body",
         placement: "bottom",
       },
+      // v8: surface AI helpers explicitly so users learn that nothing
+      // auto-publishes/edits and the cards are review-first companions.
+      // Anchor only renders for non-acting-as principals; framework will
+      // silently skip it when the section is not mounted.
+      {
+        id: "ai-helpers",
+        target: "studio-ai-helpers",
+        titleKey: "tour.studio.aiHelpers.title",
+        bodyKey: "tour.studio.aiHelpers.body",
+        placement: "top",
+      },
     ],
   },
 
   [TOUR_IDS.upload]: {
     id: TOUR_IDS.upload,
-    version: 2,
+    version: 3,
     titleKey: "tour.upload.title",
     introKey: "tour.upload.intro",
     requiredAnchors: ["upload-tabs"],
@@ -134,6 +148,16 @@ export const TOURS: Record<TourId, TourDefinition> = {
         target: "upload-intent-selector",
         titleKey: "tour.upload.intent.title",
         bodyKey: "tour.upload.intent.body",
+        placement: "top",
+      },
+      // v3: explain website-assisted matching as a review-first helper.
+      // Anchor lives on the bulk page only; framework filters this step
+      // out elsewhere so the same tour stays valid across upload variants.
+      {
+        id: "website-import",
+        target: "upload-website-import",
+        titleKey: "tour.upload.websiteImport.title",
+        bodyKey: "tour.upload.websiteImport.body",
         placement: "top",
       },
     ],
@@ -256,6 +280,113 @@ export const TOURS: Record<TourId, TourDefinition> = {
         titleKey: "tour.delegation.acting.title",
         bodyKey: "tour.delegation.acting.body",
         placement: "bottom",
+      },
+    ],
+  },
+
+  [TOUR_IDS.boardDetail]: {
+    id: TOUR_IDS.boardDetail,
+    version: 1,
+    titleKey: "tour.boardDetail.title",
+    introKey: "tour.boardDetail.intro",
+    requiredAnchors: ["board-detail-header"],
+    steps: [
+      {
+        id: "header",
+        target: "board-detail-header",
+        titleKey: "tour.boardDetail.header.title",
+        bodyKey: "tour.boardDetail.header.body",
+        placement: "bottom",
+      },
+      {
+        id: "share",
+        target: "board-detail-share",
+        titleKey: "tour.boardDetail.share.title",
+        bodyKey: "tour.boardDetail.share.body",
+        placement: "bottom",
+      },
+      {
+        id: "pitch-pack",
+        target: "board-detail-pitch-pack",
+        titleKey: "tour.boardDetail.pitchPack.title",
+        bodyKey: "tour.boardDetail.pitchPack.body",
+        placement: "top",
+      },
+      {
+        id: "items",
+        target: "board-detail-items",
+        titleKey: "tour.boardDetail.items.title",
+        bodyKey: "tour.boardDetail.items.body",
+        placement: "top",
+      },
+    ],
+  },
+
+  [TOUR_IDS.exhibitionDetail]: {
+    id: TOUR_IDS.exhibitionDetail,
+    version: 1,
+    titleKey: "tour.exhibitionDetail.title",
+    introKey: "tour.exhibitionDetail.intro",
+    requiredAnchors: ["exhibition-detail-header"],
+    steps: [
+      {
+        id: "header",
+        target: "exhibition-detail-header",
+        titleKey: "tour.exhibitionDetail.header.title",
+        bodyKey: "tour.exhibitionDetail.header.body",
+        placement: "bottom",
+      },
+      {
+        id: "review",
+        target: "exhibition-detail-review",
+        titleKey: "tour.exhibitionDetail.review.title",
+        bodyKey: "tour.exhibitionDetail.review.body",
+        placement: "top",
+      },
+      {
+        id: "media",
+        target: "exhibition-detail-media",
+        titleKey: "tour.exhibitionDetail.media.title",
+        bodyKey: "tour.exhibitionDetail.media.body",
+        placement: "top",
+      },
+    ],
+  },
+
+  [TOUR_IDS.profileIdentity]: {
+    id: TOUR_IDS.profileIdentity,
+    version: 1,
+    titleKey: "tour.profileIdentity.title",
+    introKey: "tour.profileIdentity.intro",
+    requiredAnchors: ["profile-identity-avatar"],
+    steps: [
+      {
+        id: "avatar",
+        target: "profile-identity-avatar",
+        titleKey: "tour.profileIdentity.avatar.title",
+        bodyKey: "tour.profileIdentity.avatar.body",
+        placement: "bottom",
+      },
+      {
+        id: "cover",
+        target: "profile-identity-cover",
+        titleKey: "tour.profileIdentity.cover.title",
+        bodyKey: "tour.profileIdentity.cover.body",
+        placement: "top",
+      },
+      {
+        id: "bio",
+        target: "profile-identity-bio",
+        titleKey: "tour.profileIdentity.bio.title",
+        bodyKey: "tour.profileIdentity.bio.body",
+        placement: "top",
+      },
+      {
+        id: "statement",
+        target: "profile-identity-statement",
+        titleKey: "tour.profileIdentity.statement.title",
+        bodyKey: "tour.profileIdentity.statement.body",
+        placement: "top",
       },
     ],
   },

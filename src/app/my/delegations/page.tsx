@@ -17,6 +17,7 @@ import { getSession } from "@/lib/supabase/auth";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { BetaFeedbackPrompt } from "@/components/beta";
 import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
 import { DelegationDetailDrawer } from "@/components/delegation/DelegationDetailDrawer";
 import { resolveManageDestination } from "@/lib/delegation/manageDestination";
@@ -333,6 +334,7 @@ export default function MyDelegationsPage() {
         onClose={() => setDetailId(null)}
         onChanged={load}
       />
+      <BetaFeedbackPrompt pageKey="delegation_hub" />
     </AuthGate>
   );
 }

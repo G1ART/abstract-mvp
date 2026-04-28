@@ -1671,6 +1671,9 @@ export const messages = {
     "tour.studio.portfolioTabs.title": "Tabs & custom groups",
     "tour.studio.portfolioTabs.body":
       "This is where you build the tab structure: reorder with ↕, open settings (⚙) to rename defaults, add your own tabs, and choose visibility. To reorder the artworks inside a tab, open “Public profile preview” and use the Reorder button there — that page is the single source of truth for what visitors see.",
+    "tour.studio.aiHelpers.title": "AI helpers stay beside the work",
+    "tour.studio.aiHelpers.body":
+      "These cards draft, summarize, and suggest. They never publish, send, or edit on their own — copy or apply only happens when you press a button.",
 
     "tour.publicProfile.title": "Public profile preview",
     "tour.publicProfile.intro":
@@ -1705,6 +1708,54 @@ export const messages = {
     "tour.upload.intent.title": "Your relationship to this work",
     "tour.upload.intent.body":
       "Tell us whether you made it, own it, keep it in inventory, or curated it. The right record is built from there.",
+    "tour.upload.websiteImport.title": "Import from your website",
+    "tour.upload.websiteImport.body":
+      "Upload images first, then point us at your site URL — we look at images and captions together and propose matches. Results are review-first; nothing applies or publishes until you confirm.",
+
+    "tour.boardDetail.title": "Boards",
+    "tour.boardDetail.intro":
+      "Where you collect works and exhibitions for review, sharing, and the next show.",
+    "tour.boardDetail.header.title": "What this board is",
+    "tour.boardDetail.header.body":
+      "Boards gather works and exhibitions for review, sharing, and prep. Set a clear title and a short note so the intent is obvious.",
+    "tour.boardDetail.share.title": "Share link & collaborators",
+    "tour.boardDetail.share.body":
+      "Toggle the share link, rotate it, or invite collaborators. Recipients open a clean view; collaborators can edit when invited.",
+    "tour.boardDetail.pitchPack.title": "Board → Pitch Pack",
+    "tour.boardDetail.pitchPack.body":
+      "Turn a board into talking points: a flow, an email draft, and per-work notes. Always a draft — copy and adjust on your terms.",
+    "tour.boardDetail.items.title": "Items in this board",
+    "tour.boardDetail.items.body":
+      "These works and exhibitions are the substance of the board. Once organized, the Promote and Pitch Pack actions above flow naturally from them.",
+
+    "tour.exhibitionDetail.title": "Manage exhibition post",
+    "tour.exhibitionDetail.intro":
+      "Refine the post, manage works, and check what is missing.",
+    "tour.exhibitionDetail.header.title": "Manage this exhibition",
+    "tour.exhibitionDetail.header.body":
+      "This is where an existing exhibition post lives. Edit info, add or remove works, and share access — all from one screen.",
+    "tour.exhibitionDetail.review.title": "Exhibition record review",
+    "tour.exhibitionDetail.review.body":
+      "A gentle pass over the post: missing details, weak spots, suggestions. Always advice — review and apply on your terms.",
+    "tour.exhibitionDetail.media.title": "Per-artist media",
+    "tour.exhibitionDetail.media.body":
+      "Organize works and installation views by artist. Drag to set the flow visitors should walk through.",
+
+    "tour.profileIdentity.title": "Profile identity",
+    "tour.profileIdentity.intro":
+      "How visitors recognize you — avatar, cover, short bio, and the deeper Artist Statement.",
+    "tour.profileIdentity.avatar.title": "Profile photo",
+    "tour.profileIdentity.avatar.body":
+      "A small portrait that follows you across Abstract. Square crop, so center the face or logo.",
+    "tour.profileIdentity.cover.title": "Cover image",
+    "tour.profileIdentity.cover.body":
+      "The wide banner at the top of your public profile. Slide to nudge what stays visible; the preview shows the actual crop.",
+    "tour.profileIdentity.bio.title": "Short bio",
+    "tour.profileIdentity.bio.body":
+      "A line or two for first-time visitors — what you do and where, in plain language.",
+    "tour.profileIdentity.statement.title": "Artist Statement",
+    "tour.profileIdentity.statement.body":
+      "A longer text about your practice — context, interests, attitude. Curators and collectors lean on this. Use the AI draft assist if you want a starting point you can sharpen.",
 
     "tour.exhibition.title": "Exhibition post",
     "tour.exhibition.intro": "This page publishes a show — it isn't a planning workflow.",
@@ -1765,6 +1816,25 @@ export const messages = {
     "tour.network.list.title": "Your relationship graph",
     "tour.network.list.body":
       "Each row is a live connection — follow back, view their studio, or send a short message.",
+
+    "feedback.promptTitle": "How is this page working for you?",
+    "feedback.promptHint":
+      "A quick beta signal. Optional, and never visible to other people.",
+    "feedback.promptAria": "Beta feedback",
+    "feedback.sentiment.useful": "Useful",
+    "feedback.sentiment.confusing": "Confusing",
+    "feedback.sentiment.issue": "Something's off",
+    "feedback.dismiss": "Later",
+    "feedback.send": "Send",
+    "feedback.sending": "Sending…",
+    "feedback.thanks": "Thank you — noted.",
+    "feedback.messagePlaceholder":
+      "What got in the way? Optional.",
+    "feedback.ai.prompt": "Was this useful?",
+    "feedback.ai.useful": "Useful",
+    "feedback.ai.slightlyOff": "Slightly off",
+    "feedback.ai.needsRework": "Needs rework",
+    "feedback.ai.thanks": "Thanks — noted.",
   },
   ko: {
     "nav.feed": "피드",
@@ -3439,6 +3509,9 @@ export const messages = {
     "tour.studio.portfolioTabs.title": "탭으로 정리하기",
     "tour.studio.portfolioTabs.body":
       "여기서는 탭 구성을 다뤄요. ↕로 탭 순서를 바꾸고, ⚙에서 기본 탭 이름을 바꾸거나 나만의 탭을 만들고 공개 여부를 정할 수 있어요. 탭 안의 작품 순서는 \"공개 프로필 미리보기\"에서 [순서 변경] 버튼으로 바꾸면 돼요. 방문자에게 보이는 진열은 그 페이지가 단일 기준점이에요.",
+    "tour.studio.aiHelpers.title": "AI는 옆에서 거드는 역할이에요",
+    "tour.studio.aiHelpers.body":
+      "프로필·작품·전시 카드는 초안과 체크리스트를 돕는 보조자예요. 자동으로 수정·발행·전송하는 일은 없고, [복사] 같은 버튼을 눌러야 비로소 반영돼요.",
 
     "tour.publicProfile.title": "공개 프로필 미리보기",
     "tour.publicProfile.intro":
@@ -3473,6 +3546,54 @@ export const messages = {
     "tour.upload.intent.title": "이 작품과 나의 관계는요",
     "tour.upload.intent.body":
       "직접 만든 작품인지, 소유 중인지, 인벤토리에 보관 중인지, 큐레이션 중인지 알려주세요. 알맞은 기록이 자동으로 만들어져요.",
+    "tour.upload.websiteImport.title": "홈페이지에서 가져오기",
+    "tour.upload.websiteImport.body":
+      "이미지를 먼저 올린 뒤 홈페이지 URL을 주면 캡션과 이미지를 함께 살펴봐 매칭 후보를 정리해드려요. 결과는 검토해서 [적용]을 눌러야 반영되고, 자동으로 공개되지는 않아요.",
+
+    "tour.boardDetail.title": "보드 안내",
+    "tour.boardDetail.intro":
+      "작품·전시를 한데 모아 검토·공유·다음 전시 준비에 쓰는 묶음이에요.",
+    "tour.boardDetail.header.title": "보드 한눈에 살피기",
+    "tour.boardDetail.header.body":
+      "보드는 작품·전시를 한데 모아 검토·공유·다음 전시 준비에 쓰는 묶음이에요. 제목과 메모를 자유롭게 다듬어 보드의 의도를 분명히 해주세요.",
+    "tour.boardDetail.share.title": "공유 링크와 협업",
+    "tour.boardDetail.share.body":
+      "공유 링크를 켜고 끄거나 토큰을 새로 발급할 수 있어요. 받은 분은 별도 로그인 없이 살펴볼 수 있고, 협업자는 따로 초대하면 함께 편집할 수 있어요.",
+    "tour.boardDetail.pitchPack.title": "보드 → 피치 팩",
+    "tour.boardDetail.pitchPack.body":
+      "보드의 흐름·이메일 초안·작품별 설명을 한 묶음으로 정리해드려요. 결과는 항상 초안이고, 그대로 보내거나 발행하지 않아요.",
+    "tour.boardDetail.items.title": "보드 안의 항목",
+    "tour.boardDetail.items.body":
+      "여기에 모인 작품·전시는 보드의 흐름 그 자체예요. 항목을 추가·정리하면 위쪽 [전시 게시물로 만들기]나 [피치 팩]에 자연스럽게 이어져요.",
+
+    "tour.exhibitionDetail.title": "전시 게시물 관리",
+    "tour.exhibitionDetail.intro":
+      "전시 정보를 다듬고, 작품을 정리하고, 빠진 부분을 점검할 수 있어요.",
+    "tour.exhibitionDetail.header.title": "전시 게시물 관리",
+    "tour.exhibitionDetail.header.body":
+      "여기는 이미 만든 전시 게시물을 다듬는 공간이에요. 정보 수정, 작품 추가/제거, 권한 공유까지 한 화면에서 다룰 수 있어요.",
+    "tour.exhibitionDetail.review.title": "전시 기록 검토",
+    "tour.exhibitionDetail.review.body":
+      "전시 게시물의 빠진 정보·약한 부분을 가볍게 점검해드려요. 결과는 항상 제안이고, 사용자가 검토해 직접 반영해주세요.",
+    "tour.exhibitionDetail.media.title": "참여 작가별 미디어",
+    "tour.exhibitionDetail.media.body":
+      "참여 작가별로 작품·설치 전경 이미지를 정리하고 순서를 바꿀 수 있어요. 드래그로 의도한 흐름대로 배치해주세요.",
+
+    "tour.profileIdentity.title": "프로필 정체성 안내",
+    "tour.profileIdentity.intro":
+      "방문자가 나를 알아보는 방식 — 사진·커버·짧은 소개·작가의 말을 한 화면에서 정돈해요.",
+    "tour.profileIdentity.avatar.title": "프로필 사진",
+    "tour.profileIdentity.avatar.body":
+      "공개 프로필 곳곳에 노출되는 작은 사진이에요. 정사각형으로 잘리니 얼굴/로고가 가운데 오게 골라주세요.",
+    "tour.profileIdentity.cover.title": "커버 이미지",
+    "tour.profileIdentity.cover.body":
+      "공개 프로필 상단 띠로 보이는 큰 이미지예요. 슬라이더로 노출 위치를 위·아래로 옮길 수 있고, 미리보기로 잘리는 영역을 바로 확인할 수 있어요.",
+    "tour.profileIdentity.bio.title": "짧은 소개",
+    "tour.profileIdentity.bio.body":
+      "처음 만나는 사람에게 건네는 한두 줄 인사예요. 무엇을 하는 사람인지, 어디에서 어떻게 일하는지 가볍게 적어주세요.",
+    "tour.profileIdentity.statement.title": "작가의 말 (Artist Statement)",
+    "tour.profileIdentity.statement.body":
+      "내 작업의 맥락·관심·태도를 깊이 있게 풀어내는 글이에요. 짧은 소개와 달리 호흡이 길고, 큐레이터·컬렉터가 작업을 이해할 때 큰 도움이 돼요. 필요하면 AI로 초안을 받아 다듬어보세요.",
 
     "tour.exhibition.title": "전시 게시물 안내",
     "tour.exhibition.intro": "이미 확정된 전시를 공유하는 페이지예요. 기획 툴이 아니에요.",
@@ -3533,6 +3654,25 @@ export const messages = {
     "tour.network.list.title": "내 관계 그래프",
     "tour.network.list.body":
       "각 줄이 살아있는 연결이에요. 맞팔하거나 스튜디오를 보거나 짧은 메시지로 인사를 건네보세요.",
+
+    "feedback.promptTitle": "이 화면, 어떻게 느껴지세요?",
+    "feedback.promptHint":
+      "베타 신호로만 쓰이고, 다른 사람에게 보이지 않아요. 가볍게 의견 주시면 충분해요.",
+    "feedback.promptAria": "베타 피드백",
+    "feedback.sentiment.useful": "도움이 됐어요",
+    "feedback.sentiment.confusing": "헷갈렸어요",
+    "feedback.sentiment.issue": "문제가 있어요",
+    "feedback.dismiss": "나중에",
+    "feedback.send": "보내기",
+    "feedback.sending": "보내는 중…",
+    "feedback.thanks": "고맙습니다, 잘 받았어요.",
+    "feedback.messagePlaceholder":
+      "어떤 점이 걸리셨는지 적어주셔도 좋아요 (선택).",
+    "feedback.ai.prompt": "이 결과, 도움이 됐나요?",
+    "feedback.ai.useful": "도움이 됐어요",
+    "feedback.ai.slightlyOff": "조금 어색해요",
+    "feedback.ai.needsRework": "다시 다듬어야 해요",
+    "feedback.ai.thanks": "고맙습니다, 잘 받았어요.",
   },
 } as const;
 

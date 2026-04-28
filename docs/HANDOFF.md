@@ -2,6 +2,48 @@
 
 Last updated: 2026-04-27
 
+## 2026-04-27 — Beta Guidance Audit + Feedback Loop Upgrade
+
+`Abstract_Beta_Guidance_Audit_Feedback_Upgrade_2026-04-27.md` 대응. 최근 추가된 AI 파트너/컨시어지·Board Pitch Pack·Exhibition Review·Delegation 위임/Acting-as·Website Import·Profile Identity 흐름이 기존 가이드 투어에 반영되지 않아 가이드와 실제 UI 간 정합성이 깨져 있던 문제를 정합화하고, 베타 단계 피드백 루프를 신규로 도입했습니다. **기존 tour provider/registry/persistence/overlay 시스템은 일체 중복 구현하지 않고**, 기존 인프라를 그대로 재사용·확장했습니다.
+
+### 변경 요약
+
+- **Tour coverage 감사** — `studio.main`, `upload.main` 의 누락 단계 보강 + `board.detail`, `exhibition.detail`, `profile.identity` 신규 등록.
+  - `studio.main` v8: AI helpers 카드(`data-tour="studio-ai-helpers"`)를 새 step 으로 추가. 기존 사용자에 대해 1회 자동 재노출.
+  - `upload.main` v3: Website Import 패널을 새 step 으로 추가 (`data-tour="upload-website-import"`).
+  - `board.detail` 신규: header → share → pitch pack → items 4 step.
+  - `exhibition.detail` 신규: header → review → media 3 step.
+  - `profile.identity` 신규: avatar → cover → statement → bio 4 step.
+- **앵커 추가** — 위 신규 투어가 가리킬 `data-tour` 앵커를 해당 페이지/컴포넌트(`StudioIntelligenceSurface`, `WebsiteImportPanel`, `BoardPitchPackPanel`, `ExhibitionReviewPanel`, `ProfileMediaUploader`, `StatementDraftAssist`, bio 필드)에 부착.
+- **TourTrigger / TourHelpButton 마운트** — board detail, exhibition detail, settings 페이지에 `우상단 가이드 보기` 버튼 + 자동 1회 트리거 마운트.
+- **Skip / completed / version 하드닝**
+  - `TourProvider` 가 missing anchor 를 dev 콘솔에 경고로만 노출 (production 은 silent skip → 투어 깨짐 차단).
+  - 기존 persistence (`user_tour_state` + localStorage) 의 status/version 가드 그대로 사용. 버전 bump 로 1회만 재노출, 그 이후 자동 재발동 없음.
+  - 한국어 카피는 글리프 문제 차단 위해 계속 `tourKoCopy.ts` 하드 카피 우선.
+- **Beta feedback 루프 (신규)**
+  - `beta_feedback_events` 테이블 신설 (RLS: 인증 사용자 본인 row 만 insert, read 는 service role 한정).
+  - `submitBetaFeedback` 헬퍼는 best-effort/non-throwing + sessionStorage throttling (페이지급은 1 세션 1회 한도).
+  - `BetaFeedbackPrompt` 페이지급 컴포넌트 → My Studio, Bulk upload, Board detail, Exhibition detail, Delegation hub 5개 페이지에 마운트.
+  - `AiFeedbackChips` 마이크로 피드백 (도움이 됐어요 / 조금 어색해요 / 다시 다듬어야 해요) → Board Pitch Pack, Exhibition Review, Delegation Brief 3개 AI 출력 결과 하단에 통합.
+- **Non-goals (브리프 §6 명시 준수)** — Art Care Passport, Service Cards, Local Art Circuit 등 전략 백로그 항목은 본 패치에서 일체 손대지 않음.
+
+### Supabase SQL (적용 필요)
+
+- `supabase/migrations/20260507000000_beta_feedback_events.sql` — Supabase SQL Editor 에서 1회 실행 필요. idempotent (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 안 쓰지만 `IF NOT EXISTS`/policy 가드 적용).
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- `npm run lint` — 신규/수정 파일은 0 issue (사전부터 존재하는 pre-existing warnings/errors 만 잔존, 본 패치 책임 아님).
+- 한국어 가이드 투어 카피는 `tourKoCopy.ts` 하드 카피로 글리프 깨짐 차단 (영문은 `messages.ts`).
+- missing anchor regression: dev 빌드에서 콘솔 경고만 출력되고 투어가 silent fallback 되는지 `TourProvider.enterTour` 로직 회귀 점검 완료.
+
+---
+
 ## 2026-04-27 — AI Layer UX Completion NextPatch (existing surfaces migration + Exhibition Review mounting)
 
 `Abstract_AI_Layer_UX_Completion_NextPatch_2026-04-27.md` 대응. 직전 통일 패치에서 회귀 위험 때문에 보류했던 **기존 8개 AI surface** 를 공용 primitives 시스템으로 점진 이전하고, 누락되어 있던 `ExhibitionReviewPanel` 의 페이지 마운팅을 보완했습니다. 데이터 플로우/AI 라우트/외부 API 시그니처는 일체 손대지 않은, **외피·상태·copy·텔레메트리** 정렬 패치입니다.

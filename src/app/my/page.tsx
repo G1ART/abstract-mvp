@@ -48,6 +48,7 @@ import {
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
+import { BetaFeedbackPrompt } from "@/components/beta";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { hasAnyRole } from "@/lib/identity/roles";
 import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
@@ -477,6 +478,10 @@ export default function MyPage() {
             inquiries7d={priceInquiryCount}
           />
         )}
+
+        {profile && !actingAsProfileId ? (
+          <BetaFeedbackPrompt pageKey="studio.main" />
+        ) : null}
 
         {toast && (
           <div className="fixed bottom-4 right-4 rounded-2xl bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg">
