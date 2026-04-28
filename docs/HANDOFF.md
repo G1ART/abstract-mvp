@@ -2,6 +2,57 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — QA Beta Hardening · PR-C · 비공계 위임 edge 가시성
+
+**배경**: QA #6/#8/#9 — 비공계 계정에게 위임을 받은 사용자가 acting-as 로 작업할 때 위임자 profile 이 unknown 으로 fallback 되어 [내 스튜디오] 빈 페이지·피드 카드 "알 수 없는 사용자" 노출 문제. PR1 의 `viewer_shares_follow_edge_with` 가 `public.follows` 만 검사하고 위임 edge 는 빠져 있던 게 root cause.
+
+### 변경 — `supabase/migrations/20260514000000_private_delegation_profile_edge.sql`
+
+- 신규 helper: `viewer_shares_delegation_edge_with(uuid)`. account-scope, status='active' delegations 을 양방향으로 검사하는 SECURITY DEFINER STABLE 함수. project-scope 는 의도적으로 제외 (단일 프로젝트 위임자에게 profile 전반 노출은 과도).
+- 기존 `profiles_select_follow_edge` 정책을 `profiles_select_visibility_edge` 로 재선언:
+  - USING: `viewer_shares_follow_edge_with(profiles.id) OR viewer_shares_delegation_edge_with(profiles.id)`.
+  - 효과: follower 는 기존대로, **위임 받은 자/위임자 양쪽** 도 상대 메타카드(컬럼 전체 — username/display_name/avatar/bio…) 를 SELECT 가능.
+- 콘텐츠 (artworks/projects) RLS 는 변경 없음 — 위임 받은 자의 콘텐츠 SELECT 는 이미 `*_select_account_delegate` 정책 (p0_delegations_account_scope_rls.sql) 으로 cover.
+- 일반 viewer (follow/위임 edge 모두 없음) 의 비공계 profile 차단은 그대로 유지.
+
+### 회귀 안전성
+
+- 정책은 OR 한 항만 추가 (`true` 반환 cap 확장). 더 *덜* 보이게 되는 케이스는 없음 → 후퇴 0.
+- Helper 가 SECURITY DEFINER STABLE → RLS 재진입 없음, signup-time trigger 안전 (hotfix 와 동일 원리).
+- UPDATE/INSERT/DELETE 정책 unchanged.
+- project-scope 위임은 의도적 제외 — 추후 "위임 받은 자가 전시 페이지에서 host metadata 도 못 본다" 로 재보고되면 별도 helper 로 좁게 추가.
+
+### Supabase SQL — 즉시 적용
+
+`supabase/migrations/20260514000000_private_delegation_profile_edge.sql` 을 SQL Editor 에서 실행. 모두 idempotent (`create or replace` / `drop policy if exists` + `create policy`).
+
+### 환경 변수
+
+변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` ✓ (변경 코드 없음, RLS 마이그레이션 단독)
+- 마이그레이션 self-contained, 재실행 안전.
+
+### 영향 매트릭스
+
+| Viewer ↔ 비공계 Artist | profile 메타카드 | 콘텐츠 (artworks/projects) |
+|---|---|---|
+| Self (artist 본인) | ✓ | ✓ (`_select_own`) |
+| Account-scope delegate (active) | ✓ **(PR-C 로 추가)** | ✓ (`_select_account_delegate`) |
+| Account-scope delegator | ✓ **(PR-C 로 추가)** | ✓ (self) |
+| Accepted follower | ✓ (PR1) | ✓ (PR2 `_select_follower_accepted`) |
+| Pending follow request | ✓ (PR1) | ✗ |
+| Claim holder | (해당 없음) | ✓ (`_select_with_claim`) |
+| 일반 viewer | ✗ | ✗ (PR2) |
+
+### 다음 PR 예고
+
+- **PR-B** (그룹 B): 위임 라이프사이클 보강. (#4) 보낸 측 cancel UI, (#11) 받은 측 active 상태 본인 해지 RPC, (#7) 보낸 측 권한 변경 RPC + UI.
+
+---
+
 ## 2026-04-28 — QA Beta Hardening · PR-A · i18n / UX 일관성
 
 **배경**: 베타 QA 보고서에서 코드 문자열 노출 (`not_for_sale`, `Claim failed: forbidden: caller is not an active account delegate writer for subject_profile_id`), 어색한 한글 (`← 돌아가기 내 스튜디오`, "귀하의 관계"), 작품 수정 화면의 미번역 영어 라벨, 작품 삭제 모달 안내문 vs 실제 UI 불일치, 작품 소개문 길이 무제한 등 12종을 보고. 사용자 인상 측면 회복이 가장 시급하므로 PR-A 로 분리해 회귀 위험 낮은 i18n/UX 일관성 항목만 우선 처리.
