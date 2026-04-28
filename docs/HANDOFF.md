@@ -2,6 +2,61 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Private Account v2 · PR2 (콘텐츠 RLS 정합화)
+
+PR1 에서 미뤄둔 콘텐츠 RLS 게이트를 마감하는 좁은 SQL-only 패치. PR1 에서는 비공계 owner 의 메타·검색·Follow Request 만 풀고 작품/전시는 그대로 두었음. 이 PR 이 그 마지막 갭을 막아 메이저 SNS 의 보호 계정 거동을 완성.
+
+### 펀더멘털 마감
+
+이번 PR 부터 **비공계 owner 의 콘텐츠** (artworks · projects/exhibitions · exhibition_works · exhibition_media · exhibition_media_buckets · artwork_images) 는 다음 사람만 SELECT 가능:
+
+- 본인 (artist_id = auth.uid())
+- 그 계정의 active account-scope delegate
+- claim 보유자 (lister/collector — artwork 한정)
+- **`follows.status = 'accepted'` 의 follower** (이번 PR 에서 추가된 분기)
+- 외부에서 직접 URL 추측해 들어와도 RLS 가 차단
+
+공개 owner 의 콘텐츠는 동작 변화 없음 — 새 EXISTS 가 `coalesce(p.is_public, true) = true` 로 short-circuit 되어 OR 결합 결과가 기존과 동일.
+
+### 변경 요약 — `supabase/migrations/20260512000000_private_account_content_rls.sql`
+
+1. **`artworks_select_public`** 교체 — `visibility = 'public'` AND `(artist_id IS NULL OR artist 가 공개)`. external artists (`artist_id IS NULL`) 는 그대로 노출.
+2. **`artworks_select_follower_accepted`** 신설 — `visibility = 'public'` AND viewer 가 owner 의 accepted follower.
+3. **`artwork_images` "Allow public select"** 교체 — `a.visibility = 'public'` 게이트 제거 후 단순 EXISTS(parent artwork). 직접 URL 추측으로 비공계 owner 의 storage path 노출 위험 차단. 부모 artworks RLS 가 자동 게이트.
+4. **`projects_select_public`** 교체 — host_profile_id AND curator_id 양쪽이 공개일 때만 일반에게 노출. NULL 은 "no party" 로 통과.
+5. **`projects_select_owner`** 신설 — host 또는 curator 인 본인은 그대로.
+6. **`projects_select_follower_accepted`** 신설 — 양쪽 어느 쪽이든 accepted follower 면 노출.
+7. **`exhibition_works_select` / `exhibition_media_select` / `exhibition_media_buckets_select`** — 모두 `using (true)` 였던 것을 부모 `projects` 에 대한 EXISTS 로 교체. RLS recursion 으로 자식이 자동 게이트.
+8. INSERT/UPDATE/DELETE 정책은 변경 없음 — owner / curator / delegate 가 그대로 작성·수정·삭제 가능.
+
+### Supabase SQL — 적용 필요
+
+`supabase/migrations/20260512000000_private_account_content_rls.sql` 을 SQL Editor 에서 실행. 모두 `drop policy if exists; create policy` 형태로 재실행 안전. PR1 (`20260511000000_…`) 이 먼저 적용되어 있어야 함 (`follows.status` 컬럼 의존).
+
+### 환경 변수
+
+- 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과, `npm run build` 통과 (cache clear 후).
+- 회귀 시나리오:
+  - **공개 owner 의 작품** — `artworks_select_public` 의 새 게이트가 `is_public = true` 로 short-circuit → SELECT 가능, 변화 없음.
+  - **공개 owner 의 전시** — `projects_select_public` 동일하게 통과.
+  - **External artist (artist_id IS NULL)** — `artist_id is null` 분기로 그대로 노출.
+  - **본인 작품 / 전시** — `*_own`, `*_account_delegate`, `artworks_select_with_claim` 가 OR 로 결합되어 그대로 통과.
+  - **비공계 owner 의 작품을 anonymously 직접 조회** — RLS 차단. 작품 페이지 빈 결과 또는 not-found.
+  - **비공계 owner 의 accepted follower 가 피드/프로필 진입** — `artworks_select_follower_accepted` 통과 → 작품/전시 정상 노출.
+  - **pending follower** — RLS 통과 안 함 → 콘텐츠 안 보임 (의도). PrivateProfileShell 의 visitor 카드만 노출.
+  - **artwork_images 직접 추측 URL** — 부모 artwork 의 RLS 가 게이트하므로 비공계 owner 의 이미지 row 도 차단.
+
+### 남은 한계
+
+- **Storage object** — supabase storage bucket 이 public 으로 설정돼 있다면, image URL 자체를 브라우저에 캐시한 사용자는 RLS 와 별도로 직접 다운로드 가능. 보호 수준이 메이저 SNS 표준에 가깝게 충분하지만 (RLS 가 row 자체를 막아 신규 노출은 없음), 완벽한 보호가 필요하면 storage 정책을 별도 패치로 강화 가능.
+- **Recommendations lanes (follow_graph / likes_based / expand)** — 비공계 owner 의 *추천 카드 자체* 노출 정책은 별도 사안. 현재는 그대로 노출 (메이저 SNS 표준에 맞춰 메타 카드는 보임).
+
+---
+
 ## 2026-04-28 — Private Account v2 · PR1 (검색 노출 + Follow Request 골격)
 
 QA 가 "비공개 계정 유저 ID 로 검색해도 결과가 전혀 안 뜬다" 고 지적. 펀더멘털 점검 결과, 코드의 비공계 처리는 메이저 SNS (Instagram / X-protected / TikTok / Threads / Bluesky) 기준과 완전히 다른 *전체 차폐* 모델이었음 (`profiles` RLS, 검색 RPC 6종, `lookup_profile_by_username` 모두 `is_public = true` 로 박혀 있음). 비공계 계정은 검색에도 안 잡히고, follow 요청조차 보낼 수 없는 "온라인이지만 영구 부재중" 상태였음.
