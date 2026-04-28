@@ -49,8 +49,45 @@
 --   • 일반 viewer (follow/위임 모두 없음) 는 비공계 profile 여전히 차단.
 --
 -- Safe to re-run: `create or replace` + `drop policy if exists` + `create policy`.
+--
+-- Pre-requisite handling:
+--   This migration depends on `viewer_shares_follow_edge_with(uuid)` which
+--   was originally introduced by the signup hotfix
+--   (`20260513000000_private_account_signup_hotfix.sql`). To make THIS
+--   migration self-contained — so QA / staging / prod environments that
+--   may have skipped the hotfix can still apply it — we redefine that
+--   helper here as well via `create or replace`. If the hotfix has
+--   already run, the redefinition is a no-op (identical body).
 
 begin;
+
+---------------------------------------------------------------------------
+-- 0. (defensive) ensure follow-edge helper exists. Identical body to the
+--    one in 20260513000000_private_account_signup_hotfix.sql, so this is
+--    a no-op when the hotfix has already been applied.
+---------------------------------------------------------------------------
+
+create or replace function public.viewer_shares_follow_edge_with(p_other uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select case
+    when auth.uid() is null or p_other is null or auth.uid() = p_other
+      then false
+    else exists (
+      select 1 from public.follows f
+      where (f.follower_id = auth.uid() and f.following_id = p_other)
+         or (f.following_id = auth.uid() and f.follower_id = p_other)
+    )
+  end;
+$$;
+
+revoke all on function public.viewer_shares_follow_edge_with(uuid) from public;
+grant execute on function public.viewer_shares_follow_edge_with(uuid)
+  to authenticated;
 
 ---------------------------------------------------------------------------
 -- 1. 새 helper — viewer_shares_delegation_edge_with(uuid)
