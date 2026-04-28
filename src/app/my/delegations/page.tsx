@@ -114,6 +114,7 @@ export default function MyDelegationsPage() {
   >(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [manageNotice, setManageNotice] = useState<string | null>(null);
+  const [sentArchiveOpen, setSentArchiveOpen] = useState(false);
 
   const load = useCallback(async () => {
     const { data: res } = await listMyDelegations();
@@ -131,6 +132,32 @@ export default function MyDelegationsPage() {
 
   const received = data?.received ?? [];
   const sent = data?.sent ?? [];
+
+  /**
+   * Split sent delegations into "live" (pending + active) and
+   * "archived" (revoked / declined / expired).
+   *
+   * Why: senders accumulate terminated delegations indefinitely
+   * (every cancel/revoke/decline stays on the row), and interleaving
+   * them with live rows makes the list noisier the more you use it.
+   * The recipient side already gets tab-based separation; mirror that
+   * for senders by tucking terminal rows into a collapsible bin at
+   * the bottom. Same screen, no extra page — just out of the way.
+   */
+  const sentLive = useMemo(
+    () => sent.filter((d) => d.status === "pending" || d.status === "active"),
+    [sent]
+  );
+  const sentArchived = useMemo(
+    () =>
+      sent.filter(
+        (d) =>
+          d.status === "revoked" ||
+          d.status === "declined" ||
+          d.status === "expired"
+      ),
+    [sent]
+  );
 
   const receivedByTab = useMemo(() => {
     const groups: Record<ReceivedTab, DelegationWithDetails[]> = {
@@ -324,9 +351,11 @@ export default function MyDelegationsPage() {
               <h2 className="mb-3 text-sm font-semibold text-zinc-900">{t("delegation.sent")}</h2>
               {sent.length === 0 ? (
                 <p className="text-sm text-zinc-500">{t("delegation.sentEmpty")}</p>
+              ) : sentLive.length === 0 ? (
+                <p className="text-sm text-zinc-500">{t("delegation.sentLiveEmpty")}</p>
               ) : (
                 <ul className="space-y-2.5">
-                  {sent.map((d) => (
+                  {sentLive.map((d) => (
                     <li key={d.id}>
                       <SentCard
                         d={d}
@@ -336,6 +365,50 @@ export default function MyDelegationsPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {sentArchived.length > 0 && (
+                <div className="mt-6 border-t border-zinc-200 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setSentArchiveOpen((v) => !v)}
+                    aria-expanded={sentArchiveOpen}
+                    className="flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left text-xs font-medium text-zinc-600 hover:bg-zinc-50"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span
+                        aria-hidden
+                        className={`inline-block transition-transform ${
+                          sentArchiveOpen ? "rotate-90" : ""
+                        }`}
+                      >
+                        ›
+                      </span>
+                      {t("delegation.sentArchiveToggle").replace(
+                        "{count}",
+                        String(sentArchived.length)
+                      )}
+                    </span>
+                    <span className="text-[11px] text-zinc-400">
+                      {sentArchiveOpen
+                        ? t("delegation.sentArchiveHide")
+                        : t("delegation.sentArchiveShow")}
+                    </span>
+                  </button>
+                  {sentArchiveOpen && (
+                    <ul className="mt-3 space-y-2.5">
+                      {sentArchived.map((d) => (
+                        <li key={d.id}>
+                          <SentCard
+                            d={d}
+                            t={t}
+                            onView={() => openDetail(d, true)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </section>
           </>
