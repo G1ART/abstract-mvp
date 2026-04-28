@@ -2,6 +2,121 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Private Account v2 · PR1 (검색 노출 + Follow Request 골격)
+
+QA 가 "비공개 계정 유저 ID 로 검색해도 결과가 전혀 안 뜬다" 고 지적. 펀더멘털 점검 결과, 코드의 비공계 처리는 메이저 SNS (Instagram / X-protected / TikTok / Threads / Bluesky) 기준과 완전히 다른 *전체 차폐* 모델이었음 (`profiles` RLS, 검색 RPC 6종, `lookup_profile_by_username` 모두 `is_public = true` 로 박혀 있음). 비공계 계정은 검색에도 안 잡히고, follow 요청조차 보낼 수 없는 "온라인이지만 영구 부재중" 상태였음.
+
+이번 PR1 은 메이저 SNS 표준에 맞춰 **메타 카드 / 검색 / Follow Request 골격** 까지만 정렬. 작품/전시 콘텐츠 RLS 는 그대로 두어 Phase 2 에서 별도 PR로 처리 (회귀 감사 분리).
+
+### 새 펀더멘털 (이번 PR 부터 적용)
+
+| 표면 | 공개 계정 | 비공계 v2 |
+|---|---|---|
+| 검색 노출 (`search_people` 외) | ✅ | **✅** (자물쇠 배지 표시) |
+| 프로필 카드 메타 (아바타·display_name·username·main_role·bio) | ✅ | **✅** |
+| 작품 / 전시 본문 | ✅ | ❌ (Phase 2 에서 follower-only 게이트) |
+| Follow 버튼 동작 | 즉시 follower | **`pending` → 본인 수락 → follower** |
+| Follower / Following count | ✅ | ✅ (accepted 만 카운트) |
+
+### 변경 요약
+
+#### SQL — `supabase/migrations/20260511000000_private_account_searchable_and_follow_requests.sql`
+
+1. **`follows.status` 컬럼** (`accepted | pending`, default `accepted`) + 인덱스. 기존 행은 자동으로 `accepted` 라 거동 변화 없음.
+2. **검색 RPC 6종 갱신** — `search_people` (2 시그니처: 4-arg & 5-arg 퍼지), `search_artists_by_artwork`, `get_search_suggestion` 에서 `is_public = true` 필터 제거. 응답 JSON 에는 `is_public` 그대로 포함되어 UI 가 자물쇠 배지를 분기.
+3. **`lookup_profile_by_username`** 갱신 — 비공계 일 때 종전엔 `{is_public:false}` 한 줄만 반환. 이번부터 메타 카드 슬라이스(아바타·display_name·main_role·roles·bio·`viewer_follow_status`) 반환. 작품·전시·studio_portfolio·statement·cover·location·website 등 본문 컬럼은 의도적으로 누락. 공개 계정 응답에도 `viewer_follow_status` 추가.
+4. **`profiles` RLS — follow-edge-aware 정책 2개 추가** — 알림 join 에서 비공계 follower / target 의 메타 행을 읽을 수 있도록 (`follows` 에 edge 가 존재하는 양쪽). 본문 컬럼 누출은 없음 (모든 consumer 가 select 시 메타만 project).
+5. **Follow Request RPC 4종** (모두 `security definer`)
+   - `request_follow_or_follow(target)` — public target 즉시 `accepted`, private target `pending`. idempotent. 반환값으로 status 전달해 UI 가 추가 RPC 콜 없이 라벨 갱신.
+   - `accept_follow_request(follower)` — 본인의 incoming pending 만 accept.
+   - `decline_follow_request(follower)` — 본인의 incoming pending row 삭제.
+   - `cancel_follow_request(target)` — 내가 보낸 outgoing pending 취소.
+   - `get_viewer_follow_status(target)` — `none | pending | accepted` 헬퍼.
+6. **알림 type 확장** — `notifications.notifications_type_check` 에 `follow_request`, `follow_request_accepted` 추가. `notify_on_follow` 트리거가 status 별로 분기 + `notify_on_follow_accept` 트리거 신설 (status pending→accepted 시 양쪽에 알림).
+
+#### TS — `src/lib/supabase/follows.ts`
+- `follow()` 가 `request_follow_or_follow` RPC 사용. 반환값에 `status` 포함 (`accepted | pending`). 호출처 호환 위해 `{data, error}` 형태 유지.
+- `isFollowing(target)` 이 `status='accepted'` 만 카운트.
+- 새 helper: `getFollowStatus`, `cancelFollowRequest`, `acceptFollowRequest`, `declineFollowRequest`, `listIncomingFollowRequests`.
+- `getMyFollowers` / `getMyFollowing` 도 `status='accepted'` 필터링.
+
+#### TS — Follower 카운트 / 피드 정합화
+- `src/lib/supabase/me.ts` (`getMyStats`, `getStatsForProfile`): follower / following count 가 `status='accepted'` 만 집계.
+- `src/lib/supabase/artists.ts` (`getFollowingIds`): 피드용 following set 도 accepted 만.
+- `src/lib/supabase/artworks.ts` (피드 쿼리): 동일.
+
+#### UI — FollowButton (`src/components/FollowButton.tsx`)
+- `initialStatus: FollowStatus` prop 추가 (legacy `initialFollowing: boolean` 도 호환). `isPrivateTarget` 으로 라벨 분기.
+- 상태별 라벨: `Follow` / `Request to follow` / `Requested` / `Following` / `Unfollow`. 톤도 분기 (요청됨은 outline, 팔로잉은 dark fill).
+- pending 상태에서 클릭 → 확인창 + `cancel_follow_request` RPC.
+
+#### UI — `/u/{username}` 비공계 진입 (`src/app/u/[username]/PrivateProfileShell.tsx`)
+- visitor 분기: 메타 카드 (아바타 / display_name / username / main_role / bio / 자물쇠 배지) + Follow / Requested 버튼 + 안내 카피 + `/people` 으로 돌아가는 보조 링크.
+- **owner 분기** (사용자 요청): UserProfileContent 위에 amber 배너로 *"현재 비공개 계정이에요. 프로필 카드는 노출되지만 작품과 전시는 다른 사람에게 보이지 않아요. 누구나 볼 수 있게 하려면 설정에서 공개 계정으로 전환해 주세요."* + 설정 열기 버튼. "공개 프로필 미리보기" 클릭 시 의도가 명확해짐.
+
+#### UI — PeopleClient 검색 결과 (`src/app/people/PeopleClient.tsx`)
+- `profile.is_public === false` 인 row 에 자물쇠 배지 chip.
+- 비공계 row 의 FollowButton 은 `isPrivateTarget` 전달 + IntroMessageAssist intercept 우회 (수락되지 않은 상태에서 인사말 작성은 낭비). IntroMessageAssist 컴포넌트도 비공계 row 에서는 mount 안 함.
+
+#### UI — 알림 인박스 (`src/app/notifications/page.tsx`)
+- `follow_request` 타입에 인라인 [수락 / 거절] 버튼 (`FollowRequestActions` 로컬 컴포넌트). 결정 후 알림 read mark + 리스트 refresh + cross-tab 이벤트.
+- `follow_request` 행은 row-link 로 감싸지 않음 (인라인 버튼 보호).
+- `follow_request_accepted` 는 단순 라벨 + 프로필 딥링크.
+- `notifications.followRequest.body`, `notifications.followRequestAccepted.body` i18n 추가.
+
+#### i18n — `src/lib/i18n/messages.ts`
+- `profile.private.notice.title|body` (visitor 카드용 안내)
+- `profile.private.ownerNotice.title|body|cta` (사용자 요청한 owner 안내)
+- `profile.private.cardSubtitle|lockBadge|requestSent`
+- `follow.cta.follow|request|requested|following|unfollow`
+- `follow.cancelRequest.confirm`, `follow.unfollow.confirm`
+- `follow.requests.inbox.title|empty|accept|decline|accepted|declined`
+
+#### Beta event
+- `BetaEventName` 에 `profile_follow_requested` 추가 (request 와 즉시 follow 분리 측정).
+
+### 변경 파일
+
+- `supabase/migrations/20260511000000_private_account_searchable_and_follow_requests.sql` (신규)
+- `src/lib/supabase/follows.ts`
+- `src/lib/supabase/profiles.ts` (private card 타입 + 반환 슬라이스 분기)
+- `src/lib/supabase/notifications.ts` (NotificationType 확장)
+- `src/lib/supabase/me.ts`, `src/lib/supabase/artists.ts`, `src/lib/supabase/artworks.ts` (status='accepted' 필터링)
+- `src/components/FollowButton.tsx` (재작성, status-aware)
+- `src/app/u/[username]/page.tsx`, `src/app/u/[username]/PrivateProfileShell.tsx`
+- `src/app/people/PeopleClient.tsx`
+- `src/app/notifications/page.tsx`
+- `src/lib/i18n/messages.ts`
+- `src/lib/beta/logEvent.ts`
+
+### Supabase SQL — 적용 필요
+
+`supabase/migrations/20260511000000_private_account_searchable_and_follow_requests.sql` 을 Supabase SQL Editor 에서 실행. 모두 `create or replace` / `add column if not exists` / `drop policy if exists; create policy` 형태라 재실행 안전.
+
+### 환경 변수
+
+- 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과, 우리 변경 파일에 lint 0 error/warning.
+- `npm run build` 통과.
+- 회귀 시나리오 점검:
+  - **공개 계정 follow 동작** — `follow()` 가 `request_follow_or_follow` RPC 콜로 변경됐지만 결과는 `'accepted'` 로 즉시 follower. UI 라벨 즉시 "Following" 으로 전환.
+  - **공개 계정 follower 카운트** — `status='accepted'` 디폴트라 기존 행 모두 카운트 그대로.
+  - **비공계 본인이 자기 프로필 미리보기** — owner 배너로 명시 안내 + 작품 영역은 본인은 보이게 그대로 (작품 RLS 변화 없음).
+  - **비공계 외부인** — 메타 카드 + Follow Request 버튼 / Requested 라벨. 작품·전시·statement 는 보이지 않음.
+  - **비공계 본인의 알림 인박스** — follow request 인라인 [수락/거절]. 수락 시 follower 카운트 +1, 양쪽 알림 발송.
+  - **검색** — 비공계 username/display_name 검색 시 결과에 자물쇠 배지 chip 으로 노출.
+  - **추천 lanes (follow_graph / likes_based / expand)** — Phase 2 영역이라 이번 PR 에선 *변경 없음*. lanes 는 여전히 `is_public = true` 만 추천.
+
+### 남은 한계 / Phase 2 (다음 PR)
+
+- 작품 / 전시 / shortlist / 보드 등 콘텐츠 RLS 가 owner.is_public + follows.status='accepted' 로 정렬되어야 진정한 "보호 계정" 거동 완성. 이번 PR 에서는 비공계 owner 의 콘텐츠 자체가 그래도 직접 URL로는 접근 가능 (visibility='public' 작품 한정). Phase 2 가 이를 마감.
+- 공개 추천 lanes 에 비공계 노출 여부는 별도 결정 사항. 현재는 노출 안 함.
+
+---
+
 ## 2026-04-28 — Statement Draft Assist 품질 / 공개범위 문구
 
 QA 리포트(작가의 말 초안 — 영문 토큰 노출 · "ㅇㅇ적 스타일" 정형구 · 삭제한 키워드 재등장)와 공개범위 토글 문구 미스매치를 함께 정리한 좁은 패치.

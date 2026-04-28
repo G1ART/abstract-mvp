@@ -413,6 +413,12 @@ export function PeopleClient() {
                 const isFirstVisibleCard = profileIdx === 0;
                 const isSelf = userId === profile.id;
                 const initialFollowing = followingIds.has(profile.id);
+                // Private Account v2 — search results may now include
+                // private accounts (`is_public === false`). For those, the
+                // FollowButton sends a *request* via the SQL RPC and we
+                // skip the intro-message intercept (sending a note before
+                // the principal accepts would be a wasted draft).
+                const isPrivateTarget = profile.is_public === false;
                 const reasonLine =
                   !isSearchMode && (profile.reason_tags?.length ?? 0) > 0
                     ? formatReasonLine(profile, t)
@@ -453,8 +459,27 @@ export function PeopleClient() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-zinc-900">
-                        {identity.primary}
+                      <p className="flex items-center gap-2 font-medium text-zinc-900">
+                        <span className="truncate">{identity.primary}</span>
+                        {isPrivateTarget ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-600"
+                            title={t("profile.private.lockBadge")}
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            >
+                              <rect x="5" y="11" width="14" height="9" rx="2" />
+                              <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                            </svg>
+                            {t("profile.private.lockBadge")}
+                          </span>
+                        ) : null}
                       </p>
                       {identity.secondary && (
                         <p className="text-sm text-zinc-500">{identity.secondary}</p>
@@ -490,21 +515,28 @@ export function PeopleClient() {
                         <FollowButton
                           targetProfileId={profile.id}
                           initialFollowing={initialFollowing}
+                          isPrivateTarget={isPrivateTarget}
                           size="sm"
-                          interceptFollow={() => {
-                            // Don't commit the follow here — open the
-                            // intro sheet as a review surface. The sheet
-                            // itself commits the follow via either
-                            // handleSend (send + follow) or
-                            // handleFollowOnly (follow only). If the user
-                            // dismisses the sheet, nothing is written.
-                            setIntroOpenSignal((prev) => ({
-                              ...prev,
-                              [profile.id]: (prev[profile.id] ?? 0) + 1,
-                            }));
-                          }}
+                          interceptFollow={
+                            isPrivateTarget
+                              ? undefined
+                              : () => {
+                                  // Don't commit the follow here — open
+                                  // the intro sheet as a review surface.
+                                  // The sheet commits via handleSend
+                                  // (send + follow) or handleFollowOnly
+                                  // (follow only). For private targets we
+                                  // skip the sheet because the principal
+                                  // hasn't accepted the request yet.
+                                  setIntroOpenSignal((prev) => ({
+                                    ...prev,
+                                    [profile.id]:
+                                      (prev[profile.id] ?? 0) + 1,
+                                  }));
+                                }
+                          }
                         />
-                        {userId && (
+                        {userId && !isPrivateTarget && (
                           <IntroMessageAssist
                             me={{
                               display_name: myProfile?.display_name ?? null,

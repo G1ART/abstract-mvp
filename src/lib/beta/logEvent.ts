@@ -11,6 +11,7 @@ export type BetaEventName =
   | "bulk_publish_completed"
   | "artwork_liked"
   | "profile_followed"
+  | "profile_follow_requested"
   | "inquiry_created"
   | "inquiry_replied"
   | "exhibition_created"

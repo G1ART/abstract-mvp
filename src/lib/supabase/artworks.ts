@@ -461,6 +461,7 @@ export async function listFollowingArtworks(
           .from("follows")
           .select("following_id")
           .eq("follower_id", session.user.id)
+          .eq("status", "accepted")
           .then(({ data }) => (data ?? []).map((r) => r.following_id)),
     supabase.from("claims").select("work_id").eq("subject_profile_id", session.user.id).not("work_id", "is", null),
   ]);

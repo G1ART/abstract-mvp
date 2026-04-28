@@ -13,6 +13,80 @@ import { useT } from "@/lib/i18n/useT";
 import { formatDisplayName } from "@/lib/identity/format";
 import { EmptyState } from "@/components/ds/EmptyState";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
+import {
+  acceptFollowRequest,
+  declineFollowRequest,
+} from "@/lib/supabase/follows";
+
+function FollowRequestActions({
+  row,
+  onResolved,
+  t,
+}: {
+  row: NotificationRow;
+  onResolved: () => void;
+  t: (key: string) => string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [resolved, setResolved] = useState<"accepted" | "declined" | null>(null);
+
+  if (!row.actor_id) return null;
+
+  if (resolved) {
+    return (
+      <span className="ml-2 text-xs text-zinc-500">
+        {resolved === "accepted"
+          ? t("follow.requests.accepted")
+          : t("follow.requests.declined")}
+      </span>
+    );
+  }
+
+  return (
+    <span className="ml-2 inline-flex gap-2">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (busy || !row.actor_id) return;
+          setBusy(true);
+          const { data: ok } = await acceptFollowRequest(row.actor_id);
+          setBusy(false);
+          if (ok) {
+            setResolved("accepted");
+            void markNotificationRead(row.id);
+            onResolved();
+          }
+        }}
+        className="rounded border border-zinc-900 bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+      >
+        {t("follow.requests.accept")}
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (busy || !row.actor_id) return;
+          setBusy(true);
+          const { data: ok } = await declineFollowRequest(row.actor_id);
+          setBusy(false);
+          if (ok) {
+            setResolved("declined");
+            void markNotificationRead(row.id);
+            onResolved();
+          }
+        }}
+        className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+      >
+        {t("follow.requests.decline")}
+      </button>
+    </span>
+  );
+}
 
 function notificationLabel(
   row: NotificationRow,
@@ -78,6 +152,10 @@ function notificationLabel(
       return t("notifications.delegationDeclinedText").replace("{name}", name);
     case "delegation_revoked":
       return t("notifications.delegationRevokedText").replace("{name}", name);
+    case "follow_request":
+      return t("notifications.followRequest.body").replace("{name}", name);
+    case "follow_request_accepted":
+      return t("notifications.followRequestAccepted.body").replace("{name}", name);
     default:
       return "";
   }
@@ -93,7 +171,10 @@ function notificationLink(
   if (row.type === "connection_message") {
     return "/my/messages";
   }
-  if (row.type === "follow" && row.actor_id) {
+  if (
+    (row.type === "follow" || row.type === "follow_request_accepted") &&
+    row.actor_id
+  ) {
     const u = row.actor?.username;
     return u ? `/u/${u}` : null;
   }
@@ -205,6 +286,19 @@ function NotificationsContent() {
             const href = notificationLink(row, entitlements);
             const label = notificationLabel(row, t, entitlements);
             const unread = row.read_at == null;
+            const isFollowRequest = row.type === "follow_request";
+            const inlineControls = isFollowRequest ? (
+              <FollowRequestActions
+                row={row}
+                t={t}
+                onResolved={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("notifications-read")
+                  );
+                  void refresh();
+                }}
+              />
+            ) : null;
             const content = (
               <span className="block py-3 text-sm text-zinc-700">
                 {unread && <span className="mr-2 inline-block h-2 w-2 rounded-full bg-blue-500 align-middle" aria-hidden />}
@@ -217,8 +311,20 @@ function NotificationsContent() {
                     minute: "2-digit",
                   })}
                 </span>
+                {inlineControls}
               </span>
             );
+            // Follow requests get inline accept/decline controls and
+            // intentionally do NOT wrap the content in a Link — clicks
+            // anywhere else on the row would otherwise navigate away
+            // before the user could act on the buttons.
+            if (isFollowRequest) {
+              return (
+                <li key={row.id} className="px-1">
+                  {content}
+                </li>
+              );
+            }
             return (
               <li key={row.id}>
                 {href ? (

@@ -98,7 +98,8 @@ export async function getFollowingIds(): Promise<{
   const { data, error } = await supabase
     .from("follows")
     .select("following_id")
-    .eq("follower_id", session.user.id);
+    .eq("follower_id", session.user.id)
+    .eq("status", "accepted");
 
   if (error) return { data: new Set(), error };
   const ids = new Set((data ?? []).map((r) => r.following_id));

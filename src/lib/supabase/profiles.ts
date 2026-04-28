@@ -63,8 +63,31 @@ export type ProfilePublic = {
   artist_statement_updated_at?: string | null;
 };
 
+/**
+ * Meta-card slice returned for private accounts. Mirrors the JSONB shape
+ * returned by `public.lookup_profile_by_username()` when `is_public=false`:
+ *   id, username, display_name, avatar_url, main_role, roles, bio,
+ *   is_public:false, viewer_follow_status.
+ *
+ * Sensitive portfolio fields (themes, mediums, studio_portfolio, statement,
+ * cover image, location, website, exhibitions, awards, etc.) are
+ * intentionally omitted on the SQL side.
+ */
+export type PrivateProfileCard = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  main_role: string | null;
+  roles: string[] | null;
+  bio: string | null;
+  is_public: false;
+  viewer_follow_status: "none" | "pending" | "accepted";
+};
+
 export async function lookupPublicProfileByUsername(username: string): Promise<{
   data: ProfilePublic | null;
+  privateCard: PrivateProfileCard | null;
   isPrivate: boolean;
   notFound: boolean;
   error: unknown;
@@ -74,16 +97,50 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
   });
 
   if (error) {
-    return { data: null, isPrivate: false, notFound: true, error };
+    return {
+      data: null,
+      privateCard: null,
+      isPrivate: false,
+      notFound: true,
+      error,
+    };
   }
 
-  // Private profile: RPC returns only { is_public: false }
   const raw = data as Record<string, unknown> | null;
   const isPrivate = !!raw && raw.is_public === false;
   const notFound = !raw;
 
-  if (notFound || isPrivate) {
-    return { data: null, isPrivate, notFound, error: null };
+  if (notFound) {
+    return {
+      data: null,
+      privateCard: null,
+      isPrivate: false,
+      notFound: true,
+      error: null,
+    };
+  }
+
+  if (isPrivate) {
+    const status = String(raw?.viewer_follow_status ?? "none");
+    const privateCard: PrivateProfileCard = {
+      id: String(raw?.id ?? ""),
+      username: raw?.username != null ? String(raw.username) : null,
+      display_name: raw?.display_name != null ? String(raw.display_name) : null,
+      avatar_url: raw?.avatar_url != null ? String(raw.avatar_url) : null,
+      main_role: raw?.main_role != null ? String(raw.main_role) : null,
+      roles: Array.isArray(raw?.roles) ? (raw.roles as string[]) : null,
+      bio: raw?.bio != null ? String(raw.bio) : null,
+      is_public: false,
+      viewer_follow_status:
+        status === "accepted" || status === "pending" ? status : "none",
+    };
+    return {
+      data: null,
+      privateCard,
+      isPrivate: true,
+      notFound: false,
+      error: null,
+    };
   }
 
   const sp = raw?.studio_portfolio;
@@ -107,7 +164,13 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     artist_statement_updated_at: stringFieldOrNull(raw?.artist_statement_updated_at),
   };
 
-  return { data: parsed, isPrivate: false, notFound: false, error: null };
+  return {
+    data: parsed,
+    privateCard: null,
+    isPrivate: false,
+    notFound: false,
+    error: null,
+  };
 }
 
 function stringFieldOrNull(v: unknown): string | null {

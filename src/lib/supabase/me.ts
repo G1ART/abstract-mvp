@@ -36,11 +36,13 @@ export async function getMyStats(): Promise<{
     supabase
       .from("follows")
       .select("following_id", { count: "exact", head: true })
-      .eq("following_id", me),
+      .eq("following_id", me)
+      .eq("status", "accepted"),
     supabase
       .from("follows")
       .select("follower_id", { count: "exact", head: true })
-      .eq("follower_id", me),
+      .eq("follower_id", me)
+      .eq("status", "accepted"),
     supabase
       .from("artworks")
       .select("id", { count: "exact", head: true })
@@ -89,11 +91,13 @@ export async function getStatsForProfile(profileId: string): Promise<{
     supabase
       .from("follows")
       .select("following_id", { count: "exact", head: true })
-      .eq("following_id", profileId),
+      .eq("following_id", profileId)
+      .eq("status", "accepted"),
     supabase
       .from("follows")
       .select("follower_id", { count: "exact", head: true })
-      .eq("follower_id", profileId),
+      .eq("follower_id", profileId)
+      .eq("status", "accepted"),
     supabase
       .from("artworks")
       .select("id", { count: "exact", head: true })

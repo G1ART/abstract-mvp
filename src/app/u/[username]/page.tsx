@@ -30,8 +30,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const tabParam =
     typeof rawTab === "string" ? rawTab : Array.isArray(rawTab) ? rawTab[0] : undefined;
 
-  const { data: profile, isPrivate, notFound: profileNotFound, error } =
-    await lookupPublicProfileByUsername(paramUsername);
+  const {
+    data: profile,
+    privateCard,
+    isPrivate,
+    notFound: profileNotFound,
+    error,
+  } = await lookupPublicProfileByUsername(paramUsername);
 
   if (error || profileNotFound) {
     notFound();
@@ -40,17 +45,19 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   let p: ProfilePublic;
 
   if (isPrivate) {
-    // QA P0.5-E (rows 33, 34): owner-fallback must run on the client
-    // because the browser-only Supabase client has no SSR session.
-    // PrivateProfileShell handles both branches: if the visitor turns
-    // out to be the owner, it loads the same data this RSC would and
-    // hands off to UserProfileContent; otherwise it shows the private
-    // notice with a "내 스튜디오로 돌아가기" escape hatch (row 33).
+    // Private account v2 (PR1):
+    //   - The shell now receives a `privateCard` slice (avatar / display_name
+    //     / main_role / roles / bio + viewer_follow_status) so we can render
+    //     a real profile card with a Follow / Requested button instead of
+    //     the legacy dead-end notice.
+    //   - The owner-preview branch (PrivateProfileShell loads `getMyProfileAsPublic`
+    //     and falls into UserProfileContent) is preserved unchanged.
     return (
       <PrivateProfileShell
         paramUsername={paramUsername}
         initialReorderMode={mode === "reorder"}
         initialTabParam={tabParam ?? null}
+        privateCard={privateCard}
       />
     );
   } else if (!profile) {

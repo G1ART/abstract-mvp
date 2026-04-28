@@ -15,7 +15,9 @@ export type NotificationType =
   | "delegation_invite_received"
   | "delegation_accepted"
   | "delegation_declined"
-  | "delegation_revoked";
+  | "delegation_revoked"
+  | "follow_request"
+  | "follow_request_accepted";
 
 export type NotificationRow = {
   id: string;
