@@ -1128,6 +1128,10 @@ export const messages = {
     "acting.lock.notice.title": "Account-level settings are always your own",
     "acting.lock.notice.body": "You are currently operating as {name}, but settings, security, and billing only apply to your own account. Switch back from the banner above when you want to act on the delegated account again.",
     "acting.lock.notice.fallbackName": "the delegated account",
+    "acting.switcher.heading": "Switch account",
+    "acting.switcher.myAccount": "My account",
+    "acting.switcher.activeChip": "active",
+    "acting.switcher.actingChip": "acting as",
     "delegation.dateInvited": "Invited {date}",
     "delegation.dateAccepted": "Accepted {date}",
     "delegation.dateDeclined": "Declined {date}",
@@ -1812,6 +1816,12 @@ export const messages = {
     "tour.delegation.acting.title": "When you're acting on another account",
     "tour.delegation.acting.body":
       "After accepting, a single amber strip stays at the top of every page. View permissions reminds you what you can do, and Return to my account switches back instantly.",
+    "tour.delegation.accountSwitcher.title": "Switch personas from your avatar",
+    "tour.delegation.accountSwitcher.body":
+      "Your own account stays one click away. Open the avatar menu to flip between yourself and any account that has delegated to you — the active persona is marked clearly so you always know whose data the next save will land on.",
+    "tour.delegation.actingAsChip.title": "Per-form clarity",
+    "tour.delegation.actingAsChip.body":
+      "Whenever you upload, edit, or reply while acting on someone else's account, this chip appears at the top of the form: 'Posting as Principal · operated by You'. It's a moment-of-mutation reminder so you never confuse the two personas.",
 
     "tour.network.title": "Network",
     "tour.network.intro": "Both sides of your graph, lightly organized.",
@@ -2973,6 +2983,10 @@ export const messages = {
     "acting.lock.notice.title": "계정 설정은 언제나 본인 계정 기준입니다",
     "acting.lock.notice.body": "지금 {name} 계정으로 작업 중이지만, 설정·보안·결제 항목은 본인 계정에만 적용됩니다. 위임 계정에서 다시 작업하시려면 상단 배너에서 전환해주세요.",
     "acting.lock.notice.fallbackName": "위임 계정",
+    "acting.switcher.heading": "계정 전환",
+    "acting.switcher.myAccount": "내 계정",
+    "acting.switcher.activeChip": "현재",
+    "acting.switcher.actingChip": "위임 중",
     "delegation.dateInvited": "{date} 초대",
     "delegation.dateAccepted": "{date} 수락",
     "delegation.dateDeclined": "{date} 거절",
@@ -3658,6 +3672,12 @@ export const messages = {
     "tour.delegation.acting.title": "다른 계정으로 작업 중일 때",
     "tour.delegation.acting.body":
       "위임을 수락한 후 다른 분의 계정으로 작업하실 때는 화면 상단에 노란 띠가 항상 떠 있어요. [권한 보기]로 가능한 작업을 다시 확인할 수 있고, [내 계정으로 돌아가기]로 즉시 본인 계정으로 돌아올 수 있어요.",
+    "tour.delegation.accountSwitcher.title": "아바타에서 계정 전환",
+    "tour.delegation.accountSwitcher.body":
+      "본인 계정은 언제나 한 번의 클릭으로 돌아올 수 있어요. 우상단 아바타 메뉴를 열면 본인 계정과 위임받은 계정 사이를 자유롭게 오갈 수 있고, 지금 어느 페르소나로 작업 중인지 한눈에 표시돼요.",
+    "tour.delegation.actingAsChip.title": "각 폼의 페르소나 표시",
+    "tour.delegation.actingAsChip.body":
+      "다른 분의 계정으로 업로드·편집·답장을 하실 때, 폼 상단에 '○○ 명의로 게시 중 · 운영자: 본인' 칩이 떠요. 저장 직전 어느 페르소나로 작업 중인지 매번 확인할 수 있는 마지막 안전망이에요.",
 
     "tour.network.title": "네트워크 안내",
     "tour.network.intro": "그래프의 양쪽을 가볍게 정리해둔 공간이에요.",

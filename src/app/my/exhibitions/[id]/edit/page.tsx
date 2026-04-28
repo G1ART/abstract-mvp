@@ -23,6 +23,7 @@ import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
 import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
 import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
+import { ActingAsChip } from "@/components/ActingAsChip";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -262,6 +263,8 @@ export default function EditExhibitionPage() {
         <h1 className="mb-6 text-xl font-semibold text-zinc-900">
           {t("common.edit")} {t("exhibition.myExhibitions")}
         </h1>
+
+        <ActingAsChip mode="editing" />
 
         {loading ? (
           <p className="text-sm text-zinc-500">{t("common.loading")}</p>

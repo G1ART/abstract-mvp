@@ -13,6 +13,8 @@ import { getUnreadCount } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
 import { useActingAs } from "@/context/ActingAsContext";
 import { isPlaceholderUsername } from "@/lib/identity/placeholder";
+import { listMyDelegations, type DelegationWithDetails } from "@/lib/supabase/delegations";
+import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 const MAIN_NAV = [
   { href: "/feed?tab=all&sort=latest", key: "nav.feed" },
@@ -83,8 +85,11 @@ export function Header() {
   }, []);
 
   useEffect(() => {
-    if (avatarOpen) fetchUnread();
-  }, [avatarOpen]);
+    if (avatarOpen) {
+      fetchUnread();
+      if (session) loadActiveAccountDelegations();
+    }
+  }, [avatarOpen, session]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -108,11 +113,68 @@ export function Header() {
 
   const loggedIn = !!session;
   const {
+    actingAsProfileId,
     actingAsLabel,
+    setActingAs,
     clearActingAs,
     staleCleared,
     acknowledgeStaleCleared,
   } = useActingAs();
+
+  // Account-scope active delegations the operator received. The avatar
+  // dropdown surfaces these as the "Switch account" section so the user
+  // can toggle into a principal persona without leaving the current
+  // page. We lazy-load on first dropdown open and refresh whenever the
+  // operator re-opens it, so freshly-accepted invites surface promptly.
+  const [activeAccountDelegations, setActiveAccountDelegations] = useState<
+    DelegationWithDetails[]
+  >([]);
+  const [accountsLoaded, setAccountsLoaded] = useState(false);
+  const switcherFetchInflightRef = useRef(false);
+
+  useEffect(() => {
+    if (!loggedIn) {
+      setActiveAccountDelegations([]);
+      setAccountsLoaded(false);
+    }
+  }, [loggedIn]);
+
+  function loadActiveAccountDelegations() {
+    if (switcherFetchInflightRef.current) return;
+    switcherFetchInflightRef.current = true;
+    void listMyDelegations()
+      .then(({ data }) => {
+        const received = data?.received ?? [];
+        const filtered = received.filter(
+          (d) => d.scope_type === "account" && d.status === "active"
+        );
+        setActiveAccountDelegations(filtered);
+        setAccountsLoaded(true);
+      })
+      .finally(() => {
+        switcherFetchInflightRef.current = false;
+      });
+  }
+
+  function handleSwitchToPrincipal(d: DelegationWithDetails) {
+    const profile = d.delegator_profile;
+    if (!profile?.id) return;
+    const name = formatDisplayName(profile) || formatUsername(profile);
+    setActingAs(profile.id, name);
+    setAvatarOpen(false);
+    // router.refresh() lets layout-level caches recompute against the
+    // new acting-as state without a full reload. We avoid the previous
+    // `window.location.href` jump because the ActingAsContext provider
+    // already re-fetches on visibility/focus changes.
+    router.refresh();
+    router.push("/my");
+  }
+
+  function handleSwitchToOperator() {
+    clearActingAs();
+    setAvatarOpen(false);
+    router.refresh();
+  }
 
   // Auto-dismiss the stale-cleared notice after a few seconds so it
   // doesn't linger as visual debt. The provider keeps the flag until
@@ -250,11 +312,16 @@ export function Header() {
                 )}
               </button>
               {avatarOpen && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[160px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                <div
+                  data-tour="account-switcher"
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 min-w-[220px] rounded-lg border border-zinc-200 bg-white py-1 shadow-lg"
+                >
                   <Link
                     href="/notifications"
                     className="flex items-center justify-between px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
                     onClick={() => setAvatarOpen(false)}
+                    role="menuitem"
                   >
                     {t("notifications.link")}
                     {unreadCount > 0 && (
@@ -264,6 +331,84 @@ export function Header() {
                     )}
                   </Link>
                   <div className="my-1 border-t border-zinc-100" />
+
+                  {/* Account switcher (only rendered when there is at
+                      least one active account delegation, otherwise
+                      this strip would be visual debt for solo users). */}
+                  {(accountsLoaded && activeAccountDelegations.length > 0) ||
+                  actingAsProfileId ? (
+                    <>
+                      <div className="px-4 pt-1 pb-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
+                        {t("acting.switcher.heading")}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleSwitchToOperator}
+                        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                        role="menuitemradio"
+                        aria-checked={!actingAsProfileId}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            aria-hidden="true"
+                            className={`h-2 w-2 rounded-full ${
+                              !actingAsProfileId ? "bg-zinc-900" : "bg-transparent"
+                            }`}
+                          />
+                          <span className="font-medium">
+                            {profileUsername
+                              ? `@${profileUsername}`
+                              : t("acting.switcher.myAccount")}
+                          </span>
+                          {!actingAsProfileId && (
+                            <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
+                              {t("acting.switcher.activeChip")}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                      {activeAccountDelegations.map((d) => {
+                        const p = d.delegator_profile;
+                        if (!p?.id) return null;
+                        const name = formatDisplayName(p) || formatUsername(p) || p.username || p.id;
+                        const isActive = actingAsProfileId === p.id;
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => handleSwitchToPrincipal(d)}
+                            className="flex w-full items-center justify-between gap-2 px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                            role="menuitemradio"
+                            aria-checked={isActive}
+                          >
+                            <span className="flex items-center gap-2 truncate">
+                              <span
+                                aria-hidden="true"
+                                className={`h-2 w-2 shrink-0 rounded-full ${
+                                  isActive ? "bg-zinc-900" : "bg-transparent"
+                                }`}
+                              />
+                              <span className="truncate">
+                                {name}
+                                {p.username && (
+                                  <span className="ml-1 text-xs text-zinc-500">
+                                    @{p.username}
+                                  </span>
+                                )}
+                              </span>
+                            </span>
+                            {isActive && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
+                                {t("acting.switcher.actingChip")}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      <div className="my-1 border-t border-zinc-100" />
+                    </>
+                  ) : null}
+
                   <div className="px-4 py-2 text-[10px] text-zinc-400">
                     <BuildStamp />
                   </div>
@@ -272,6 +417,7 @@ export function Header() {
                     href="/settings"
                     className="block px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
                     onClick={() => setAvatarOpen(false)}
+                    role="menuitem"
                   >
                     {t("account.settings")}
                   </Link>
@@ -279,6 +425,7 @@ export function Header() {
                     href="/my/delegations"
                     className="block px-4 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50"
                     onClick={() => setAvatarOpen(false)}
+                    role="menuitem"
                   >
                     {t("delegation.myDelegations")}
                   </Link>
@@ -287,6 +434,7 @@ export function Header() {
                     type="button"
                     onClick={handleLogout}
                     className="block w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                    role="menuitem"
                   >
                     {t("account.logout")}
                   </button>

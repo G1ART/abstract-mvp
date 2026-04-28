@@ -26,6 +26,7 @@ import { Chip } from "@/components/ds/Chip";
 import { formatIdentityPair } from "@/lib/identity/format";
 import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 import { markAiAccepted } from "@/lib/ai/accept";
+import { ActingAsChip } from "@/components/ActingAsChip";
 
 export default function MyInquiriesPage() {
   const { t, locale } = useT();
@@ -222,6 +223,8 @@ export default function MyInquiriesPage() {
             )}
           </div>
         </div>
+
+        <ActingAsChip mode="replying" />
 
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <input

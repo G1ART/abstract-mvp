@@ -2,6 +2,42 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Acting-as Persona Hardening · Phase 3 (Toggle UX / persona affordance)
+
+Phase 1·2(`3533a40`, `fdc9992`) 의 백엔드/리스트 정합 위에 토글 UX 와 per-form persona affordance 를 입힘. 두 가지 SNS 벤치마크(LinkedIn Pages / IG Business) 의 핵심 패턴을 흡수: **(1) 아바타 드롭다운 Account Switcher**, **(2) 모든 mutation 폼 상단의 "X 명의로" chip**.
+
+### 변경 요약
+
+- **헤더 아바타 Account Switcher** ([src/components/Header.tsx](src/components/Header.tsx)) — 드롭다운 열릴 때 `listMyDelegations()` 로 `received: scope_type='account', status='active'` 위임 lazy-load. solo 사용자는 active 위임이 없으면 switcher 섹션 자체가 렌더되지 않아 시각 변화 0. acting-as 활성 시 본인 계정 + 위임 받은 principal 들이 모두 표시되며 활성 페르소나에 점/뱃지 표시. principal 클릭 시 `setActingAs` + `router.refresh()` + `router.push('/my')`. 본인 계정 클릭 시 `clearActingAs` + `router.refresh()`. 기존 acting-as banner 는 유지.
+- **`<ActingAsChip>` 컴포넌트** ([src/components/ActingAsChip.tsx](src/components/ActingAsChip.tsx)) — `mode: "posting" | "editing" | "replying"` 프롭으로 카피 변형. `useActingAs()` 로 active 여부 확인 후 비활성이면 null 반환 (solo 회귀 0). `data-tour="acting-as-chip"` 앵커. 부착 위치:
+  - `/upload` (single artwork) · `/upload/bulk` — `posting`
+  - `/artwork/[id]/edit` — `editing`
+  - `/my/exhibitions/new` — `posting`
+  - `/my/exhibitions/[id]/edit` · `/my/exhibitions/[id]/add` — `editing`
+  - `/my/inquiries` — `replying`
+- **i18n 라벨** ([src/lib/i18n/messages.ts](src/lib/i18n/messages.ts)) EN/KR 양측에 `acting.switcher.*` 4 키, `tour.delegation.accountSwitcher.*` / `tour.delegation.actingAsChip.*` 4 키 추가. (`acting.chip.*` / `acting.lock.notice.*` 는 Phase 2 에서 선반영.)
+- **Tour v4** ([src/lib/tours/tourRegistry.ts](src/lib/tours/tourRegistry.ts), [src/lib/tours/tourKoCopy.ts](src/lib/tours/tourKoCopy.ts)) — `delegation.main` 5스텝 → 7스텝 (`account-switcher` + `acting-as-chip` 추가), `version: 4` bump 으로 기존 사용자 1회 자동 재노출. 한국어는 글리프 깨짐 차단 위해 `tourKoCopy.ts` 직접 카피.
+
+### Supabase SQL
+
+- 추가/변경 없음 (Phase 1 마이그레이션만 필요).
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 변경 파일 lint 0 issue.
+- 회귀 시나리오:
+  - solo 사용자(active 위임 없음, acting-as 비활성): 헤더 드롭다운에 switcher 섹션 미노출, 모든 mutation 페이지의 chip null 반환. 종전 헤더/폼과 시각적으로 0 차이.
+  - delegate writer (account scope) — acting-as 비활성: switcher 에 본인 + 받은 principal(s) 노출. principal 클릭 → acting-as 활성화 + `/my` 로 이동. acting-as 활성 후 모든 mutation 폼에 chip 노출 ("○○ 명의로 게시 중 · 운영자: 본인").
+  - delegate writer — acting-as 활성: switcher 에 본인 옆 "현재" 칩 빠짐, principal 옆 "위임 중" 칩 표시. 본인 계정 클릭 → `clearActingAs` 후 chip 사라지고 banner 사라짐.
+  - tour: delegation hub 진입 시 v4 자동 재노출, `account-switcher` 스텝은 헤더 드롭다운 핀, `acting-as-chip` 스텝은 첫 mutation 폼(예: `/upload`) 진입 후 노출.
+
+---
+
 ## 2026-04-28 — Acting-as Persona Hardening · Phase 2 (List filters / read paths)
 
 Phase 1 (`3533a40`) 의 백엔드/RLS 정합화 직후 후속 패치. "listMy*" 헬퍼들이 항상 `session.user.id` 만 보던 read 표면을 `forProfileId ?? session.user.id` 로 일반화하고, 관련 `/my` 페이지들에 `useActingAs()` 를 주입해 acting-as 활성 시 principal scope 데이터가 보이도록 정렬. 추가로 `/settings` 에 "이 페이지는 본인 계정 전용" operator-lock 안내 배너를 부착해 페르소나 결정(workspace = principal swap, account = operator lock) 의 시각적 정합을 맞춤.

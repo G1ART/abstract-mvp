@@ -33,6 +33,7 @@ import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
 import { useActingAs } from "@/context/ActingAsContext";
 import { getProfileById } from "@/lib/supabase/profiles";
+import { ActingAsChip } from "@/components/ActingAsChip";
 
 type Participant = {
   id: string;
@@ -329,6 +330,8 @@ export default function AddWorkToExhibitionPage() {
         <p className="mb-4 text-sm text-zinc-500">
           {t("exhibition.addExistingWork")}
         </p>
+
+        <ActingAsChip mode="editing" />
 
         {/* Step indicator */}
         <div className="mb-6 inline-flex rounded-full border border-zinc-200 bg-zinc-50 p-1 text-xs font-medium">

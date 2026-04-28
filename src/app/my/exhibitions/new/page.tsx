@@ -16,6 +16,7 @@ import { ExhibitionDraftAssist } from "@/components/ai/ExhibitionDraftAssist";
 import { getShortlist, listShortlistItems } from "@/lib/supabase/shortlists";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { ActingAsChip } from "@/components/ActingAsChip";
 
 const STATUS_OPTIONS = [
   { value: "planned", labelKey: "exhibition.statusPlanned" },
@@ -200,6 +201,8 @@ export default function NewExhibitionPage() {
               .replace("{n}", String(boardContext.artworkCount))}
           </div>
         )}
+
+        <ActingAsChip mode="posting" />
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && <p className="text-sm text-red-600">{error}</p>}

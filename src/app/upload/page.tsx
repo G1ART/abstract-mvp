@@ -23,6 +23,7 @@ import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
+import { ActingAsChip } from "@/components/ActingAsChip";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
@@ -420,6 +421,8 @@ function UploadPageContent() {
         <div className="mb-6">
           <h1 className="text-xl font-semibold">{t("upload.title")}</h1>
         </div>
+
+        <ActingAsChip mode="posting" />
 
         {/* Step: Intent */}
         {step === "intent" && (

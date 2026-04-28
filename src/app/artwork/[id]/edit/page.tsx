@@ -26,6 +26,7 @@ import { findHosuSize } from "@/lib/size/hosu";
 import { parseSizeWithUnit } from "@/lib/size/format";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { useActingAs } from "@/context/ActingAsContext";
+import { ActingAsChip } from "@/components/ActingAsChip";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -454,6 +455,8 @@ function EditArtworkContent() {
         ← {t("common.backTo")} {t("artwork.backToArtwork")}
       </Link>
       <h1 className="mb-6 text-xl font-semibold">{t("artwork.editTitle")}</h1>
+
+      <ActingAsChip mode="editing" />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">

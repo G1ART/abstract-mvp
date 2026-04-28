@@ -241,7 +241,11 @@ export const TOURS: Record<TourId, TourDefinition> = {
 
   [TOUR_IDS.delegation]: {
     id: TOUR_IDS.delegation,
-    version: 3,
+    // v4: account switcher + per-form acting-as chip steps. Anchors are
+    // optional (the framework silently skips a step when its anchor is
+    // missing) so the same tour stays valid for users who land on the
+    // hub without acting-as active.
+    version: 4,
     titleKey: "tour.delegation.title",
     introKey: "tour.delegation.intro",
     requiredAnchors: ["delegation-header"],
@@ -279,6 +283,20 @@ export const TOURS: Record<TourId, TourDefinition> = {
         target: "acting-as-banner",
         titleKey: "tour.delegation.acting.title",
         bodyKey: "tour.delegation.acting.body",
+        placement: "bottom",
+      },
+      {
+        id: "account-switcher",
+        target: "account-switcher",
+        titleKey: "tour.delegation.accountSwitcher.title",
+        bodyKey: "tour.delegation.accountSwitcher.body",
+        placement: "left",
+      },
+      {
+        id: "acting-as-chip",
+        target: "acting-as-chip",
+        titleKey: "tour.delegation.actingAsChip.title",
+        bodyKey: "tour.delegation.actingAsChip.body",
         placement: "bottom",
       },
     ],

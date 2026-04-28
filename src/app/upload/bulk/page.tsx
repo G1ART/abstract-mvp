@@ -24,6 +24,7 @@ import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { searchPeople } from "@/lib/supabase/artists";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
+import { ActingAsChip } from "@/components/ActingAsChip";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import {
@@ -699,6 +700,8 @@ export default function BulkUploadPage() {
             </Link>
           </div>
         </div>
+
+        <ActingAsChip mode="posting" />
 
         {/* Step: Intent — same width as single upload (max-w-xl) */}
         {(showIntent || showAttribution) && (
