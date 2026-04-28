@@ -59,10 +59,10 @@ const INTENT_KEYS = [
 type ArtistOption = { id: string; username: string | null; display_name: string | null };
 
 const OWNERSHIP_OPTIONS = [
-  { value: "available", label: "Available" },
-  { value: "owned", label: "Owned" },
-  { value: "sold", label: "Sold" },
-  { value: "not_for_sale", label: "Not for sale" },
+  { value: "available", labelKey: "upload.ownershipAvailable" },
+  { value: "owned", labelKey: "upload.ownershipOwned" },
+  { value: "sold", labelKey: "upload.ownershipSold" },
+  { value: "not_for_sale", labelKey: "upload.ownershipNotForSale" },
 ] as const;
 
 function deriveTitle(filename: string): string {
@@ -1055,7 +1055,7 @@ export default function BulkUploadPage() {
               >
                 <option value="">{t("bulk.ownershipStatus")}</option>
                 {OWNERSHIP_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
+                  <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                 ))}
               </select>
               <select
@@ -1404,7 +1404,7 @@ export default function BulkUploadPage() {
                         >
                           <option value="">—</option>
                           {OWNERSHIP_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
+                            <option key={o.value} value={o.value}>{t(o.labelKey)}</option>
                           ))}
                         </select>
                       </td>

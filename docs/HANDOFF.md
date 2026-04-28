@@ -2,6 +2,77 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — QA Beta Hardening · PR-A · i18n / UX 일관성
+
+**배경**: 베타 QA 보고서에서 코드 문자열 노출 (`not_for_sale`, `Claim failed: forbidden: caller is not an active account delegate writer for subject_profile_id`), 어색한 한글 (`← 돌아가기 내 스튜디오`, "귀하의 관계"), 작품 수정 화면의 미번역 영어 라벨, 작품 삭제 모달 안내문 vs 실제 UI 불일치, 작품 소개문 길이 무제한 등 12종을 보고. 사용자 인상 측면 회복이 가장 시급하므로 PR-A 로 분리해 회귀 위험 낮은 i18n/UX 일관성 항목만 우선 처리.
+
+### 변경 — 공통 에러 변환 레이어 (재사용 인프라)
+
+- 신규 `src/lib/errors/supabase.ts` — `formatSupabaseError(error, t, fallbackKey?)`.
+  - 30종 raw `RAISE EXCEPTION` 메시지 (auth/permission/delegate/invite/claim/follow/priceInquiry) 를 i18n key 로 매핑 (`EXACT_MAP`).
+  - `forbidden: caller is not an active account delegate writer ...`, `permission denied`, `violates row-level security`, `jwt|invalid_jwt|expired token` 등 substring 패턴 fallback (`SUBSTRING_MAP`).
+  - 모르는 메시지는 `fallbackKey` 가 있으면 정중한 i18n 메시지로, 없으면 raw text 그대로 (carrying through 안전).
+- i18n 카탈로그 (`src/lib/i18n/messages.ts` EN/KR 양쪽):
+  - `errors.fallback`, `errors.auth.required`, `errors.permission.denied`, `errors.delegate.notWriter`,
+    `errors.invite.{missingEmail|invalidScope|projectNotFound|cannotInviteSelf|delegateNotFound|duplicate}`,
+    `errors.claim.{requiresWorkOrProject|workIdRequired|typeRequired|artistRequired|displayNameRequired|displayNameTooShort|invalidPeriodStatus}`,
+    `errors.follow.{targetNotFound|invalidTarget|invalidFollower}`,
+    `errors.priceInquiry.invalidStatus`.
+- 후속 PR/기능 추가 시 catch 블록은 `setError(formatSupabaseError(e, t, "..."))` 한 줄 패턴으로 일관 적용. 새 raise message 가 추가될 때 `EXACT_MAP` 한 줄 + i18n 키 한 쌍만 추가하면 친절한 메시지로 노출.
+
+### 변경 — 코드 문자열 노출 제거 (`not_for_sale` 등)
+
+- `src/app/artwork/[id]/edit/page.tsx`: `OWNERSHIP_STATUSES`, `INTENTS`, `PRICING_MODES` 의 hard-coded `label` → `labelKey` (i18n).
+- `src/app/upload/bulk/page.tsx`: `OWNERSHIP_OPTIONS` 동일 처리, 두 곳의 `<option>` 렌더에 `t(o.labelKey)` 적용.
+- `src/app/my/library/page.tsx`: 라이브러리 필터 dropdown 에서 raw `not_for_sale` 노출 → `OWNERSHIP_LABEL_KEY` 매핑 후 `t()` 사용.
+- `src/app/upload/page.tsx`: 이미 labelKey 사용 중 (변경 없음, 점검만).
+
+### 변경 — 영어 라벨 미번역 (작품 수정 화면)
+
+- `Title / Year / Medium / Size / Story / Ownership status / Pricing mode / Currency / Amount / Show price publicly / Apply / Hosu (KR)` 14개 라벨/플레이스홀더를 신규 키 `artwork.field.*` / `artwork.size.*` / `artwork.story.charCount` 로 추출 (EN/KR 양쪽).
+- raw error fallback 7군데 (`Failed to save/add/update artwork/provenance/artist`) → `formatSupabaseError(e, t, "artwork.errors.*")` 패턴.
+
+### 변경 — 어색한 한글 / 라벨 일관성
+
+- `library.back` (KR): "내 스튜디오로" → "내 스튜디오" (prefix `←` 와 결합 시 자연스러움).
+- `network.backToStudio` (KR): "스튜디오로 돌아가기" → "내 스튜디오" / (EN) "Back to Studio" → "My Studio".
+- `ai.metrics.backToStudio` (KR): "스튜디오로 돌아가기" → "내 스튜디오로 돌아가기" / (EN) "Back to Studio" → "Back to My Studio".
+- `artwork.backToArtwork` (KR): "작품" → "작품으로 돌아가기" / (EN) "Artwork" → "Back to artwork".
+- `artwork.provenanceHint` (KR): "이전에 업로드된 작품은 프로비넌스 정보가 없을 수 있습니다. 이 작품에 대한 귀하의 관계를 추가하거나 수정하세요." → "예전에 업로드된 작품은 프로비넌스 정보가 비어 있을 수 있어요. 이 작품과 본인의 관계(작가·소장자·큐레이터 등)를 추가하거나 수정해 주세요."
+- `artwork.claimType` (KR): "귀하의 역할" → "내 역할".
+- `src/app/artwork/[id]/page.tsx`, `…/edit/page.tsx`: `← {t("common.backTo")} {t(backLabelKey)}` (예: "← 돌아가기 내 스튜디오") → `← {t(backLabelKey)}` 단일 라벨 패턴으로 단순화.
+
+### 변경 — 작품 삭제 모달 안내문 정합화
+
+- `common.confirmDelete` (KR): "삭제하시겠습니까? 확인하려면 DELETE를 입력하세요." → "삭제 후에는 되돌릴 수 없어요. 정말 삭제하시겠습니까?" / (EN) "Are you sure? Type DELETE to confirm." → "This can't be undone. Are you sure you want to delete this?". `ConfirmActionDialog` 는 단순 confirm UI 라 `Type DELETE` 안내가 사실과 불일치했음.
+
+### 변경 — 작품 소개문 길이 제한
+
+- `STORY_MAX_LEN = 2000` 문자 cap 도입.
+- `src/app/artwork/[id]/edit/page.tsx`, `src/app/upload/page.tsx` 의 `<textarea>` 에 `maxLength={2000}` + onChange 안전 트리밍 + `count/2,000` 우측 카운터 추가.
+- 신규 키 `artwork.field.storyPlaceholder`, `artwork.story.charCount` 로 안내 통일.
+
+### Supabase SQL — 적용 필요 없음
+
+이번 PR 은 클라이언트/i18n 한정 변경. **Supabase SQL 돌려야 할 것은 없음.**
+
+### 환경 변수
+
+변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` ✓ (오류 0)
+- `npm run build` ✓ (Next.js production build 통과)
+- ReadLints (변경 파일 6개) ✓ (오류 0)
+
+### 다음 PR 예고
+
+- **PR-C** (그룹 C): 비공계 위임 RLS 정합화. PR1 `profiles_select_follow_edge` 정책에 *위임 edge* 를 추가해 위임자/피위임자 간 profile metadata 가시성 확보 → 비공계 위임 받은 자의 [내 스튜디오] 빈 페이지 (#6) 와 비공계 작품 피드의 "알 수 없는 사용자" fallback (#8/#9) 동시 해결 예정.
+- **PR-B** (그룹 B): 위임 라이프사이클 보강. (#4) 보낸 측 cancel UI, (#11) 받은 측 active 상태 본인 해지 RPC, (#7) 보낸 측 권한 변경 RPC + UI.
+
+---
+
 ## 2026-04-28 — Private Account v2 signup hotfix (긴급)
 
 **증상**: PR1+PR2 SQL 적용 후 신규가입 시 *"Database error saving new user"* 발생.

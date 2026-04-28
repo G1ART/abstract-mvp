@@ -526,7 +526,7 @@ function ArtworkDetailContent() {
     <main className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href={backPath} className="text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t(backLabelKey)}
+          ← {t(backLabelKey)}
         </Link>
         {fromRoom && (
           <>

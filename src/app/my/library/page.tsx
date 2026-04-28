@@ -17,6 +17,17 @@ import { useActingAs } from "@/context/ActingAsContext";
 
 const OWNERSHIP_VALUES = ["available", "owned", "sold", "not_for_sale"] as const;
 
+// Map raw enum values to i18n keys so the filter dropdown shows
+// localized labels instead of raw strings like `not_for_sale`. Keys are
+// shared with the upload/bulk forms (single source of truth in
+// `src/lib/i18n/messages.ts`).
+const OWNERSHIP_LABEL_KEY: Record<(typeof OWNERSHIP_VALUES)[number], string> = {
+  available: "upload.ownershipAvailable",
+  owned: "upload.ownershipOwned",
+  sold: "upload.ownershipSold",
+  not_for_sale: "upload.ownershipNotForSale",
+};
+
 export default function MyLibraryPage() {
   const { t } = useT();
   const { actingAsProfileId } = useActingAs();
@@ -177,7 +188,7 @@ export default function MyLibraryPage() {
               <option value="">— {t("bulk.ownershipStatus")} —</option>
               {OWNERSHIP_VALUES.map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {t(OWNERSHIP_LABEL_KEY[v])}
                 </option>
               ))}
             </select>

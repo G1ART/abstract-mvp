@@ -27,32 +27,38 @@ import { parseSizeWithUnit } from "@/lib/size/format";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
-const INTENTS: { value: IntentType; label: string }[] = [
-  { value: "CREATED", label: "My work" },
-  { value: "OWNS", label: "Collected work" },
-  { value: "INVENTORY", label: "Gallery (inc. inventory)" },
-  { value: "CURATED", label: "Curated/Exhibited" },
+const INTENTS: { value: IntentType; labelKey: string }[] = [
+  { value: "CREATED", labelKey: "artwork.intent.created" },
+  { value: "OWNS", labelKey: "artwork.intent.owns" },
+  { value: "INVENTORY", labelKey: "artwork.intent.inventory" },
+  { value: "CURATED", labelKey: "artwork.intent.curated" },
 ];
 
 const OWNERSHIP_STATUSES = [
-  { value: "available", label: "Available" },
-  { value: "owned", label: "Owned" },
-  { value: "sold", label: "Sold" },
-  { value: "not_for_sale", label: "Not for sale" },
+  { value: "available", labelKey: "upload.ownershipAvailable" },
+  { value: "owned", labelKey: "upload.ownershipOwned" },
+  { value: "sold", labelKey: "upload.ownershipSold" },
+  { value: "not_for_sale", labelKey: "upload.ownershipNotForSale" },
 ] as const;
 
 const PRICING_MODES = [
-  { value: "fixed", label: "Fixed price" },
-  { value: "inquire", label: "Price upon request" },
+  { value: "fixed", labelKey: "artwork.pricing.fixed" },
+  { value: "inquire", labelKey: "artwork.pricing.inquire" },
 ] as const;
 
 const PRICE_CURRENCIES = [
   { value: "USD", label: "USD" },
   { value: "KRW", label: "KRW" },
 ] as const;
+
+// Soft cap on the artwork "story" textarea — long enough for a paragraph,
+// short enough to prevent accidental dumps. Surfaced as a counter beneath
+// the textarea (see artwork.story.charCount).
+const STORY_MAX_LEN = 2000;
 
 type ArtistOption = { id: string; username: string | null; display_name: string | null };
 
@@ -270,9 +276,7 @@ function EditArtworkContent() {
       auditAction: "artwork.update",
     });
     if (updateErr) {
-      setError(
-        (updateErr as { message?: string })?.message ?? "Failed to save artwork"
-      );
+      setError(formatSupabaseError(updateErr, t, "artwork.errors.failedSave"));
       setSaving(false);
       return;
     }
@@ -286,9 +290,7 @@ function EditArtworkContent() {
           external_artist_id: null,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedUpdateProvenance"));
           setSaving(false);
           return;
         }
@@ -301,9 +303,7 @@ function EditArtworkContent() {
           subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedAddProvenance"));
           setSaving(false);
           return;
         }
@@ -315,9 +315,7 @@ function EditArtworkContent() {
           inviteEmail: externalArtistEmail.trim() || null,
         });
         if (extErr || !extId) {
-          setError(
-            (extErr as { message?: string })?.message ?? "Failed to add artist"
-          );
+          setError(formatSupabaseError(extErr, t, "artwork.errors.failedAddArtist"));
           setSaving(false);
           return;
         }
@@ -327,9 +325,7 @@ function EditArtworkContent() {
           external_artist_id: extId,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedUpdateProvenance"));
           setSaving(false);
           return;
         }
@@ -356,9 +352,7 @@ function EditArtworkContent() {
           subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedAddProvenance"));
           setSaving(false);
           return;
         }
@@ -385,9 +379,7 @@ function EditArtworkContent() {
           external_artist_id: null,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to update provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedUpdateProvenance"));
           setSaving(false);
           return;
         }
@@ -400,9 +392,7 @@ function EditArtworkContent() {
           subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
-          setError(
-            (claimErr as { message?: string })?.message ?? "Failed to add provenance"
-          );
+          setError(formatSupabaseError(claimErr, t, "artwork.errors.failedAddProvenance"));
           setSaving(false);
           return;
         }
@@ -430,7 +420,7 @@ function EditArtworkContent() {
       <div className="py-12 text-center">
         <p className="text-red-600">{error}</p>
         <Link href={`/artwork/${id}`} className="mt-4 inline-block text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t("artwork.backToArtwork")}
+          ← {t("artwork.backToArtwork")}
         </Link>
       </div>
     );
@@ -455,7 +445,7 @@ function EditArtworkContent() {
         href={`/artwork/${id}`}
         className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
       >
-        ← {t("common.backTo")} {t("artwork.backToArtwork")}
+        ← {t("artwork.backToArtwork")}
       </Link>
       <h1 className="mb-6 text-xl font-semibold">{t("artwork.editTitle")}</h1>
 
@@ -464,18 +454,18 @@ function EditArtworkContent() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium">Title *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.title")} *</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
-              placeholder="Artwork title"
+              placeholder={t("artwork.field.titlePlaceholder")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Year *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.year")} *</label>
             <input
               type="number"
               value={year}
@@ -483,25 +473,25 @@ function EditArtworkContent() {
               required
               min={1000}
               max={9999}
-              placeholder="2024"
+              placeholder={t("artwork.field.yearPlaceholder")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Medium *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.medium")} *</label>
             <input
               type="text"
               value={medium}
               onChange={(e) => setMedium(e.target.value)}
               required
-              placeholder="e.g. Oil on canvas"
+              placeholder={t("artwork.field.mediumPlaceholder")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Size *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.size")} *</label>
             <div className="mb-2 flex flex-wrap items-center gap-3">
-              <span className="text-xs text-zinc-500">Hosu (KR)</span>
+              <span className="text-xs text-zinc-500">{t("artwork.size.hosu")}</span>
               <input
                 type="number"
                 min={0}
@@ -541,7 +531,7 @@ function EditArtworkContent() {
                 }}
                 className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
               >
-                Apply
+                {t("artwork.size.apply")}
               </button>
               {hosuWarning && (
                 <p className="mt-1 text-xs text-amber-700">{hosuWarning}</p>
@@ -552,22 +542,29 @@ function EditArtworkContent() {
               value={size}
               onChange={(e) => setSize(e.target.value)}
               required
-              placeholder="e.g. 100 x 80 cm"
+              placeholder={t("artwork.field.sizePlaceholder")}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Story</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.story")}</label>
             <textarea
               value={story}
-              onChange={(e) => setStory(e.target.value)}
-              placeholder="Optional description"
-              rows={3}
+              onChange={(e) => {
+                const next = e.target.value;
+                setStory(next.length > STORY_MAX_LEN ? next.slice(0, STORY_MAX_LEN) : next);
+              }}
+              placeholder={t("artwork.field.storyPlaceholder")}
+              rows={4}
+              maxLength={STORY_MAX_LEN}
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
+            <p className="mt-1 text-right text-xs text-zinc-500">
+              {t("artwork.story.charCount").replace("{count}", String(story.length))}
+            </p>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Ownership status *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.ownership")} *</label>
             <select
               value={ownershipStatus}
               onChange={(e) => setOwnershipStatus(e.target.value)}
@@ -576,13 +573,13 @@ function EditArtworkContent() {
             >
               {OWNERSHIP_STATUSES.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {t(o.labelKey)}
                 </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">Pricing mode *</label>
+            <label className="mb-1 block text-sm font-medium">{t("artwork.field.pricingMode")} *</label>
             <select
               value={pricingMode}
               onChange={(e) => setPricingMode(e.target.value as "fixed" | "inquire")}
@@ -590,7 +587,7 @@ function EditArtworkContent() {
             >
               {PRICING_MODES.map((p) => (
                 <option key={p.value} value={p.value}>
-                  {p.label}
+                  {t(p.labelKey)}
                 </option>
               ))}
             </select>
@@ -599,7 +596,7 @@ function EditArtworkContent() {
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Currency</label>
+                  <label className="mb-1 block text-sm font-medium">{t("artwork.field.currency")}</label>
                   <select
                     value={priceCurrency}
                     onChange={(e) => setPriceCurrency(e.target.value)}
@@ -613,7 +610,7 @@ function EditArtworkContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium">Amount *</label>
+                  <label className="mb-1 block text-sm font-medium">{t("artwork.field.amount")} *</label>
                   <input
                     type="number"
                     value={priceAmount}
@@ -621,7 +618,7 @@ function EditArtworkContent() {
                     required={pricingMode === "fixed"}
                     min={0}
                     step="any"
-                    placeholder="0"
+                    placeholder={t("artwork.field.amountPlaceholder")}
                     className="w-full rounded border border-zinc-300 px-3 py-2"
                   />
                 </div>
@@ -635,7 +632,7 @@ function EditArtworkContent() {
                   className="rounded"
                 />
                 <label htmlFor="pricePublic" className="text-sm">
-                  Show price publicly
+                  {t("artwork.field.showPricePublicly")}
                 </label>
               </div>
             </>
@@ -672,7 +669,7 @@ function EditArtworkContent() {
                         : "border-zinc-200 bg-white text-zinc-900 hover:border-zinc-300"
                     }`}
                   >
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </button>
                 ))}
               </div>

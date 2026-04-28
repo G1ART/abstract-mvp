@@ -683,11 +683,18 @@ function UploadPageContent() {
               <label className="mb-1 block text-sm font-medium">{t("upload.labelStory")}</label>
               <textarea
                 value={story}
-                onChange={(e) => setStory(e.target.value)}
-                placeholder={t("upload.placeholderStory")}
-                rows={3}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setStory(next.length > 2000 ? next.slice(0, 2000) : next);
+                }}
+                placeholder={t("artwork.field.storyPlaceholder")}
+                rows={4}
+                maxLength={2000}
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
+              <p className="mt-1 text-right text-xs text-zinc-500">
+                {t("artwork.story.charCount").replace("{count}", String(story.length))}
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelOwnership")}</label>
