@@ -294,7 +294,13 @@ export default function BulkUploadPage() {
           throw createErr instanceof Error ? createErr : new Error("Failed to create draft");
         }
         artworkId = id;
-        storagePath = await uploadArtworkImage(file, userId);
+        // Route bulk uploads into the principal's storage folder when
+        // acting-as, so lifecycle (delete/replace/cleanup) is rooted on
+        // the principal even after the delegate is revoked. RLS allows
+        // active account-scope writer delegates to upload here (see
+        // 20260510000000_artworks_storage_account_delegate.sql).
+        const storageOwner = actingAsProfileId ?? userId;
+        storagePath = await uploadArtworkImage(file, storageOwner);
         const { error: attachErr } = await attachArtworkImage(artworkId, storagePath);
         if (attachErr) throw attachErr;
         uploadedIds.push(artworkId);
@@ -375,7 +381,10 @@ export default function BulkUploadPage() {
 
   async function applyToDrafts(ids: string[], partial: UpdateArtworkPayload) {
     for (const id of ids) {
-      await updateArtwork(id, partial);
+      await updateArtwork(id, partial, {
+        actingSubjectProfileId: actingAsProfileId ?? null,
+        auditAction: "bulk.artwork.update",
+      });
     }
     await fetchDrafts();
   }
@@ -407,7 +416,14 @@ export default function BulkUploadPage() {
     for (const id of ids) {
       const d = drafts.find((x) => x.id === id);
       const next = transformTitle(d?.title ?? null, titleBulkMode, titleBulkText, titleReplaceFrom, titleReplaceTo);
-      await updateArtwork(id, { title: next || d?.title || "Untitled" });
+      await updateArtwork(
+        id,
+        { title: next || d?.title || "Untitled" },
+        {
+          actingSubjectProfileId: actingAsProfileId ?? null,
+          auditAction: "bulk.artwork.update",
+        }
+      );
     }
     await fetchDrafts();
     setPendingBulk(null);
@@ -446,7 +462,9 @@ export default function BulkUploadPage() {
     setLinkingExhibition(true);
     try {
       for (const workId of ids) {
-        await addWorkToExhibition(linkExhibitionId, workId);
+        await addWorkToExhibition(linkExhibitionId, workId, {
+          actingSubjectProfileId: actingAsProfileId ?? null,
+        });
       }
       void logBetaEvent("exhibition_artwork_added", { exhibition_id: linkExhibitionId, count: ids.length });
       setToast(t("bulk.exhibitionLinked"));
@@ -525,7 +543,12 @@ export default function BulkUploadPage() {
           const patch: UpdateArtworkPayload = {};
           if (Number.isFinite(year as number)) patch.year = year as number;
           if (medium) patch.medium = medium;
-          if (Object.keys(patch).length > 0) await updateArtwork(id, patch);
+          if (Object.keys(patch).length > 0) {
+            await updateArtwork(id, patch, {
+              actingSubjectProfileId: actingAsProfileId ?? null,
+              auditAction: "bulk.artwork.update",
+            });
+          }
           ok += 1;
         }
       }
@@ -609,7 +632,9 @@ export default function BulkUploadPage() {
       }
       if (addToExhibitionId && ids.length > 0 && intent === "CURATED") {
         for (const workId of ids) {
-          await addWorkToExhibition(addToExhibitionId, workId);
+          await addWorkToExhibition(addToExhibitionId, workId, {
+            actingSubjectProfileId: actingAsProfileId ?? null,
+          });
         }
         router.push(`/my/exhibitions/${addToExhibitionId}/add`);
         return;
@@ -628,8 +653,11 @@ export default function BulkUploadPage() {
     else if (field === "year") payload.year = typeof value === "number" ? value : (parseInt(String(value), 10) || null);
     else if (field === "medium") payload.medium = String(value ?? "");
     else if (field === "ownership_status") payload.ownership_status = String(value ?? "");
-    else if (field === "pricing_mode") payload.pricing_mode = value as "fixed" | "inquire" | null;
-    await updateArtwork(id, payload as Parameters<typeof updateArtwork>[1]);
+    else     if (field === "pricing_mode") payload.pricing_mode = value as "fixed" | "inquire" | null;
+    await updateArtwork(id, payload as Parameters<typeof updateArtwork>[1], {
+      actingSubjectProfileId: actingAsProfileId ?? null,
+      auditAction: "bulk.artwork.update",
+    });
     await fetchDrafts();
   }
 

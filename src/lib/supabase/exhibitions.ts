@@ -190,7 +190,11 @@ export async function createExhibition(args: {
 /** Update exhibition (title, dates, status, curator, host). */
 export async function updateExhibition(
   id: string,
-  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "curator_id" | "host_name" | "host_profile_id" | "cover_image_paths">>
+  patch: Partial<Pick<ExhibitionRow, "title" | "start_date" | "end_date" | "status" | "curator_id" | "host_name" | "host_profile_id" | "cover_image_paths">>,
+  options?: {
+    /** Principal profile id when operator is acting-as. Audit-only. */
+    actingSubjectProfileId?: string | null;
+  }
 ): Promise<{ error: unknown }> {
   const payload: Record<string, unknown> = {};
   if (patch.title !== undefined) payload.title = patch.title.trim();
@@ -203,6 +207,25 @@ export async function updateExhibition(
   if (patch.cover_image_paths !== undefined) payload.cover_image_paths = patch.cover_image_paths ?? [];
 
   const { error } = await supabase.from("projects").update(payload).eq("id", id);
+
+  if (!error && options?.actingSubjectProfileId) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (
+      session?.user?.id &&
+      options.actingSubjectProfileId !== session.user.id
+    ) {
+      await recordActingContextEvent({
+        subjectProfileId: options.actingSubjectProfileId,
+        action: "exhibition.update",
+        resourceType: "exhibition",
+        resourceId: id,
+        payload: { changedKeys: Object.keys(payload) },
+      });
+    }
+  }
+
   return { error };
 }
 
@@ -225,7 +248,11 @@ export async function listWorksInExhibition(exhibitionId: string): Promise<{
 /** Add a work to an exhibition (D6: claim is separate; optionally create pending claim via provenance RPC). */
 export async function addWorkToExhibition(
   exhibitionId: string,
-  workId: string
+  workId: string,
+  options?: {
+    /** Principal profile id when operator is acting-as. Audit-only. */
+    actingSubjectProfileId?: string | null;
+  }
 ): Promise<{ data: { id: string } | null; error: unknown }> {
   const {
     data: { session },
@@ -243,6 +270,20 @@ export async function addWorkToExhibition(
     .single();
 
   if (error) return { data: null, error };
+
+  if (
+    options?.actingSubjectProfileId &&
+    options.actingSubjectProfileId !== session.user.id
+  ) {
+    await recordActingContextEvent({
+      subjectProfileId: options.actingSubjectProfileId,
+      action: "exhibition_work.add",
+      resourceType: "exhibition",
+      resourceId: exhibitionId,
+      payload: { work_id: workId },
+    });
+  }
+
   return { data: data as { id: string }, error: null };
 }
 

@@ -17,9 +17,11 @@ export type ActingContextAction =
   | "artwork.create_draft"
   | "artwork.update"
   | "artwork.publish"
+  | "bulk.artwork.update"
   | "exhibition.create"
   | "exhibition.update"
   | "exhibition.publish"
+  | "exhibition_work.add"
   | "inquiry.reply"
   | "connection.message_sent"
   | "board.create"
@@ -36,9 +38,11 @@ function mutationEventTypeFor(action: string): string | null {
     case "artwork.create_draft": return "delegated_artwork_created";
     case "artwork.update":       return "delegated_artwork_updated";
     case "artwork.publish":      return "delegated_artwork_published";
+    case "bulk.artwork.update":  return "delegated_artwork_bulk_updated";
     case "exhibition.create":    return "delegated_exhibition_created";
     case "exhibition.update":    return "delegated_exhibition_updated";
     case "exhibition.publish":   return "delegated_exhibition_published";
+    case "exhibition_work.add":  return "delegated_exhibition_work_added";
     case "inquiry.reply":        return "delegated_inquiry_replied";
     default:                     return null;
   }

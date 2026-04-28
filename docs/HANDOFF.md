@@ -2,6 +2,96 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Acting-as Persona Delta Hardening (P0/P1 closure)
+
+3-phase acting-as 패치(Phase 1·2·3) 후 GPT 감사 결과로 잡힌 인접 갭 6종을 닫는 좁고 강한 후속 패치. **P0 (chip 부착 / 모바일 switcher / safe-route)** 와 **P1 (delegated mutation audit / storage lifecycle)** 만 다루고, 페르소나 모델 자체는 A+ 그대로 유지.
+
+### 페르소나 모델(요약 · 변경 없음)
+
+- **Workspace/production surface → principal**: My Studio · artworks · upload/edit · workroom/library · exhibitions · boards · inquiries · claims · public profile preview · AI studio/delegation brief · principal workspace alerts.
+- **Personal/account/security surface → operator**: login/security/password · billing · `/settings` · global notification bell · personal follow/like.
+- **Per-mutation affordance**: 아바타/모바일 Account Switcher + 글로벌 amber banner + 폼별 `<ActingAsChip>`.
+
+### 변경 요약
+
+#### P0-A. `<ActingAsChip>` 실 렌더 점검·보강
+모든 청구된 mutation surface 가 실제로 chip 을 렌더하는지 확인. 7곳(`/upload`, `/upload/bulk`, `/artwork/[id]/edit`, `/my/exhibitions/new`, `/my/exhibitions/[id]/edit`, `/my/exhibitions/[id]/add`, `/my/inquiries`) 모두 렌더 확인. 추가로 `/my/inquiries` 는 펼쳐진 reply textarea 직상단에 컴팩트 chip 을 한 단계 더 부착(moment-of-mutation 강화) — 페이지 헤더 + 인라인 두 위치에서 페르소나가 노출됨.
+
+#### P0-B. 모바일 Account Switcher parity
+[src/components/Header.tsx](src/components/Header.tsx) 의 햄버거 메뉴에도 데스크톱 드롭다운과 동일한 switcher 섹션 추가. (1) `mobileOpen` true 시 `loadActiveAccountDelegations()` lazy-load (데스크톱과 동일 fetch 인플라이트 가드 공유), (2) 본인 계정 row + active 위임 principal row 들 표시, (3) 클릭 시 `handleSwitchToOperator` / `handleSwitchToPrincipal` 호출 후 `setMobileOpen(false)`. solo 사용자(active 위임 없음, acting-as 비활성) 에게는 섹션 자체가 미노출되어 시각 변화 0.
+
+#### P0-C. operator 복귀 safe-route
+종전 `handleSwitchToOperator()` 는 `clearActingAs()` 후 단순 `router.refresh()` 만 호출 → principal-only 라우트(예: principal 의 exhibition edit) 에 머무르면 빈 상태/거부 상태가 되는 UX 갭. 이번 패치로:
+- `handleSwitchToOperator()` → `clearActingAs() + setAvatarOpen/MobileOpen(false) + router.push('/my') + router.refresh()`.
+- 글로벌 acting-as banner 의 "본인 계정으로 돌아가기" 링크도 raw `clearActingAs` 가 아니라 동일 핸들러로 묶어 두 경로가 드리프트하지 않도록 함.
+- `handleSwitchToPrincipal()` 도 모바일 일관성을 위해 `setMobileOpen(false)` 호출.
+
+#### P1-A. Delegated mutation audit hook 보강
+`recordActingContextEvent` 인프라는 이미 있으나 update/edit 경로가 audit-light 였음. 다음 mutation 들에서 acting-as 호출 시 audit 이벤트를 best-effort 로 기록하도록 보강:
+- [src/lib/supabase/artworks.ts](src/lib/supabase/artworks.ts) `updateArtwork` — `options.actingSubjectProfileId`, `options.auditAction` 추가. `auditAction: "artwork.update" | "bulk.artwork.update"` 분기.
+- 동 파일 `publishArtworks` — 일괄 publish 도 acting-as 일 경우 id 별로 `artwork.publish` 기록.
+- [src/lib/supabase/exhibitions.ts](src/lib/supabase/exhibitions.ts) `updateExhibition`, `addWorkToExhibition` — `options.actingSubjectProfileId` 추가.
+- [src/lib/delegation/actingContext.ts](src/lib/delegation/actingContext.ts) action union 에 `bulk.artwork.update`, `exhibition_work.add` 추가, `mutationEventTypeFor` 가 `delegated_artwork_bulk_updated` / `delegated_exhibition_work_added` 로 매핑.
+- callsite 와이어: `/artwork/[id]/edit`, `/upload/bulk` (apply/title/CSV/perRow/exhibition link), `/my/exhibitions/[id]/edit`, `/my/exhibitions/[id]/add`, `/upload` (single 의 add-to-exhibition).
+- i18n: [src/lib/i18n/messages.ts](src/lib/i18n/messages.ts) EN/KR 양측에 `delegation.event.delegated_artwork_bulk_updated` 추가 (`Bulk-edited artwork drafts` / `작품 초안을 일괄 수정했어요`). 나머지 라벨은 기존 키 재사용.
+
+audit 실패는 UX 를 막지 않으며(catch+swallow), payload 는 변경 키 목록으로 최소화.
+
+#### P1-B. Delegate-uploaded image storage lifecycle 하드닝
+종전 `can_manage_artworks_storage_path()` 는 (a) 자기 폴더 경로, (b) exhibition-media 경로 두 가지만 인정 → operator B 가 acting-as 로 올린 이미지가 `B/...` 경로에 떨어지면 principal A 도 다른 delegate C 도 storage RLS 로 못 지움(orphan). 새 마이그레이션:
+- [supabase/migrations/20260510000000_artworks_storage_account_delegate.sql](supabase/migrations/20260510000000_artworks_storage_account_delegate.sql) — 헬퍼 함수 확장(idempotent · `CREATE OR REPLACE`):
+  - **Shape 1**: caller 가 folder owner 의 active account-scope writer → 신규 업로드를 principal 폴더에 직접 쓸 수 있음.
+  - **Shape 2**: folder owner 가 caller 의 active account-scope writer → principal 이 자신의 delegate 폴더 잔류 객체 정리 가능.
+  - **Shape 3**: caller 와 folder owner 가 동일 principal 의 active account-scope writer 형제 → cross-delegate 정리 가능.
+- 신규 업로드는 `actingAsProfileId ?? userId` 폴더로 라우팅(`/upload`, `/upload/bulk`) → 앞으로 acting-as 업로드는 처음부터 principal-rooted path 로 떨어져 lifecycle 이 principal 중심.
+- 기존 operator 폴더에 떨어진 legacy 객체도 Shape 2/3 경유로 정리 가능. SELECT 정책은 종전대로(공개 read).
+
+#### P1-C. Settings/social/notification boundary 명문화
+- `/settings` — Phase 2 amber lock banner 유지(acting-as 시에도 operator 본인 계정만 편집).
+- 소셜 그래프(follow/like) — operator default. 향후 `engage_as_principal` permission 도입 전까지 기능 변경 없음.
+- Header bell — operator notifications 만 표시. principal 영업 알림은 `/my/inquiries` + delegation activity drawer 에서 노출.
+
+### 변경 파일
+
+- `src/components/Header.tsx`
+- `src/app/my/inquiries/page.tsx`
+- `src/lib/supabase/artworks.ts`
+- `src/lib/supabase/exhibitions.ts`
+- `src/lib/delegation/actingContext.ts`
+- `src/lib/i18n/messages.ts`
+- `src/app/upload/page.tsx`
+- `src/app/upload/bulk/page.tsx`
+- `src/app/artwork/[id]/edit/page.tsx`
+- `src/app/my/exhibitions/[id]/edit/page.tsx`
+- `src/app/my/exhibitions/[id]/add/page.tsx`
+- `supabase/migrations/20260510000000_artworks_storage_account_delegate.sql`
+
+### Supabase SQL (적용 필요)
+
+- `supabase/migrations/20260510000000_artworks_storage_account_delegate.sql` 1개 — Supabase SQL Editor 에서 실행. idempotent · additive · `CREATE OR REPLACE FUNCTION public.can_manage_artworks_storage_path(text)`. 기존 정책은 그대로 둔 채 helper 만 확장하므로 storage 회귀 0.
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 회귀 시나리오:
+  - **Solo 사용자**: 헤더 데스크톱/모바일 모두 switcher 미노출, mutation 폼 chip null 반환, settings 배너 미노출.
+  - **Account delegate (acting-as 비활성)**: 데스크톱·모바일 두 메뉴 모두 switcher 노출, `/my` 라우트에서 본인 데이터.
+  - **Account delegate (acting-as 활성)**: bulk upload·single upload·artwork edit·exhibition new/edit/add·inquiries 의 reply 직상단 모두 chip 노출. switcher 본인 row 의 "현재" 칩이 사라지고 principal row 에 "위임 중" 칩. banner "본인 계정으로 돌아가기" 클릭 시 `/my` 로 라우팅 후 chip/banner 모두 사라짐.
+  - **Acting-as 중 mutation**: artwork update / bulk update / exhibition update / exhibition_work add / inquiry reply 모두 delegation activity drawer 에 한국어/영어 라벨로 노출.
+  - **Storage lifecycle (수동 QA)**: operator B → acting-as A → 단일 업로드 시 path 가 `A/...` 로 떨어짐(시각 확인). principal A 로그인 후 작품 삭제 → storage 객체 정리 성공. legacy `B/...` 경로의 객체는 마이그레이션 적용 후 A 도 정리 가능.
+
+### 남은 한계
+
+- 소셜 그래프(follow/like) 의 acting-as 옵션은 의도적으로 미구현. 추후 `engage_as_principal` 별도 permission 으로 도입 검토.
+- header bell 의 principal swap 은 미구현(operator 알림 유지).
+- artwork.delete / exhibition.delete / exhibition_work.remove / inquiry.status_update / inquiry.note 의 delegated audit 은 본 패치 범위 외(추가 위험 검토 후 후속).
+
+---
+
 ## 2026-04-28 — Acting-as Persona Hardening · Phase 3 (Toggle UX / persona affordance)
 
 Phase 1·2(`3533a40`, `fdc9992`) 의 백엔드/리스트 정합 위에 토글 UX 와 per-form persona affordance 를 입힘. 두 가지 SNS 벤치마크(LinkedIn Pages / IG Business) 의 핵심 패턴을 흡수: **(1) 아바타 드롭다운 Account Switcher**, **(2) 모든 mutation 폼 상단의 "X 명의로" chip**.

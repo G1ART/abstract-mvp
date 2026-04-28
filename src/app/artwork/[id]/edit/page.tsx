@@ -265,7 +265,10 @@ function EditArtworkContent() {
     }
     payload.provenance_visible = provenanceVisible;
 
-    const { error: updateErr } = await updateArtwork(id, payload);
+    const { error: updateErr } = await updateArtwork(id, payload, {
+      actingSubjectProfileId: actingAsProfileId ?? null,
+      auditAction: "artwork.update",
+    });
     if (updateErr) {
       setError(
         (updateErr as { message?: string })?.message ?? "Failed to save artwork"

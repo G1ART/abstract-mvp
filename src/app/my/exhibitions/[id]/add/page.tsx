@@ -186,7 +186,9 @@ export default function AddWorkToExhibitionPage() {
     for (const workId of boardArtworkIds) {
       // Skip if already in exhibition; duplicate insert would violate uniqueness.
       if (doneIds.has(workId)) continue;
-      const { error } = await addWorkToExhibition(id, workId);
+      const { error } = await addWorkToExhibition(id, workId, {
+        actingSubjectProfileId: actingAsProfileId ?? null,
+      });
       if (error) {
         failed += 1;
       } else {
@@ -280,7 +282,9 @@ export default function AddWorkToExhibitionPage() {
     if (!id) return;
     setAddingId(workId);
     setError(null);
-    const { error: err } = await addWorkToExhibition(id, workId);
+    const { error: err } = await addWorkToExhibition(id, workId, {
+      actingSubjectProfileId: actingAsProfileId ?? null,
+    });
     if (err) {
       setAddingId(null);
       logSupabaseError("addWorkToExhibition", err);

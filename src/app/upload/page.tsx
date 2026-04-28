@@ -346,7 +346,13 @@ function UploadPageContent() {
 
       let storagePath: string | null = null;
       try {
-        storagePath = await uploadArtworkImage(image, userId);
+        // When acting-as, route the image into the *principal's* folder
+        // so lifecycle (delete/replace/cleanup) stays principal-rooted
+        // even if the operator's delegation is later revoked. Storage
+        // RLS allows account-scope writer delegates to upload into the
+        // principal's folder (see 20260510000000_artworks_storage_account_delegate.sql).
+        const storageOwner = actingAsProfileId ?? userId;
+        storagePath = await uploadArtworkImage(image, storageOwner);
       } catch (uploadErr) {
         await deleteArtwork(artworkId);
         setError(formatSingleUploadFailure(uploadErr, t));
@@ -364,7 +370,11 @@ function UploadPageContent() {
       }
 
       if (addToExhibitionId?.trim()) {
-        const { error: addExErr } = await addWorkToExhibition(addToExhibitionId.trim(), artworkId);
+        const { error: addExErr } = await addWorkToExhibition(
+          addToExhibitionId.trim(),
+          artworkId,
+          { actingSubjectProfileId: actingAsProfileId ?? null }
+        );
         if (addExErr) {
           logSupabaseError("addWorkToExhibition", addExErr);
         }

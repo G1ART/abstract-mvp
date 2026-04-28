@@ -400,6 +400,10 @@ export default function MyInquiriesPage() {
                         )
                       )}
                       <div>
+                        {/* Moment-of-mutation chip: surfaces persona right
+                            above the reply textarea so the operator never
+                            confuses operator-self with principal when sending. */}
+                        <ActingAsChip mode="replying" className="mb-2" />
                         <textarea
                           placeholder={t("priceInquiry.replyPlaceholder")}
                           value={replyText[row.id] ?? ""}

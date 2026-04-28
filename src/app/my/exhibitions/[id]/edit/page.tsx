@@ -205,15 +205,19 @@ export default function EditExhibitionPage() {
         : hostProfileMode === "search"
           ? hostSelected?.id ?? null
           : null;
-    const { error: err } = await updateExhibition(id, {
-      title: title.trim(),
-      start_date: startDate || null,
-      end_date: endDate || null,
-      status,
-      curator_id: curatorId,
-      host_name: hostName.trim() || null,
-      host_profile_id: hostProfileId,
-    });
+    const { error: err } = await updateExhibition(
+      id,
+      {
+        title: title.trim(),
+        start_date: startDate || null,
+        end_date: endDate || null,
+        status,
+        curator_id: curatorId,
+        host_name: hostName.trim() || null,
+        host_profile_id: hostProfileId,
+      },
+      { actingSubjectProfileId: actingAsProfileId ?? null }
+    );
     setSubmitting(false);
     if (err) {
       logSupabaseError("updateExhibition", err);

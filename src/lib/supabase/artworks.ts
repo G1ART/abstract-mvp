@@ -1295,7 +1295,19 @@ export type UpdateArtworkPayload = Partial<{
 
 export async function updateArtwork(
   id: string,
-  partial: UpdateArtworkPayload
+  partial: UpdateArtworkPayload,
+  options?: {
+    /**
+     * When the operator is acting-as a principal, callers should pass
+     * the principal's profile id here. We use it (a) to filter the
+     * audit insert to genuine delegated mutations and (b) to log the
+     * change keys so the principal can review what was edited from
+     * their delegation activity drawer. Best-effort; never blocks UX.
+     */
+    actingSubjectProfileId?: string | null;
+    /** Override audit action label, e.g. "bulk.artwork.update". */
+    auditAction?: "artwork.update" | "bulk.artwork.update";
+  }
 ): Promise<{ error: unknown }> {
   const {
     data: { session },
@@ -1305,6 +1317,21 @@ export async function updateArtwork(
 
   // RLS allows update when artist or lister (has claim)
   const { error } = await supabase.from("artworks").update(partial).eq("id", id);
+
+  if (
+    !error &&
+    options?.actingSubjectProfileId &&
+    options.actingSubjectProfileId !== session.user.id
+  ) {
+    await recordActingContextEvent({
+      subjectProfileId: options.actingSubjectProfileId,
+      action: options.auditAction ?? "artwork.update",
+      resourceType: "artwork",
+      resourceId: id,
+      payload: { changedKeys: Object.keys(partial) },
+    });
+  }
+
   return { error };
 }
 
@@ -1367,6 +1394,26 @@ export async function publishArtworks(
     .eq("artist_id", artistFilter)
     .in("id", ids)
     .eq("visibility", "draft");
+
+  if (
+    !error &&
+    options?.forProfileId &&
+    options.forProfileId !== session.user.id &&
+    ids.length > 0
+  ) {
+    // Best-effort audit so the principal sees a "bulk publish" entry in
+    // their delegation activity drawer. We log per-id to keep the
+    // resource_id usable for downstream linking. Failures are swallowed.
+    for (const id of ids) {
+      await recordActingContextEvent({
+        subjectProfileId: options.forProfileId,
+        action: "artwork.publish",
+        resourceType: "artwork",
+        resourceId: id,
+        payload: null,
+      });
+    }
+  }
 
   return { error };
 }

@@ -91,6 +91,15 @@ export function Header() {
     }
   }, [avatarOpen, session]);
 
+  // Mobile parity: when the hamburger menu opens, also lazy-load the
+  // active account delegations so the mobile switcher reflects the same
+  // state as the desktop dropdown without requiring a separate fetch.
+  useEffect(() => {
+    if (mobileOpen && session) {
+      loadActiveAccountDelegations();
+    }
+  }, [mobileOpen, session]);
+
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
@@ -162,17 +171,32 @@ export function Header() {
     const name = formatDisplayName(profile) || formatUsername(profile);
     setActingAs(profile.id, name);
     setAvatarOpen(false);
+    setMobileOpen(false);
     // router.refresh() lets layout-level caches recompute against the
     // new acting-as state without a full reload. We avoid the previous
     // `window.location.href` jump because the ActingAsContext provider
     // already re-fetches on visibility/focus changes.
-    router.refresh();
     router.push("/my");
+    router.refresh();
   }
 
+  /**
+   * Safe operator return.
+   *
+   * `clearActingAs()` alone leaves the user on whatever page they were on,
+   * which may be a *principal-only* surface (e.g. the principal's
+   * exhibition edit page). After clearing, that route either renders empty
+   * or denies access — confusing. So we always route to `/my` (a safe
+   * operator workspace) before refreshing layout caches. The same handler
+   * is wired to both the avatar dropdown's "my account" row AND the
+   * global acting-as banner's "return to my account" link so the two
+   * paths cannot drift.
+   */
   function handleSwitchToOperator() {
     clearActingAs();
     setAvatarOpen(false);
+    setMobileOpen(false);
+    router.push("/my");
     router.refresh();
   }
 
@@ -229,7 +253,7 @@ export function Header() {
             </Link>
             <button
               type="button"
-              onClick={clearActingAs}
+              onClick={handleSwitchToOperator}
               className="font-medium hover:underline"
             >
               {t("delegation.banner.returnToMyAccount")}
@@ -517,6 +541,90 @@ export function Header() {
               {t("notifications.link")}
               {unreadCount > 0 && ` (${unreadCount > 99 ? "99+" : unreadCount})`}
             </Link>
+
+            {/* Mobile Account Switcher (parity with desktop avatar dropdown).
+                Only renders when there is at least one active account
+                delegation, otherwise this strip would be visual debt for
+                solo users. The handlers are shared with the desktop
+                dropdown so toggle/return semantics cannot drift. */}
+            {((accountsLoaded && activeAccountDelegations.length > 0) ||
+              actingAsProfileId) && (
+              <>
+                <div className="my-2 border-t border-zinc-100" />
+                <div className="px-1 pt-1 pb-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
+                  {t("acting.switcher.heading")}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSwitchToOperator}
+                  className="flex w-full items-center justify-between px-1 py-2 text-left text-sm text-zinc-700"
+                  role="menuitemradio"
+                  aria-checked={!actingAsProfileId}
+                >
+                  <span className="flex items-center gap-2 truncate">
+                    <span
+                      aria-hidden="true"
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        !actingAsProfileId ? "bg-zinc-900" : "bg-transparent"
+                      }`}
+                    />
+                    <span className="truncate font-medium">
+                      {profileUsername
+                        ? `@${profileUsername}`
+                        : t("acting.switcher.myAccount")}
+                    </span>
+                    {!actingAsProfileId && (
+                      <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-600">
+                        {t("acting.switcher.activeChip")}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                {activeAccountDelegations.map((d) => {
+                  const p = d.delegator_profile;
+                  if (!p?.id) return null;
+                  const name =
+                    formatDisplayName(p) ||
+                    formatUsername(p) ||
+                    p.username ||
+                    p.id;
+                  const isActive = actingAsProfileId === p.id;
+                  return (
+                    <button
+                      key={d.id}
+                      type="button"
+                      onClick={() => handleSwitchToPrincipal(d)}
+                      className="flex w-full items-center justify-between gap-2 px-1 py-2 text-left text-sm text-zinc-700"
+                      role="menuitemradio"
+                      aria-checked={isActive}
+                    >
+                      <span className="flex items-center gap-2 truncate">
+                        <span
+                          aria-hidden="true"
+                          className={`h-2 w-2 shrink-0 rounded-full ${
+                            isActive ? "bg-zinc-900" : "bg-transparent"
+                          }`}
+                        />
+                        <span className="truncate">
+                          {name}
+                          {p.username && (
+                            <span className="ml-1 text-xs text-zinc-500">
+                              @{p.username}
+                            </span>
+                          )}
+                        </span>
+                      </span>
+                      {isActive && (
+                        <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-800">
+                          {t("acting.switcher.actingChip")}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
             <div className="my-2 border-t border-zinc-100" />
             <Link
               href="/settings"
