@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState, useRef, KeyboardEvent, useCallback } from "react";
+import { FormEvent, useEffect, useMemo, useState, useRef, KeyboardEvent, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
@@ -261,6 +261,25 @@ export default function SettingsPage() {
   const [themes, setThemes] = useState<string[]>([]);
   const [mediums, setMediums] = useState<string[]>([]);
   const [styles, setStyles] = useState<string[]>([]);
+  /**
+   * "AI가 작가의 말을 쓸 때 어떤 결을 살리고 싶은지" 자유 서술 필드.
+   * 칩 슬러그만으로는 전달이 어려운 어조·관심사·계기를 한 단락으로 적어두면
+   * statement 초안 품질이 눈에 띄게 올라간다. 현재 DB 컬럼이 없어
+   * device-local 로만 저장한다(`localStorage`). 같은 디바이스에서는 재진입
+   * 시에도 유지되지만, 다른 기기에서는 비어 있다.
+   */
+  const [themesDetail, setThemesDetail] = useState<string>("");
+  /**
+   * 페이지 마운트 시점의 칩 스냅샷. 사용자가 어떤 칩을 *방금* 빼냈는지
+   * 차집합으로 추적해서 statement 프롬프트의 `excluded_keywords` 채널로
+   * 보낸다. 칩을 다시 추가하면 자동으로 negative list 에서도 제외된다.
+   */
+  const initialChipsRef = useRef<{
+    themes: Set<string>;
+    mediums: Set<string>;
+    styles: Set<string>;
+  }>({ themes: new Set(), mediums: new Set(), styles: new Set() });
+  const initialChipsSeededRef = useRef(false);
   const [keywords, setKeywords] = useState<string[]>([]);
   const [education, setEducation] = useState<EducationEntry[]>([{ school: "", program: "", year: "", type: null }]);
   const [priceBand, setPriceBand] = useState<string[]>([]);
@@ -371,9 +390,21 @@ export default function SettingsPage() {
           setCity(d.city ?? "");
           setRegion(d.region ?? "");
           setCountry(d.country ?? "");
-          setThemes(d.themes ?? []);
-          setMediums(d.mediums ?? []);
-          setStyles(d.styles ?? []);
+          const dThemes = d.themes ?? [];
+          const dMediums = d.mediums ?? [];
+          const dStyles = d.styles ?? [];
+          setThemes(dThemes);
+          setMediums(dMediums);
+          setStyles(dStyles);
+          // 칩 negative-list 추적용 초기 스냅샷. 두 번 들어와도 한 번만 박힌다.
+          if (!initialChipsSeededRef.current) {
+            initialChipsRef.current = {
+              themes: new Set(dThemes),
+              mediums: new Set(dMediums),
+              styles: new Set(dStyles),
+            };
+            initialChipsSeededRef.current = true;
+          }
           setKeywords(d.keywords ?? []);
           setPriceBand(Array.isArray(d.collector_price_band) ? d.collector_price_band : (d.collector_price_band ? [d.collector_price_band] : []));
           setAcquisitionChannels(d.collector_acquisition_channels ?? []);
@@ -385,9 +416,20 @@ export default function SettingsPage() {
           setCity((p as Profile).city ?? "");
           setRegion((p as Profile).region ?? "");
           setCountry((p as Profile).country ?? "");
-          setThemes((p as Profile).themes ?? []);
-          setMediums((p as Profile).mediums ?? []);
-          setStyles((p as Profile).styles ?? []);
+          const pThemes = (p as Profile).themes ?? [];
+          const pMediums = (p as Profile).mediums ?? [];
+          const pStyles = (p as Profile).styles ?? [];
+          setThemes(pThemes);
+          setMediums(pMediums);
+          setStyles(pStyles);
+          if (!initialChipsSeededRef.current) {
+            initialChipsRef.current = {
+              themes: new Set(pThemes),
+              mediums: new Set(pMediums),
+              styles: new Set(pStyles),
+            };
+            initialChipsSeededRef.current = true;
+          }
           setKeywords((p as Profile).keywords ?? []);
           setPriceBand((() => {
           const v = (p as Profile).price_band;
@@ -686,6 +728,56 @@ export default function SettingsPage() {
     // Only initialize once on first load — not on every change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
+
+  // themesDetail: device-local persistence. Keyed by uid so multiple
+  // accounts on the same browser don't collide. We avoid DB schema churn
+  // for now — this field is a prompt-only signal for the statement
+  // assistant, not a published profile attribute.
+  const themesDetailStorageKey = uid ? `abstract:profile:themesDetail:${uid}` : null;
+  useEffect(() => {
+    if (!themesDetailStorageKey) return;
+    try {
+      const v = window.localStorage.getItem(themesDetailStorageKey);
+      if (typeof v === "string") setThemesDetail(v);
+    } catch {
+      // Storage may be disabled (private mode); silently fall back to empty.
+    }
+  }, [themesDetailStorageKey]);
+  useEffect(() => {
+    if (!themesDetailStorageKey) return;
+    try {
+      if (themesDetail.trim().length === 0) {
+        window.localStorage.removeItem(themesDetailStorageKey);
+      } else {
+        window.localStorage.setItem(themesDetailStorageKey, themesDetail);
+      }
+    } catch {
+      // Quota / disabled storage — non-fatal.
+    }
+  }, [themesDetail, themesDetailStorageKey]);
+
+  /**
+   * 사용자가 페이지 마운트 후 빼낸 칩 슬러그들을 합쳐서 statement 프롬프트의
+   * `excluded_keywords` 채널로 보낸다. 다시 추가한 칩은 자연스럽게 제외된다.
+   * 빈 문자열/중복은 제거한다.
+   */
+  const excludedKeywords = useMemo<string[]>(() => {
+    if (!initialChipsSeededRef.current) return [];
+    const present = new Set<string>([...themes, ...mediums, ...styles]);
+    const removed: string[] = [];
+    const push = (slug: string) => {
+      if (!slug) return;
+      const v = slug.trim();
+      if (!v) return;
+      if (present.has(v)) return;
+      if (removed.includes(v)) return;
+      removed.push(v);
+    };
+    initialChipsRef.current.themes.forEach(push);
+    initialChipsRef.current.mediums.forEach(push);
+    initialChipsRef.current.styles.forEach(push);
+    return removed;
+  }, [themes, mediums, styles]);
 
   const handleStatementBlur = useCallback(async () => {
     const next = statement.trim();
@@ -1128,6 +1220,45 @@ export default function SettingsPage() {
                       <p className="text-xs text-zinc-500">
                         {t("settings.identity.statementHint")}
                       </p>
+
+                      {/* AI 초안에만 쓰이는 자유 서술. 칩 슬러그만으론 잡히지
+                          않는 어조/관심사를 한 단락으로 풀어 적으면 초안
+                          품질이 눈에 띄게 좋아진다. 같은 기기에서만 보존되며
+                          공개 프로필에는 노출되지 않는다. */}
+                      <details
+                        className="rounded border border-zinc-200 bg-white p-3 text-sm"
+                        open={themesDetail.trim().length > 0}
+                      >
+                        <summary className="cursor-pointer select-none text-xs font-medium text-zinc-700">
+                          {t("profile.statement.themesDetail.title")}
+                        </summary>
+                        <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+                          {t("profile.statement.themesDetail.hint")}
+                        </p>
+                        <textarea
+                          value={themesDetail}
+                          onChange={(e) => setThemesDetail(e.target.value)}
+                          placeholder={t(
+                            "profile.statement.themesDetail.placeholder"
+                          )}
+                          rows={4}
+                          maxLength={1200}
+                          className="mt-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
+                        />
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>{themesDetail.length} / 1200</span>
+                          {themesDetail.trim().length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setThemesDetail("")}
+                              className="text-zinc-500 hover:text-zinc-800"
+                            >
+                              {t("profile.statement.themesDetail.clear")}
+                            </button>
+                          )}
+                        </div>
+                      </details>
+
                       <StatementDraftAssist
                         profileInput={{
                           display_name: displayName || null,
@@ -1141,6 +1272,12 @@ export default function SettingsPage() {
                           city: city || null,
                           locale,
                           currentStatement: statement || null,
+                          // 자유 서술. 칩 슬러그만으론 모자란 어조/관심사를 한 단락으로.
+                          themesDetail: themesDetail.trim() ? themesDetail : null,
+                          // 이번 세션에 칩에서 빼낸 슬러그들 — current_statement 의
+                          // 옛 어휘가 그대로 다시 끌려 들어오는 것을 막는다.
+                          excludedKeywords:
+                            excludedKeywords.length > 0 ? excludedKeywords : null,
                         }}
                         onUseDraft={(draft) => {
                           setStatement(draft);

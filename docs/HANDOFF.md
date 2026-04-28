@@ -2,6 +2,66 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Statement Draft Assist 품질 / 공개범위 문구
+
+QA 리포트(작가의 말 초안 — 영문 토큰 노출 · "ㅇㅇ적 스타일" 정형구 · 삭제한 키워드 재등장)와 공개범위 토글 문구 미스매치를 함께 정리한 좁은 패치.
+
+### 핵심 진단 (참고)
+
+"삭제한 키워드 재등장" 의 root cause 는 데이터 부족이 아니라, statement 프롬프트가 `current_statement` 를 anchor 로 쓰라고 지시되어 있다는 점이었음. 사용자가 칩에서 키워드를 빼도, 기존 statement 본문에 그 어휘가 박혀 있으면 모델이 그대로 복원함. 저장 후 재진입해도 동일.
+
+### 변경 요약
+
+#### Patch A — Statement 프롬프트 행동 룰 보강
+[src/lib/ai/prompts/index.ts](src/lib/ai/prompts/index.ts) 의 `PROFILE_STATEMENT_SYSTEM` 에 두 블록 추가.
+- **Style-token handling** — ko 로케일에서 영문 슬러그(예: `gestural`, `minimal`)를 그대로 인용하지 말고 자연 한국어로 풀어 쓸 것. `〜적 스타일` / `〜적인 스타일` 정형구 금지, drafts 사이에서 같은 표현 반복 금지. 한국어에 정착한 차용어(미니멀·콜라주 등)만 예외.
+- **Deprecated keywords** — `excluded_keywords` 배열은 hard negative list 로 취급. 그리고 "current_statement 안엔 있지만 현재 themes/mediums/styles 칩에 없는 표현은 deprecated 로 보고 칩 set 을 source of truth 로 삼을 것" 을 명시.
+
+#### Patch B — `excluded_keywords` 채널
+- [src/lib/ai/contexts.ts](src/lib/ai/contexts.ts) `ProfileContextInput` 에 `excludedKeywords?: string[] | null` 추가, statement 모드 빌더가 `excluded_keywords: [...]` 라인을 사용자 컨텍스트에 emit.
+- [src/lib/ai/validation.ts](src/lib/ai/validation.ts) `parseProfileBody` 가 12 토큰 × 48자 한도로 trimArray 처리.
+- [src/components/profile/StatementDraftAssist.tsx](src/components/profile/StatementDraftAssist.tsx) prop type 에 동일 필드 추가.
+- [src/app/settings/page.tsx](src/app/settings/page.tsx) — 페이지 마운트 시점의 themes/mediums/styles 스냅샷을 `initialChipsRef` 에 잡고, 현재 칩 set 과의 차집합을 `useMemo` 로 계산해 `excludedKeywords` 로 전달. 칩을 다시 추가하면 자동으로 negative list 에서도 빠짐. 세션 단위라 영구 배제 아님.
+
+#### Patch C — `themesDetail` 자유 서술 surface 활성화
+- 컨텍스트/프롬프트는 이미 `themes_detail` 을 받게 되어 있었으나 UI 가 없어 dead path 였던 것을 활성화.
+- /settings 의 작가의 말 섹션, `StatementDraftAssist` 카드 직전에 접이식 `<details>` 로 textarea 추가 (1200자 한도, 메모 비우기 버튼 포함).
+- `profile_details.themes_detail` 컬럼이 없으므로 **device-local 저장 (`localStorage` 키 `abstract:profile:themesDetail:{uid}`)** — 같은 기기에서는 재진입해도 유지되지만 다른 기기/익명창에서는 비어 있음. 공개 프로필에는 노출되지 않음을 hint 카피에서 명시. DB 컬럼 추가는 차후 P2 에서 검토.
+- i18n EN/KR 4 키 추가: `profile.statement.themesDetail.title|hint|placeholder|clear`.
+
+#### 공개 범위 문구 자연화
+QA 스크린샷: UI 가 체크박스인데 KR hint 가 "다시 공개하려면 토글을 켜요" 로 나와 매칭이 어색.
+- `settings.visibility.privateHint` KR/EN 모두 체크박스 명시로 교체. 자연 한국어로 다듬어 "비공개 상태예요. 본인만 프로필을 볼 수 있어요. 다시 공개하려면 옆 체크박스를 눌러 주세요." 로 통일.
+- `settings.visibility.publicHint` / `settings.visibility.hint` 도 같은 김에 종결을 자연스럽게 손봄(번역체 "켜요" → "할 수 있어요" / "공개 상태예요" 등).
+
+### 변경 파일
+
+- `src/lib/ai/prompts/index.ts`
+- `src/lib/ai/contexts.ts`
+- `src/lib/ai/validation.ts`
+- `src/components/profile/StatementDraftAssist.tsx`
+- `src/app/settings/page.tsx`
+- `src/lib/i18n/messages.ts`
+
+### Supabase SQL · 환경 변수
+
+- 변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과, lint 0 issue.
+- 회귀 시나리오:
+  - **칩 변동 없는 기존 사용자**: `excludedKeywords` 가 빈 배열 → 프롬프트 라인이 `excluded_keywords: []` 만 추가되어 거동 변화 없음. statement 품질만 상승(영문 슬러그 인용/정형구 회피 룰).
+  - **칩에서 themeA 삭제 후 재초안**: 프롬프트에 `excluded_keywords: ["themeA"]` 가 명시 + "current_statement 의 deprecated 표현 쓰지 말 것" 룰이 동시 작동 → themeA 가 다시 등장하지 않음. 저장 후 재진입해도 (snapshot 이 새 set 으로 재시드되므로) 동일 보호 유지.
+  - **themesDetail 입력 후 다른 기기로 이동**: 새 기기에서는 비어 있음 (의도적 device-local).
+  - **/settings 비공개 전환**: hint 가 "다시 공개하려면 옆 체크박스를 눌러 주세요." 로 표시되어 체크박스 UI 와 일치.
+
+### 남은 한계
+
+- `themesDetail` device-local persistence 는 로그인된 다른 기기로 옮기면 비어 있음. 사용자 수요가 보이면 `profile_details.themes_detail TEXT` 컬럼 추가로 승격 검토(SSOT RPC + RLS 점검 필요).
+
+---
+
 ## 2026-04-28 — Acting-as Persona Delta Hardening (P0/P1 closure)
 
 3-phase acting-as 패치(Phase 1·2·3) 후 GPT 감사 결과로 잡힌 인접 갭 6종을 닫는 좁고 강한 후속 패치. **P0 (chip 부착 / 모바일 switcher / safe-route)** 와 **P1 (delegated mutation audit / storage lifecycle)** 만 다루고, 페르소나 모델 자체는 A+ 그대로 유지.

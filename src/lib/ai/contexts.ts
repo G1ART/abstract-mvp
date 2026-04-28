@@ -39,6 +39,14 @@ export type ProfileContextInput = {
   currentStatement?: string | null;
   /** Optional themes detail (richer than the chip slugs) the user has elaborated on. */
   themesDetail?: string | null;
+  /**
+   * Tokens the artist has explicitly removed from their profile during the
+   * current /settings session — themes / mediums / styles chips that they
+   * pulled off the chip group. The model must treat this as a hard
+   * negative list so the previous statement's vocabulary doesn't keep
+   * re-anchoring deleted concepts back into new drafts.
+   */
+  excludedKeywords?: string[] | null;
   /** Optional artworks the artist wants the statement to gesture at by title. */
   selectedArtworks?: { title?: string | null; year?: string | number | null; medium?: string | null }[];
 };
@@ -63,6 +71,11 @@ export function buildProfileCopilotContext(input: ProfileContextInput): string {
     base.push(`mode: statement`);
     base.push(`current_statement: ${(input.currentStatement ?? "").slice(0, 1200)}`);
     base.push(`themes_detail: ${(input.themesDetail ?? "").slice(0, 600)}`);
+    base.push(
+      `excluded_keywords: ${JSON.stringify(
+        (input.excludedKeywords ?? []).slice(0, 12),
+      )}`,
+    );
     const works = (input.selectedArtworks ?? []).slice(0, 6).map((a) => ({
       title: a.title ?? "",
       year: a.year ?? "",

@@ -228,6 +228,12 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
   mode: "general" | "statement";
   currentStatement: string | null;
   themesDetail: string | null;
+  /**
+   * Slugs the artist has just removed from their chip groups. Treated as
+   * a hard negative list by the statement prompt so deleted concepts do
+   * not bleed back through `current_statement` re-anchoring.
+   */
+  excludedKeywords: string[];
   selectedArtworks: ParsedArtworkLite[];
 }> {
   if (!isRecord(raw) || !isRecord(raw.profile)) return { ok: false, reason: "missing_profile" };
@@ -258,6 +264,9 @@ export function parseProfileBody(raw: unknown): ValidationResult<{
       mode,
       currentStatement: trimOrNull(p.currentStatement, 4000),
       themesDetail: trimOrNull(p.themesDetail, 1200),
+      // Keep this list small — it's a session-scope negative list, not an
+      // archive. 12 tokens × 48 chars ≈ ~600 byte budget on the prompt.
+      excludedKeywords: trimArray(p.excludedKeywords, 12, LIMITS.keywordItem),
       selectedArtworks: parseArtworksLite(p.selectedArtworks, 6),
     },
   };

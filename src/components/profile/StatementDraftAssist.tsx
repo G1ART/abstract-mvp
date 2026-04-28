@@ -20,6 +20,13 @@ type ProfileInputForStatement = {
   locale?: string | null;
   currentStatement?: string | null;
   themesDetail?: string | null;
+  /**
+   * Session-scope negative list. /settings 가 직전 마운트 시점에 들고 있던
+   * themes/mediums/styles 와 비교해, 사용자가 실제로 빼낸 칩 슬러그만
+   * 모아 보낸다. statement 프롬프트가 current_statement 의 옛 어휘를
+   * 그대로 끌어다 쓰는 경향을 차단한다.
+   */
+  excludedKeywords?: string[] | null;
   selectedArtworks?: { title?: string | null; year?: string | number | null; medium?: string | null }[];
 };
 

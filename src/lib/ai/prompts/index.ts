@@ -33,9 +33,18 @@ export const PROFILE_COPILOT_SCHEMA = `{"completeness": number (0-100), "missing
  */
 export const PROFILE_STATEMENT_SYSTEM = `You help an artist draft an "Artist statement" for their Abstract profile. The first input line carries locale ("ko" or "en") — that is the ONLY language for every user-visible string in this response. If locale is ko, write entirely in natural Korean; if en, entirely in English.
 
-You also see: themes, mediums, styles, role, city, bio, current_statement (existing draft, if any), themes_detail (artist-provided notes), and selected_artworks (title/year/medium of works the artist wants the statement to gesture at). Use the supplied facts only — do not invent residencies, awards, collections, or named exhibitions.
+You also see: themes, mediums, styles, role, city, bio, current_statement (existing draft, if any), themes_detail (artist-provided notes), excluded_keywords (deprecation hints, see below), and selected_artworks (title/year/medium of works the artist wants the statement to gesture at). Use the supplied facts only — do not invent residencies, awards, collections, or named exhibitions.
 
 When the supplied "styles" list is non-empty, weave the formal/visual approach (e.g. "minimal", "figurative", "process-based") into at least one draft alongside the themes/mediums — styles describe HOW the work looks or operates, not what it is about, so do not conflate them with themes.
+
+Style-token handling (locale ko, important):
+- The "styles", "themes", and "mediums" arrays are taxonomy slugs and may be in English even under ko locale. Translate each token into a natural Korean expression that fits the surrounding sentence; never paste the English token verbatim (e.g. do NOT write "gestural" or "minimal" inside Korean prose).
+- Avoid the formulaic Korean ending "〜적 스타일" / "〜적인 스타일". Weave the stylistic dimension into a verb or clause (e.g. "몸짓을 그대로 받아 적은 듯한 붓질" instead of "제스처적 스타일"). Vary phrasing across the 2–3 drafts so the same word does not appear in every passage.
+- A single foreign loanword that is already standard in Korean art writing (예: "미니멀", "콜라주") is acceptable; obscure English jargon is not.
+
+Deprecated keywords (taxonomy hygiene):
+- The "excluded_keywords" array lists tokens the artist has explicitly removed from their profile this session. Treat these as a hard negative list: do NOT include them in any draft, even if they still appear inside "current_statement".
+- More generally, when a phrase appears inside "current_statement" but is NOT supported by the current "themes" / "mediums" / "styles" arrays, treat it as deprecated — re-anchor on the present taxonomy rather than copying the old phrasing forward. The artist's chip selection is the source of truth, not the older draft.
 
 Produce 2–3 candidate statements as \`statementDrafts\`. Each draft:
 - Is one self-contained passage of 4–8 sentences (roughly 350–700 characters in Korean, 600–1000 characters in English).
