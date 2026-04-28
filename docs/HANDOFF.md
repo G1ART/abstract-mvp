@@ -2,6 +2,43 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Private Account v2 signup hotfix (긴급)
+
+**증상**: PR1+PR2 SQL 적용 후 신규가입 시 *"Database error saving new user"* 발생.
+
+**원인 분석**: 신규가입 trigger `on_auth_user_created_link_external_artist` 가 SECURITY DEFINER 로 `public.artworks` UPDATE 를 수행하는데, PR2 의 `artworks_select_public` / `projects_select_*` 가 inline `EXISTS (select 1 from public.profiles ...)` / `EXISTS (... follows ...)` 를 사용. inline EXISTS subquery 는 SECURITY DEFINER 함수 안에서도 *호출 컨텍스트의 RLS 권한* 으로 평가되어, PR1 의 `profiles_select_follow_request_actor/target` 와 결합 시 gotrue 신규가입 트랜잭션 안에서 평가 경로가 깨짐. → Auth 가 generic 메시지로 surfacing.
+
+**수정 전략**: 검사 로직을 모두 SECURITY DEFINER STABLE helper 함수로 추출. 함수 owner (supabase admin / BYPASSRLS) 권한으로 body 가 실행되므로 *RLS 재진입 없음*. 정책은 단일 boolean 호출로 축소. 기능 거동은 기존과 100% 동일 (helper 의 boolean 결과 = 원래 inline EXISTS 결과).
+
+### 변경 — `supabase/migrations/20260513000000_private_account_signup_hotfix.sql`
+
+- 신규 helper 3종:
+  - `is_artist_publicly_visible(uuid) returns boolean` — `coalesce(is_public, true)` 의 SECURITY DEFINER 슬라이스. 누락 행은 "public" 으로 처리 (legacy 호환).
+  - `viewer_is_accepted_follower_of(uuid) returns boolean` — `auth.uid()` 가 `accepted` follower 인지.
+  - `viewer_shares_follow_edge_with(uuid) returns boolean` — 양방향 follow edge 존재 여부 (알림 actor 메타 join 용).
+- PR1 의 `profiles_select_follow_request_actor` + `_target` 두 정책을 단일 `profiles_select_follow_edge` 로 통합 (helper 사용).
+- PR2 의 `artworks_select_public`, `artworks_select_follower_accepted`, `projects_select_public`, `projects_select_owner`, `projects_select_follower_accepted` 를 helper 사용 버전으로 재선언.
+- `exhibition_works_select` / `exhibition_media_select` / `exhibition_media_buckets_select` 는 PR2 의 EXISTS 그대로 유지 (부모 `projects` 가 helper-driven 이라 안전). 명시적으로 다시 선언해 마이그레이션 self-contained.
+
+### Supabase SQL — 즉시 적용
+
+`supabase/migrations/20260513000000_private_account_signup_hotfix.sql` 을 SQL Editor 에서 실행. 모두 `create or replace` / `drop policy if exists; create policy` 라 재실행 안전.
+
+### 환경 변수
+- 변경 없음.
+
+### Verified
+- 정합 시나리오 점검 후 신규가입 복구를 확인해 주세요. 만약 적용 후에도 여전히 신규가입이 실패하면 **Supabase Dashboard > Logs > Postgres logs** 에서 에러 시각의 stack trace 를 함께 공유해 주시면 root cause 를 확정해 다시 좁혀들어갑니다.
+
+### 회귀 안전성 노트
+- 공개 owner 의 콘텐츠: helper 가 `true` 반환 → 동작 동일.
+- 외부 artist (artist_id IS NULL): `artist_id is null` 분기 또는 helper 가 누락 행 → `true` 처리 → 동작 동일.
+- 본인 / claim 보유자 / 대행자: 별도 정책 (`*_select_own`, `*_with_claim`, `*_account_delegate`) 그대로 OR 결합으로 통과.
+- accepted follower: helper 결과 동일.
+- 알림 inbox 의 follow_request actor 메타: 단일 helper 정책으로 통합 후에도 양쪽 follow edge 어느 방향이든 통과.
+
+---
+
 ## 2026-04-28 — Private Account v2 · PR2 (콘텐츠 RLS 정합화)
 
 PR1 에서 미뤄둔 콘텐츠 RLS 게이트를 마감하는 좁은 SQL-only 패치. PR1 에서는 비공계 owner 의 메타·검색·Follow Request 만 풀고 작품/전시는 그대로 두었음. 이 PR 이 그 마지막 갭을 막아 메이저 SNS 의 보호 계정 거동을 완성.
