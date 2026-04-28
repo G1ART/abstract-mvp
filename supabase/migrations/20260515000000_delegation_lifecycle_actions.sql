@@ -35,8 +35,16 @@
 --     (rather than rejected) to keep the UX forgiving.
 --
 -- Safe to re-run.
-
-begin;
+--
+-- NOTE on dollar-quoting: each function uses a UNIQUE named tag
+-- (`$cancel$`, `$update$`, `$resign$`, `$request$`) instead of the
+-- bare `$$`. Supabase Dashboard's SQL Editor occasionally mis-splits
+-- statements when several `$$ … $$` blocks land inside a single
+-- transaction, so naming the tag eliminates ambiguity. We also DON'T
+-- wrap in BEGIN/COMMIT — every statement here is independently
+-- idempotent (`drop constraint if exists`, `create or replace`),
+-- which lets the Editor execute statement-by-statement without
+-- needing to pre-parse the whole body as one transaction.
 
 ---------------------------------------------------------------------------
 -- 1. notifications.type CHECK — extend with the four new lifecycle types.
@@ -83,7 +91,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $cancel$
 declare
   v_uid uuid := auth.uid();
   v_now timestamptz := now();
@@ -135,7 +143,7 @@ begin
 
   return jsonb_build_object('ok', true);
 end;
-$$;
+$cancel$;
 
 grant execute on function public.cancel_delegation_invite(uuid) to authenticated;
 
@@ -155,7 +163,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $update$
 declare
   v_uid       uuid := auth.uid();
   v_now       timestamptz := now();
@@ -259,7 +267,7 @@ begin
     'removed', coalesce(v_removed, '{}'::text[])
   );
 end;
-$$;
+$update$;
 
 grant execute on function public.update_delegation_permissions(uuid, text[]) to authenticated;
 
@@ -277,7 +285,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $resign$
 declare
   v_uid uuid := auth.uid();
   v_now timestamptz := now();
@@ -321,7 +329,7 @@ begin
 
   return jsonb_build_object('ok', true);
 end;
-$$;
+$resign$;
 
 grant execute on function public.resign_delegation_by_delegate(uuid) to authenticated;
 
@@ -342,7 +350,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $$
+as $request$
 declare
   v_uid     uuid := auth.uid();
   v_d       record;
@@ -407,8 +415,6 @@ begin
 
   return jsonb_build_object('ok', true);
 end;
-$$;
+$request$;
 
 grant execute on function public.request_delegation_permission_change(uuid, text, text[]) to authenticated;
-
-commit;
