@@ -252,14 +252,23 @@ function VisitorPrivateCard({
   const [status, setStatus] = useState<typeof initialStatus>(initialStatus);
 
   /**
-   * Lazy-loaded "me" profile (themes/mediums/role/city) used to seed
-   * the AI intro draft. We only fetch when the visitor actually opens
-   * the sheet — the meta card itself doesn't need it. `null` while
-   * loading, kept as `null` if the user is signed-out (the
-   * IntroMessageAssist still works with empty fields, the AI just
-   * produces a more generic draft).
+   * "me" profile (themes/mediums/role/city) used to seed the AI intro
+   * draft. Fetched once when the card mounts so the AI has full
+   * context whether the visitor opens the sheet via the FollowButton
+   * intercept OR via IntroMessageAssist's own trigger button. `null`
+   * if the user is signed-out (IntroMessageAssist still works with
+   * empty fields, the AI just produces a more generic draft).
    */
   const [me, setMe] = useState<Profile | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getMyProfile().then(({ data }) => {
+      if (!cancelled && data) setMe(data as Profile);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /**
    * Incrementing trigger that asks IntroMessageAssist (in
@@ -272,15 +281,10 @@ function VisitorPrivateCard({
    */
   const [openSignal, setOpenSignal] = useState(0);
 
-  // Defer profile load until the visitor signals interest — saves an
-  // RPC for visitors who land on the page and bounce.
+  // Bumps the openSignal so IntroMessageAssist opens its sheet in
+  // "follow-first" mode. Used by the FollowButton intercept.
   const requestSheet = () => {
     setOpenSignal((n) => n + 1);
-    if (!me) {
-      getMyProfile().then(({ data }) => {
-        if (data) setMe(data as Profile);
-      });
-    }
   };
 
   return (
@@ -337,6 +341,24 @@ function VisitorPrivateCard({
           </p>
         </div>
 
+        {/*
+          Action row. Layout follows the /people card pattern:
+          - Primary CTA  → FollowButton (size="sm" so it sits flush with
+            the secondary "연결 메시지 초안" trigger that
+            IntroMessageAssist renders).
+          - Secondary    → IntroMessageAssist's own trigger button. We
+            no longer render a duplicate "연결 메시지 초안" button
+            here — IntroMessageAssist owns that trigger so visitors see
+            exactly one entry point with the same ✦ icon and copy as
+            on the /people tab.
+          - Trailing     → "내 스튜디오로 돌아가기" link, right-aligned.
+
+          IntroMessageAssist is only mounted while status === "none":
+          once a follow request is in flight (pending) or accepted, the
+          intro draft surface is no longer relevant, and unmounting
+          also keeps the trigger button from lingering as a third
+          control next to the "요청 보냈어요" pill.
+        */}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <FollowButton
             targetProfileId={card.id}
@@ -350,13 +372,34 @@ function VisitorPrivateCard({
             }}
           />
           {status === "none" && (
-            <button
-              type="button"
-              onClick={requestSheet}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
-            >
-              {t("profile.private.draftMessage")}
-            </button>
+            <IntroMessageAssist
+              me={{
+                display_name: me?.display_name ?? null,
+                role: me?.main_role ?? null,
+                themes: me?.themes ?? [],
+                mediums: me?.mediums ?? [],
+                city: me?.city ?? null,
+              }}
+              recipient={{
+                id: card.id,
+                display_name: card.display_name,
+                role: card.main_role,
+                sharedSignals: [],
+              }}
+              recipientId={card.id}
+              isFollowing={false}
+              openSignal={openSignal}
+              onFollowed={() => {
+                // Private target — `follow()` resolves to 'pending' here.
+                setStatus("pending");
+              }}
+              onSent={() => {
+                // Send commits both message + follow; reflect status
+                // locally so the FollowButton flips to "요청됨" without
+                // a reload.
+                setStatus("pending");
+              }}
+            />
           )}
           {status === "pending" ? (
             <span className="text-xs text-zinc-500">
@@ -370,46 +413,6 @@ function VisitorPrivateCard({
             {t("profile.privateBackToMy")}
           </Link>
         </div>
-
-        {/*
-          IntroMessageAssist hosts a portal'd sheet that opens via the
-          `openSignal` increment above. It commits the follow request
-          (status='pending', because target is private) AND inserts a
-          connection_message in one user action — exactly the
-          /people-tab pattern, just behind a lock badge. Notes attached
-          this way reach the principal alongside the request itself,
-          making accept/decline triage easier.
-        */}
-        <IntroMessageAssist
-          me={{
-            display_name: me?.display_name ?? null,
-            role: me?.main_role ?? null,
-            themes: me?.themes ?? [],
-            mediums: me?.mediums ?? [],
-            city: me?.city ?? null,
-          }}
-          recipient={{
-            id: card.id,
-            display_name: card.display_name,
-            role: card.main_role,
-            sharedSignals: [],
-          }}
-          recipientId={card.id}
-          isFollowing={status === "accepted"}
-          openSignal={openSignal}
-          onFollowed={() => {
-            // Private target — `follow()` resolves to 'pending' here.
-            // We still flip the local status badge so the next render
-            // shows the "요청 보냈어요" pill.
-            setStatus((prev) => (prev === "none" ? "pending" : prev));
-          }}
-          onSent={() => {
-            // Send commits both message + follow; reflect both flips
-            // locally so the FollowButton flips to "요청됨" without a
-            // reload.
-            setStatus((prev) => (prev === "none" ? "pending" : prev));
-          }}
-        />
       </div>
     </main>
   );
