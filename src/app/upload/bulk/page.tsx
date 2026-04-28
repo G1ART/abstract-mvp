@@ -565,6 +565,10 @@ export default function BulkUploadPage() {
           artistProfileId: selectedArtist?.id ?? null,
           externalArtistDisplayName: useExternalArtist ? externalArtistName.trim() : null,
           externalArtistEmail: useExternalArtist ? externalArtistEmail.trim() || null : null,
+          // Drafts were created on behalf of the principal when acting-as;
+          // publish path must keep the same subject so claims/artist_id stay
+          // consistent. RLS / RPC verify delegation rights server-side.
+          onBehalfOfProfileId: actingAsProfileId ?? null,
         };
         if (intent === "INVENTORY" || intent === "CURATED") {
           opts.period_status = periodStatus;
@@ -593,7 +597,9 @@ export default function BulkUploadPage() {
           setTimeout(() => setToast(null), 3000);
         }
       } else {
-        const { error } = await publishArtworks(ids);
+        const { error } = await publishArtworks(ids, {
+          forProfileId: actingAsProfileId ?? null,
+        });
         if (error) {
           setToast(error instanceof Error ? error.message : "Publish failed");
           setTimeout(() => setToast(null), 3000);

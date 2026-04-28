@@ -288,6 +288,11 @@ function UploadPageContent() {
           workId: artworkId,
           visibility: "public",
           ...claimPayload,
+          // Acting-as: when delegate uploads on behalf of the principal,
+          // the claim must be filed under the principal so the artwork
+          // surfaces on their profile (not the operator's). RPC enforces
+          // the delegation writer check before honouring this override.
+          subjectProfileId: actingAsProfileId ?? undefined,
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
@@ -310,7 +315,16 @@ function UploadPageContent() {
           }
         }
       } else {
-        const artistProfileId = intent === "CREATED" ? userId : selectedArtist!.id;
+        // CREATED intent ≡ "I made this work". When acting-as a principal,
+        // the principal IS the artist of the new work, so both the artwork's
+        // artist_id (already routed via `actingAsProfileId` in the payload
+        // above) and the claim's artist_profile_id must point to them.
+        // Without this, the claim's artist link pointed at the operator and
+        // the artwork de-facto belonged to the wrong profile.
+        const artistProfileId =
+          intent === "CREATED"
+            ? actingAsProfileId ?? userId
+            : selectedArtist!.id;
         const { error: claimErr } = await createClaimForExistingArtist({
           artistProfileId,
           claimType,
@@ -318,6 +332,7 @@ function UploadPageContent() {
           projectId: addToExhibitionId?.trim() && (claimType === "CURATED" || claimType === "INVENTORY") ? addToExhibitionId.trim() : undefined,
           visibility: "public",
           ...claimPayload,
+          subjectProfileId: actingAsProfileId ?? undefined,
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
@@ -354,8 +369,13 @@ function UploadPageContent() {
         }
       }
 
-      const { getMyProfile } = await import("@/lib/supabase/profiles");
-      const { data: profile } = await getMyProfile();
+      // Redirect target. When acting-as, route to the principal's public
+      // profile so the operator visually confirms the new work surfaces on
+      // the right account; otherwise route to the operator's own profile.
+      const { getMyProfile, getProfileById } = await import("@/lib/supabase/profiles");
+      const { data: profile } = actingAsProfileId
+        ? await getProfileById(actingAsProfileId)
+        : await getMyProfile();
       const username = (profile as { username?: string | null } | null)?.username?.trim();
       if (inviteSent || inviteSendFailed) {
         setInviteToast(inviteSent ? "sent" : "failed");

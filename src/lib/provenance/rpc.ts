@@ -30,6 +30,7 @@ export async function createExternalArtistAndClaim(
     p_visibility: (args.visibility ?? "public") as Visibility,
   };
   if (args.period_status != null) payload.p_period_status = args.period_status;
+  if (args.subjectProfileId) payload.p_subject_profile_id = args.subjectProfileId;
   const { data, error } = await supabase.rpc("create_external_artist_and_claim", payload);
   if (error) return { data: null, error };
   return { data: data as CreateExternalArtistAndClaimResult, error: null };
@@ -50,6 +51,7 @@ export async function createClaimForExistingArtist(
     p_visibility: (args.visibility ?? "public") as Visibility,
   };
   if (args.period_status != null) payload.p_period_status = args.period_status;
+  if (args.subjectProfileId) payload.p_subject_profile_id = args.subjectProfileId;
   const { data, error } = await supabase.rpc("create_claim_for_existing_artist", payload);
   if (error) return { data: null, error };
   return { data: data as CreateClaimForExistingArtistResult, error: null };

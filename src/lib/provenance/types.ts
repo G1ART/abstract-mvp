@@ -75,6 +75,14 @@ export type CreateExternalArtistAndClaimArgs = {
   visibility?: Visibility;
   /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
   period_status?: "past" | "current" | "future" | null;
+  /**
+   * Acting-as override. When set, the claim's `subject_profile_id` is the
+   * given profile (instead of `auth.uid()`). The RPC verifies the caller
+   * holds an active account-scope delegation with mutate rights for that
+   * profile; otherwise the call is rejected. Leave undefined for normal
+   * (self) writes.
+   */
+  subjectProfileId?: string | null;
 };
 
 export type CreateClaimForExistingArtistArgs = {
@@ -85,6 +93,10 @@ export type CreateClaimForExistingArtistArgs = {
   visibility?: Visibility;
   /** For INVENTORY/CURATED/EXHIBITED: past/current/future */
   period_status?: "past" | "current" | "future" | null;
+  /**
+   * Acting-as override. See `CreateExternalArtistAndClaimArgs.subjectProfileId`.
+   */
+  subjectProfileId?: string | null;
 };
 
 export type SearchWorksForDedupArgs = {

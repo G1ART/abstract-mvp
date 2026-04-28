@@ -57,6 +57,19 @@ const NULLABLE_BASE_KEYS = new Set([
   "website",
 ]);
 
+/**
+ * Keys whose *empty array* is the user-meaningful "cleared" state. The
+ * column is `jsonb not null default '[]'::jsonb`, so an empty array is
+ * a valid stored value and must reach the RPC instead of being stripped.
+ *
+ * QA 2026-04-28 (학력 삭제 불가): without this, removing the last
+ * education entry produced `education: []`, which compactPatch dropped,
+ * which made the patch empty, which made saveProfileUnified return
+ * "no changes" while the DB row kept the old value. Reload restored
+ * the deleted row and users could not actually clear their education.
+ */
+const CLEARABLE_ARRAY_BASE_KEYS = new Set(["education"]);
+
 /** Strip null/undefined/"" and empty []/{} so we never send education:null (prevents 23502). */
 function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -70,7 +83,13 @@ function compactPatch(obj: Record<string, unknown>): Record<string, unknown> {
     }
     if (v === undefined || v === null) continue;
     if (typeof v === "string" && v.trim() === "") continue;
-    if (Array.isArray(v) && v.length === 0) continue;
+    if (Array.isArray(v) && v.length === 0) {
+      if (CLEARABLE_ARRAY_BASE_KEYS.has(k)) {
+        out[k] = [];
+        continue;
+      }
+      continue;
+    }
     if (typeof v === "object" && v !== null && !Array.isArray(v) && Object.keys(v).length === 0) continue;
     out[k] = v;
   }
@@ -82,7 +101,10 @@ const READONLY_BASE = new Set(["id", "profile_updated_at", "profile_completeness
 
 function toBasePatch(raw: Record<string, unknown>): Record<string, unknown> {
   const compact = compactPatch(raw);
-  if (compact.education == null) delete compact.education;
+  // education === null would violate the column's NOT NULL constraint
+  // (23502). compactPatch already drops null; for symmetry we still
+  // guard here in case a future caller hands us null directly.
+  if (compact.education === null) delete compact.education;
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(compact)) {
     if (READONLY_BASE.has(k)) continue;

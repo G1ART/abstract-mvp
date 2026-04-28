@@ -531,7 +531,26 @@ export function UserProfileContent({
 
         {(profile.website || profile.location) && (
           <p className="text-sm text-zinc-600">
-            {[profile.website, profile.location].filter(Boolean).join(" · ")}
+            {profile.website && (
+              <a
+                href={
+                  /^https?:\/\//i.test(profile.website)
+                    ? profile.website
+                    : `https://${profile.website}`
+                }
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="break-all underline-offset-2 hover:text-zinc-900 hover:underline"
+              >
+                {/* Strip scheme for compact display while keeping the
+                    full URL on the href so users land on the right site. */}
+                {profile.website.replace(/^https?:\/\//i, "").replace(/\/$/, "")}
+              </a>
+            )}
+            {profile.website && profile.location ? (
+              <span className="mx-1 text-zinc-400">·</span>
+            ) : null}
+            {profile.location && <span>{profile.location}</span>}
           </p>
         )}
       </div>

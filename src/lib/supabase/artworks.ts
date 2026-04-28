@@ -1299,7 +1299,8 @@ export function validatePublish(artwork: Artwork): { ok: boolean; missing: strin
 }
 
 export async function publishArtworks(
-  ids: string[]
+  ids: string[],
+  options?: { forProfileId?: string | null }
 ): Promise<{ error: unknown }> {
   const {
     data: { session },
@@ -1308,10 +1309,15 @@ export async function publishArtworks(
     return { error: new Error("Not authenticated") };
   if (ids.length === 0) return { error: null };
 
+  // When acting-as, drafts were created under the principal's `artist_id`,
+  // so filter on that. Otherwise default to the caller. RLS independently
+  // enforces that the caller is either the artist or an active account
+  // delegate writer for the principal.
+  const artistFilter = options?.forProfileId ?? session.user.id;
   const { error } = await supabase
     .from("artworks")
     .update({ visibility: "public" })
-    .eq("artist_id", session.user.id)
+    .eq("artist_id", artistFilter)
     .in("id", ids)
     .eq("visibility", "draft");
 
@@ -1327,6 +1333,14 @@ export type PublishWithProvenanceOptions = {
   period_status?: "past" | "current" | "future" | null;
   /** For CURATED: exhibition/project id to link claims and add works to exhibition */
   projectId?: string | null;
+  /**
+   * Acting-as override. When the caller is operating as an account-scope
+   * delegate of `onBehalfOfProfileId`, the drafts were created under that
+   * principal's `artist_id` and any CREATED-class claim must be filed
+   * under them. Server-side RPCs / RLS still enforce the delegation
+   * writer check before honouring this.
+   */
+  onBehalfOfProfileId?: string | null;
 };
 
 export async function publishArtworksWithProvenance(
@@ -1346,13 +1360,19 @@ export async function publishArtworksWithProvenance(
   if (opts.intent === "INVENTORY" || opts.intent === "CURATED") {
     if (opts.period_status != null) claimPayload.period_status = opts.period_status;
   }
+  // When acting-as, both the CREATED-class claim's artist *and* subject
+  // must point at the principal. Without this, the artwork's artist_id
+  // pointed to the principal but the claim subject pointed to the
+  // operator — leaving the work simultaneously on two profiles.
+  const subjectOverride = opts.onBehalfOfProfileId ?? null;
   for (const id of ids) {
     if (opts.intent === "CREATED") {
       const { error: claimErr } = await createClaimForExistingArtist({
-        artistProfileId: session.user.id,
+        artistProfileId: subjectOverride ?? session.user.id,
         claimType: "CREATED",
         workId: id,
         visibility: "public",
+        subjectProfileId: subjectOverride ?? undefined,
       });
       if (claimErr) return { error: claimErr };
     } else if (opts.externalArtistDisplayName) {
@@ -1364,6 +1384,7 @@ export async function publishArtworksWithProvenance(
         projectId: opts.projectId ?? null,
         visibility: "public",
         ...claimPayload,
+        subjectProfileId: subjectOverride ?? undefined,
       });
       if (claimErr) return { error: claimErr };
     } else if (opts.artistProfileId) {
@@ -1374,6 +1395,7 @@ export async function publishArtworksWithProvenance(
         projectId: opts.projectId ?? null,
         visibility: "public",
         ...claimPayload,
+        subjectProfileId: subjectOverride ?? undefined,
       });
       if (claimErr) return { error: claimErr };
       const { error: upErr } = await supabase

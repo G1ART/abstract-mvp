@@ -172,17 +172,26 @@ export async function createPriceInquiry(
   return { data: row, error: null };
 }
 
-/** Count of price inquiries on my artworks (for KPI). */
+/**
+ * Count of price inquiries on my artworks that still need attention
+ * (status `new` / `open`). Replied / closed inquiries are intentionally
+ * excluded so the studio "inbox" badge stops nagging the artist after
+ * they've already answered (QA 2026-04-28). The total list page still
+ * shows every inquiry regardless of status.
+ */
 export async function getMyPriceInquiryCount(profileId?: string): Promise<{ data: number; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: 0, error: null };
   const targetId = profileId ?? session.user.id;
+  // `inquiry_status` IS NULL covers legacy rows that pre-date the column;
+  // we treat those as "open" so existing unanswered threads still surface.
   const { count, error } = await supabase
     .from("price_inquiries")
     .select("id, artworks!artwork_id!inner(artist_id)", { count: "exact", head: true })
-    .eq("artworks.artist_id", targetId);
+    .eq("artworks.artist_id", targetId)
+    .or("inquiry_status.in.(new,open),inquiry_status.is.null");
   if (error) return { data: 0, error };
   return { data: count ?? 0, error: null };
 }

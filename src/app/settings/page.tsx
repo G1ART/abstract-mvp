@@ -702,7 +702,19 @@ export default function SettingsPage() {
     setEducation((prev) => [...prev, { school: "", program: "", year: "", type: null }]);
   }
   function removeEducation(i: number) {
-    setEducation((prev) => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+    // Allow removing the last entry too. We collapse to a single empty
+    // placeholder row so the form keeps a usable input — but the empty
+    // row is normalized to nothing on save (and the patch path now
+    // forwards `education: []` to the RPC instead of dropping it, so
+    // the DB actually clears the column instead of silently restoring
+    // the previous value).
+    setEducation((prev) => {
+      const next = prev.filter((_, idx) => idx !== i);
+      if (next.length === 0) {
+        return [{ school: "", program: "", year: "", type: null }];
+      }
+      return next;
+    });
   }
   function updateEducation(i: number, field: keyof EducationEntry, value: string | null) {
     setEducation((prev) =>
@@ -1245,9 +1257,16 @@ export default function SettingsPage() {
               <label htmlFor="website" className="mb-1 block text-sm font-medium">
                 {t("settings.website")}
               </label>
+              {/* type="text" (not "url") on purpose: browsers reject bare
+                  domains like "example.com" with a stock validation message,
+                  but our normalizer accepts and prefixes them. The server
+                  remains the source of truth for url validity. */}
               <input
                 id="website"
-                type="url"
+                type="text"
+                inputMode="url"
+                autoComplete="url"
+                spellCheck={false}
                 value={website}
                 onChange={(e) => setWebsite(e.target.value)}
                 placeholder={t("settings.placeholderWebsite")}

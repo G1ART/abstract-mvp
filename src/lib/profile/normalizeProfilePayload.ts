@@ -5,14 +5,45 @@
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 
-/** "" or "https://" or "http://" → null; URL() parse fail → null */
+/**
+ * Normalize a website URL.
+ *
+ * Accepts user-friendly inputs and produces a storable absolute URL:
+ *   - "" / "https://" / "http://"            → null
+ *   - "https://example.com"                  → "https://example.com"
+ *   - "www.example.com" / "example.com"      → "https://example.com" (auto-prefix)
+ *   - "example.com/path?q=1"                 → "https://example.com/path?q=1"
+ *
+ * Rationale (QA 2026-04-28): users routinely paste bare domains; rejecting
+ * those with "Please enter a url" makes profile setup brittle. We require a
+ * recognisable host (must contain a dot, no spaces) and only accept http/https
+ * once a protocol is resolved.
+ */
 export function normalizeUrl(value: string | null | undefined): string | null {
   if (value == null) return null;
   const s = String(value).trim();
   if (s === "" || s === "https://" || s === "http://") return null;
+  // Reject obviously broken inputs (whitespace inside, line breaks, etc.) up front.
+  if (/\s/.test(s)) return null;
+
+  let candidate = s;
+  if (!/^https?:\/\//i.test(candidate)) {
+    // Bare domain or "www." form — must look like a domain (must contain a dot
+    // and at least one alnum after it). This blocks plain words like "hello"
+    // from silently becoming "https://hello".
+    if (!/^[A-Za-z0-9._~%@:/-]+\.[A-Za-z0-9._~%/?#&=+-]+$/.test(candidate)) {
+      return null;
+    }
+    candidate = `https://${candidate}`;
+  }
+
   try {
-    new URL(s);
-    return s;
+    const u = new URL(candidate);
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (!u.hostname || !u.hostname.includes(".")) return null;
+    return u.toString().replace(/\/$/, "") === u.origin
+      ? u.origin
+      : u.toString();
   } catch {
     return null;
   }
@@ -121,7 +152,14 @@ export type NormalizedBasePayload = {
   main_role: string | null;
   roles: string[];
   is_public: boolean;
-  education: EducationEntryNormalized[] | null;
+  /**
+   * Always an array (possibly empty). The DB column is `jsonb NOT NULL
+   * default '[]'`, and an empty array is the *meaningful* "cleared"
+   * state that the save patcher needs to forward to the RPC. Returning
+   * `null` here used to make compactPatch drop the key entirely, which
+   * silently restored the prior value on reload.
+   */
+  education: EducationEntryNormalized[];
 };
 
 /**
@@ -141,7 +179,6 @@ export function normalizeProfileBase(input: NormalizedBaseInput): NormalizedBase
   const education = educationRaw
     .map((row) => normalizeEducationRow(row as EducationEntryInput))
     .filter((r): r is EducationEntryNormalized => r != null);
-  const educationFinal = education.length === 0 ? null : education;
 
   return {
     display_name: normalizeString(input.display_name),
@@ -151,7 +188,7 @@ export function normalizeProfileBase(input: NormalizedBaseInput): NormalizedBase
     main_role,
     roles,
     is_public: input.is_public ?? true,
-    education: educationFinal,
+    education,
   };
 }
 

@@ -1,6 +1,47 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
+
+## 2026-04-28 — QA Stabilization (Profile / Acting-as / Inbox)
+
+QA(2026-04-28) 보고서 5건을 수습한 안정화 패치. UX 흠집 2건 + 기능 회귀 3건을 인접 잘 작동하던 표면(파라미터/RLS/기존 RPC)을 건드리지 않고 정합화했습니다.
+
+### 변경 요약
+
+- **QA1 — 공개 프로필 웹사이트 직링 (제안)** — `UserProfileContent` 가 website 를 plain text 로만 노출했던 부분을 `<a>` 로 승격. scheme 이 빠진 값도 표시 시 정리하고 href 에는 `https://` 를 안전하게 붙임. `target="_blank" rel="noopener noreferrer nofollow"` 적용으로 referrer/탭 누수 차단.
+- **QA2 — `https://` 없이도 등록 (오류)** — `normalizeUrl` 이 `new URL()` 만으로 검증하던 동작을 보강해 `www.example.com` / `example.com` / `example.com/path` 같은 베어 도메인을 자동으로 `https://` prefix 후 검증하도록 변경. 공백 포함·점 없는 단어·잘못된 scheme 은 여전히 거부. `/settings` 의 input 은 `type="url"` → `type="text" inputMode="url"` 로 바꿔 브라우저 native "Please enter a url" 검증을 비활성화 (서버 정규화가 SSOT).
+- **QA3 — 위임 acting-as 업로드가 본인 프로필로 가는 버그 (CRITICAL · 오류)** — 단일 업로드(`/upload`) 흐름에서 acting-as 가 활성화되어 있어도 (a) `intent === "CREATED"` 시 claim 의 `artist_profile_id` 가 operator 로, (b) 모든 claim 의 `subject_profile_id` 가 RPC `auth.uid()` 즉 operator 로 박혀 있어 **artwork.artist_id 만 principal 이고 claim 은 operator 인 채로 두 프로필에 동시에 보이거나 operator 쪽으로 흐르는** 회귀가 있었습니다. 수정:
+  1. `create_claim_for_existing_artist` / `create_external_artist_and_claim` RPC 에 옵션 `p_subject_profile_id` 추가. 호출자와 다르면 `is_active_account_delegate_writer(subject)` 통과 시에만 허용 (그 외 forbidden 예외).
+  2. 클라이언트 헬퍼(`createClaimForExistingArtist`, `createExternalArtistAndClaim`) 에 `subjectProfileId` 인자 추가.
+  3. `/upload/page.tsx` 가 acting-as 시 (a) CREATED intent 의 `artistProfileId = actingAsProfileId ?? userId`, (b) claim 호출 양쪽에 `subjectProfileId: actingAsProfileId`, (c) 업로드 완료 후 redirect 도 principal username 으로 라우팅.
+  4. `/upload/bulk/page.tsx` 의 `publishArtworks(ids, { forProfileId })` / `publishArtworksWithProvenance(ids, { onBehalfOfProfileId })` 도 acting-as 컨텍스트를 그대로 전달 (드래프트의 `artist_id` 가 principal 이므로 prior `.eq("artist_id", session.user.id)` filter 가 0행을 업데이트하던 침묵 실패도 동시 해소).
+- **QA4 — 학력 삭제 불가 / 빈 값 저장 후 복구 (오류)** — 두 단계의 회귀가 있었음:
+  1. `removeEducation()` 이 `prev.length > 1` 가드로 마지막 행 삭제를 거부 → 사용자 입력 자체가 사라지지 않았음. 마지막 행도 삭제 가능하게 풀고, 빈 placeholder 1줄로 폴딩.
+  2. `normalizeProfileBase` 가 비워진 education 을 `null` 로 반환했고, `compactPatch` 가 null/empty array 를 모두 strip → RPC 까지 도달하지 못해 DB 미반영 → 새로고침 시 옛 값으로 복구.
+  - `NormalizedBasePayload.education` 을 `EducationEntryNormalized[]` (절대 null 아님) 으로 강제. 빈 배열은 의미 있는 "비움" 상태.
+  - `profileSaveUnified.compactPatch` 에 `CLEARABLE_ARRAY_BASE_KEYS` 셋을 신설하고 `education` 만 빈 배열을 RPC 까지 forward 하도록 허용. NOT NULL 위반(23502) 위험 없는 키만 화이트리스트 함.
+- **QA5 — 답변 완료 문의의 빨간 (1) 배지 잔존 (제안)** — `getMyPriceInquiryCount` 가 모든 inquiry 를 세고 있어 replied/closed 상태도 빨간 배지로 떠 있었음. `inquiry_status IN ('new','open') OR inquiry_status IS NULL` 조건을 추가해 사용자 주의가 필요한 항목만 카운트. 목록 페이지(`/my/inquiries`) 의 전체 카운트/리스트는 영향 없음.
+
+### Supabase SQL (적용 필요)
+
+- `supabase/migrations/20260508000000_claims_subject_for_delegate.sql` — `create_claim_for_existing_artist` 와 `create_external_artist_and_claim` 의 옵셔널 `p_subject_profile_id` 인자 + `is_active_account_delegate_writer` 가드. 기존 6/9-arg 시그니처를 drop 후 7/10-arg 로 교체. **idempotent**: drop 절은 `pg_proc` 존재 검사 후 실행.
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 변경 파일 lint 0 issue (전역 75 사전 lint 는 모두 사전부터 존재).
+- 회귀 시나리오:
+  - 비-위임 사용자 단일 업로드: artistProfileId 분기 보존, RPC 옵션 인자 미전달 → 기존 behaviour 그대로.
+  - acting-as principal 업로드 (CREATED): artwork.artist_id, claim.subject/artist 모두 principal. operator 프로필에는 노출 안 됨.
+  - acting-as principal 업로드 (CURATED with selectedArtist): claim.artist=selectedArtist, claim.subject=principal. artwork.artist_id 도 selectedArtist (publishArtworksWithProvenance 의 update 로직 동일).
+  - 학력 비우기: 빈 배열이 RPC 까지 흘러 `profiles.education = '[]'::jsonb` 로 저장. 새로고침 시 복구되지 않음.
+  - 답변한 inquiry 1건 + 미답변 0건: studio inbox 카운트 0. 답변 후 새로고침 시 빨간 (1) 사라짐.
+
+---
 
 ## 2026-04-27 — Beta Guidance Audit + Feedback Loop Upgrade
 
