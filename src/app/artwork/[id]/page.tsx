@@ -57,6 +57,7 @@ import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import { markAiAccepted } from "@/lib/ai/accept";
+import { useActingAs } from "@/context/ActingAsContext";
 
 
 function ArtworkDetailContent() {
@@ -66,6 +67,7 @@ function ArtworkDetailContent() {
   const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const fromRoom = searchParams.get("fromRoom");
+  const { actingAsProfileId } = useActingAs();
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,16 +129,32 @@ function ArtworkDetailContent() {
     return () => document.removeEventListener("keydown", onKey);
   }, [fullSizeOpen]);
 
-  const isOwner = Boolean(artwork && userId && artwork.artist_id === userId);
-  const canEdit = Boolean(artwork && userId && canEditArtwork(artwork, userId));
-  const canDelete = Boolean(artwork && userId && canDeleteArtwork(artwork, userId));
-  const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
-  const myClaimsByType = artwork?.claims?.filter((c) => c.subject_profile_id === userId) ?? [];
+  // Effective identity merges the operator's session uid with the
+  // optional acting-as principal so that delegated edit/claim actions
+  // surface the principal's perspective. Order: principal first → wins
+  // priority searches in `getMyClaim`.
+  const effectiveIds = useMemo<string[]>(() => {
+    const out: string[] = [];
+    if (actingAsProfileId) out.push(actingAsProfileId);
+    if (userId && !out.includes(userId)) out.push(userId);
+    return out;
+  }, [actingAsProfileId, userId]);
+  const isOwner = Boolean(
+    artwork && effectiveIds.length > 0 && effectiveIds.includes(artwork.artist_id)
+  );
+  const canEdit = Boolean(artwork && canEditArtwork(artwork, effectiveIds));
+  const canDelete = Boolean(artwork && canDeleteArtwork(artwork, effectiveIds));
+  const myClaim = artwork ? getMyClaim(artwork, effectiveIds) : null;
+  const myClaimsByType =
+    artwork?.claims?.filter((c) => effectiveIds.includes(c.subject_profile_id)) ?? [];
   const hasPendingRequest = myClaim?.status === "pending";
   const hasOwnsClaim = myClaimsByType.some((c) => c.claim_type === "OWNS");
-  const canRequestClaim = Boolean(userId && artwork && !isOwner);
+  const canRequestClaim = Boolean(effectiveIds.length > 0 && artwork && !isOwner);
   const provenanceClaims = artwork ? getProvenanceClaims(artwork) : [];
   const hasProvenanceHistory = provenanceClaims.length > 1;
+  // canViewProvenance still uses the session uid (provenance visibility
+  // gate is owner-or-public; delegate access for principal data already
+  // flows through RLS).
   const showProvenance = artwork && canViewProvenance(artwork, userId);
 
   async function handleDelete() {
@@ -409,11 +427,15 @@ function ArtworkDetailContent() {
       workId: id,
       claimType,
       artistProfileId: artwork.artist_id,
+      // Acting-as: file the request on behalf of the principal so the
+      // pending claim attaches to *their* profile, not the operator's.
+      // RPC validates `is_active_account_delegate_writer` server-side.
+      subjectProfileId: actingAsProfileId ?? undefined,
     };
     if (claimType === "CURATED" || claimType === "EXHIBITED") {
       payload.period_status = periodStatus ?? "current";
     }
-    const { data, error } = await createClaimRequest(payload);
+    const { error } = await createClaimRequest(payload);
     setRequestingClaim(null);
     setClaimTypeToRequest(null);
     setClaimDropdownOpen(false);

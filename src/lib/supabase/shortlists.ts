@@ -65,17 +65,26 @@ export type RoomMeta = {
 
 // ── CRUD ──────────────────────────────────────────────────────
 
+/**
+ * `forProfileId` (acting-as): when an account-scope delegate operates on
+ * behalf of a principal, set `owner_id` to the principal so the board
+ * lives under their profile. RLS policy
+ * `shortlists_insert_account_delegate` (added 2026-04-28) allows this
+ * INSERT path; RLS will reject it for solo callers without permission.
+ */
 export async function createShortlist(
   title: string,
-  description?: string
+  description?: string,
+  options?: { forProfileId?: string | null }
 ): Promise<{ data: ShortlistRow | null; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
+  const ownerId = options?.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("shortlists")
-    .insert({ owner_id: session.user.id, title, description: description ?? null })
+    .insert({ owner_id: ownerId, title, description: description ?? null })
     .select("*")
     .single();
   if (error) return { data: null, error };
@@ -88,7 +97,9 @@ export async function createShortlist(
   return { data: data as ShortlistRow, error: null };
 }
 
-export async function listMyShortlists(): Promise<{
+export async function listMyShortlists(
+  options?: { forProfileId?: string | null }
+): Promise<{
   data: ShortlistRow[];
   error: unknown;
 }> {
@@ -96,10 +107,11 @@ export async function listMyShortlists(): Promise<{
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
+  const ownerId = options?.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("shortlists")
     .select("*, shortlist_items(count)")
-    .eq("owner_id", session.user.id)
+    .eq("owner_id", ownerId)
     .order("updated_at", { ascending: false });
   if (error) return { data: [], error };
   const rows = (data ?? []).map((r: Record<string, unknown>) => {
@@ -378,12 +390,14 @@ export async function searchProfilesForCollab(
 // ── Check if artwork is in any of user's shortlists ──────────
 
 export async function getShortlistIdsForArtwork(
-  artworkId: string
+  artworkId: string,
+  options?: { forProfileId?: string | null }
 ): Promise<{ data: string[]; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
+  const ownerId = options?.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("shortlist_items")
     .select("shortlist_id, shortlists!shortlist_id(owner_id)")
@@ -392,7 +406,7 @@ export async function getShortlistIdsForArtwork(
   const ids = (data ?? [])
     .filter((r: Record<string, unknown>) => {
       const sl = r.shortlists;
-      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === session.user.id;
+      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === ownerId;
     })
     .map((r: Record<string, unknown>) => r.shortlist_id as string);
   return { data: ids, error: null };
@@ -416,12 +430,14 @@ export async function removeArtworkFromShortlist(
  * exhibitions too (previously only artworks were de-duped).
  */
 export async function getShortlistIdsForExhibition(
-  exhibitionId: string
+  exhibitionId: string,
+  options?: { forProfileId?: string | null }
 ): Promise<{ data: string[]; error: unknown }> {
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
+  const ownerId = options?.forProfileId ?? session.user.id;
   const { data, error } = await supabase
     .from("shortlist_items")
     .select("shortlist_id, shortlists!shortlist_id(owner_id)")
@@ -430,7 +446,7 @@ export async function getShortlistIdsForExhibition(
   const ids = (data ?? [])
     .filter((r: Record<string, unknown>) => {
       const sl = r.shortlists;
-      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === session.user.id;
+      return sl && typeof sl === "object" && (sl as { owner_id: string }).owner_id === ownerId;
     })
     .map((r: Record<string, unknown>) => r.shortlist_id as string);
   return { data: ids, error: null };

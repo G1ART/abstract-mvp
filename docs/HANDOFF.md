@@ -2,6 +2,40 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Acting-as Persona Hardening · Phase 1 (Backend / Data layer)
+
+QA(2026-04-28) 보고서 5건 수습 패치(`f809f5b`) 직후 진행한 acting-as 표면 전수 감사 결과, QA3 와 동일 패턴(`session.user.id` 만 신뢰)이 다른 mutation/edit/RLS 표면에도 잠재되어 있음을 확인. 회귀 위험을 최소화하는 3-phase 분할의 첫 번째: 백엔드/RLS 정합화. 페르소나 결정 (workspace = principal swap, account/security = operator lock) 은 Phase 2/3 와 함께 단계적으로 적용.
+
+### 변경 요약
+
+- **canEditArtwork / canDeleteArtwork / getMyClaim 시그니처 일반화** ([src/lib/supabase/artworks.ts](src/lib/supabase/artworks.ts)) — 단일 `userId: string | null` 에서 `UserIdLike = string | string[] | null` 로 확장. 배열을 받아 effective IDs 중 하나라도 매치하면 권한 인정. `getMyClaim` 은 첫 매치 우선 (caller 가 principal 을 array 첫 번째로 두면 principal claim 우선 hydrate). solo 호출자는 단일 string 그대로 전달 → 0 회귀.
+- **작품 상세/편집 acting-as 정합** ([src/app/artwork/[id]/page.tsx](src/app/artwork/[id]/page.tsx), [src/app/artwork/[id]/edit/page.tsx](src/app/artwork/[id]/edit/page.tsx)) — `useActingAs()` 도입, `effectiveIds = [actingAsProfileId, userId]` 로 권한 체크. 편집 화면은 추가로 (a) CREATED 분기의 `artist_id` 가 `actingAsProfileId ?? userId`, (b) claim 생성 RPC 호출에 `subjectProfileId: actingAsProfileId ?? undefined`. delegate writer 가 principal 작품을 편집하려고 들어가도 더 이상 `/artwork/[id]` 로 리다이렉트되지 않고, 저장 시 모든 row 가 principal 명의로 정합되게 흐름.
+- **createClaimRequest RPC 화 + subjectProfileId** ([src/lib/provenance/rpc.ts](src/lib/provenance/rpc.ts)) — 직접 `claims` INSERT (`subject_profile_id = session.user.id` 고정) 였던 viewer claim 요청 흐름을 신규 SECURITY DEFINER RPC `create_claim_request` 로 전환. 옵셔널 `p_subject_profile_id` 가 caller 와 다르면 `is_active_account_delegate_writer(subject)` 검증 후 통과. 공개 작품 페이지에서 delegate 가 "이 작품 우리가 소장중" 같은 클레임을 걸어도 principal 의 pending claim 으로 attach.
+- **shortlists (보드) RLS + 헬퍼 인자** ([src/lib/supabase/shortlists.ts](src/lib/supabase/shortlists.ts)) — `createShortlist`, `listMyShortlists`, `getShortlistIdsForArtwork`, `getShortlistIdsForExhibition` 모두 `options.forProfileId` 추가. 기본값은 종전대로 `session.user.id`. RLS 측에서는 `shortlists / shortlist_items / shortlist_collaborators / shortlist_views` 에 `is_active_account_delegate_writer(owner_id)` 기반 additive permissive 정책을 추가 (기존 `shortlists_owner_all` 등은 untouched). 다중 정책 OR 평가이므로 solo owner 권한은 보존.
+
+### Supabase SQL (적용 필요)
+
+- `supabase/migrations/20260509000000_delegate_claim_request_and_shortlist.sql` — (idempotent · `create or replace function` + `drop policy if exists … create policy …`)
+  - 신규 RPC `create_claim_request(uuid, text, uuid, text, uuid)` (security definer, delegate writer 가드)
+  - 신규 헬퍼 `is_shortlist_owned_by_account_delegate(uuid)` (security definer, 재귀 RLS 회피용 — 기존 `is_shortlist_owner` 와 동일 패턴)
+  - shortlists / shortlist_items / shortlist_collaborators / shortlist_views 4 테이블에 `*_account_delegate` permissive 정책 추가
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 변경 파일 lint 0 issue.
+- 회귀 시나리오:
+  - solo 사용자: `canEditArtwork(artwork, userId)` 의 `userId` 단일 문자열 호출 그대로 동작. shortlist 헬퍼들 0-arg 호출 보존. RLS 기존 owner 정책 untouched.
+  - delegate writer (account scope, manage_artworks/manage_claims 보유): principal 작품 edit 페이지 진입 가능, 저장 시 artist_id/claim subject 모두 principal. 보드 생성/조회 시 `forProfileId` 전달하면 principal owner 로 row 생성. forProfileId 미전달 시 종전대로 operator owner.
+  - delegate without manage_*: 신규 RPC `create_claim_request` 가 `forbidden` 예외로 차단 (security definer 가드).
+  - non-writer (예: account_review): RPC 가드 차단, RLS additive 정책도 `is_active_account_delegate_writer` 가 false 라 통과 안됨.
+
+---
+
 ## 2026-04-28 — QA Stabilization (Profile / Acting-as / Inbox)
 
 QA(2026-04-28) 보고서 5건을 수습한 안정화 패치. UX 흠집 2건 + 기능 회귀 3건을 인접 잘 작동하던 표면(파라미터/RLS/기존 RPC)을 건드리지 않고 정합화했습니다.

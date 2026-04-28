@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getSession, sendMagicLink } from "@/lib/supabase/auth";
@@ -25,6 +25,7 @@ import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
 import { parseSizeWithUnit } from "@/lib/size/format";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
+import { useActingAs } from "@/context/ActingAsContext";
 
 type IntentType = "CREATED" | "OWNS" | "INVENTORY" | "CURATED";
 
@@ -59,6 +60,7 @@ function EditArtworkContent() {
   const router = useRouter();
   const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
+  const { actingAsProfileId } = useActingAs();
 
   const [artwork, setArtwork] = useState<ArtworkWithLikes | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -93,7 +95,21 @@ function EditArtworkContent() {
   const [externalArtistName, setExternalArtistName] = useState("");
   const [externalArtistEmail, setExternalArtistEmail] = useState("");
 
-  const myClaim = artwork && userId ? getMyClaim(artwork, userId) : null;
+  // Effective edit-permission identity: principal first (so the principal's
+  // claim wins on edit-screen rehydration when an account-scope delegate
+  // is acting on behalf), then the operator's session uid as fallback.
+  const effectiveIds = useMemo<string[]>(() => {
+    const out: string[] = [];
+    if (actingAsProfileId) out.push(actingAsProfileId);
+    if (userId && !out.includes(userId)) out.push(userId);
+    return out;
+  }, [actingAsProfileId, userId]);
+  const myClaim = artwork && effectiveIds.length > 0 ? getMyClaim(artwork, effectiveIds) : null;
+  // Subject of any claim writes when acting-as is active. RPCs guard this
+  // server-side via is_active_account_delegate_writer; passing undefined
+  // when there is no acting-as keeps the historical (subject = caller)
+  // behaviour intact for solo users.
+  const claimSubjectOverride = actingAsProfileId ?? undefined;
   const needsArtistLink = claimType !== "CREATED";
 
   const doSearchArtists = useCallback(async () => {
@@ -150,8 +166,8 @@ function EditArtworkContent() {
   }, [id]);
 
   useEffect(() => {
-    if (!artwork || !userId) return;
-    const claim = getMyClaim(artwork, userId);
+    if (!artwork || effectiveIds.length === 0) return;
+    const claim = getMyClaim(artwork, effectiveIds);
     if (claim) {
       setClaimType(claim.claim_type as IntentType);
       if (claim.external_artist_id && claim.external_artists) {
@@ -159,10 +175,12 @@ function EditArtworkContent() {
         setExternalArtistName(claim.external_artists.display_name ?? "");
         setExternalArtistEmail(claim.external_artists.invite_email ?? "");
       }
-    } else if (artwork.artist_id === userId) {
+    } else if (effectiveIds.includes(artwork.artist_id)) {
       setClaimType("CREATED");
     }
-    const needsArtist = claim?.claim_type !== "CREATED" || artwork.artist_id !== userId;
+    const isCreatedByEffective =
+      claim?.claim_type === "CREATED" && effectiveIds.includes(artwork.artist_id);
+    const needsArtist = !isCreatedByEffective;
     if (artwork.profiles && needsArtist && !claim?.external_artist_id) {
       setSelectedArtist({
         id: artwork.artist_id,
@@ -170,7 +188,7 @@ function EditArtworkContent() {
         display_name: artwork.profiles.display_name ?? null,
       });
     }
-  }, [artwork, userId]);
+  }, [artwork, effectiveIds]);
 
   useEffect(() => {
     getSession().then(({ data: { session } }) => {
@@ -179,10 +197,10 @@ function EditArtworkContent() {
   }, []);
 
   useEffect(() => {
-    if (artwork && userId && !canEditArtwork(artwork, userId)) {
+    if (artwork && effectiveIds.length > 0 && !canEditArtwork(artwork, effectiveIds)) {
       router.replace(`/artwork/${id}`);
     }
-  }, [artwork, userId, id, router]);
+  }, [artwork, effectiveIds, id, router]);
 
 
   async function handleSubmit(e: FormEvent) {
@@ -234,11 +252,15 @@ function EditArtworkContent() {
       price_input_currency: pricingMode === "fixed" ? priceCurrency : null,
     };
 
-    // When switching to onboarded artist, also update artworks.artist_id
+    // CREATED branch routes the artist_id to whichever profile the form
+    // is operating on behalf of (principal under acting-as, otherwise
+    // the operator). RLS still gates the actual write through
+    // `has_active_account_delegate_perm(artist_id, 'manage_artworks')`.
+    const createdArtistId = actingAsProfileId ?? userId;
     if (!useExternalArtist && selectedArtist && needsArtistLink) {
       payload.artist_id = selectedArtist.id;
     } else if (claimType === "CREATED") {
-      payload.artist_id = userId;
+      payload.artist_id = createdArtistId;
     }
     payload.provenance_visible = provenanceVisible;
 
@@ -252,7 +274,7 @@ function EditArtworkContent() {
     }
 
     if (claimType === "CREATED") {
-      const artistProfileId = userId;
+      const artistProfileId = createdArtistId;
       if (myClaim?.id) {
         const { error: claimErr } = await updateClaim(myClaim.id, {
           claim_type: claimType,
@@ -272,6 +294,7 @@ function EditArtworkContent() {
           claimType,
           workId: id,
           visibility: "public",
+          subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
           setError(
@@ -326,6 +349,7 @@ function EditArtworkContent() {
           claimType,
           workId: id,
           visibility: "public",
+          subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
           setError(
@@ -369,6 +393,7 @@ function EditArtworkContent() {
           claimType,
           workId: id,
           visibility: "public",
+          subjectProfileId: claimSubjectOverride,
         });
         if (claimErr) {
           setError(

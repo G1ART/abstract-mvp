@@ -91,30 +91,36 @@ export async function updateClaim(
   return { error };
 }
 
-/** Request to confirm a relationship (e.g. "I own this" / "I curated this"). Creates pending claim; artist must confirm. */
+/**
+ * Request to confirm a relationship (e.g. "I own this" / "I curated this").
+ * Creates a pending claim that the artist must confirm.
+ *
+ * When `subjectProfileId` is supplied AND different from the caller, the
+ * server-side RPC verifies the caller is an active account-scope delegate
+ * writer for that subject, then files the request on behalf of that
+ * principal — preventing the historical regression where a delegate's
+ * "claim" attached to the operator's own profile.
+ */
 export async function createClaimRequest(args: {
   workId: string;
   claimType: ClaimType;
   artistProfileId: string;
   /** Requester can suggest period (artist may change on confirm). For INVENTORY/CURATED/EXHIBITED. */
   period_status?: "past" | "current" | "future" | null;
+  /** When acting-as a principal: the principal's profile id. */
+  subjectProfileId?: string | null;
 }): Promise<{ data: { id: string } | null; error: unknown }> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
-  const row: Record<string, unknown> = {
-    subject_profile_id: session.user.id,
-    claim_type: args.claimType,
-    work_id: args.workId,
-    artist_profile_id: args.artistProfileId,
-    visibility: "public",
-    status: "pending",
+  const payload: Record<string, unknown> = {
+    p_work_id: args.workId,
+    p_claim_type: args.claimType,
+    p_artist_profile_id: args.artistProfileId,
   };
-  if (args.period_status != null) row.period_status = args.period_status;
-  const { data, error } = await supabase.from("claims").insert(row).select("id").single();
+  if (args.period_status != null) payload.p_period_status = args.period_status;
+  if (args.subjectProfileId) payload.p_subject_profile_id = args.subjectProfileId;
+  const { data, error } = await supabase.rpc("create_claim_request", payload);
   if (error) return { data: null, error };
-  return { data: data as { id: string } | null, error: null };
+  const row = (data as { claim?: { id: string } } | null)?.claim ?? null;
+  return { data: row, error: null };
 }
 
 /** Artist confirms a pending claim on their work. Can set or correct period_status and optional dates. */

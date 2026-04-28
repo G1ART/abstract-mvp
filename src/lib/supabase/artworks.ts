@@ -119,30 +119,65 @@ export type Artwork = {
   website_import_provenance?: Record<string, unknown> | null;
 };
 
+/**
+ * "Effective" identifiers for permission predicates. A single uuid (the
+ * legacy shape) still works; passing an array lets callers fold an
+ * acting-as principal id alongside the operator's session uid so that
+ * claim-bearing screens (artwork detail / edit) recognise principal-owned
+ * works and claims when an account-scope delegate is operating on them.
+ *
+ * Order matters for `getMyClaim` only — the *first* matching id wins, so
+ * callers that prefer the principal persona should list it first.
+ */
+type UserIdLike = string | string[] | null | undefined;
+
+function normalizeUserIds(input: UserIdLike): string[] {
+  if (!input) return [];
+  const arr = typeof input === "string" ? [input] : input;
+  const out: string[] = [];
+  for (const x of arr) {
+    if (typeof x === "string" && x && !out.includes(x)) out.push(x);
+  }
+  return out;
+}
+
 /** User can edit artwork if they are artist or have a confirmed claim. */
-export function canEditArtwork(artwork: Artwork, userId: string | null): boolean {
-  if (!userId) return false;
-  if (artwork.artist_id === userId) return true;
+export function canEditArtwork(artwork: Artwork, userId: UserIdLike): boolean {
+  const ids = normalizeUserIds(userId);
+  if (ids.length === 0) return false;
+  if (ids.includes(artwork.artist_id)) return true;
   const claims = artwork.claims ?? [];
   return claims.some(
-    (c) => c.subject_profile_id === userId && (c.status == null || c.status === CLAIM_STATUS_CONFIRMED)
+    (c) =>
+      ids.includes(c.subject_profile_id) &&
+      (c.status == null || c.status === CLAIM_STATUS_CONFIRMED)
   );
 }
 
 /** Can delete: artist, created_by(업로더), or anyone who has a claim (uploader/lister). */
-export function canDeleteArtwork(artwork: Artwork, userId: string | null): boolean {
-  if (!userId) return false;
-  if (artwork.artist_id === userId) return true;
-  if (artwork.created_by === userId) return true;
+export function canDeleteArtwork(artwork: Artwork, userId: UserIdLike): boolean {
+  const ids = normalizeUserIds(userId);
+  if (ids.length === 0) return false;
+  if (ids.includes(artwork.artist_id)) return true;
+  if (artwork.created_by != null && ids.includes(artwork.created_by)) return true;
   const claims = artwork.claims ?? [];
-  return claims.some((c) => c.subject_profile_id === userId);
+  return claims.some((c) => ids.includes(c.subject_profile_id));
 }
 
-/** Get the current user's claim (any status; for edit flow or pending check). */
-export function getMyClaim(artwork: Artwork, userId: string | null): ArtworkClaim | null {
-  if (!userId) return null;
+/**
+ * Get the current user's claim (any status; for edit flow or pending check).
+ * When passed an array, the *first* id with a matching claim wins so a
+ * principal claim is preferred over the operator's during acting-as.
+ */
+export function getMyClaim(artwork: Artwork, userId: UserIdLike): ArtworkClaim | null {
+  const ids = normalizeUserIds(userId);
+  if (ids.length === 0) return null;
   const claims = artwork.claims ?? [];
-  return claims.find((c) => c.subject_profile_id === userId) ?? null;
+  for (const id of ids) {
+    const match = claims.find((c) => c.subject_profile_id === id);
+    if (match) return match;
+  }
+  return null;
 }
 
 /** Confirmed claims only (for provenance display). */
