@@ -30,7 +30,8 @@ import {
 } from "@/lib/supabase/exhibitions";
 import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
 import { ExhibitionReviewPanel } from "@/components/exhibition/ExhibitionReviewPanel";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
@@ -223,7 +224,7 @@ export default function ExhibitionDetailPage() {
     }
     const { error: err } = await updateExhibitionWorksOrder(id, flattened);
     if (err) {
-      setError(formatSupabaseError(err, t("common.errorSave")));
+      setError(formatSupabaseError(err, t, "common.errorSave"));
       return;
     }
     await fetchData();
@@ -244,7 +245,7 @@ export default function ExhibitionDetailPage() {
     }
     const { error: err } = await updateExhibitionMediaOrder(id, flattened);
     if (err) {
-      setError(formatSupabaseError(err, t("common.errorSave")));
+      setError(formatSupabaseError(err, t, "common.errorSave"));
       return;
     }
     await fetchData();
@@ -254,7 +255,7 @@ export default function ExhibitionDetailPage() {
     if (!id) return;
     const { error: err } = await updateExhibitionMediaBucketOrder(id, nextBucketOrder);
     if (err) {
-      setError(formatSupabaseError(err, t("common.errorSave")));
+      setError(formatSupabaseError(err, t, "common.errorSave"));
       return;
     }
     await fetchData();
@@ -278,7 +279,7 @@ export default function ExhibitionDetailPage() {
     const { error: err } = await updateExhibition(id, { cover_image_paths: coverDraft });
     setSavingCover(false);
     if (err) {
-      setError(formatSupabaseError(err, t("common.errorSave")));
+      setError(formatSupabaseError(err, t, "common.errorSave"));
       return;
     }
     await fetchData();
@@ -320,7 +321,7 @@ export default function ExhibitionDetailPage() {
           sort_order: maxSort + i + 1,
         });
         if (err) {
-          setError(formatSupabaseError(err, t("common.errorUpload")));
+          setError(formatSupabaseError(err, t, "common.errorUpload"));
           setUploading(false);
           return;
         }
@@ -348,7 +349,7 @@ export default function ExhibitionDetailPage() {
     setRemovingId(null);
     if (err) {
       logSupabaseError("removeWorkFromExhibition", err);
-      setError(formatSupabaseError(err, t("common.errorRemove")));
+      setError(formatSupabaseError(err, t, "common.errorRemove"));
       return;
     }
     await fetchData();
@@ -360,7 +361,7 @@ export default function ExhibitionDetailPage() {
     if (!err) await removeStorageFile(m.storage_path);
     setDeletingMediaId(null);
     if (err) {
-      setError(formatSupabaseError(err, t("common.errorDelete")));
+      setError(formatSupabaseError(err, t, "common.errorDelete"));
       return;
     }
     await fetchData();

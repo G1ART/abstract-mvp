@@ -306,6 +306,7 @@ export const messages = {
     "profile.private.lockBadge": "Private",
     "profile.private.requestSent":
       "Follow request sent. We'll let you know once it's approved.",
+    "profile.private.draftMessage": "Draft a note",
     "follow.cta.follow": "Follow",
     "follow.cta.request": "Request to follow",
     "follow.cta.requested": "Requested",
@@ -943,6 +944,7 @@ export const messages = {
     "exhibition.invalidExhibition": "Invalid exhibition.",
     "exhibition.noImage": "No image",
     "exhibition.failedToLoad": "Failed to load exhibitions",
+    "exhibition.deletePartialFailureSuffix": "({count} works couldn't be removed)",
     "settings.placeholderDisplayName": "Display name",
     "settings.placeholderUsername": "username",
     "settings.placeholderBio": "Short bio",
@@ -1963,6 +1965,39 @@ export const messages = {
     "errors.follow.invalidFollower": "Invalid follower.",
     "errors.priceInquiry.invalidStatus": "Invalid status value.",
 
+    // ─── Friendly fallbacks for catch-sites that don't map to a
+    //     specific raise message. Pass these as `fallbackKey` to
+    //     formatSupabaseError so the user always sees polished copy
+    //     even for novel errors. ───
+    "errors.failedLoad": "Couldn't load. Please try again.",
+    "errors.failedSave": "Couldn't save. Please try again.",
+    "errors.failedDelete": "Couldn't delete. Please try again.",
+    "errors.failedSendInquiry": "Couldn't send the inquiry. Please try again.",
+    "errors.failedSendMessage": "Couldn't send the message. Please try again.",
+    "errors.failedSendReply": "Couldn't send the reply. Please try again.",
+    "errors.failedRequestClaim": "Couldn't submit the request. Please try again.",
+    "errors.failedConfirmClaim": "Couldn't confirm the claim. Please try again.",
+    "errors.failedRejectClaim": "Couldn't reject the claim. Please try again.",
+    "errors.failedCreateExhibition": "Couldn't create the exhibition. Please try again.",
+    "errors.failedDeleteExhibition": "Couldn't delete the exhibition. Please try again.",
+    "errors.failedCreateArtwork": "Couldn't create the artwork. Please try again.",
+    "errors.failedAttachImage": "Couldn't attach the image. Please try again.",
+    "errors.failedClaimDuringUpload":
+      "We saved the artwork file but couldn't link your claim. Please retry from your library.",
+    "errors.failedLoadArtwork": "Couldn't load the artwork. Please try again.",
+    "errors.failedLoadProfile": "Couldn't load your profile. Please try again.",
+    "errors.failedSaveSettings": "Couldn't save changes. Please retry.",
+
+    // ─── Artwork edit form validation strings ───
+    "artwork.validation.invalidYear": "Please enter a valid year (4 digits).",
+    "artwork.validation.artistNameRequired": "Please enter the artist's name.",
+    "artwork.validation.artistRequired":
+      "Please select the artist who created this work.",
+    "artwork.validation.invalidPrice": "Please enter a valid price.",
+    "artwork.field.artistSearchPlaceholder": "Name or username",
+    "artwork.field.artistSearching": "Searching…",
+    "artwork.field.artistSelected": "Selected: {name}",
+
     // ─── Artwork edit / upload taxonomy labels ───
     "artwork.intent.created": "My work",
     "artwork.intent.owns": "Collected work",
@@ -2303,6 +2338,7 @@ export const messages = {
     "profile.private.lockBadge": "비공개",
     "profile.private.requestSent":
       "팔로우 요청을 보냈어요. 수락되면 알려 드릴게요.",
+    "profile.private.draftMessage": "연결 메시지 초안",
     "follow.cta.follow": "팔로우",
     "follow.cta.request": "팔로우 요청",
     "follow.cta.requested": "요청됨",
@@ -2940,6 +2976,7 @@ export const messages = {
     "exhibition.invalidExhibition": "전시를 찾을 수 없습니다.",
     "exhibition.noImage": "이미지 없음",
     "exhibition.failedToLoad": "전시 목록을 불러오지 못했습니다",
+    "exhibition.deletePartialFailureSuffix": "(작품 {count}개를 함께 삭제하지 못했어요)",
     "settings.placeholderDisplayName": "표시 이름",
     "settings.placeholderUsername": "username",
     "settings.placeholderBio": "짧은 소개",
@@ -3958,6 +3995,35 @@ export const messages = {
     "errors.follow.invalidTarget": "팔로우 대상이 올바르지 않아요.",
     "errors.follow.invalidFollower": "요청자 정보가 올바르지 않아요.",
     "errors.priceInquiry.invalidStatus": "유효하지 않은 상태값이에요.",
+
+    // ─── 친절한 fallback 메시지 (RAISE 매핑이 없는 catch 사이트용) ───
+    "errors.failedLoad": "불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedSave": "저장하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedDelete": "삭제하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedSendInquiry": "가격 문의를 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedSendMessage": "메시지를 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedSendReply": "답변을 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedRequestClaim": "요청을 보내지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedConfirmClaim": "클레임을 승인하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedRejectClaim": "클레임을 거절하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedCreateExhibition": "전시를 만들지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedDeleteExhibition": "전시를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedCreateArtwork": "작품을 등록하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedAttachImage": "이미지를 첨부하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedClaimDuringUpload":
+      "작품 파일은 저장되었지만 소유 정보를 연결하지 못했어요. 라이브러리에서 다시 시도해 주세요.",
+    "errors.failedLoadArtwork": "작품을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedLoadProfile": "프로필을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "errors.failedSaveSettings": "변경 내용을 저장하지 못했어요. 잠시 후 다시 시도해 주세요.",
+
+    // ─── 작품 편집 폼 검증 메시지 ───
+    "artwork.validation.invalidYear": "올바른 연도(4자리)를 입력해 주세요.",
+    "artwork.validation.artistNameRequired": "작가 이름을 입력해 주세요.",
+    "artwork.validation.artistRequired": "이 작품을 만든 작가를 선택해 주세요.",
+    "artwork.validation.invalidPrice": "올바른 가격을 입력해 주세요.",
+    "artwork.field.artistSearchPlaceholder": "이름 또는 아이디",
+    "artwork.field.artistSearching": "찾는 중…",
+    "artwork.field.artistSelected": "선택됨: {name}",
 
     // ─── 작품 편집 / 업로드 옵션 라벨 ───
     "artwork.intent.created": "내 작품",

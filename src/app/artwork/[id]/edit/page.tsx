@@ -147,9 +147,7 @@ function EditArtworkContent() {
     getArtworkById(id).then(({ data, error: err }) => {
       setLoading(false);
       if (err) {
-        setError(
-          (err as { message?: string })?.message ?? "Failed to load artwork"
-        );
+        setError(formatSupabaseError(err, t, "errors.failedLoadArtwork"));
         return;
       }
       const a = data as ArtworkWithLikes | null;
@@ -217,22 +215,22 @@ function EditArtworkContent() {
 
     const yearNum = parseInt(year, 10);
     if (isNaN(yearNum) || yearNum < 1000 || yearNum > 9999) {
-      setError("Please enter a valid year (4 digits)");
+      setError(t("artwork.validation.invalidYear"));
       return;
     }
     if (needsArtistLink) {
       if (useExternalArtist) {
         if (!externalArtistName.trim()) {
-          setError("Please enter the artist name");
+          setError(t("artwork.validation.artistNameRequired"));
           return;
         }
       } else if (!selectedArtist) {
-        setError("Please select the artist who created this work");
+        setError(t("artwork.validation.artistRequired"));
         return;
       }
     }
     if (pricingMode === "fixed" && (!priceAmount || parseFloat(priceAmount) <= 0)) {
-      setError("Please enter a valid price");
+      setError(t("artwork.validation.invalidPrice"));
       return;
     }
 
@@ -724,10 +722,14 @@ function EditArtworkContent() {
                       type="text"
                       value={artistSearch}
                       onChange={(e) => setArtistSearch(e.target.value)}
-                      placeholder="Name or username"
+                      placeholder={t("artwork.field.artistSearchPlaceholder")}
                       className="mb-2 w-full rounded border border-zinc-300 px-3 py-2 text-sm"
                     />
-                    {searching && <p className="text-sm text-zinc-500">Searching...</p>}
+                    {searching && (
+                      <p className="text-sm text-zinc-500">
+                        {t("artwork.field.artistSearching")}
+                      </p>
+                    )}
                     {artistResults.length > 0 && (
                       <ul className="rounded border border-zinc-200 bg-white">
                         {artistResults.map((a) => (
@@ -754,7 +756,10 @@ function EditArtworkContent() {
                     )}
                     {selectedArtist && (
                       <p className="mt-2 text-sm text-zinc-600">
-                        Selected: {formatDisplayName(selectedArtist)}
+                        {t("artwork.field.artistSelected").replace(
+                          "{name}",
+                          formatDisplayName(selectedArtist)
+                        )}
                       </p>
                     )}
                   </>

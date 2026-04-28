@@ -19,7 +19,8 @@ import {
 } from "@/lib/supabase/artworks";
 import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import {
   createClaimForExistingArtist,
   createExternalArtistAndClaim,
@@ -288,7 +289,7 @@ export default function AddWorkToExhibitionPage() {
     if (err) {
       setAddingId(null);
       logSupabaseError("addWorkToExhibition", err);
-      setError(formatSupabaseError(err, t("common.errorSave")));
+      setError(formatSupabaseError(err, t, "common.errorSave"));
       return;
     }
     // Align provenance: create CURATED claim so "this work in this exhibition" has gallery–curator provenance.

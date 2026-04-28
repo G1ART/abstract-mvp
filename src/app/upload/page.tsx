@@ -21,6 +21,7 @@ import type { ClaimType } from "@/lib/provenance/types";
 import { setArtworkBack } from "@/lib/artworkBack";
 import { addWorkToExhibition } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
@@ -263,14 +264,13 @@ function UploadPageContent() {
     try {
       const { data: artworkId, error: createErr } = await createArtwork(payload);
       if (createErr) {
-        const msg = (createErr as { message?: string; code?: string })?.message ?? String(createErr);
-        const code = (createErr as { code?: string })?.code;
-        setError(code ? `[${code}] ${msg}` : msg || "Failed to create artwork");
+        logSupabaseError("createArtwork", createErr);
+        setError(formatSupabaseError(createErr, t, "errors.failedCreateArtwork"));
         setIsSubmitting(false);
         return;
       }
       if (!artworkId) {
-        setError("Failed to create artwork");
+        setError(t("errors.failedCreateArtwork"));
         setIsSubmitting(false);
         return;
       }
@@ -297,8 +297,8 @@ function UploadPageContent() {
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
-          const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
-          setError(`Claim failed: ${msg}`);
+          logSupabaseError("createExternalArtistAndClaim", claimErr);
+          setError(formatSupabaseError(claimErr, t, "errors.failedClaimDuringUpload"));
           setIsSubmitting(false);
           return;
         }
@@ -337,8 +337,8 @@ function UploadPageContent() {
         });
         if (claimErr) {
           await deleteArtwork(artworkId);
-          const msg = (claimErr as { message?: string })?.message ?? String(claimErr);
-          setError(`Claim failed: ${msg}`);
+          logSupabaseError("createClaimForExistingArtist", claimErr);
+          setError(formatSupabaseError(claimErr, t, "errors.failedClaimDuringUpload"));
           setIsSubmitting(false);
           return;
         }
@@ -364,7 +364,8 @@ function UploadPageContent() {
       if (attachErr) {
         await removeStorageFile(storagePath);
         await deleteArtwork(artworkId);
-        setError(attachErr instanceof Error ? attachErr.message : "Failed to attach image");
+        logSupabaseError("attachArtworkImage", attachErr);
+        setError(formatSupabaseError(attachErr, t, "errors.failedAttachImage"));
         setIsSubmitting(false);
         return;
       }

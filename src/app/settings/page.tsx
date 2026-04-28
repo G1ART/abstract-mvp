@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { getMyAuthState, signOut } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { checkUsernameExists, getMyProfile, type EducationEntry, type Profile } from "@/lib/supabase/profiles";
 import { supabase } from "@/lib/supabase/client";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
@@ -357,7 +358,7 @@ export default function SettingsPage() {
       setLoading(false);
       const err = profileRes.error;
       if (err) {
-        setError(err instanceof Error ? err.message : "Failed to load profile");
+        setError(formatSupabaseError(err, t, "errors.failedLoadProfile"));
         return;
       }
       const p = profileRes.data as Profile | null;
@@ -1033,14 +1034,14 @@ export default function SettingsPage() {
       }
     } catch (saveErr) {
       console.error("settings_save_failed", saveErr);
-      setError("Failed to save changes. Please retry.");
+      setError(formatSupabaseError(saveErr, t, "errors.failedSaveSettings"));
     } finally {
       isSavingRef.current = false;
       setSaving(false);
     }
     } catch (err) {
       console.error("settings_save_failed", err);
-      setError("Failed to save changes. Please retry.");
+      setError(formatSupabaseError(err, t, "errors.failedSaveSettings"));
       isSavingRef.current = false;
       setSaving(false);
     }

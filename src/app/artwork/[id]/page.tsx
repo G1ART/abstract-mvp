@@ -49,7 +49,8 @@ import {
 import { getExhibitionHostCuratorLabel, type ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { useT } from "@/lib/i18n/useT";
 import { ownershipStatusLabel } from "@/lib/artworks/labels";
 import { formatSizeForLocale } from "@/lib/size/format";
@@ -166,7 +167,7 @@ function ArtworkDetailContent() {
     setShowDeleteConfirm(false);
     if (err) {
       logSupabaseError("deleteArtwork", err);
-      setError(formatSupabaseError(err, "Delete failed"));
+      setError(formatSupabaseError(err, t, "errors.failedDelete"));
       return;
     }
     router.push("/my");
@@ -328,7 +329,7 @@ function ArtworkDetailContent() {
     setPriceInquiryMessage("");
     if (error) {
       logSupabaseError("createPriceInquiry", error);
-      setError(formatSupabaseError(error, "Failed to send inquiry"));
+      setError(formatSupabaseError(error, t, "errors.failedSendInquiry"));
       return;
     }
     const { data: inquiry } = await getMyInquiryForArtwork(id);
@@ -348,7 +349,7 @@ function ArtworkDetailContent() {
     setInquirerReplying(false);
     if (err) {
       logSupabaseError("appendPriceInquiryMessage", err);
-      setError(formatSupabaseError(err, "Failed to send message"));
+      setError(formatSupabaseError(err, t, "errors.failedSendMessage"));
       return;
     }
     setInquirerReplyText("");
@@ -362,7 +363,7 @@ function ArtworkDetailContent() {
     setResendingNotificationInquiryId(null);
     if (error) {
       logSupabaseError("resendPriceInquiryNotification", error);
-      setError(formatSupabaseError(error, t("priceInquiry.resendFailed")));
+      setError(formatSupabaseError(error, t, "priceInquiry.resendFailed"));
       return;
     }
     if (data > 0) {
@@ -381,7 +382,7 @@ function ArtworkDetailContent() {
     setReplyingInquiryId(null);
     if (err) {
       logSupabaseError("replyToPriceInquiry", err);
-      setError(formatSupabaseError(err, "Failed to send reply"));
+      setError(formatSupabaseError(err, t, "errors.failedSendReply"));
       return;
     }
     if (adoptedAiEventId) {
@@ -442,7 +443,7 @@ function ArtworkDetailContent() {
     setClaimDropdownOpen(false);
     if (error) {
       logSupabaseError("createClaimRequest", error);
-      setError(formatSupabaseError(error, "Request failed"));
+      setError(formatSupabaseError(error, t, "errors.failedRequestClaim"));
       return;
     }
     const { data: refreshed } = await getArtworkById(id);
@@ -459,7 +460,7 @@ function ArtworkDetailContent() {
     setConfirmingClaimId(null);
     if (error) {
       logSupabaseError("confirmClaim", error);
-      setError(formatSupabaseError(error, "Confirm failed"));
+      setError(formatSupabaseError(error, t, "errors.failedConfirmClaim"));
       return;
     }
     setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));
@@ -487,7 +488,7 @@ function ArtworkDetailContent() {
     setConfirmingId(null);
     if (error) {
       logSupabaseError("rejectClaim", error);
-      setError(formatSupabaseError(error, "Reject failed"));
+      setError(formatSupabaseError(error, t, "errors.failedRejectClaim"));
       return;
     }
     setPendingClaims((prev) => prev.filter((c) => c.id !== claimId));

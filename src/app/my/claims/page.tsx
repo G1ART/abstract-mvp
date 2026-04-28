@@ -13,7 +13,8 @@ import {
   type PendingClaimRow,
 } from "@/lib/provenance/rpc";
 import type { ClaimType } from "@/lib/provenance/types";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 
 export default function MyClaimsPage() {
@@ -31,7 +32,7 @@ export default function MyClaimsPage() {
     const { data, error: listError } = await listMyPendingClaims(actingAsProfileId ?? undefined);
     setLoading(false);
     if (listError) {
-      setError(formatSupabaseError(listError, t("common.errorLoad")));
+      setError(formatSupabaseError(listError, t, "common.errorLoad"));
       return;
     }
     setList(data ?? []);
@@ -51,7 +52,7 @@ export default function MyClaimsPage() {
     setActingId(null);
     if (err) {
       logSupabaseError("confirmClaim", err);
-      setError(formatSupabaseError(err, t("my.claims.approveFailed")));
+      setError(formatSupabaseError(err, t, "my.claims.approveFailed"));
       return;
     }
     await fetchList();
@@ -64,7 +65,7 @@ export default function MyClaimsPage() {
     setActingId(null);
     if (err) {
       logSupabaseError("rejectClaim", err);
-      setError(formatSupabaseError(err, t("my.claims.rejectFailed")));
+      setError(formatSupabaseError(err, t, "my.claims.rejectFailed"));
       return;
     }
     await fetchList();

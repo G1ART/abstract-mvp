@@ -98,8 +98,16 @@ export function FollowButton({
 
   const handleClick = useCallback(async () => {
     if (status === "none") {
-      // Public account + parent intercept → defer to parent.
-      if (!isPrivateTarget && interceptFollow) {
+      // Parent intercept → defer to parent regardless of target privacy.
+      // Originally only public targets honored intercept (private targets
+      // skipped the intro sheet to avoid wasting drafts on a recipient
+      // who hadn't accepted yet). Beta QA found that visitors arriving
+      // at a private profile *do* want to attach a note to their follow
+      // request — the principal then has more context when reviewing
+      // the request in their inbox. Parents that still want the
+      // legacy "no sheet for private" behaviour just pass
+      // `interceptFollow={undefined}` for private rows.
+      if (interceptFollow) {
         interceptFollow();
         return;
       }

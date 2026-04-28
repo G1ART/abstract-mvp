@@ -2,6 +2,55 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — QA Regression Sweep + Private-account Follow Request UX
+
+PR-A 마이그레이션이 절반만 끝나 있던 구·신 `formatSupabaseError` 이중 helper 와, 그 사이에 raw 백엔드 RAISE 메시지를 직접 노출하던 catch 사이트 두 곳을 정리. 비공계 프로필 진입 시 follow 요청에 메모를 첨부할 수 있는 sheet 를 People 탭과 동일한 패턴으로 추가.
+
+### 회귀 원인
+
+이전 패치에서 `src/lib/errors/supabase.ts`(신; `(error, t, fallbackKey)`)와 `src/lib/supabase/errors.ts`(구; `(error, fallback)`)가 공존. 절반의 호출처가 *구* helper 를 쓰고 있었고, 신 helper 의 친절 매핑이 적용되지 않아 사용자에게 raw raise 가 노출됨. 추가로 `upload/page.tsx` 의 claim 분기와 settings 의 catch 들은 어떤 helper 도 거치지 않고 `error.message` 를 그대로 setError → 사용자 화면에 다음과 같은 문자열이 노출:
+
+- `Claim failed: forbidden: caller is not an active account delegate writer for subject_profile_id`
+- `Failed to load profile`, `Failed to save changes. Please retry.`
+- `Please enter a valid year (4 digits)`, `Searching...`, `Selected: …` 등 작품 수정 폼의 영문 잔재.
+
+### 변경
+
+#### 1. 에러 표시 일관화
+- `src/lib/supabase/errors.ts`: 구 helper 를 *thin shim* 으로 재작성. 새 카탈로그(`@/lib/errors/supabase`)를 거치며 raw RAISE 매칭은 차단하고, 매칭 안 되면 caller 가 넘긴 fallback string 을 그대로 노출. 신규 코드는 `(error, t, fallbackKey)` 시그니처 사용을 권장.
+- `src/lib/i18n/messages.ts`:
+  - `errors.failedLoad/Save/Delete/SendInquiry/SendMessage/SendReply/RequestClaim/ConfirmClaim/RejectClaim/CreateExhibition/DeleteExhibition/CreateArtwork/AttachImage/ClaimDuringUpload/LoadArtwork/LoadProfile/SaveSettings` (KR/EN) — fallback 카탈로그 보강.
+  - `artwork.validation.invalidYear/artistNameRequired/artistRequired/invalidPrice` + `artwork.field.artistSearchPlaceholder/artistSearching/artistSelected` 추가.
+  - `exhibition.deletePartialFailureSuffix` 추가.
+  - `profile.private.draftMessage` 추가.
+- 호출처 마이그레이션 (모두 새 helper):
+  - `src/app/upload/page.tsx`: `Claim failed: ${msg}` 두 곳, `[code] ${msg}` create 분기, `attachErr.message` 분기 → `formatSupabaseError(err, t, "errors.…")`.
+  - `src/app/artwork/[id]/page.tsx`: 8곳 (delete/inquiry/message/resend/reply/claim request/confirm/reject) 모두 신 helper.
+  - `src/app/artwork/[id]/edit/page.tsx`: load 실패 fallback + 폼 검증 4 메시지 + 「작가 검색」 영문 잔재 i18n.
+  - `src/app/my/exhibitions/{[id]/add,[id]/edit,[id]/page,new}.tsx`, `src/app/my/claims/page.tsx`: import + 호출 시그니처 일괄 마이그레이션. 전시 *부분 삭제 실패* suffix 도 i18n.
+  - `src/app/settings/page.tsx`: profile load + save catch 두 군데.
+
+#### 2. 비공계 프로필 follow request 메모 통합
+- `src/components/FollowButton.tsx`: 종전엔 `isPrivateTarget` 인 경우 `interceptFollow` 가 무시됐음 (비공계엔 sheet 띄우지 않는 가드). QA 피드백: 비공계 프로필에 *직접 진입한* 방문자는 메모를 함께 보낼 의도가 큼. 가드 제거 — 부모가 `interceptFollow` 를 넘기면 공/비공 모두 sheet 우선. legacy "no sheet for private" 동작은 호출처에서 `interceptFollow={undefined}` 로 그대로 유지 가능 (People 탭은 그 패턴 유지).
+- `src/app/u/[username]/PrivateProfileShell.tsx` (visitor branch):
+  - lazy `me = getMyProfile()` (visitor 가 sheet 열기 전엔 fetch 안 함).
+  - `IntroMessageAssist` portal sheet 호스팅 + `openSignal` trigger.
+  - FollowButton interceptFollow → `requestSheet()` → AI 초안 + textarea + 「요청 보내기」 / 「메시지 없이 요청」.
+  - 옆에 별도 「연결 메시지 초안」 버튼 (status='none' 일 때만) — 메인 CTA 누르지 않고도 sheet 진입 가능.
+  - sheet 의 send/follow-only 콜백이 로컬 status 를 `pending` 으로 flip → 새로고침 없이 "요청 보냈어요" pill 노출.
+
+### Supabase SQL
+
+이번 패치에서 SQL 추가/변경 없음 — 기존 `request_follow_or_follow` RPC 가 비공계 target 자동 분기를 이미 처리하고, `connection_messages` RLS 는 `sender_id = auth.uid()` 만 검증하므로 pending follow 상태에서도 메시지 동시 전송 가능.
+
+### Verified
+
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+- 잔재 회귀 grep: `Claim failed`, `forbidden:`, `caller is not`, `Please enter`, `Searching\.\.\.`, `Selected:` 비코드/비주석 영역에서 0건.
+
+---
+
 ## 2026-04-28 — QA Beta Hardening · PR-B · 위임 라이프사이클 보강
 
 **배경**: QA #4/#7/#11 — 위임 라이프사이클의 누락된 분기를 채움.

@@ -8,7 +8,8 @@ import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { createExhibition } from "@/lib/supabase/exhibitions";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
@@ -154,7 +155,7 @@ export default function NewExhibitionPage() {
     setSubmitting(false);
     if (err) {
       logSupabaseError("createExhibition", err);
-      setError(formatSupabaseError(err, "Failed to create exhibition"));
+      setError(formatSupabaseError(err, t, "errors.failedCreateExhibition"));
       return;
     }
     if (data?.id) {

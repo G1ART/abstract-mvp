@@ -14,7 +14,8 @@ import {
   type ExhibitionRow,
 } from "@/lib/supabase/exhibitions";
 import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
-import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
+import { logSupabaseError } from "@/lib/supabase/errors";
+import { formatSupabaseError } from "@/lib/errors/supabase";
 import { getMyProfile } from "@/lib/supabase/me";
 import { searchPeople } from "@/lib/supabase/artists";
 import { listWorksInExhibition } from "@/lib/supabase/exhibitions";
@@ -221,7 +222,7 @@ export default function EditExhibitionPage() {
     setSubmitting(false);
     if (err) {
       logSupabaseError("updateExhibition", err);
-      setError(formatSupabaseError(err, t("common.errorUpdate")));
+      setError(formatSupabaseError(err, t, "common.errorUpdate"));
       return;
     }
     router.push(`/my/exhibitions/${id}`);
@@ -238,8 +239,11 @@ export default function EditExhibitionPage() {
     setDeleting(false);
     if (result.error) {
       const failed = (result as { failedArtworkIds?: string[] }).failedArtworkIds;
-      const suffix = failed && failed.length > 0 ? ` (${failed.length}개 작품 삭제 실패)` : "";
-      setError(formatSupabaseError(result.error, `Failed to delete exhibition${suffix}`));
+      const base = formatSupabaseError(result.error, t, "errors.failedDeleteExhibition");
+      const suffix = failed && failed.length > 0
+        ? ` ${t("exhibition.deletePartialFailureSuffix").replace("{count}", String(failed.length))}`
+        : "";
+      setError(`${base}${suffix}`);
       return;
     }
     router.push("/my/exhibitions");

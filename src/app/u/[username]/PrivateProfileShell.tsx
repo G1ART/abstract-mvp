@@ -36,9 +36,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import { UserProfileContent } from "@/components/UserProfileContent";
+import { getMyProfile } from "@/lib/supabase/me";
 import {
   getMyProfileAsPublic,
   type PrivateProfileCard,
+  type Profile,
   type ProfilePublic,
 } from "@/lib/supabase/profiles";
 import {
@@ -53,6 +55,7 @@ import {
   type ExhibitionWithCredits,
 } from "@/lib/supabase/exhibitions";
 import { FollowButton } from "@/components/FollowButton";
+import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
 
 type LoadState = "checking" | "owner" | "stranger" | "error";
 
@@ -181,6 +184,7 @@ export function PrivateProfileShell({
     return <VisitorPrivateCard t={t} card={privateCard} />;
   }
 
+
   // Defensive fallback (should be unreachable now that the SQL returns a
   // meta-card slice). Preserve the legacy dead-end-with-escape-hatch UI
   // just in case the RPC contract drifts.
@@ -240,6 +244,45 @@ function VisitorPrivateCard({
   const display = card.display_name?.trim() || card.username || "—";
   const role = card.main_role?.trim() ? card.main_role : null;
 
+  /**
+   * Local follow status — drives the badge "요청 보냈어요" copy and lets
+   * the IntroMessageAssist sheet flip the button label after a
+   * successful send/follow without a full reload.
+   */
+  const [status, setStatus] = useState<typeof initialStatus>(initialStatus);
+
+  /**
+   * Lazy-loaded "me" profile (themes/mediums/role/city) used to seed
+   * the AI intro draft. We only fetch when the visitor actually opens
+   * the sheet — the meta card itself doesn't need it. `null` while
+   * loading, kept as `null` if the user is signed-out (the
+   * IntroMessageAssist still works with empty fields, the AI just
+   * produces a more generic draft).
+   */
+  const [me, setMe] = useState<Profile | null>(null);
+
+  /**
+   * Incrementing trigger that asks IntroMessageAssist (in
+   * `follow-first` mode) to open its sheet. Mirrors the
+   * `introOpenSignal` pattern from /people. Bumped by FollowButton's
+   * `interceptFollow` so the sheet opens *instead of* the immediate
+   * follow-request RPC; the sheet's Send commits both the
+   * connection_message AND the follow request in one go (or the
+   * "메시지 없이 요청" affordance commits just the follow).
+   */
+  const [openSignal, setOpenSignal] = useState(0);
+
+  // Defer profile load until the visitor signals interest — saves an
+  // RPC for visitors who land on the page and bounce.
+  const requestSheet = () => {
+    setOpenSignal((n) => n + 1);
+    if (!me) {
+      getMyProfile().then(({ data }) => {
+        if (data) setMe(data as Profile);
+      });
+    }
+  };
+
   return (
     <main className="mx-auto max-w-xl px-4 py-10">
       <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
@@ -294,17 +337,28 @@ function VisitorPrivateCard({
           </p>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <FollowButton
             targetProfileId={card.id}
-            initialStatus={initialStatus}
+            initialStatus={status}
             isPrivateTarget
+            interceptFollow={
+              status === "none" ? requestSheet : undefined
+            }
             onFollowed={() => {
-              // Accepted is unreachable for a private target on first
-              // click — guard kept for symmetry / future RPC changes.
+              setStatus("accepted");
             }}
           />
-          {initialStatus === "pending" ? (
+          {status === "none" && (
+            <button
+              type="button"
+              onClick={requestSheet}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              {t("profile.private.draftMessage")}
+            </button>
+          )}
+          {status === "pending" ? (
             <span className="text-xs text-zinc-500">
               {t("profile.private.requestSent")}
             </span>
@@ -316,6 +370,46 @@ function VisitorPrivateCard({
             {t("profile.privateBackToMy")}
           </Link>
         </div>
+
+        {/*
+          IntroMessageAssist hosts a portal'd sheet that opens via the
+          `openSignal` increment above. It commits the follow request
+          (status='pending', because target is private) AND inserts a
+          connection_message in one user action — exactly the
+          /people-tab pattern, just behind a lock badge. Notes attached
+          this way reach the principal alongside the request itself,
+          making accept/decline triage easier.
+        */}
+        <IntroMessageAssist
+          me={{
+            display_name: me?.display_name ?? null,
+            role: me?.main_role ?? null,
+            themes: me?.themes ?? [],
+            mediums: me?.mediums ?? [],
+            city: me?.city ?? null,
+          }}
+          recipient={{
+            id: card.id,
+            display_name: card.display_name,
+            role: card.main_role,
+            sharedSignals: [],
+          }}
+          recipientId={card.id}
+          isFollowing={status === "accepted"}
+          openSignal={openSignal}
+          onFollowed={() => {
+            // Private target — `follow()` resolves to 'pending' here.
+            // We still flip the local status badge so the next render
+            // shows the "요청 보냈어요" pill.
+            setStatus((prev) => (prev === "none" ? "pending" : prev));
+          }}
+          onSent={() => {
+            // Send commits both message + follow; reflect both flips
+            // locally so the FollowButton flips to "요청됨" without a
+            // reload.
+            setStatus((prev) => (prev === "none" ? "pending" : prev));
+          }}
+        />
       </div>
     </main>
   );
