@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { useActingAs } from "@/context/ActingAsContext";
@@ -99,6 +100,7 @@ function statusToneClasses(status: string): string {
 export default function MyDelegationsPage() {
   const { t } = useT();
   const { setActingAs } = useActingAs();
+  const searchParams = useSearchParams();
   const [data, setData] = useState<ListMyDelegationsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ReceivedTab>("pending");
@@ -107,6 +109,9 @@ export default function MyDelegationsPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailOwnerView, setDetailOwnerView] = useState(true);
+  const [detailInitialAction, setDetailInitialAction] = useState<
+    "update" | null
+  >(null);
   const [myId, setMyId] = useState<string | null>(null);
   const [manageNotice, setManageNotice] = useState<string | null>(null);
 
@@ -183,8 +188,32 @@ export default function MyDelegationsPage() {
 
   const openDetail = (d: DelegationWithDetails, viewerIsOwner: boolean) => {
     setDetailOwnerView(viewerIsOwner);
+    setDetailInitialAction(null);
     setDetailId(d.id);
   };
+
+  /**
+   * Honor `?openId=<uuid>&action=update` deep-links from the
+   * notification surface (specifically the
+   * `delegation_permission_change_requested` notification, which
+   * routes the *owner* into the permission editor pre-filled with the
+   * delegate's proposal). Resolves owner-vs-recipient view from the
+   * loaded list — if the row only appears in `received`, we treat the
+   * viewer as the recipient (no auto-action).
+   */
+  useEffect(() => {
+    const openId = searchParams?.get("openId");
+    if (!openId || !data) return;
+    if (detailId === openId) return;
+    const inSent = data.sent.find((r) => r.id === openId);
+    const inRecv = data.received.find((r) => r.id === openId);
+    const target = inSent ?? inRecv;
+    if (!target) return;
+    const action = searchParams.get("action");
+    setDetailOwnerView(!!inSent);
+    setDetailInitialAction(action === "update" && inSent ? "update" : null);
+    setDetailId(openId);
+  }, [data, searchParams, detailId]);
 
   const isEmpty = !loading && received.length === 0 && sent.length === 0;
 
@@ -331,7 +360,11 @@ export default function MyDelegationsPage() {
       <DelegationDetailDrawer
         delegationId={detailId}
         viewerIsOwner={detailOwnerView}
-        onClose={() => setDetailId(null)}
+        initialAction={detailInitialAction}
+        onClose={() => {
+          setDetailId(null);
+          setDetailInitialAction(null);
+        }}
         onChanged={load}
       />
       <BetaFeedbackPrompt pageKey="delegation_hub" />

@@ -184,6 +184,101 @@ export async function revokeDelegation(
   return { data: data as { ok: boolean; code?: string }, error: null };
 }
 
+/**
+ * Sender-side cancel of a *pending* invite. Distinct from
+ * `revokeDelegation` so the recipient sees "초대 취소" wording instead of
+ * "위임 해지" — the SQL RPC differentiates via a separate
+ * `delegation_invite_canceled` notification type. Falls back to ok=false
+ * with `code='not_found_or_not_pending'` if the invite was already
+ * accepted, declined, or revoked.
+ */
+export async function cancelDelegationInvite(
+  delegationId: string
+): Promise<{ data: { ok: boolean; code?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("cancel_delegation_invite", {
+    p_delegation_id: delegationId,
+  });
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; code?: string }, error: null };
+}
+
+/**
+ * Sender-side permission edit for an *active* delegation. The SQL
+ * sanitizes the permission set against a server-side whitelist, so
+ * unknown tokens are silently dropped. Returns the diff
+ * (`added`/`removed`) so the UI can render a confirmation toast like
+ * "권한 2개 추가, 1개 제거" without a second round-trip.
+ */
+export async function updateDelegationPermissions(
+  delegationId: string,
+  permissions: string[]
+): Promise<{
+  data:
+    | {
+        ok: boolean;
+        code?: string;
+        noop?: boolean;
+        added?: string[];
+        removed?: string[];
+      }
+    | null;
+  error: unknown;
+}> {
+  const { data, error } = await supabase.rpc("update_delegation_permissions", {
+    p_delegation_id: delegationId,
+    p_permissions: permissions,
+  });
+  if (error) return { data: null, error };
+  return {
+    data: data as {
+      ok: boolean;
+      code?: string;
+      noop?: boolean;
+      added?: string[];
+      removed?: string[];
+    },
+    error: null,
+  };
+}
+
+/**
+ * Recipient-side withdrawal from an *active* delegation. Sets
+ * `status='declined'` server-side; the audit log differentiates this
+ * from a pending-stage decline via the `delegate_resigned` event_type.
+ */
+export async function resignDelegationByDelegate(
+  delegationId: string
+): Promise<{ data: { ok: boolean; code?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc("resign_delegation_by_delegate", {
+    p_delegation_id: delegationId,
+  });
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; code?: string }, error: null };
+}
+
+/**
+ * Recipient-side request asking the sender to adjust permissions on an
+ * active delegation. No state transition — purely a notification +
+ * audit event with the proposed permission set + a free-text memo.
+ * The sender's notification deep-links them to the permission editor.
+ */
+export async function requestDelegationPermissionChange(args: {
+  delegationId: string;
+  message?: string | null;
+  proposedPermissions?: string[];
+}): Promise<{ data: { ok: boolean; code?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc(
+    "request_delegation_permission_change",
+    {
+      p_delegation_id: args.delegationId,
+      p_message: args.message ?? null,
+      p_proposed_permissions: args.proposedPermissions ?? [],
+    }
+  );
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; code?: string }, error: null };
+}
+
 export async function acceptDelegationById(
   delegationId: string
 ): Promise<{ data: { ok: boolean; reason?: string; code?: string } | null; error: unknown }> {

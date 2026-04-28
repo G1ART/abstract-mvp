@@ -16,6 +16,10 @@ export type NotificationType =
   | "delegation_accepted"
   | "delegation_declined"
   | "delegation_revoked"
+  | "delegation_invite_canceled"
+  | "delegation_resigned"
+  | "delegation_permissions_updated"
+  | "delegation_permission_change_requested"
   | "follow_request"
   | "follow_request_accepted";
 

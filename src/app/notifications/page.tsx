@@ -152,6 +152,27 @@ function notificationLabel(
       return t("notifications.delegationDeclinedText").replace("{name}", name);
     case "delegation_revoked":
       return t("notifications.delegationRevokedText").replace("{name}", name);
+    case "delegation_invite_canceled":
+      return t("notifications.delegationInviteCanceledText").replace("{name}", name);
+    case "delegation_resigned":
+      return t("notifications.delegationResignedText").replace("{name}", name);
+    case "delegation_permissions_updated": {
+      const added = Array.isArray(row.payload?.added) ? (row.payload?.added as string[]) : [];
+      const removed = Array.isArray(row.payload?.removed) ? (row.payload?.removed as string[]) : [];
+      if (added.length > 0 && removed.length === 0) {
+        return t("notifications.delegationPermissionsUpdatedAddedOnlyText")
+          .replace("{name}", name)
+          .replace("{count}", String(added.length));
+      }
+      if (removed.length > 0 && added.length === 0) {
+        return t("notifications.delegationPermissionsUpdatedRemovedOnlyText")
+          .replace("{name}", name)
+          .replace("{count}", String(removed.length));
+      }
+      return t("notifications.delegationPermissionsUpdatedText").replace("{name}", name);
+    }
+    case "delegation_permission_change_requested":
+      return t("notifications.delegationPermissionChangeRequestedText").replace("{name}", name);
     case "follow_request":
       return t("notifications.followRequest.body").replace("{name}", name);
     case "follow_request_accepted":
@@ -198,8 +219,22 @@ function notificationLink(
     row.type === "delegation_invite_received" ||
     row.type === "delegation_accepted" ||
     row.type === "delegation_declined" ||
-    row.type === "delegation_revoked"
+    row.type === "delegation_revoked" ||
+    row.type === "delegation_invite_canceled" ||
+    row.type === "delegation_resigned" ||
+    row.type === "delegation_permissions_updated" ||
+    row.type === "delegation_permission_change_requested"
   ) {
+    // Sender-side permission-change requests deep-link to the
+    // delegation detail with a query hint so DelegationsList can open
+    // the editor pre-filled. Other rows just route to the list page.
+    const delegationId = row.payload?.delegation_id as string | undefined;
+    if (
+      row.type === "delegation_permission_change_requested" &&
+      delegationId
+    ) {
+      return `/my/delegations?openId=${delegationId}&action=update`;
+    }
     return "/my/delegations";
   }
   if (row.artwork_id) return `/artwork/${row.artwork_id}`;

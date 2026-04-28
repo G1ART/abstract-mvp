@@ -1,26 +1,43 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import {
   PRESET_PERMISSIONS,
+  cancelDelegationInvite,
   getDelegationDetail,
+  resignDelegationByDelegate,
   revokeDelegation,
   type DelegationDetail,
   type DelegationPreset,
 } from "@/lib/supabase/delegations";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { formatSupabaseError } from "@/lib/errors/supabase";
+import { UpdatePermissionsModal } from "./UpdatePermissionsModal";
+import { RequestPermissionChangeModal } from "./RequestPermissionChangeModal";
 
 export type DelegationDetailDrawerProps = {
   delegationId: string | null;
   onClose: () => void;
   onChanged?: () => void;
   /**
-   * Whether the *current viewer* is the delegator (owner). When true, the
-   * "Revoke" CTA is rendered on active rows. Delegate-side viewers see a
-   * read-only summary.
+   * Whether the *current viewer* is the delegator (owner). When true,
+   * sender-side actions (cancel invite, change permissions, revoke) are
+   * rendered. When false, recipient-side actions (request permission
+   * change, withdraw) are rendered. Drives the entire footer layout.
    */
   viewerIsOwner: boolean;
+  /**
+   * Optional initial action to launch automatically when the drawer
+   * opens. Currently honored only for `update`, used by the deep-link
+   * from a recipient's "권한 변경 요청" notification so the owner lands
+   * directly in the permission editor with the proposal pre-applied.
+   */
+  initialAction?: "update" | null;
+  /** Permission set proposed by the recipient — when arriving via a
+   *  permission-change-requested notification deep link. Pre-fills the
+   *  UpdatePermissionsModal. */
+  proposedPermissions?: string[] | null;
 };
 
 const DENIES_SHARED = [
@@ -57,23 +74,33 @@ export function DelegationDetailDrawer({
   onClose,
   onChanged,
   viewerIsOwner,
+  initialAction = null,
+  proposedPermissions = null,
 }: DelegationDetailDrawerProps) {
   const { t } = useT();
   const [detail, setDetail] = useState<DelegationDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [revoking, setRevoking] = useState(false);
+  const [busy, setBusy] = useState<
+    null | "cancel" | "revoke" | "resign"
+  >(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!delegationId) {
       setDetail(null);
+      setUpdateOpen(false);
+      setRequestOpen(false);
+      setToast(null);
       return;
     }
     setLoading(true);
     setError(null);
     getDelegationDetail(delegationId).then(({ data, error: err }) => {
       if (err) {
-        setError(t("delegation.error.unknown"));
+        setError(formatSupabaseError(err, t, "delegation.error.unknown"));
       } else {
         setDetail(data);
       }
@@ -81,19 +108,106 @@ export function DelegationDetailDrawer({
     });
   }, [delegationId, t]);
 
-  const handleRevoke = useCallback(async () => {
+  // Honor a deep-link request to auto-open the update modal once the
+  // detail has loaded (only meaningful when the viewer is the owner of
+  // an active delegation; otherwise we silently ignore the hint).
+  useEffect(() => {
+    if (
+      initialAction === "update" &&
+      detail &&
+      viewerIsOwner &&
+      detail.delegation.status === "active"
+    ) {
+      setUpdateOpen(true);
+    }
+  }, [initialAction, detail, viewerIsOwner]);
+
+  const handleCancelInvite = useCallback(async () => {
     if (!detail) return;
-    if (!confirm(t("delegation.detail.revokeConfirm"))) return;
-    setRevoking(true);
-    const { error: err } = await revokeDelegation(detail.delegation.id);
-    setRevoking(false);
+    if (!confirm(t("delegation.detail.cancelInviteConfirm"))) return;
+    setBusy("cancel");
+    const { error: err } = await cancelDelegationInvite(detail.delegation.id);
+    setBusy(null);
     if (err) {
-      setError(t("delegation.error.unknown"));
+      setError(formatSupabaseError(err, t, "delegation.error.unknown"));
       return;
     }
     onChanged?.();
     onClose();
   }, [detail, onChanged, onClose, t]);
+
+  const handleRevoke = useCallback(async () => {
+    if (!detail) return;
+    if (!confirm(t("delegation.detail.revokeConfirm"))) return;
+    setBusy("revoke");
+    const { error: err } = await revokeDelegation(detail.delegation.id);
+    setBusy(null);
+    if (err) {
+      setError(formatSupabaseError(err, t, "delegation.error.unknown"));
+      return;
+    }
+    onChanged?.();
+    onClose();
+  }, [detail, onChanged, onClose, t]);
+
+  const handleResign = useCallback(async () => {
+    if (!detail) return;
+    if (!confirm(t("delegation.detail.resignConfirm"))) return;
+    setBusy("resign");
+    const { error: err } = await resignDelegationByDelegate(detail.delegation.id);
+    setBusy(null);
+    if (err) {
+      setError(formatSupabaseError(err, t, "delegation.error.unknown"));
+      return;
+    }
+    onChanged?.();
+    onClose();
+  }, [detail, onChanged, onClose, t]);
+
+  const currentPermissions = useMemo<string[]>(() => {
+    if (!detail) return [];
+    const d = detail.delegation;
+    if (d.preset && PRESET_PERMISSIONS[d.preset]) return PRESET_PERMISSIONS[d.preset];
+    return d.permissions ?? [];
+  }, [detail]);
+
+  /**
+   * Latest pending permission-change request from the recipient (if
+   * any). We surface it on the owner's active-state footer so they
+   * don't have to dig through the activity feed to see what was
+   * proposed. The proposal also pre-fills the UpdatePermissionsModal
+   * when no explicit `proposedPermissions` prop was provided (the
+   * drawer was opened locally rather than via a deep link).
+   */
+  const pendingChangeRequest = useMemo<
+    { message: string | null; proposed: string[]; createdAt: string } | null
+  >(() => {
+    if (!detail) return null;
+    const last = detail.events.find(
+      (e) => e.event_type === "permission_change_requested"
+    );
+    if (!last) return null;
+    const meta = (last.metadata ?? {}) as Record<string, unknown>;
+    const proposed = Array.isArray(meta.proposed_permissions)
+      ? (meta.proposed_permissions as string[])
+      : [];
+    const messageRaw = typeof meta.message === "string" ? meta.message : null;
+    return {
+      message: messageRaw && messageRaw.trim() ? messageRaw : null,
+      proposed,
+      createdAt: last.created_at,
+    };
+  }, [detail]);
+
+  const effectiveProposed = useMemo<string[] | null>(() => {
+    if (proposedPermissions && proposedPermissions.length > 0) {
+      return proposedPermissions;
+    }
+    if (pendingChangeRequest && pendingChangeRequest.proposed.length > 0) {
+      return pendingChangeRequest.proposed;
+    }
+    return null;
+  }, [proposedPermissions, pendingChangeRequest]);
 
   const open = !!delegationId;
 
@@ -138,21 +252,223 @@ export function DelegationDetailDrawer({
           )}
         </div>
 
-        {detail && viewerIsOwner && detail.delegation.status === "active" && (
-          <footer className="border-t border-zinc-100 px-5 py-3">
-            <button
-              type="button"
-              onClick={handleRevoke}
-              disabled={revoking}
-              className="w-full rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
-            >
-              {revoking ? t("delegation.detail.revoking") : t("delegation.revoke")}
-            </button>
-          </footer>
+        {detail && (
+          <DetailFooter
+            t={t}
+            detail={detail}
+            viewerIsOwner={viewerIsOwner}
+            busy={busy}
+            toast={toast}
+            pendingChangeRequest={pendingChangeRequest}
+            onCancelInvite={handleCancelInvite}
+            onRevoke={handleRevoke}
+            onResign={handleResign}
+            onUpdate={() => setUpdateOpen(true)}
+            onRequest={() => setRequestOpen(true)}
+          />
         )}
       </aside>
+
+      {detail && viewerIsOwner && detail.delegation.status === "active" && (
+        <UpdatePermissionsModal
+          open={updateOpen}
+          delegationId={detail.delegation.id}
+          initialPermissions={currentPermissions}
+          proposedPermissions={effectiveProposed}
+          onClose={() => setUpdateOpen(false)}
+          onSaved={(result) => {
+            const added = result.added.length;
+            const removed = result.removed.length;
+            if (result.noop) {
+              setToast(t("delegation.update.noop"));
+            } else if (added && !removed) {
+              setToast(
+                t("delegation.update.successAdded").replace("{count}", String(added))
+              );
+            } else if (removed && !added) {
+              setToast(
+                t("delegation.update.successRemoved").replace("{count}", String(removed))
+              );
+            } else {
+              setToast(
+                `${t("delegation.update.successAdded").replace("{count}", String(added))} · ${
+                  t("delegation.update.successRemoved").replace("{count}", String(removed))
+                }`
+              );
+            }
+            onChanged?.();
+            // Drawer detail is now stale; refetch in-place so the
+            // permissions section reflects the new set without closing.
+            getDelegationDetail(detail.delegation.id).then(({ data }) => {
+              if (data) setDetail(data);
+            });
+          }}
+        />
+      )}
+
+      {detail && !viewerIsOwner && detail.delegation.status === "active" && (
+        <RequestPermissionChangeModal
+          open={requestOpen}
+          delegationId={detail.delegation.id}
+          currentPermissions={currentPermissions}
+          onClose={() => setRequestOpen(false)}
+          onSent={() => setToast(t("delegation.requestChange.success"))}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * Footer button matrix:
+ *
+ *   role  | status   | buttons
+ *   ------|----------|----------------------------------------------------
+ *   owner | pending  | [Cancel invite]                              (gray)
+ *   owner | active   | [Change permissions]   [Revoke delegation]   (gray + red)
+ *   dlgte | active   | [Request perm change]  [Withdraw from delegation] (gray + gray)
+ *   *     | terminal | (no footer)
+ *
+ * Recipient-side `pending` is intentionally absent: pending invites
+ * are accepted/declined directly from the list cards, not from the
+ * drawer.
+ */
+function DetailFooter({
+  t,
+  detail,
+  viewerIsOwner,
+  busy,
+  toast,
+  pendingChangeRequest,
+  onCancelInvite,
+  onRevoke,
+  onResign,
+  onUpdate,
+  onRequest,
+}: {
+  t: (k: string) => string;
+  detail: DelegationDetail;
+  viewerIsOwner: boolean;
+  busy: null | "cancel" | "revoke" | "resign";
+  toast: string | null;
+  pendingChangeRequest:
+    | { message: string | null; proposed: string[]; createdAt: string }
+    | null;
+  onCancelInvite: () => void;
+  onRevoke: () => void;
+  onResign: () => void;
+  onUpdate: () => void;
+  onRequest: () => void;
+}) {
+  const status = detail.delegation.status;
+
+  if (viewerIsOwner && status === "pending") {
+    return (
+      <footer className="border-t border-zinc-100 px-5 py-3">
+        {toast && (
+          <p className="mb-2 rounded-md bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">
+            {toast}
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={onCancelInvite}
+          disabled={busy === "cancel"}
+          className="w-full rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+        >
+          {busy === "cancel"
+            ? t("delegation.detail.cancelingInvite")
+            : t("delegation.detail.cancelInvite")}
+        </button>
+      </footer>
+    );
+  }
+
+  if (viewerIsOwner && status === "active") {
+    return (
+      <footer className="border-t border-zinc-100 px-5 py-3">
+        {toast && (
+          <p className="mb-2 rounded-md bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">
+            {toast}
+          </p>
+        )}
+        {pendingChangeRequest && (
+          <div
+            role="status"
+            className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+          >
+            <p className="font-medium">
+              {t("delegation.detail.pendingRequestHeadline")}
+            </p>
+            {pendingChangeRequest.message && (
+              <p className="mt-1 whitespace-pre-wrap">
+                "{pendingChangeRequest.message}"
+              </p>
+            )}
+          </div>
+        )}
+        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+          {t("delegation.detail.ownerActionsLabel")}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onUpdate}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            {t("delegation.detail.updatePermissions")}
+          </button>
+          <button
+            type="button"
+            onClick={onRevoke}
+            disabled={busy === "revoke"}
+            className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+          >
+            {busy === "revoke"
+              ? t("delegation.detail.revoking")
+              : t("delegation.revoke")}
+          </button>
+        </div>
+      </footer>
+    );
+  }
+
+  if (!viewerIsOwner && status === "active") {
+    return (
+      <footer className="border-t border-zinc-100 px-5 py-3">
+        {toast && (
+          <p className="mb-2 rounded-md bg-emerald-50 px-3 py-1.5 text-xs text-emerald-800">
+            {toast}
+          </p>
+        )}
+        <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+          {t("delegation.detail.delegateActionsLabel")}
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onRequest}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100"
+          >
+            {t("delegation.detail.requestPermissionChange")}
+          </button>
+          <button
+            type="button"
+            onClick={onResign}
+            disabled={busy === "resign"}
+            className="rounded-md border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 disabled:opacity-50"
+          >
+            {busy === "resign"
+              ? t("delegation.detail.resigning")
+              : t("delegation.detail.resignDelegation")}
+          </button>
+        </div>
+      </footer>
+    );
+  }
+
+  // Terminal states (revoked/declined/expired) → drawer is read-only.
+  return null;
 }
 
 function DetailBody({

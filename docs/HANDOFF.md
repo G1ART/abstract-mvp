@@ -2,6 +2,81 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — QA Beta Hardening · PR-B · 위임 라이프사이클 보강
+
+**배경**: QA #4/#7/#11 — 위임 라이프사이클의 누락된 분기를 채움.
+
+- #4  보낸 사람이 (수락 전) 위임 초대를 *취소* 할 수 없음 — 받는 사람이 잠수하면 회수가 불가.
+- #7  보낸 사람이 active 상태에서 *권한만* 변경할 수 없음 — 위임 통째 해지 + 새 invite 보내기 (3-step) 가 유일.
+- #11 받은 사람이 active 상태에서 *본인 의지로* 위임을 끝낼 수 없음 — `decline_delegation_by_id` 는 pending 만 처리.
+
+추가로 받은 사람이 보낸 사람에게 권한 *조정 요청* 을 보낼 수 있는 가벼운 통로 (메모 + 제안 권한) 를 도입.
+
+### Status 매트릭스 (전후)
+
+| 액션 | 누가 | 상태 | 이전 | 이후 |
+|---|---|---|---|---|
+| 초대 취소 | 보낸 측 | pending | (불가) | **「초대 취소」** drawer footer + `cancel_delegation_invite` RPC |
+| 권한 변경 | 보낸 측 | active | 통째 해지 후 재초대 | **「권한 변경」** modal + `update_delegation_permissions` RPC (1-step, diff 알림) |
+| 위임 해지 | 보낸 측 | active | 기존 「Revoke」 | 라벨/배치만 정리, 동작 동일 |
+| 권한 변경 요청 | 받은 측 | active | (불가) | **「권한 변경 요청」** modal + `request_delegation_permission_change` RPC, 보낸 측에 deep-link 알림 |
+| 위임 반려 | 받은 측 | active | (불가) | **「위임 반려」** drawer footer + `resign_delegation_by_delegate` RPC, 보낸 측에 알림 |
+
+> 라벨 결정: 받은 측 sign-out 액션은 "위임에서 빠지기" (step out 직역) 대신 **「위임 반려」** 채택 — 보낸 측의 "위임 해지" 와 의미적으로 분리되고, "받은 것을 돌려보냄" 의 한국어 직관과 일치.
+
+### 변경 파일
+
+- `supabase/migrations/20260515000000_delegation_lifecycle_actions.sql` (신규):
+  - `notifications_type_check` 확장 — 4종 추가
+    (`delegation_invite_canceled`, `delegation_resigned`, `delegation_permissions_updated`, `delegation_permission_change_requested`).
+  - 신규 RPC 4종 (모두 SECURITY DEFINER, search_path=public, authenticated grant).
+  - status enum 확장은 *없음* — 트랜잭션 내 ALTER TYPE 제약 회피용으로 기존 `revoked` / `declined` 재사용 + audit `event_type` (`invite_canceled`, `permissions_updated`, `delegate_resigned`, `permission_change_requested`) 으로 의미 구분.
+  - `update_delegation_permissions` 는 whitelist 기반 sanitization, before/after diff 를 audit metadata 에 저장, custom set 이 들어오면 `delegations.preset` 자동 NULL.
+- `src/lib/supabase/delegations.ts`: 4개 wrapper (`cancelDelegationInvite`, `updateDelegationPermissions`, `resignDelegationByDelegate`, `requestDelegationPermissionChange`).
+- `src/lib/supabase/notifications.ts`: `NotificationType` union 에 신규 4종 추가.
+- `src/components/delegation/UpdatePermissionsModal.tsx` (신규): 보낸 측 active 권한 편집기. flat checkbox + diff 기반 dirty/empty 가드. 받은 측 제안값이 있으면 prefill.
+- `src/components/delegation/RequestPermissionChangeModal.tsx` (신규): 받은 측이 권한 조정 요청 + 메모 (max 500자) 전송.
+- `src/components/delegation/DelegationDetailDrawer.tsx`:
+  - footer 가 5가지 (role × status) 분기로 재구성. 단일 「Revoke」 버튼 → 다섯 가지 액션 매트릭스.
+  - `initialAction="update"` deep-link prop — 받은 측 권한 변경 요청 알림 클릭 시 보낸 측 drawer 가 자동으로 권한 편집기를 제안값 prefill 로 오픈.
+  - audit events 에서 가장 최근 `permission_change_requested` 의 `metadata.proposed_permissions` / `metadata.message` 를 자동 추출. 보낸 측 active footer 에 amber 카드로 메시지 미리보기 + modal prefill.
+  - 권한 변경 후 drawer 를 닫지 않고 in-place refetch → 변경된 권한 set 이 즉시 표시되고, "추가 N · 제거 M" toast.
+- `src/app/my/delegations/page.tsx`: `useSearchParams` 로 `?openId=<uuid>&action=update` 자동 처리. 위임 row 가 sent 에 있으면 owner view + update modal 자동 오픈, received 에 있으면 recipient view + 수동.
+- `src/app/notifications/page.tsx`: 신규 4종 type 별 텍스트, deep-link (권한 변경 요청만 detail+modal 오토오픈).
+- `src/lib/i18n/messages.ts`: 약 35개 키 추가 (drawer 액션 라벨, modal copy, notification 본문 KR/EN 양쪽).
+
+### 데이터 흐름 — 권한 변경 요청
+
+1. 받은 사람이 drawer 에서 「권한 변경 요청」 → 제안 권한 + 메모 전송.
+2. SQL: state 변화 *없음*. audit event `permission_change_requested` (metadata: 현재 권한 / 제안 권한 / 메모) + notification `delegation_permission_change_requested` 보낸 사람에게.
+3. 보낸 사람 알림 텍스트: "○○님이 위임 권한 조정을 요청했어요". 클릭 → `/my/delegations?openId=<id>&action=update`.
+4. drawer 가 detail 로드 → events 에서 가장 최근 요청 추출 → owner active footer 에 amber 카드 (메모 미리보기) + 자동으로 권한 편집 modal 을 제안 권한 prefill 로 오픈.
+5. 보낸 사람이 그대로 「변경사항 저장」 → `update_delegation_permissions` → 받은 사람에게 `delegation_permissions_updated` 알림 (added/removed count).
+6. 무시하고 modal 닫으면 별도 상태 트래킹 없이 자연 만료 — audit event 만 남음 (운영 감사 트레일 유지).
+
+### Supabase SQL — 즉시 적용
+
+`supabase/migrations/20260515000000_delegation_lifecycle_actions.sql` 을 SQL Editor 에서 실행. 모두 idempotent (`alter table … drop constraint if exists`, `create or replace function`).
+
+### 환경 변수
+
+변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` ✓
+- `npm run build` ✓ (Next.js 프로덕션 빌드 통과)
+- 신규 RPC 4종 + 알림 type 4종 일관 — UI matrix 와 SQL/audit/notification 3 layer 모두 동기.
+- `update_delegation_permissions` 의 `noop` 분기 (제안 = 현재) → no-op toast, 알림 없음, 받은 사람 spam 방지.
+
+### 회귀 안전성
+
+- 기존 RPC (`revoke_delegation`, `accept_delegation_by_id`, `decline_delegation_by_id`, `create_delegation_invite`) unchanged.
+- pending 상태 받은 사람의 accept/decline UX (목록 카드 inline 버튼) 변경 없음 — drawer 의 footer 매트릭스에서 recipient×pending 행은 의도적으로 비어 있음.
+- `notifications_type_check` 는 기존 type 모두 보존하면서 4종 add-on (DROP+CREATE 패턴은 기존 마이그레이션과 동일).
+
+---
+
 ## 2026-04-28 — QA Beta Hardening · PR-C · 비공계 위임 edge 가시성
 
 **배경**: QA #6/#8/#9 — 비공계 계정에게 위임을 받은 사용자가 acting-as 로 작업할 때 위임자 profile 이 unknown 으로 fallback 되어 [내 스튜디오] 빈 페이지·피드 카드 "알 수 없는 사용자" 노출 문제. PR1 의 `viewer_shares_follow_edge_with` 가 `public.follows` 만 검사하고 위임 edge 는 빠져 있던 게 root cause.
