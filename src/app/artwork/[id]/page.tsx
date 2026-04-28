@@ -51,6 +51,7 @@ import { listMyDelegations } from "@/lib/supabase/delegations";
 import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { formatSupabaseError, logSupabaseError } from "@/lib/supabase/errors";
 import { useT } from "@/lib/i18n/useT";
+import { ownershipStatusLabel } from "@/lib/artworks/labels";
 import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
@@ -627,11 +628,12 @@ function ArtworkDetailContent() {
             {sizeDisplay && (
               <p className="mt-1 text-sm text-zinc-600">{sizeDisplay}</p>
             )}
-            {artwork.ownership_status && (
-              <p className="mt-2 font-medium text-zinc-700">
-                {artwork.ownership_status}
-              </p>
-            )}
+            {(() => {
+              const label = ownershipStatusLabel(artwork.ownership_status, t);
+              return label ? (
+                <p className="mt-2 font-medium text-zinc-700">{label}</p>
+              ) : null;
+            })()}
             <p className="mt-2 text-sm text-zinc-600">
               {getArtworkPriceDisplay(artwork, t)}
             </p>

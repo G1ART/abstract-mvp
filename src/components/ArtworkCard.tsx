@@ -18,6 +18,7 @@ import {
   formatUsername,
   hasPublicLinkableUsername,
 } from "@/lib/identity/format";
+import { ownershipStatusLabel } from "@/lib/artworks/labels";
 import { LikeButton } from "./LikeButton";
 import { ArtworkProvenanceBlock } from "./ArtworkProvenanceBlock";
 
@@ -115,11 +116,12 @@ export function ArtworkCard({ artwork, likesCount = 0, isLiked = false, onLikeUp
           <p className="text-sm text-zinc-600">
             {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
           </p>
-          {artwork.ownership_status && (
-            <p className="mt-1 text-sm font-medium text-zinc-700">
-              {artwork.ownership_status}
-            </p>
-          )}
+          {(() => {
+            const label = ownershipStatusLabel(artwork.ownership_status, t);
+            return label ? (
+              <p className="mt-1 text-sm font-medium text-zinc-700">{label}</p>
+            ) : null;
+          })()}
           <p className="mt-1 text-sm text-zinc-600">
             {getArtworkPriceDisplay(artwork, t)}
           </p>
