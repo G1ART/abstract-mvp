@@ -35,6 +35,7 @@ import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { updateMyProfileBasePatch } from "@/lib/supabase/profiles";
 import { isArtistRole } from "@/lib/identity/roles";
+import { useActingAs } from "@/context/ActingAsContext";
 
 const MAIN_ROLES = ["artist", "collector", "curator", "gallerist"] as const;
 const ROLES = [...MAIN_ROLES];
@@ -234,6 +235,13 @@ function TaxonomyChipSelect({
 export default function SettingsPage() {
   const router = useRouter();
   const { t, locale } = useT();
+  // Settings is operator-locked by product decision (account / security /
+  // billing / personal). When acting-as is active we still want the user
+  // to be able to manage their own settings without surprise — the
+  // existing save flow already keys on the operator's session uid, so we
+  // only need to surface a clear notice that the delegated context does
+  // not apply here.
+  const { actingAsProfileId, actingAsLabel } = useActingAs();
   const [username, setUsername] = useState<string | null>(null);
   const usernameInputRef = useRef<HTMLInputElement>(null);
   const initialUsernameRef = useRef<string>("");
@@ -957,6 +965,26 @@ export default function SettingsPage() {
             <BuildStamp />
           </div>
         </div>
+
+        {/* Acting-as operator-lock notice. The page intentionally edits
+            the operator's own profile/security regardless of the active
+            delegation, so we surface a clear contextual notice instead
+            of silently mismatching the global banner. The notice is
+            keyed on actingAsProfileId so solo users see no banner. */}
+        {actingAsProfileId && (
+          <div
+            role="status"
+            className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            <p className="font-medium">{t("acting.lock.notice.title")}</p>
+            <p className="mt-1 text-xs text-amber-800">
+              {t("acting.lock.notice.body").replace(
+                "{name}",
+                actingAsLabel ?? t("acting.lock.notice.fallbackName")
+              )}
+            </p>
+          </div>
+        )}
 
         {/* QA P0.5-C (row 25, follow-up²): 비밀번호 재설정은 자주 쓰는
             기능이 아니라 [프로필 편집] 최상단을 차지할 만큼 중요하지

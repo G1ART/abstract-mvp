@@ -645,8 +645,12 @@ export default function BulkUploadPage() {
 
   useEffect(() => {
     if (!showMain) return;
-    void listMyExhibitions().then(({ data }) => setMyExhibitions(data ?? []));
-  }, [showMain]);
+    // Acting-as: scope the exhibition picker to the principal so a
+    // delegated bulk publish can target their existing exhibitions.
+    void listMyExhibitions({ forProfileId: actingAsProfileId ?? null }).then(
+      ({ data }) => setMyExhibitions(data ?? [])
+    );
+  }, [showMain, actingAsProfileId]);
 
   // Refuse to silently lose in-flight uploads on tab close / navigation.
   // Browsers ignore custom strings now (use the standard prompt), but

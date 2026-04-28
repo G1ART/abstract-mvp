@@ -15,6 +15,7 @@ import {
   getShortlistIdsForExhibition,
   type ShortlistRow,
 } from "@/lib/supabase/shortlists";
+import { useActingAs } from "@/context/ActingAsContext";
 
 type Props = {
   artworkId?: string;
@@ -38,6 +39,7 @@ type Props = {
  */
 export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }: Props) {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [lists, setLists] = useState<ShortlistRow[]>([]);
   const [savedIn, setSavedIn] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -49,19 +51,23 @@ export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }:
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await listMyShortlists();
+    // Acting-as: scope the picker to the principal's boards so that
+    // "save to board" lands on the principal's collection rather than
+    // the operator's. Solo path falls back to session.user.id.
+    const ownerScope = { forProfileId: actingAsProfileId ?? null };
+    const { data } = await listMyShortlists(ownerScope);
     setLists(data);
     if (artworkId) {
-      const { data: ids } = await getShortlistIdsForArtwork(artworkId);
+      const { data: ids } = await getShortlistIdsForArtwork(artworkId, ownerScope);
       setSavedIn(new Set(ids));
     } else if (exhibitionId) {
-      const { data: ids } = await getShortlistIdsForExhibition(exhibitionId);
+      const { data: ids } = await getShortlistIdsForExhibition(exhibitionId, ownerScope);
       setSavedIn(new Set(ids));
     } else {
       setSavedIn(new Set());
     }
     setLoading(false);
-  }, [artworkId, exhibitionId]);
+  }, [artworkId, exhibitionId, actingAsProfileId]);
 
   useEffect(() => {
     if (open) void refresh();
@@ -128,7 +134,9 @@ export function SaveToShortlistModal({ artworkId, exhibitionId, open, onClose }:
     if (!title || creating) return;
     setCreating(true);
     setCreateError(null);
-    const { data: sl, error } = await createShortlist(title);
+    const { data: sl, error } = await createShortlist(title, undefined, {
+      forProfileId: actingAsProfileId ?? null,
+    });
     if (error || !sl) {
       setCreating(false);
       setCreateError(t("boards.createFailed"));

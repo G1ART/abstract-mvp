@@ -13,11 +13,13 @@ import {
   listMyArtworksForLibrary,
 } from "@/lib/supabase/artworks";
 import { generateCsv, downloadCsv } from "@/lib/csv/parse";
+import { useActingAs } from "@/context/ActingAsContext";
 
 const OWNERSHIP_VALUES = ["available", "owned", "sold", "not_for_sale"] as const;
 
 export default function MyLibraryPage() {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [items, setItems] = useState<ArtworkWithLikes[]>([]);
   const [nextCursor, setNextCursor] = useState<ArtworkCursor | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,6 +59,10 @@ export default function MyLibraryPage() {
         dateFrom: dateFrom || null,
         dateTo: dateTo ? `${dateTo}T23:59:59.999Z` : null,
         createdBy: createdByMe && myUserId ? myUserId : null,
+        // Acting-as: filter to the principal's artworks instead of the
+        // operator's. RLS already permits the read for active delegate
+        // writers; this just aligns the UI with the principal scope.
+        forProfileId: actingAsProfileId ?? null,
       });
       if (error) {
         if (append) setLoadingMore(false);
@@ -86,6 +92,7 @@ export default function MyLibraryPage() {
       dateTo,
       createdByMe,
       myUserId,
+      actingAsProfileId,
     ]
   );
 

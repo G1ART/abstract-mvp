@@ -7,9 +7,11 @@ import { useT } from "@/lib/i18n/useT";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import { listMyExhibitions, type ExhibitionWithCredits } from "@/lib/supabase/exhibitions";
 import { ExhibitionThumbStack } from "@/components/ExhibitionThumbStack";
+import { useActingAs } from "@/context/ActingAsContext";
 
 export default function MyExhibitionsPage() {
   const { t } = useT();
+  const { actingAsProfileId } = useActingAs();
   const [list, setList] = useState<ExhibitionWithCredits[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,14 +19,16 @@ export default function MyExhibitionsPage() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await listMyExhibitions();
+    const { data, error: err } = await listMyExhibitions({
+      forProfileId: actingAsProfileId ?? null,
+    });
     setLoading(false);
     if (err) {
       setError(err instanceof Error ? err.message : t("exhibition.failedToLoad"));
       return;
     }
     setList(data ?? []);
-  }, [t]);
+  }, [t, actingAsProfileId]);
 
   useEffect(() => {
     fetchList();

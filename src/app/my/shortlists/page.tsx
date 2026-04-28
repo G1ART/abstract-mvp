@@ -12,10 +12,12 @@ import {
   listMyShortlists,
   type ShortlistRow,
 } from "@/lib/supabase/shortlists";
+import { useActingAs } from "@/context/ActingAsContext";
 
 function ShortlistsContent() {
   const { t } = useT();
   const router = useRouter();
+  const { actingAsProfileId } = useActingAs();
   const [lists, setLists] = useState<ShortlistRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTitle, setNewTitle] = useState("");
@@ -28,10 +30,10 @@ function ShortlistsContent() {
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await listMyShortlists();
+    const { data } = await listMyShortlists({ forProfileId: actingAsProfileId ?? null });
     setLists(data);
     setLoading(false);
-  }, []);
+  }, [actingAsProfileId]);
 
   useEffect(() => {
     const t = requestAnimationFrame(() => {
@@ -52,7 +54,9 @@ function ShortlistsContent() {
     if (!title || creating) return;
     setCreating(true);
     setCreateError(null);
-    const { data, error } = await createShortlist(title);
+    const { data, error } = await createShortlist(title, undefined, {
+      forProfileId: actingAsProfileId ?? null,
+    });
     setCreating(false);
     if (error || !data) {
       setCreateError(t("boards.createFailed"));

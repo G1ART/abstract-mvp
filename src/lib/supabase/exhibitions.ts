@@ -77,7 +77,9 @@ export async function listExhibitionsByIds(ids: string[]): Promise<{
 }
 
 /** List exhibitions I can manage: curate, host, or active delegate. (Persistent until delegator revokes.) */
-export async function listMyExhibitions(): Promise<{
+export async function listMyExhibitions(
+  options?: { forProfileId?: string | null }
+): Promise<{
   data: ExhibitionWithCredits[];
   error: unknown;
 }> {
@@ -86,12 +88,18 @@ export async function listMyExhibitions(): Promise<{
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
+  // Acting-as: when an account-scope delegate operates on behalf of a
+  // principal, the curator/host filter must reflect the principal's id
+  // so the listing surfaces the principal's own exhibitions. The
+  // project-scope delegation merge below stays anchored on the operator
+  // (delegations are granted to the operator, not the principal).
+  const ownerId = options?.forProfileId ?? session.user.id;
   const [curatedRes, delegationsRes] = await Promise.all([
     supabase
       .from("projects")
       .select(SELECT_WITH_CREDITS)
       .eq("project_type", "exhibition")
-      .or(`curator_id.eq.${session.user.id},host_profile_id.eq.${session.user.id}`)
+      .or(`curator_id.eq.${ownerId},host_profile_id.eq.${ownerId}`)
       .order("created_at", { ascending: false }),
     listMyDelegations(),
   ]);

@@ -31,6 +31,8 @@ import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { listShortlistItems } from "@/lib/supabase/shortlists";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { CreateDelegationWizard } from "@/components/delegation/CreateDelegationWizard";
+import { useActingAs } from "@/context/ActingAsContext";
+import { getProfileById } from "@/lib/supabase/profiles";
 
 type Participant = {
   id: string;
@@ -45,6 +47,7 @@ export default function AddWorkToExhibitionPage() {
   const { t } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const fromBoardId = searchParams.get("fromBoard");
+  const { actingAsProfileId } = useActingAs();
   const [boardArtworkIds, setBoardArtworkIds] = useState<string[]>([]);
   const [boardBulkAdding, setBoardBulkAdding] = useState(false);
   const [boardBulkToast, setBoardBulkToast] = useState<string | null>(null);
@@ -104,10 +107,21 @@ export default function AddWorkToExhibitionPage() {
       return;
     }
 
-    const { data: profile } = await getMyProfile();
+    // Acting-as: scope the "my works" pool to the principal's library so
+    // a delegate adding pieces to the principal's exhibition can pick from
+    // the principal's catalogue, not the operator's. The "listed by"
+    // fallback also uses the principal's profile id to surface works the
+    // principal had previously listed (collected/curated/inventory).
+    const { data: profile } = actingAsProfileId
+      ? await getProfileById(actingAsProfileId)
+      : await getMyProfile();
     const profileId = (profile as { id?: string } | null)?.id;
     const [myRes, listedRes] = await Promise.all([
-      listMyArtworks({ limit: 100, publicOnly: false }),
+      listMyArtworks({
+        limit: 100,
+        publicOnly: false,
+        forProfileId: actingAsProfileId ?? null,
+      }),
       profileId
         ? listPublicArtworksListedByProfileId(profileId, { limit: 100 })
         : { data: [] as ArtworkWithLikes[], error: null },
@@ -122,7 +136,7 @@ export default function AddWorkToExhibitionPage() {
         new Date(b.created_at ?? 0).getTime() - new Date(a.created_at ?? 0).getTime()
     );
     setArtworks(merged);
-  }, [id, participants]);
+  }, [id, participants, actingAsProfileId]);
 
   useEffect(() => {
     setLoading(true);

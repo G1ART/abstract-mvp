@@ -537,22 +537,30 @@ export async function listFollowingArtworks(
 
 type MyArtworksOptions = {
   limit?: number;
+  /**
+   * `forProfileId` (acting-as): when an account-scope delegate operates
+   * on behalf of a principal, set this to the principal's profile id so
+   * the listing reflects the principal's library. RLS allows the read
+   * via the existing select-side delegate policies.
+   */
+  forProfileId?: string | null;
 };
 
 export async function listMyArtworks(
   options: MyArtworksOptions & { publicOnly?: boolean } = {}
 ): Promise<{ data: ArtworkWithLikes[]; error: unknown }> {
-  const { limit = 50, publicOnly = false } = options;
+  const { limit = 50, publicOnly = false, forProfileId = null } = options;
 
   const {
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], error: null };
 
+  const artistId = forProfileId ?? session.user.id;
   let query = supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
-    .eq("artist_id", session.user.id)
+    .eq("artist_id", artistId)
     .order("created_at", { ascending: false })
     .limit(limit);
 
@@ -584,6 +592,8 @@ export type MyLibraryListOptions = {
   createdBy?: string | null;
   dateFrom?: string | null;
   dateTo?: string | null;
+  /** Acting-as principal scope (defaults to session uid when null/omitted). */
+  forProfileId?: string | null;
 };
 
 export async function listMyArtworksForLibrary(
@@ -604,6 +614,7 @@ export async function listMyArtworksForLibrary(
     createdBy = null,
     dateFrom = null,
     dateTo = null,
+    forProfileId = null,
   } = options;
 
   const pageSize = Math.min(limit, 50);
@@ -614,10 +625,11 @@ export async function listMyArtworksForLibrary(
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: [], nextCursor: null, error: null };
 
+  const artistId = forProfileId ?? session.user.id;
   let query = supabase
     .from("artworks")
     .select(ARTWORK_SELECT)
-    .eq("artist_id", session.user.id);
+    .eq("artist_id", artistId);
 
   if (visibility === "public") query = query.eq("visibility", "public");
   else if (visibility === "draft") query = query.eq("visibility", "draft");

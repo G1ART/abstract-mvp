@@ -2,6 +2,43 @@
 
 Last updated: 2026-04-28
 
+## 2026-04-28 — Acting-as Persona Hardening · Phase 2 (List filters / read paths)
+
+Phase 1 (`3533a40`) 의 백엔드/RLS 정합화 직후 후속 패치. "listMy*" 헬퍼들이 항상 `session.user.id` 만 보던 read 표면을 `forProfileId ?? session.user.id` 로 일반화하고, 관련 `/my` 페이지들에 `useActingAs()` 를 주입해 acting-as 활성 시 principal scope 데이터가 보이도록 정렬. 추가로 `/settings` 에 "이 페이지는 본인 계정 전용" operator-lock 안내 배너를 부착해 페르소나 결정(workspace = principal swap, account = operator lock) 의 시각적 정합을 맞춤.
+
+### 변경 요약
+
+- **List 헬퍼 시그니처 일반화**
+  - [src/lib/supabase/artworks.ts](src/lib/supabase/artworks.ts) `listMyArtworks` / `listMyArtworksForLibrary` — `options.forProfileId` 추가. 기본값 종전대로.
+  - [src/lib/supabase/exhibitions.ts](src/lib/supabase/exhibitions.ts) `listMyExhibitions(options?)` — `options.forProfileId` 로 curator/host 필터를 principal 로 라우팅. 프로젝트-스코프 위임 머지 로직은 operator 세션에 anchor 된 채로 유지(위임은 operator 에게 부여되므로).
+- **/my 페이지 acting-as 와이어**
+  - [/my/library](src/app/my/library/page.tsx), [/my/exhibitions](src/app/my/exhibitions/page.tsx), [/my/shortlists](src/app/my/shortlists/page.tsx) 모두 `useActingAs()` 도입 후 `forProfileId: actingAsProfileId ?? null` 전달. solo 케이스는 변경 없음.
+  - [/upload/bulk](src/app/upload/bulk/page.tsx) — exhibition picker 가 acting-as 시 principal 의 전시 목록을 가져옴.
+  - [/my/exhibitions/[id]/add](src/app/my/exhibitions/[id]/add/page.tsx) — 작품 풀(`listMyArtworks`) + listed-by 보강(`listPublicArtworksListedByProfileId`) 모두 principal scope. `getMyProfile()` 도 acting-as 시 `getProfileById(actingAsProfileId)` 로 우선 조회.
+  - [SaveToShortlistModal](src/components/SaveToShortlistModal.tsx) — `listMyShortlists` / `getShortlistIdsForX` / `createShortlist` 가 모두 principal scope 으로 호출. 보드 saving 토글이 일관되게 principal 의 보드 컬렉션에 적용.
+- **/settings operator-lock 안내** ([src/app/settings/page.tsx](src/app/settings/page.tsx)) — `useActingAs()` 도입, acting-as 활성 시 페이지 상단에 amber 안내 배너 노출 ("계정 설정은 언제나 본인 계정 기준입니다"). 저장 흐름은 종전대로 operator session uid 기준.
+- **i18n 라벨 추가** ([src/lib/i18n/messages.ts](src/lib/i18n/messages.ts)) — `acting.chip.posting/editing/replying/principalFallback/operatorFallback` (Phase 3 chip 컴포넌트용) + `acting.lock.notice.title/body/fallbackName` (Phase 2 settings 배너용). EN/KR 모두.
+
+### Supabase SQL
+
+- 추가/변경 없음 (Phase 1 마이그레이션만 필요).
+
+### 환경 변수
+
+- 추가/변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` 통과.
+- 변경 파일 lint 0 issue.
+- 회귀 시나리오:
+  - solo 사용자: 모든 헬퍼의 `forProfileId` 미전달 시 종전대로 `session.user.id` 사용. /settings 배너 미노출.
+  - delegate writer (account scope): `/my/library`, `/my/exhibitions`, `/my/shortlists`, `/upload/bulk` 의 picker, `/my/exhibitions/[id]/add` 모두 principal 의 데이터 표시. `SaveToShortlistModal` 토글이 principal 보드 기준 동작.
+  - delegate writer 가 `/settings` 진입 시 operator-lock 배너 노출, 저장은 본인 프로필에 적용 (regardless of acting-as).
+  - 아바타 드롭다운 / 헤더 메뉴 변경 없음 (Phase 3 에서 account switcher 추가 예정).
+
+---
+
 ## 2026-04-28 — Acting-as Persona Hardening · Phase 1 (Backend / Data layer)
 
 QA(2026-04-28) 보고서 5건 수습 패치(`f809f5b`) 직후 진행한 acting-as 표면 전수 감사 결과, QA3 와 동일 패턴(`session.user.id` 만 신뢰)이 다른 mutation/edit/RLS 표면에도 잠재되어 있음을 확인. 회귀 위험을 최소화하는 3-phase 분할의 첫 번째: 백엔드/RLS 정합화. 페르소나 결정 (workspace = principal swap, account/security = operator lock) 은 Phase 2/3 와 함께 단계적으로 적용.
