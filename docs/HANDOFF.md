@@ -1,6 +1,64 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
+
+## 2026-04-29 — Signup + Visibility Hardening (위임 invite 가입 / follow_request 알림 / 비공계→공계 전환)
+
+QA 가 같은 날 보고한 세 가지 증상이 모두 한 가지 큰 패턴 — auth 트리거와 RLS 가 *현재* 부트스트랩 시퀀스(`auth.users` insert → 클라이언트 첫 RPC 가 `profiles` row 생성)와 어긋남 — 에서 파생되는 것이라 단일 SQL 마이그레이션으로 묶어 정리.
+
+### Supabase SQL — 적용 필수
+
+`supabase/migrations/20260516000000_signup_and_visibility_hardening.sql` ← Supabase SQL Editor 에서 실행해 주세요.
+
+### 1. 위임 초대 이메일로 가입 시 "Database error saving new user"
+
+**증상**: 일반 신규 가입은 OK. 위임 초대를 받은 이메일 주소로만 가입이 실패.
+
+**원인**: `handle_auth_user_created_link_delegations` 트리거가 `auth.users` AFTER INSERT 에 발동 → 그 안의 `update public.delegations set delegate_profile_id = new.id` 가 `delegations.delegate_profile_id REFERENCES public.profiles(id)` FK 검사를 트리거. 이 코드베이스는 profiles row 를 *클라이언트 RPC* 로 *나중에* 만들기 때문에 가입 시점에 profiles row 가 아직 없음 → FK 위반 → 트랜잭션 전체 롤백. 일반 가입은 매칭 0행이라 FK 가 안 검증돼서 통과, **invite 매칭 이메일만 실패**라는 정확한 증상.
+
+**수정**: 트리거를 `auth.users` → `public.profiles` AFTER INSERT 로 이전. 이 시점에는 profiles row 가 막 생성된 상태라 FK 안전. email 은 `auth.users` 에서 lookup. 본문(activity event + invite 알림 발송)은 explicit-accept 정책(`20260505000200`)을 그대로 유지.
+
+### 2. follow_request 알림 [수락]/[거절] 버튼이 안 먹는 것처럼 보임
+
+**증상**: 비공계 계정에 도착한 follow_request 알림에서 「수락」 눌러도 승인 안 됨, 「거절」 눌러도 알림 안 사라짐.
+
+**원인**: `accept_follow_request` / `decline_follow_request` 가 `follows` row 만 처리하고 *원본 `follow_request` 알림은 그대로 둠*. 알림 list 가 refresh 되어도 같은 row 가 다시 노출 → "처리가 안 된 듯" 한 인상. UI 도 RPC 가 throw 하지 않으면 그냥 무시했고 사용자 피드백이 없었음.
+
+**수정**:
+- 두 RPC 모두 동일 트랜잭션에서 `delete from notifications where user_id = v_uid and actor_id = p_follower and type = 'follow_request'` 추가. SECURITY DEFINER 라 notifications RLS 우회 OK.
+- 클라이언트(`src/app/notifications/page.tsx` 의 `FollowRequestActions`):
+  - RPC 가 `error` 를 던지면 inline 빨간 메시지(`follow.requests.actionFailed` i18n) 노출 + 버튼 재활성화.
+  - `data === false` (이미 처리된 stale row) 도 성공 분기로 다뤄 inline "수락함/거절함" 으로 전환 + 부모 `refresh()`. RPC 가 알림을 지웠으니 refresh 후 자연스럽게 사라짐.
+
+### 3. 비공계 → 공계 전환 시 알림 잔류 + 버튼 작동 불가
+
+**증상**: 비공개 시점에 받은 follow_request 알림이 공개 전환 후에도 그대로 노출. 「수락/거절」 버튼이 사실상 무력.
+
+**원인**: 공개 전환은 `profiles.is_public` UPDATE 만 일으키고 *기존 pending follow rows 와 알림은 그대로*. 공개 상태에서는 `request` 모델 자체가 의미를 잃지만 자동 해소가 없음.
+
+**수정**: `handle_profile_visibility_opened` 트리거 신설 (`AFTER UPDATE OF is_public ON public.profiles`). `false → true` 전이일 때만:
+1. `update follows set status='accepted' where following_id=new.id and status='pending'` — `on_follow_accept_notify` UPDATE 트리거가 알아서 follower 측엔 `follow_request_accepted`, principal 측엔 `follow` 알림 발송.
+2. `delete from notifications where user_id=new.id and type='follow_request'` — 잔류 follow_request 알림 일괄 정리.
+
+`true → false` (공개→비공개) 는 의도적으로 no-op. 이미 accepted 인 followers 를 다시 끊으면 사용자가 공유한 graph 가 silently revoke 되어 surprising. 별도 "private re-curate" surface 가 필요하면 후속 패치에서 다룬다.
+
+### 변경 파일
+
+- `supabase/migrations/20260516000000_signup_and_visibility_hardening.sql` (신규) — 트리거 이전 + RPC 보강 + 공개 전환 트리거. 함수 4개 (`handle_profile_created_link_delegations`, `accept_follow_request`, `decline_follow_request`, `handle_profile_visibility_opened`) 모두 named dollar-tag (`$p_link$`, `$accept$`, `$decline$`, `$vis$`) 사용 → Dashboard SQL editor 에서 BEGIN/COMMIT 없이 통째 paste 실행 가능.
+- `src/app/notifications/page.tsx` — `FollowRequestActions` 강건성 개선 (에러 inline 표시, stale 처리, refresh 보장).
+- `src/lib/i18n/messages.ts` — `follow.requests.actionFailed` 키 추가 (KR/EN).
+
+### 환경 변수
+
+변경 없음.
+
+### Verified
+
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+- 회귀 grep: raw "Database error saving new user" 노출 0건. follow_request 액션 성공 시 알림 row 가 server-side 삭제 + 클라이언트 list 자동 refresh.
+
+---
 
 ## 2026-04-28 — QA Regression Sweep + Private-account Follow Request UX
 

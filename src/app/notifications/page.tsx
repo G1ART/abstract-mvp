@@ -18,6 +18,23 @@ import {
   declineFollowRequest,
 } from "@/lib/supabase/follows";
 
+/**
+ * Inline accept/decline controls for a follow_request notification.
+ *
+ * Behaviour rules (post-2026-04-29 hardening):
+ *   • Successful RPC (data === true) → render the resolved label
+ *     ("수락됨" / "거절됨"), mark the notification read, and ask the
+ *     parent to refetch. The follow_request notification is now also
+ *     deleted server-side by the RPC, so the row will simply
+ *     disappear on the next refresh — the inline label is just a
+ *     bridge so the user gets immediate feedback.
+ *   • RPC returns false (matching row already gone) → treat as a
+ *     stale notification. Same UI as the success path; the refetch
+ *     will drop the row.
+ *   • RPC throws (network / RLS / auth) → surface the error inline
+ *     so the user knows the action didn't land. They can retry
+ *     without reloading the page.
+ */
 function FollowRequestActions({
   row,
   onResolved,
@@ -29,6 +46,7 @@ function FollowRequestActions({
 }) {
   const [busy, setBusy] = useState(false);
   const [resolved, setResolved] = useState<"accepted" | "declined" | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!row.actor_id) return null;
 
@@ -43,7 +61,7 @@ function FollowRequestActions({
   }
 
   return (
-    <span className="ml-2 inline-flex gap-2">
+    <span className="ml-2 inline-flex flex-wrap items-center gap-2">
       <button
         type="button"
         disabled={busy}
@@ -52,13 +70,20 @@ function FollowRequestActions({
           e.stopPropagation();
           if (busy || !row.actor_id) return;
           setBusy(true);
-          const { data: ok } = await acceptFollowRequest(row.actor_id);
+          setErrorMessage(null);
+          const { error } = await acceptFollowRequest(row.actor_id);
           setBusy(false);
-          if (ok) {
-            setResolved("accepted");
-            void markNotificationRead(row.id);
-            onResolved();
+          if (error) {
+            setErrorMessage(t("follow.requests.actionFailed"));
+            return;
           }
+          // Either the RPC flipped the row (data=true) or the row was
+          // already gone (data=false). Both cases are terminal from
+          // the principal's POV — the follow_request notification has
+          // been deleted server-side, so refetching will drop it.
+          setResolved("accepted");
+          void markNotificationRead(row.id);
+          onResolved();
         }}
         className="rounded border border-zinc-900 bg-zinc-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
       >
@@ -72,18 +97,24 @@ function FollowRequestActions({
           e.stopPropagation();
           if (busy || !row.actor_id) return;
           setBusy(true);
-          const { data: ok } = await declineFollowRequest(row.actor_id);
+          setErrorMessage(null);
+          const { error } = await declineFollowRequest(row.actor_id);
           setBusy(false);
-          if (ok) {
-            setResolved("declined");
-            void markNotificationRead(row.id);
-            onResolved();
+          if (error) {
+            setErrorMessage(t("follow.requests.actionFailed"));
+            return;
           }
+          setResolved("declined");
+          void markNotificationRead(row.id);
+          onResolved();
         }}
         className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
       >
         {t("follow.requests.decline")}
       </button>
+      {errorMessage && (
+        <span className="text-[11px] text-red-600">{errorMessage}</span>
+      )}
     </span>
   );
 }

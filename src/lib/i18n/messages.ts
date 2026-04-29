@@ -320,6 +320,8 @@ export const messages = {
     "follow.requests.decline": "Decline",
     "follow.requests.accepted": "Accepted",
     "follow.requests.declined": "Declined",
+    "follow.requests.actionFailed":
+      "Couldn't update the request. Please retry.",
     "notifications.followRequest.body": "{name} requested to follow you.",
     "notifications.followRequestAccepted.body":
       "{name} accepted your follow request.",
@@ -2352,6 +2354,8 @@ export const messages = {
     "follow.requests.decline": "거절",
     "follow.requests.accepted": "수락함",
     "follow.requests.declined": "거절함",
+    "follow.requests.actionFailed":
+      "요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.",
     "notifications.followRequest.body": "{name} 님이 팔로우를 요청했어요.",
     "notifications.followRequestAccepted.body":
       "{name} 님이 팔로우 요청을 수락했어요.",
