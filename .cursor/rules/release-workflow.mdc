@@ -12,6 +12,28 @@ alwaysApply: true
 - `supabase/migrations/`에 **새로 추가·수정된 `.sql` 파일**이 있으면 → Supabase SQL Editor에서 수동 실행 필요
 - 이번 패치에서 SQL을 건드리지 않았으면 → "Supabase SQL 돌려야 할 것은 없음"으로 확인 후 통과
 
+### 1-1. PL/pgSQL 함수 정의 다수 포함 시 — 섹션별로 실행
+
+Supabase Dashboard SQL Editor 는 paste 된 텍스트를 client-side 에서
+`;` 기준으로 잘게 나눠 server 에 보내는데, dollar-quoted PL/pgSQL
+본문 안에 `for ... loop`, 중첩 `if`, 여러 `update`/`insert` 가
+섞이면 quote-tracking 을 놓치고 본문 중간을 외부 statement 로 잘라낸
+뒤 보낸다. 그러면 본문 후반의 `if v_x is null then` 같은 변수 참조가
+top-level SQL 로 흘러나가 `relation "v_x" does not exist` 로 실패
+(2026-04-29 발생, 20260516 마이그레이션). 가이드:
+
+- 한 마이그레이션 파일에 **PL/pgSQL 함수 정의가 2개 이상** 들어가면,
+  파일을 작성할 때 **`-- == SECTION N == ...`** 배너로 함수 단위로
+  분리해 둔다 (`20260516000000` 이 reference).
+- 적용 시 사용자에게 **"섹션 단위로 highlight → Run"** 안내. 한꺼번에
+  paste 하지 않는다.
+- dollar tag 는 **letters only** (`$a$`, `$accept$` 등). underscore 가
+  들어간 tag (`$p_link$`) 는 dashboard 토크나이저가 추가로 오인할 수
+  있다.
+- 가능하면 함수 본문에서 `select ... into v_x` 보다 **표현식 할당**
+  (`v_x := (select ...)`) 을 사용한다. 본문이 외부로 흘러나가도
+  `:=` 가 syntax error 라 즉시 실패 → 디버그 시간 단축.
+
 ## 2. Git push 풀 명령어
 
 ```bash
