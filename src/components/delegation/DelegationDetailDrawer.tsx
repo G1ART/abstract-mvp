@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import {
   PRESET_PERMISSIONS,
@@ -13,6 +13,7 @@ import {
 } from "@/lib/supabase/delegations";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { formatSupabaseError } from "@/lib/errors/supabase";
+import { permissionLabel } from "@/lib/delegation/permissionLabel";
 import { UpdatePermissionsModal } from "./UpdatePermissionsModal";
 import { RequestPermissionChangeModal } from "./RequestPermissionChangeModal";
 
@@ -111,16 +112,31 @@ export function DelegationDetailDrawer({
   // Honor a deep-link request to auto-open the update modal once the
   // detail has loaded (only meaningful when the viewer is the owner of
   // an active delegation; otherwise we silently ignore the hint).
+  //
+  // Critical: do this exactly ONCE per drawer-open. If we re-trigger
+  // every time `detail` is refetched (e.g. after the user saves the
+  // permission edit and we silently refresh the detail in-place), the
+  // modal would auto-reopen forever — that's the "keeps popping up
+  // again on its own" symptom the QA team filed on 2026-04-29.
+  const deepLinkConsumedRef = useRef<string | null>(null);
   useEffect(() => {
     if (
       initialAction === "update" &&
       detail &&
       viewerIsOwner &&
-      detail.delegation.status === "active"
+      detail.delegation.status === "active" &&
+      deepLinkConsumedRef.current !== detail.delegation.id
     ) {
+      deepLinkConsumedRef.current = detail.delegation.id;
       setUpdateOpen(true);
     }
   }, [initialAction, detail, viewerIsOwner]);
+
+  // Reset the deep-link guard when the drawer is closed so a future
+  // open with the same delegation id can honor the hint again.
+  useEffect(() => {
+    if (!delegationId) deepLinkConsumedRef.current = null;
+  }, [delegationId]);
 
   const handleCancelInvite = useCallback(async () => {
     if (!detail) return;
@@ -183,11 +199,25 @@ export function DelegationDetailDrawer({
     { message: string | null; proposed: string[]; createdAt: string } | null
   >(() => {
     if (!detail) return null;
-    const last = detail.events.find(
+    // Audit events are returned newest-first by `getDelegationDetail`.
+    // Find the latest change request, then check whether a
+    // `permissions_updated` event happened *after* it; if so, the
+    // request has already been resolved and we should not show the
+    // amber pending card / pre-fill the editor with the stale proposal.
+    const lastRequest = detail.events.find(
       (e) => e.event_type === "permission_change_requested"
     );
-    if (!last) return null;
-    const meta = (last.metadata ?? {}) as Record<string, unknown>;
+    if (!lastRequest) return null;
+    const lastUpdate = detail.events.find(
+      (e) => e.event_type === "permissions_updated"
+    );
+    if (
+      lastUpdate &&
+      Date.parse(lastUpdate.created_at) >= Date.parse(lastRequest.created_at)
+    ) {
+      return null;
+    }
+    const meta = (lastRequest.metadata ?? {}) as Record<string, unknown>;
     const proposed = Array.isArray(meta.proposed_permissions)
       ? (meta.proposed_permissions as string[])
       : [];
@@ -195,7 +225,7 @@ export function DelegationDetailDrawer({
     return {
       message: messageRaw && messageRaw.trim() ? messageRaw : null,
       proposed,
-      createdAt: last.created_at,
+      createdAt: lastRequest.created_at,
     };
   }, [detail]);
 
@@ -520,7 +550,7 @@ function DetailBody({
         </p>
         <ul className="space-y-1 text-sm text-zinc-700">
           {(permissions ?? []).map((p) => (
-            <li key={p}>· {t(`delegation.permissionLabel.${p}`)}</li>
+            <li key={p}>· {permissionLabel(p, t)}</li>
           ))}
           {(!permissions || permissions.length === 0) && (
             <li className="text-zinc-400">—</li>

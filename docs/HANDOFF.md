@@ -2,6 +2,51 @@
 
 Last updated: 2026-04-29
 
+## 2026-04-29 — 위임 권한 라벨 / 권한 변경 요청 알림·모달 정리
+
+QA 보고 두 건을 한 묶음으로 처리.
+
+### Supabase SQL — 적용 필수
+
+`supabase/migrations/20260517000000_delegation_perm_change_cleanup.sql` ← Supabase SQL Editor 에서 실행. 단일 트랜잭션 두 함수 재정의(`update_delegation_permissions`, `request_delegation_permission_change`)이며 idempotent. 섹션은 두 개(`SECTION 1`, `SECTION 2`)로 나뉘어 있고, 한 번에 통째로 실행해도 OK 지만 dashboard 토크나이저가 까다로우면 섹션별로 잘라서 돌려도 됨.
+
+### 1. `delegation.permissionLabel.manage_pricing` 같은 raw 키가 화면에 노출
+
+**증상**: 권한 변경 요청 모달에서, 받는 쪽에 *원래* 부여되지 않은 권한이 모두 `delegation.permissionLabel.manage_pricing` 같이 i18n 키 그대로 노출.
+
+**원인**: 서버 SQL 화이트리스트(`update_delegation_permissions`) + UI `ALL_PERMISSIONS` 풀은 7개(`view, edit_metadata, manage_works, manage_pricing, reply_inquiries, manage_exhibitions, manage_shortlists`) 인데, `src/lib/i18n/messages.ts` 에는 옛 권한 모델 잔재 키(`manage_artworks, manage_inquiries, manage_claims, edit_profile_public_content`)가 남아 있고 새 7개 풀의 `manage_pricing`/`reply_inquiries`/`manage_shortlists` 가 빠져 있었음. `useT().t()` 는 미등록 키일 때 raw 키 그대로 반환 → 그대로 노출.
+
+**수정**:
+- `src/lib/i18n/messages.ts` — KR/EN 양쪽에 누락된 3개 i18n 키 추가, 옛 4개 키는 호환성 위해 유지.
+- 신규 helper `src/lib/delegation/permissionLabel.ts` — `permissionLabel(key, t)` 가 i18n 매핑 없으면 `manage_pricing → "Manage pricing"` 식 humanize fallback 적용. 이후 새 권한이 추가되어 i18n 등록을 잊어도 raw 키는 절대 화면에 안 나감.
+- 모든 `t(\`delegation.permissionLabel.${p}\`)` 호출처 6곳을 helper 로 교체: `DelegationDetailDrawer`, `UpdatePermissionsModal`, `RequestPermissionChangeModal`, `CreateDelegationWizard`, `app/invites/delegation/page.tsx`.
+
+### 2. 권한 변경 요청 알림·모달이 사라지지 않고 반복
+
+**증상**: 받는 쪽이 권한 변경을 요청 → 보낸 쪽 알림 [권한 변경] 클릭 → 모달이 뜨고 변경 처리. 처리해도 알림 inbox 의 칩이 그대로 남고, 어느 시점부터는 모달이 닫혀도 자동으로 다시 켜짐.
+
+**원인 (3중 leak)**:
+
+1. `DelegationDetailDrawer` 의 `useEffect([initialAction, detail, viewerIsOwner])` 가 `setUpdateOpen(true)` 호출. 모달 닫은 뒤 detail 을 silent refetch 하면 `detail` reference 가 바뀌어 effect 재실행 → 모달 자동 재오픈. 사용자가 본 "어느 순간부터 자동으로 켜집니다" 와 정확히 일치.
+2. `update_delegation_permissions` RPC 가 처리 후에도 `delegation_permission_change_requested` 알림(보낸 쪽 inbox)을 *지우지 않음*. 처리 완료 표식 부재.
+3. `request_delegation_permission_change` 가 호출될 때마다 같은 위임에 대한 알림이 stack 되어 multi-row 누적 가능. deep-link 가 N번 발동 가능.
+
+**수정**:
+- 클라이언트 (`DelegationDetailDrawer.tsx`):
+  - `deepLinkConsumedRef = useRef<string | null>(null)` 가드 도입 — `initialAction === "update"` 트리거는 한 위임 ID 당 1회만. drawer 가 닫히면 ref 초기화.
+  - `pendingChangeRequest` 계산을 강화 — 가장 최근 `permission_change_requested` 이벤트보다 *나중* 의 `permissions_updated` 이벤트가 있으면 *resolved* 로 간주해 amber 카드/모달 prefill 모두 비활성. audit log 가 영구 기록이라도 UI 는 idle 상태로 보이게.
+- SQL (`20260517000000_delegation_perm_change_cleanup.sql`):
+  - **SECTION 1 — `update_delegation_permissions`**: 성공 분기(no-op 포함)에서 `delete from notifications where user_id = sender and type = 'delegation_permission_change_requested' and (payload->>'delegation_id')::uuid = v_d.id`. 처리하면 inbox 칩이 즉시 사라짐.
+  - **SECTION 2 — `request_delegation_permission_change`**: 알림 insert 직전에 같은 (sender, delegation) 의 기존 `delegation_permission_change_requested` 알림 모두 삭제 → 항상 정확히 1건만 노출. 시그니처는 그대로 유지(`uuid, text, text[]`).
+  - audit log 의 이벤트(`permission_change_requested`)는 그대로 보존 (history of record). 알림은 ephemeral inbox 만 정리.
+
+### Verified
+
+- `npm run build` 통과 (Next.js 15.5.4, exit 0).
+- 라벨 helper 단독 import 시 `manage_pricing` → KR `가격 관리` / EN `Manage pricing`, 미등록 가짜 키 `foo_bar` → `Foo bar` (raw 키 노출 차단).
+
+---
+
 ## 2026-04-29 — Signup + Visibility Hardening (위임 invite 가입 / follow_request 알림 / 비공계→공계 전환)
 
 QA 가 같은 날 보고한 세 가지 증상이 모두 한 가지 큰 패턴 — auth 트리거와 RLS 가 *현재* 부트스트랩 시퀀스(`auth.users` insert → 클라이언트 첫 RPC 가 `profiles` row 생성)와 어긋남 — 에서 파생되는 것이라 단일 SQL 마이그레이션으로 묶어 정리.

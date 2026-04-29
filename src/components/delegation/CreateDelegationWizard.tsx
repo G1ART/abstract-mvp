@@ -16,6 +16,7 @@ import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import { searchPeople, type PublicProfile } from "@/lib/supabase/artists";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { classifyDelegationInviteError } from "@/lib/delegation/inviteErrors";
+import { permissionLabel } from "@/lib/delegation/permissionLabel";
 import { getSession } from "@/lib/supabase/auth";
 import { getMyProfile } from "@/lib/supabase/me";
 
@@ -809,7 +810,7 @@ function Avatar({ profile }: { profile: PublicProfile }) {
 
 function PermsRollup({ t, permissions }: { t: (key: string) => string; permissions: string[] }) {
   if (!permissions || permissions.length === 0) return null;
-  const labels = permissions.slice(0, 3).map((p) => t(`delegation.permissionLabel.${p}`));
+  const labels = permissions.slice(0, 3).map((p) => permissionLabel(p, t));
   const more = permissions.length > 3 ? ` +${permissions.length - 3}` : "";
   return (
     <p className="mt-2 truncate text-[11px] text-zinc-500">
@@ -845,7 +846,7 @@ function AdvancedPermissionsToggle({
                   onChange(Array.from(next));
                 }}
               />
-              {t(`delegation.permissionLabel.${perm}`)}
+              {permissionLabel(perm, t)}
             </label>
           </li>
         );

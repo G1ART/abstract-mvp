@@ -1201,8 +1201,15 @@ export const messages = {
     "delegation.permissionLabel.view": "View content",
     "delegation.permissionLabel.edit_metadata": "Edit metadata",
     "delegation.permissionLabel.manage_works": "Manage exhibition works",
-    "delegation.permissionLabel.manage_artworks": "Manage artworks",
+    "delegation.permissionLabel.manage_pricing": "Manage pricing",
+    "delegation.permissionLabel.reply_inquiries": "Reply to price inquiries",
     "delegation.permissionLabel.manage_exhibitions": "Manage exhibitions",
+    "delegation.permissionLabel.manage_shortlists": "Manage shortlists",
+    // Legacy keys retained for backwards-compatibility with older
+    // delegation rows that may still carry them. Current pool is the
+    // seven keys above (kept in sync with `ALL_PERMISSIONS` and the
+    // server whitelist in `update_delegation_permissions`).
+    "delegation.permissionLabel.manage_artworks": "Manage artworks",
     "delegation.permissionLabel.manage_inquiries": "Reply to price inquiries",
     "delegation.permissionLabel.manage_claims": "Handle ownership claims",
     "delegation.permissionLabel.edit_profile_public_content": "Edit public profile content",
@@ -3235,8 +3242,12 @@ export const messages = {
     "delegation.permissionLabel.view": "콘텐츠 열람",
     "delegation.permissionLabel.edit_metadata": "정보(메타데이터) 편집",
     "delegation.permissionLabel.manage_works": "전시 작품 관리",
-    "delegation.permissionLabel.manage_artworks": "작품 관리",
+    "delegation.permissionLabel.manage_pricing": "가격 관리",
+    "delegation.permissionLabel.reply_inquiries": "가격 문의 응대",
     "delegation.permissionLabel.manage_exhibitions": "전시 관리",
+    "delegation.permissionLabel.manage_shortlists": "쇼트리스트 관리",
+    // 이전 권한 모델의 잔재 키 — 호환성을 위해 유지. 현재는 위 7개가 정식 풀.
+    "delegation.permissionLabel.manage_artworks": "작품 관리",
     "delegation.permissionLabel.manage_inquiries": "가격 문의 응대",
     "delegation.permissionLabel.manage_claims": "소유권 클레임 처리",
     "delegation.permissionLabel.edit_profile_public_content": "공개 프로필 콘텐츠 편집",

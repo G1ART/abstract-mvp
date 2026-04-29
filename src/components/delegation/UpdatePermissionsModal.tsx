@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { updateDelegationPermissions } from "@/lib/supabase/delegations";
 import { formatSupabaseError } from "@/lib/errors/supabase";
+import { permissionLabel } from "@/lib/delegation/permissionLabel";
 
 const ALL_PERMISSIONS = [
   "view",
@@ -154,7 +155,7 @@ export function UpdatePermissionsModal({
                     className="h-4 w-4 rounded border-zinc-300"
                   />
                   <span className="text-sm text-zinc-800">
-                    {t(`delegation.permissionLabel.${key}`)}
+                    {permissionLabel(key, t)}
                   </span>
                 </label>
               </li>

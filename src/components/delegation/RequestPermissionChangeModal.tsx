@@ -17,6 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { requestDelegationPermissionChange } from "@/lib/supabase/delegations";
 import { formatSupabaseError } from "@/lib/errors/supabase";
+import { permissionLabel } from "@/lib/delegation/permissionLabel";
 
 const ALL_PERMISSIONS = [
   "view",
@@ -133,7 +134,7 @@ export function RequestPermissionChangeModal({
                     className="h-4 w-4 rounded border-zinc-300"
                   />
                   <span className="text-sm text-zinc-800">
-                    {t(`delegation.permissionLabel.${key}`)}
+                    {permissionLabel(key, t)}
                   </span>
                   {checked !== wasOn && (
                     <span className={`ml-auto rounded-full px-2 py-0.5 text-[10px] font-medium ${

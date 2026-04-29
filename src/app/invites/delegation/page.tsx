@@ -13,6 +13,7 @@ import {
   type DelegationPreset,
   type GetDelegationByTokenResult,
 } from "@/lib/supabase/delegations";
+import { permissionLabel } from "@/lib/delegation/permissionLabel";
 
 const DENIES_SHARED = [
   "delegation.deniesShared.login",
@@ -257,7 +258,7 @@ function InvitesDelegationInner() {
         <ul className="space-y-1 text-sm text-zinc-700">
           {permissions.length > 0 ? (
             permissions.map((p) => (
-              <li key={p}>· {t(`delegation.permissionLabel.${p}`)}</li>
+              <li key={p}>· {permissionLabel(p, t)}</li>
             ))
           ) : (
             <li className="text-zinc-400">—</li>
