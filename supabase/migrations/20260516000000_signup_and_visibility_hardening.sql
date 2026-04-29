@@ -47,7 +47,15 @@
 --   • do NOT wrap in BEGIN/COMMIT (each CREATE OR REPLACE is
 --     individually idempotent), and
 --   • use uniquely-named dollar-tags per function body
---     ($p_link$, $accept$, $decline$, $vis$).
+--     ($plink$, $accept$, $decline$, $vis$).
+--
+-- Tag naming caveat: the dashboard editor's tokenizer trips on
+-- underscores inside dollar tags (`$p_link$` was originally used here
+-- and the first attempt failed with `relation "v_email" does not
+-- exist` — i.e. the tokenizer ended the function body too early and
+-- the PL/pgSQL `IF v_email IS NULL` ran as a top-level SQL statement
+-- where v_email looked like a missing relation). All tags below stick
+-- to letters only.
 
 ----------------------------------------------------------------------------
 -- 1. Move "link pending delegations" trigger from auth.users → public.profiles
@@ -65,7 +73,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $p_link$
+as $plink$
 declare
   v_email           text;
   v_id              uuid;
@@ -132,7 +140,7 @@ begin
   end loop;
   return new;
 end;
-$p_link$;
+$plink$;
 
 -- Detach the legacy auth.users trigger (functioning instance was the
 -- one defined in 20260505000200; older variants may still exist on
