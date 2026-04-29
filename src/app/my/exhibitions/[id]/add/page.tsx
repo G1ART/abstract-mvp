@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import {
   addWorkToExhibition,
   listWorksInExhibition,
@@ -46,7 +47,7 @@ export default function AddWorkToExhibitionPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t } = useT();
+  const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const fromBoardId = searchParams.get("fromBoard");
   const { actingAsProfileId } = useActingAs();
@@ -327,7 +328,7 @@ export default function AddWorkToExhibitionPage() {
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className="mb-4 flex items-center justify-between">
           <Link href={`/my/exhibitions/${id}`} className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("exhibition.myExhibitions")}
+            ← {backToLabel(t("exhibition.myExhibitions"), locale)}
           </Link>
         </div>
 

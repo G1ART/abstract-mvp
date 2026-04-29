@@ -19,14 +19,20 @@ import { updateDelegationPermissions } from "@/lib/supabase/delegations";
 import { formatSupabaseError } from "@/lib/errors/supabase";
 import { permissionLabel } from "@/lib/delegation/permissionLabel";
 
+// Canonical permission pool — must match the RLS-anchored whitelist
+// in supabase/migrations/20260518000000_delegation_perm_pool_realign.sql
+// and `delegation.permissionLabel.*` i18n keys. Adding a new key
+// requires updating BOTH the SQL whitelist and the RLS policies that
+// gate on it (otherwise the new key has no real effect).
 const ALL_PERMISSIONS = [
   "view",
   "edit_metadata",
   "manage_works",
-  "manage_pricing",
-  "reply_inquiries",
+  "manage_artworks",
   "manage_exhibitions",
-  "manage_shortlists",
+  "manage_inquiries",
+  "manage_claims",
+  "edit_profile_public_content",
 ] as const;
 type Permission = (typeof ALL_PERMISSIONS)[number];
 
@@ -39,6 +45,13 @@ export type UpdatePermissionsModalProps = {
    *  what the recipient asked for; we render it as the starting state
    *  and let the sender approve, modify, or cancel. */
   proposedPermissions?: string[] | null;
+  /** When true, the modal was opened in response to a recipient
+   *  permission-change request. We relax the "must be dirty to save"
+   *  constraint so that the sender can also explicitly *acknowledge*
+   *  a request whose proposal happens to match the current set
+   *  (memo-only request). Saving a no-op still clears the inbox chip
+   *  via the SQL RPC. */
+  responseMode?: boolean;
   onClose: () => void;
   onSaved?: (result: { added: string[]; removed: string[]; noop?: boolean }) => void;
 };
@@ -48,6 +61,7 @@ export function UpdatePermissionsModal({
   delegationId,
   initialPermissions,
   proposedPermissions,
+  responseMode = false,
   onClose,
   onSaved,
 }: UpdatePermissionsModalProps) {
@@ -184,10 +198,14 @@ export function UpdatePermissionsModal({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || empty || !dirty}
+            disabled={saving || empty || (!dirty && !responseMode)}
             className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
           >
-            {saving ? t("delegation.update.saving") : t("delegation.update.save")}
+            {saving
+              ? t("delegation.update.saving")
+              : responseMode && !dirty
+              ? t("delegation.update.acknowledge")
+              : t("delegation.update.save")}
           </button>
         </div>
       </div>

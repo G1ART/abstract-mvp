@@ -19,14 +19,17 @@ import { requestDelegationPermissionChange } from "@/lib/supabase/delegations";
 import { formatSupabaseError } from "@/lib/errors/supabase";
 import { permissionLabel } from "@/lib/delegation/permissionLabel";
 
+// Canonical permission pool — kept in sync with the RLS-anchored
+// whitelist in supabase/migrations/20260518000000_delegation_perm_pool_realign.sql.
 const ALL_PERMISSIONS = [
   "view",
   "edit_metadata",
   "manage_works",
-  "manage_pricing",
-  "reply_inquiries",
+  "manage_artworks",
   "manage_exhibitions",
-  "manage_shortlists",
+  "manage_inquiries",
+  "manage_claims",
+  "edit_profile_public_content",
 ] as const;
 
 const MEMO_MAX = 500;
@@ -83,7 +86,7 @@ export function RequestPermissionChangeModal({
     if (!delegationId || !canSubmit) return;
     setSubmitting(true);
     setError(null);
-    const { error: err } = await requestDelegationPermissionChange({
+    const { data, error: err } = await requestDelegationPermissionChange({
       delegationId,
       message: memoTrimmed || null,
       proposedPermissions: dirty ? Array.from(selected) : [],
@@ -91,6 +94,13 @@ export function RequestPermissionChangeModal({
     setSubmitting(false);
     if (err) {
       setError(formatSupabaseError(err, t, "delegation.requestChange.error"));
+      return;
+    }
+    if (data && data.ok === false) {
+      // RPC returned a structured failure (e.g. delegation no longer
+      // active by the time the request landed); surface it instead of
+      // silently closing the modal as if it had succeeded.
+      setError(t("delegation.requestChange.error"));
       return;
     }
     onSent?.();

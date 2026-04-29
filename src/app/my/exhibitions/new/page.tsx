@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import { createExhibition } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
@@ -32,7 +33,7 @@ export default function NewExhibitionPage() {
   const searchParams = useSearchParams();
   const fromUpload = searchParams.get("from") === "upload";
   const fromBoardId = searchParams.get("fromBoard");
-  const { t } = useT();
+  const { t, locale } = useT();
   const [boardContext, setBoardContext] = useState<{ title: string; artworkCount: number } | null>(null);
   const { actingAsProfileId } = useActingAs();
   const [myProfileId, setMyProfileId] = useState<string | null>(null);
@@ -178,7 +179,7 @@ export default function NewExhibitionPage() {
             href={fromUpload ? "/upload" : "/my/exhibitions"}
             className="text-sm text-zinc-600 hover:text-zinc-900"
           >
-            ← {fromUpload ? t("upload.backToUpload") : `${t("common.backTo")} ${t("exhibition.myExhibitions")}`}
+            ← {fromUpload ? t("upload.backToUpload") : backToLabel(t("exhibition.myExhibitions"), locale)}
           </Link>
         </div>
 

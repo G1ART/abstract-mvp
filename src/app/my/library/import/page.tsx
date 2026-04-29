@@ -205,8 +205,8 @@ function ImportContent() {
             <p key={i} className="text-sm text-red-600">{e.message}</p>
           ))}
           <div className="flex gap-2">
-            <button type="button" onClick={() => void handleValidate()} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">Validate & Preview</button>
-            <button type="button" onClick={() => setStep("paste")} className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50">Back</button>
+            <button type="button" onClick={() => void handleValidate()} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">{t("library.import.validateAndPreview")}</button>
+            <button type="button" onClick={() => setStep("paste")} className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50">{t("common.back")}</button>
           </div>
         </div>
       )}
@@ -254,7 +254,7 @@ function ImportContent() {
             <button type="button" onClick={() => void handleImport()} className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800">
               Import {skipDuplicates ? rows.length - dupCount : rows.length} rows
             </button>
-            <button type="button" onClick={() => setStep("map")} className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50">Back</button>
+            <button type="button" onClick={() => setStep("map")} className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-600 hover:bg-zinc-50">{t("common.back")}</button>
           </div>
         </div>
       )}

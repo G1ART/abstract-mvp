@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import {
   deleteExhibitionKeepWorks,
   deleteExhibitionWithArtworks,
@@ -37,7 +38,7 @@ type ProfileOption = { id: string; username: string | null; display_name: string
 export default function EditExhibitionPage() {
   const params = useParams();
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
   const { actingAsProfileId } = useActingAs();
   const id = typeof params.id === "string" ? params.id : "";
   const [exhibition, setExhibition] = useState<ExhibitionWithCredits | null>(null);
@@ -264,7 +265,7 @@ export default function EditExhibitionPage() {
       <main className="mx-auto max-w-2xl px-4 py-8">
         <div className="mb-6">
           <Link href={`/my/exhibitions/${id}`} className="text-sm text-zinc-600 hover:text-zinc-900">
-            ← {t("common.backTo")} {t("exhibition.myExhibitions")}
+            ← {backToLabel(t("exhibition.myExhibitions"), locale)}
           </Link>
         </div>
 

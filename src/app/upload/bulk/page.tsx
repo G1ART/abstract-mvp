@@ -26,6 +26,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import {
   addWorkToExhibition,
@@ -81,7 +82,7 @@ export default function BulkUploadPage() {
   const preselectedExternalName = searchParams.get("externalName");
   const preselectedExternalEmail = searchParams.get("externalEmail");
 
-  const { t } = useT();
+  const { t, locale } = useT();
   const { actingAsProfileId } = useActingAs();
   const [drafts, setDrafts] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
@@ -724,7 +725,7 @@ export default function BulkUploadPage() {
               </Link>
             )}
             <Link href="/upload" className="text-sm text-zinc-600 hover:text-zinc-900">
-              ← {t("common.backTo")} {t("upload.tabSingle")}
+              ← {backToLabel(t("upload.tabSingle"), locale)}
             </Link>
           </div>
         </div>

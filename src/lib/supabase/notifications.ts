@@ -20,6 +20,7 @@ export type NotificationType =
   | "delegation_resigned"
   | "delegation_permissions_updated"
   | "delegation_permission_change_requested"
+  | "delegation_permission_change_dismissed"
   | "follow_request"
   | "follow_request_accepted";
 

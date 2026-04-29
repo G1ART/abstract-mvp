@@ -330,7 +330,7 @@ const ARTWORK_SELECT = `
   website_import_provenance,
   likes_count,
   artwork_images(storage_path, sort_order),
-  profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
+  profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles, is_public),
   artwork_likes(count),
   claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
 `;
@@ -380,7 +380,9 @@ export async function listPublicArtworks(
   }
 
   const { data, error } = await query;
-  const list = (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[];
+  const list = (data ?? [])
+    .map((r) => normalizeArtworkRow(r as Record<string, unknown>))
+    .filter(isPublicSurfaceVisible) as ArtworkWithLikes[];
 
   let nextCursor: ArtworkCursor | null = null;
   const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
@@ -425,6 +427,34 @@ function normalizeArtworkRow(r: Record<string, unknown>): ArtworkWithLikes {
       : null;
   const likes_count = fromColumn ?? extractLikesCount(r);
   return { ...r, likes_count } as ArtworkWithLikes;
+}
+
+/**
+ * Defensive client-side filter for *public surfaces* (feed, discovery,
+ * profile lanes, etc.). The canonical guard against private-artist
+ * leakage lives in RLS (`artworks_select_public` joins
+ * `is_artist_publicly_visible`), but the previous QA report
+ * (2026-04-29) found that "알 수 없는 사용자" was still appearing on
+ * the feed for private artists' works — meaning a row slipped through
+ * RLS but the joined `profiles` row was filtered out by
+ * `profiles_select_*` policies, leaving an orphan card with no
+ * attributable artist.
+ *
+ * Drop those orphans on the client so a single misaligned policy
+ * cannot leak content. Authenticated owner / follower / delegate
+ * surfaces use their own listing helpers and stay unaffected.
+ */
+export function isPublicSurfaceVisible(row: ArtworkWithLikes): boolean {
+  const artistProfile = (row as unknown as {
+    profiles?: { id?: string | null; is_public?: boolean | null } | null;
+  }).profiles;
+  if (row.artist_id == null) {
+    // External / unclaimed artworks (no profile to gate on) stay visible.
+    return true;
+  }
+  if (!artistProfile || !artistProfile.id) return false;
+  if (artistProfile.is_public === false) return false;
+  return true;
 }
 
 type FollowingOptions = {
@@ -715,7 +745,9 @@ export async function listPublicArtworksByArtistId(
 
   if (error) return { data: [], error };
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    data: (data ?? [])
+      .map((r) => normalizeArtworkRow(r as Record<string, unknown>))
+      .filter(isPublicSurfaceVisible) as ArtworkWithLikes[],
     error: null,
   };
 }
@@ -747,7 +779,9 @@ export async function listPublicArtworksListedByProfileId(
 
   if (error) return { data: [], error };
   return {
-    data: (data ?? []).map((r) => normalizeArtworkRow(r as Record<string, unknown>)) as ArtworkWithLikes[],
+    data: (data ?? [])
+      .map((r) => normalizeArtworkRow(r as Record<string, unknown>))
+      .filter(isPublicSurfaceVisible) as ArtworkWithLikes[],
     error: null,
   };
 }

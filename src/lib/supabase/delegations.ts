@@ -279,6 +279,27 @@ export async function requestDelegationPermissionChange(args: {
   return { data: data as { ok: boolean; code?: string }, error: null };
 }
 
+/**
+ * Sender-side explicit decline of a pending permission-change request
+ * filed by the recipient. The delegation row state is unchanged — the
+ * recipient continues with their existing permissions; only the
+ * pending notification + audit trail flip to "dismissed".
+ */
+export async function dismissDelegationPermissionChangeRequest(args: {
+  delegationId: string;
+  message?: string | null;
+}): Promise<{ data: { ok: boolean; code?: string } | null; error: unknown }> {
+  const { data, error } = await supabase.rpc(
+    "dismiss_delegation_permission_change_request",
+    {
+      p_delegation_id: args.delegationId,
+      p_message: args.message ?? null,
+    }
+  );
+  if (error) return { data: null, error };
+  return { data: data as { ok: boolean; code?: string }, error: null };
+}
+
 export async function acceptDelegationById(
   delegationId: string
 ): Promise<{ data: { ok: boolean; reason?: string; code?: string } | null; error: unknown }> {

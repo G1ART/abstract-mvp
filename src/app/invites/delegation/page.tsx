@@ -14,6 +14,7 @@ import {
   type GetDelegationByTokenResult,
 } from "@/lib/supabase/delegations";
 import { permissionLabel } from "@/lib/delegation/permissionLabel";
+import { backToLabel } from "@/lib/i18n/back";
 
 const DENIES_SHARED = [
   "delegation.deniesShared.login",
@@ -56,7 +57,7 @@ function InvitesDelegationInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const { t } = useT();
+  const { t, locale } = useT();
 
   const [info, setInfo] = useState<GetDelegationByTokenResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +147,7 @@ function InvitesDelegationInner() {
         <h1 className="mb-4 text-xl font-semibold">{t("delegation.inviteTitle")}</h1>
         <p className="text-zinc-600">{t("delegation.invalidOrExpired")}</p>
         <Link href="/" className="mt-6 inline-block text-sm font-medium text-zinc-700 underline">
-          ← {t("common.backTo")} {t("common.home")}
+          ← {backToLabel(t("common.home"), locale)}
         </Link>
       </div>
     );

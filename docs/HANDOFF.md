@@ -2,6 +2,92 @@
 
 Last updated: 2026-04-29
 
+## 2026-04-29 — 위임 권한 풀 RLS 정렬 / 변경 요청 거부 path / 비공계 작품 피드 누락 / 영문 Back 어색한 한글 청소
+
+세 갈래 묶음 패치. 위임 권한 변경 흐름을 깊이 감사하다 권한 풀 자체가 두 갈래로 분기되어 있는 것을 발견했고, 그 김에 비공계 노출과 UI 텍스트 통일까지 같이 정리.
+
+### Supabase SQL — 적용 필수
+
+`supabase/migrations/20260518000000_delegation_perm_pool_realign.sql` ← Supabase SQL Editor 에서 실행. 4개 섹션, 한 번에 실행 OK (idempotent). 토크나이저가 까다로우면 SECTION 1~4 를 차례로 실행해도 됨.
+
+### 1. 위임 권한 풀 RLS 정렬 (CRITICAL)
+
+**증상**: 권한 변경 요청 모달에서 받는 쪽에 *원래* 부여되지 않은 권한이 모두 raw i18n 키로 노출 (예: `delegation.permissionLabel.manage_pricing`). 또한 sender 가 UpdatePermissionsModal 로 [저장] 누르면 옛 권한이 *통째로 사라짐*.
+
+**원인**: PR-B (`20260515000000_delegation_lifecycle_actions.sql`) 가 `update_delegation_permissions` 와 `request_delegation_permission_change` 의 화이트리스트로 7개 키를 도입:
+```
+view, edit_metadata, manage_works, manage_pricing,
+reply_inquiries, manage_exhibitions, manage_shortlists
+```
+하지만 *write-side RLS* (`20260505000100_delegation_account_rls_writer.sql`) 는 *전혀 다른* 어휘를 사용:
+```
+view, edit_metadata, manage_works, manage_artworks,
+manage_exhibitions, manage_inquiries, manage_claims,
+edit_profile_public_content
+```
+preset (`operations`, `content` 등) 은 옛 키를 seed 하는데 PR-B 화이트리스트는 그 키들을 sanitize 단계에서 *전부 drop*. 결과:
+- 받은 쪽이 가지고 있던 `manage_artworks`/`manage_inquiries`/`manage_claims`/`edit_profile_public_content` 가 sender 의 *어떤 [저장]* 만으로도 사라짐.
+- 새 키 `manage_pricing`/`reply_inquiries`/`manage_shortlists` 는 RLS 가 안 보니까 toggle 해도 효력 0.
+
+**수정**: SQL whitelist 와 UI `ALL_PERMISSIONS` 를 *RLS 가 실제로 검사하는 8개* 로 통일:
+- `update_delegation_permissions`, `request_delegation_permission_change` 의 화이트리스트 재정의
+- `src/components/delegation/UpdatePermissionsModal.tsx`, `RequestPermissionChangeModal.tsx` 의 `ALL_PERMISSIONS` 풀 동기화
+- i18n 라벨은 두 풀 모두 등록되어 있어서 그대로 유지 (호환성)
+
+### 2. 권한 변경 요청 거부 path 신설
+
+**증상**: 받는 쪽이 권한 변경을 요청하면 보낸 쪽은 *수락 (편집 + 저장)* 만 가능. *명시적 거부* path 가 없어 요청을 무시하면 inbox 에 영구 남음. proposed === current 케이스 (메모만 보낸 요청) 에선 `dirty=false` 로 [저장] 버튼이 disabled 라 응답 자체가 불가.
+
+**수정**:
+- 새 SQL RPC `dismiss_delegation_permission_change_request(p_delegation_id, p_message)`:
+  - sender 가 호출. sender 의 같은 위임 `delegation_permission_change_requested` 알림 모두 삭제.
+  - audit log 에 `permission_change_dismissed` 이벤트 추가.
+  - 받은 쪽에 `delegation_permission_change_dismissed` 알림 발송. 위임 row 의 권한·상태는 그대로.
+- 새 알림 type 을 `notifications_type_check` CHECK constraint 에 추가 (Section 4).
+- `src/components/delegation/DelegationDetailDrawer.tsx`:
+  - amber pending card 에 [검토 후 결정] / [요청 거부] 두 버튼 노출.
+  - [검토 후 결정] → UpdatePermissionsModal 열기.
+  - [요청 거부] → confirm 후 `dismiss_delegation_permission_change_request` 호출.
+- `src/components/delegation/UpdatePermissionsModal.tsx`:
+  - 새 prop `responseMode` (drawer 가 effectiveProposed 가 있을 때 true). dirty=false 여도 [저장] 가능 — 라벨이 [요청 수락 (변경 없음)] / [Acknowledge request] 로 바뀜. SQL 의 no-op 분기가 알림을 비롯한 inbox 청소를 함께 처리.
+- `src/components/delegation/RequestPermissionChangeModal.tsx`:
+  - RPC 가 `data.ok === false` 를 반환하면 inline 에러로 surface (silent close 방지).
+- `src/lib/supabase/delegations.ts`: `dismissDelegationPermissionChangeRequest()` 헬퍼 추가.
+- `src/app/notifications/page.tsx` + `src/lib/supabase/notifications.ts`:
+  - `delegation_permission_change_dismissed` 타입을 NotificationType 유니온에 추가 + 카드 텍스트 + deep-link 라우팅 (`/my/delegations`).
+- i18n: `delegation.detail.pendingRequestReview/Dismiss/Dismissing/dismissChangeRequestConfirm/Done` (KR/EN), `delegation.update.acknowledge` (KR/EN), `notifications.delegationPermissionChangeDismissedText` (KR/EN).
+
+### 3. 비공계 계정 작품의 피드 노출 ("알 수 없는 사용자") 차단
+
+**증상**: 비공계 계정에서 직접 업로드한 작품이 외부 viewer 의 피드에 *작가명 "알 수 없는 사용자"* 로 노출.
+
+**원인 분석**: RLS (`artworks_select_public` + `is_artist_publicly_visible`) 는 PR3 (`20260513000000`) 이후 비공계 작가의 작품 SELECT 를 정확히 차단. 그러나 어떤 정책 misalignment 든 (production 미적용·중복 정책 등) row 가 외부 viewer 한테 도착하면 `profiles!artist_id` join 이 `profiles_select_*` 정책으로 먼저 차단되어 *작품 row 는 살아있고 작가 정보만 null* 인 비대칭 상태가 발생 → 클라이언트 fallback 으로 "알 수 없는 사용자" 노출.
+
+**수정** — RLS 가 source of truth 지만, 클라이언트 측 *defensive 안전망* 으로 동일 시나리오를 사전 차단:
+- `ARTWORK_SELECT` 에 `profiles!artist_id(..., is_public)` 추가.
+- 새 helper `isPublicSurfaceVisible(row)` — `artist_id` 가 null 이 아닌 row 에서 `profiles` 가 누락(`null` 또는 `id` 부재)되었거나 `profiles.is_public === false` 이면 false 반환.
+- public 진열 함수 (`listPublicArtworks`, `listPublicArtworksByArtistId`, `listPublicArtworksListedByProfileId`) 의 결과에 helper 적용. follower-accepted / 본인 / delegate 컨텍스트는 별도 listing helper 를 사용해 영향 없음.
+
+### 4. UX 통일 — "← 돌아가기 X" 어색한 한글 + 영문 Back 버튼
+
+**증상**: "← 돌아가기 개별 업로드" / "← 돌아가기 피드" 처럼 한국어가 어색. 일부 페이지에선 `Back` 영문 버튼이 그대로 노출.
+
+**수정**:
+- 새 helper `src/lib/i18n/back.ts` — `backToLabel(label, locale)`:
+  - KO: `{label}` (화살표 ← 가 시각적 단서, 조사 으로/로 회피)
+  - EN: `Back to {label}`
+- 호출처 8곳 마이그레이션 (`notifications`, `auth/reset`, `e/[id]`, `invites/delegation`, `upload/bulk`, `my/exhibitions/{new,[id]/add,[id]/edit}`).
+- `my/library/import` 페이지의 hardcoded `Back` / `Validate & Preview` 영문 버튼을 i18n 처리 (`common.back`, `library.import.validateAndPreview` KR/EN 추가).
+
+### Verified
+
+- `npm run build` 통과 (Next.js 16.1.6, exit 0).
+- TypeScript: `delegation_permission_change_dismissed` 새 알림 타입 union 에 추가.
+- 라벨 helper: `manage_artworks` 등 RLS-정렬 풀 → KR `작품 관리` / EN `Manage artworks`.
+- SQL 마이그레이션 idempotent. CHECK constraint 풀이 superset 으로 확장.
+
+---
+
 ## 2026-04-29 — 위임 권한 라벨 / 권한 변경 요청 알림·모달 정리
 
 QA 보고 두 건을 한 묶음으로 처리.

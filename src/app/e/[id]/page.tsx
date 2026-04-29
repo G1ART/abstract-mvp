@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import Image from "next/image";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import { getExhibitionHostCuratorLabel } from "@/lib/exhibitionCredits";
 import {
   ensureDefaultExhibitionMediaBuckets,
@@ -32,7 +33,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function PublicExhibitionPage() {
   const params = useParams();
-  const { t } = useT();
+  const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const [exhibition, setExhibition] = useState<ExhibitionRow | null>(null);
   const [works, setWorks] = useState<ExhibitionWorkRow[]>([]);
@@ -141,7 +142,7 @@ export default function PublicExhibitionPage() {
     <main className="mx-auto max-w-3xl px-4 py-8">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link href="/feed" className="text-sm text-zinc-600 hover:text-zinc-900">
-          ← {t("common.backTo")} {t("nav.feed")}
+          ← {backToLabel(t("nav.feed"), locale)}
         </Link>
         {isOwner && (
           <>

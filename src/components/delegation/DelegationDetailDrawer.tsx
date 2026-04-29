@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n/useT";
 import {
   PRESET_PERMISSIONS,
   cancelDelegationInvite,
+  dismissDelegationPermissionChangeRequest,
   getDelegationDetail,
   resignDelegationByDelegate,
   revokeDelegation,
@@ -83,7 +84,7 @@ export function DelegationDetailDrawer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<
-    null | "cancel" | "revoke" | "resign"
+    null | "cancel" | "revoke" | "resign" | "dismiss"
   >(null);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -165,6 +166,28 @@ export function DelegationDetailDrawer({
     onChanged?.();
     onClose();
   }, [detail, onChanged, onClose, t]);
+
+  const handleDismissChangeRequest = useCallback(async () => {
+    if (!detail) return;
+    if (!confirm(t("delegation.detail.dismissChangeRequestConfirm"))) return;
+    setBusy("dismiss");
+    const { data, error: err } = await dismissDelegationPermissionChangeRequest({
+      delegationId: detail.delegation.id,
+    });
+    setBusy(null);
+    if (err) {
+      setError(formatSupabaseError(err, t, "delegation.error.unknown"));
+      return;
+    }
+    if (data && data.ok === false) {
+      setError(t("delegation.error.unknown"));
+      return;
+    }
+    setToast(t("delegation.detail.dismissChangeRequestDone"));
+    onChanged?.();
+    const { data: refreshed } = await getDelegationDetail(detail.delegation.id);
+    if (refreshed) setDetail(refreshed);
+  }, [detail, onChanged, t]);
 
   const handleResign = useCallback(async () => {
     if (!detail) return;
@@ -295,6 +318,7 @@ export function DelegationDetailDrawer({
             onResign={handleResign}
             onUpdate={() => setUpdateOpen(true)}
             onRequest={() => setRequestOpen(true)}
+            onDismissChangeRequest={handleDismissChangeRequest}
           />
         )}
       </aside>
@@ -305,6 +329,7 @@ export function DelegationDetailDrawer({
           delegationId={detail.delegation.id}
           initialPermissions={currentPermissions}
           proposedPermissions={effectiveProposed}
+          responseMode={!!effectiveProposed}
           onClose={() => setUpdateOpen(false)}
           onSaved={(result) => {
             const added = result.added.length;
@@ -375,11 +400,12 @@ function DetailFooter({
   onResign,
   onUpdate,
   onRequest,
+  onDismissChangeRequest,
 }: {
   t: (k: string) => string;
   detail: DelegationDetail;
   viewerIsOwner: boolean;
-  busy: null | "cancel" | "revoke" | "resign";
+  busy: null | "cancel" | "revoke" | "resign" | "dismiss";
   toast: string | null;
   pendingChangeRequest:
     | { message: string | null; proposed: string[]; createdAt: string }
@@ -389,6 +415,7 @@ function DetailFooter({
   onResign: () => void;
   onUpdate: () => void;
   onRequest: () => void;
+  onDismissChangeRequest: () => void;
 }) {
   const status = detail.delegation.status;
 
@@ -432,9 +459,28 @@ function DetailFooter({
             </p>
             {pendingChangeRequest.message && (
               <p className="mt-1 whitespace-pre-wrap">
-                "{pendingChangeRequest.message}"
+                &ldquo;{pendingChangeRequest.message}&rdquo;
               </p>
             )}
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={onUpdate}
+                className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100"
+              >
+                {t("delegation.detail.pendingRequestReview")}
+              </button>
+              <button
+                type="button"
+                onClick={onDismissChangeRequest}
+                disabled={busy === "dismiss"}
+                className="rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              >
+                {busy === "dismiss"
+                  ? t("delegation.detail.pendingRequestDismissing")
+                  : t("delegation.detail.pendingRequestDismiss")}
+              </button>
+            </div>
           </div>
         )}
         <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-400">

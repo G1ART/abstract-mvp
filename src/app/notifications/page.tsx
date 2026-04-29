@@ -10,6 +10,7 @@ import {
   type NotificationRow,
 } from "@/lib/supabase/notifications";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 import { formatDisplayName } from "@/lib/identity/format";
 import { EmptyState } from "@/components/ds/EmptyState";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
@@ -204,6 +205,8 @@ function notificationLabel(
     }
     case "delegation_permission_change_requested":
       return t("notifications.delegationPermissionChangeRequestedText").replace("{name}", name);
+    case "delegation_permission_change_dismissed":
+      return t("notifications.delegationPermissionChangeDismissedText").replace("{name}", name);
     case "follow_request":
       return t("notifications.followRequest.body").replace("{name}", name);
     case "follow_request_accepted":
@@ -254,7 +257,8 @@ function notificationLink(
     row.type === "delegation_invite_canceled" ||
     row.type === "delegation_resigned" ||
     row.type === "delegation_permissions_updated" ||
-    row.type === "delegation_permission_change_requested"
+    row.type === "delegation_permission_change_requested" ||
+    row.type === "delegation_permission_change_dismissed"
   ) {
     // Sender-side permission-change requests deep-link to the
     // delegation detail with a query hint so DelegationsList can open
@@ -273,7 +277,7 @@ function notificationLink(
 }
 
 function NotificationsContent() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [list, setList] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [markingAll, setMarkingAll] = useState(false);
@@ -329,7 +333,7 @@ function NotificationsContent() {
         href="/feed?tab=all&sort=latest"
         className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900"
       >
-        ← {t("common.backTo")} {t("nav.feed")}
+        ← {backToLabel(t("nav.feed"), locale)}
       </Link>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold text-zinc-900">{t("notifications.title")}</h1>

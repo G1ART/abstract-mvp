@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase/client";
 import { getSession } from "@/lib/supabase/auth";
 import { useT } from "@/lib/i18n/useT";
+import { backToLabel } from "@/lib/i18n/back";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -81,7 +82,7 @@ export default function ResetPasswordPage() {
           href="/login"
           className="mt-4 inline-block text-sm font-medium text-zinc-700 hover:text-zinc-900"
         >
-          ← {t("common.backTo")} {t("auth.backToLogin")}
+          ← {backToLabel(t("auth.backToLogin"), locale)}
         </Link>
       </div>
     );
