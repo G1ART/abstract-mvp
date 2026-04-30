@@ -15,10 +15,10 @@ type Props = {
 
 /**
  * Living Salon grid — 12-column on desktop, 6-column on tablet, 2-column on
- * mobile. Standard artworks span 4/3/1; anchor artworks span 6/6/2 with a
- * height clamp so the first viewport never collapses into a hero. Context
- * modules (artist-world / exhibition-memory) span the full row on mobile and
- * 8 or 12 columns on desktop depending on breathing room.
+ * mobile. Standard artworks span 4/3/1; anchor artworks span 6/6/1 (mobile
+ * falls back to a standard tile so we never produce a full-width hero on
+ * small screens). All cells are aligned to the row start so a tall context
+ * strip or a slightly larger anchor never stretches the rest of the row.
  *
  * The grid is intentionally a thin renderer — the rhythm and dedupe live in
  * `buildLivingSalonItems`, so this component just maps `LivingSalonItem` to
@@ -32,23 +32,19 @@ export function LivingSalonGrid({
   onLikeUpdate,
 }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-4 md:grid-cols-6 lg:grid-cols-12 lg:gap-5">
+    <div className="grid auto-rows-min grid-cols-2 items-start gap-4 md:grid-cols-6 lg:grid-cols-12 lg:gap-5">
       {items.map((item, idx) => {
         if (item.kind === "artwork") {
           const isAnchor = item.variant === "anchor";
+          // Mobile fallback: anchors fold back into a standard tile so we
+          // never produce a full-viewport hero on small screens (Work Order
+          // §2.1). Desktop and tablet keep the wider 6-col span.
           const span = isAnchor
-            ? "col-span-2 md:col-span-6 lg:col-span-6"
+            ? "col-span-1 md:col-span-6 lg:col-span-6"
             : "col-span-1 md:col-span-3 lg:col-span-4";
-          // Limit anchor height so it shares the first viewport with other
-          // works rather than dominating it. CSS `max-h-[55vh]` honors Work
-          // Order §F2 without disrupting the matte-contained image.
-          const heightLimit = isAnchor ? "max-h-[55vh]" : "";
           const isPriority = idx < 2 || isAnchor;
           return (
-            <div
-              key={item.key}
-              className={`min-w-0 ${span} ${heightLimit}`}
-            >
+            <div key={item.key} className={`min-w-0 ${span}`}>
               <FeedArtworkCard
                 artwork={item.artwork}
                 likedIds={likedIds}

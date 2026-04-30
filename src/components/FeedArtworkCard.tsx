@@ -72,7 +72,14 @@ export function FeedArtworkCard({
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
   const first = sorted[0];
-  const imageUrl = first ? getArtworkImageUrl(first.storage_path, "thumb") : null;
+  // Anchor tiles are visibly larger; thumb (400px) blurs noticeably there,
+  // so anchors load `medium` (1200px) while standard / mini stay on thumb to
+  // keep the first-screen network footprint small (Work Order §2.1 / §C4).
+  const imageVariant: "thumb" | "medium" =
+    variant === "feedAnchor" ? "medium" : "thumb";
+  const imageUrl = first
+    ? getArtworkImageUrl(first.storage_path, imageVariant)
+    : null;
 
   const artistProfile = (artwork as { profiles?: ArtistProfileLite | null }).profiles ?? null;
   const primaryClaim = getPrimaryClaim(artwork);
@@ -97,12 +104,13 @@ export function FeedArtworkCard({
 
   const isAnchor = variant === "feedAnchor";
   const isMini = variant === "discoveryMini";
-  const aspectClass = isAnchor ? "aspect-[4/5]" : "aspect-square";
+  // Anchor stays square so the salon row keeps a calm rhythm; the anchor's
+  // visual weight comes from its wider column span, not a taller aspect.
+  // A taller aspect would push the row height up and stretch sibling tiles.
+  const aspectClass = "aspect-square";
   const radiusClass = isMini ? "rounded-lg" : "rounded-xl";
   const padClass = isMini ? "p-2.5" : "p-3";
-  const borderClass = isMini
-    ? "border-zinc-200"
-    : "border-zinc-200";
+  const borderClass = "border-zinc-200";
 
   function handleClick() {
     setArtworkBack(pathname ?? "/feed");
@@ -140,7 +148,7 @@ export function FeedArtworkCard({
             fill
             sizes={
               isAnchor
-                ? "(max-width: 768px) 100vw, 50vw"
+                ? "(max-width: 768px) 50vw, 50vw"
                 : isMini
                   ? "(max-width: 768px) 33vw, 200px"
                   : "(max-width: 768px) 50vw, 33vw"
