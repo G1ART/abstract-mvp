@@ -2,6 +2,66 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.2 (Letterbox-free + Persona-aware)
+
+v1.1 의 editorial spotlight 그리드 위에서 미감/로직 두 측면을 한 단계 더 끌어올림. 같은 날 두 번째 패치라 layout_version 은 그대로 v1.1_editorial 유지 (mix·first paint 비교 키 불변), 빌더 결정론은 그대로.
+
+### 사용자 합의
+
+- 작품 letterbox(회색 fill-in) 제거 — 작품 옆 균일한 회색 띠가 가장 큰 시각 노이즈
+- 사람 소개 strip 컴팩트화 (LinkedIn-style, 사용자가 D2 선택) + 페르소나 분기
+- 전시 노출 게이트 (cover_image_paths 가 2개 이상일 때만)
+- 전시·작가 strip 의 썸네일 사이즈를 *현재의 절반* 으로 축소 — 한눈에 느낌은 보이되 호기심 hook
+- 헤더 hairline 제거, focus ring 절제
+
+### Supabase SQL — 돌려야 할 것 없음
+
+UI/표현 + 결정론 빌더 입력 필터만 손댐.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) — `LivingSalonItem.artist_world` 에 `persona: "artist" | "curator" | "gallerist" | "collector"` 필드 추가. 새 export `LivingSalonPersona`, `LIVING_SALON_PERSONAS`, `parsePersona()`. `filterDiscovery` 가 `main_role` 을 4종 중 하나로 정규화 못 하면 drop, artist 만 `>= 2` artworks 게이트, 비-artist 는 0 artworks 도 통과 (텍스트-only). `collectExhibitions` 가 `cover_image_paths.length >= 2` 게이트 (`EXHIBITION_MIN_COVERS = 2`). `takeArtistWorld` 는 artist 페르소나만 `slice(0, 4)` 썸네일 전달, 비-artist 는 빈 배열
+- [src/components/feed/ArtistWorldStrip.tsx](../src/components/feed/ArtistWorldStrip.tsx) — 새 prop `persona`. 2단 row 레이아웃 (`flex-col gap-6 sm:flex-row sm:gap-10`): 좌측 인물 정보 (아바타 h-10, 페르소나 라벨, 이름, role chip, reason 한 줄, "작가 보기 / 프로필 보기" 텍스트 액션 + Follow). 우측은 `persona === "artist"` 일 때만 inline thumbs 4개 (`grid-cols-4`, `sm:max-w-[44%]`, `aspect-square`, 사이즈 ~80-100px) — 비-artist 는 우측 자체 미렌더. 페르소나 라벨 i18n 분기 (`PERSONA_LABEL_KEY`)
+- [src/components/feed/ExhibitionMemoryStrip.tsx](../src/components/feed/ExhibitionMemoryStrip.tsx) — 2단 row 레이아웃: 좌측 메타 + "전시 보기 →" 텍스트 액션, 우측 동적 썸네일 grid (`cover.length === 2 ? grid-cols-2 : grid-cols-3`, `sm:max-w-[44%]`, 각 thumb 사이즈 ~140-180px). 카드 박스 흔적 0 (이미 무경계, hairline divider 만)
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — 이미지 컨테이너 배경 제거 (`bg-zinc-50`/`bg-zinc-100` → 빈 컨테이너 + 페이지 white 가 비치도록). focus ring `ring-2 ring-zinc-400` → `ring-1 ring-zinc-300 ring-offset-2 ring-offset-white`
+- [src/components/feed/FeedHeader.tsx](../src/components/feed/FeedHeader.tsx) — `border-b border-zinc-100 pb-5` 제거 → `mb-12` 큰 여백으로만 그리드와 분리 (다른 메인 페이지들도 동일하게 hairline-less 톤)
+- [src/components/feed/LivingSalonGrid.tsx](../src/components/feed/LivingSalonGrid.tsx) — `<ArtistWorldStrip>` 호출 시 `persona={item.persona}` 전달 한 줄만 추가
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — KR/EN 새 키 4개: `feed.curatorMeetLabel` ("큐레이터를 만나보세요 / A curator to meet"), `feed.galleristRoomLabel` ("갤러리스트를 소개합니다 / A gallerist's room"), `feed.collectorEyeLabel` ("컬렉터의 시선 / A collector's eye"), `feed.viewProfile` ("프로필 보기 / View profile"). 기존 `feed.artistWorldLabel` 영문 카피만 `Artist world → Artist's world` 로 살짝 다듬음
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — `makeProfile` 디폴트 `main_role` 을 `"artist"` 로, `makeExhibition` 디폴트 `cover_image_paths` 를 `["cover-a", "cover-b"]` 로 (기존 테스트들이 새 게이트로 의도치 않게 drop 되지 않도록). 새 케이스 8개 추가: persona=null drop / persona=writer drop / curator with 0 artworks 통과 / gallerist+collector 통과 / artist 1 artwork 회귀 drop / artist 6 artworks → 4 thumbs / 전시 0 covers drop / 전시 1 cover drop / 전시 2+ covers 통과
+
+### 변경 없음 (의도)
+
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — `layout_version` 키 그대로 v1.1_editorial. 같은 editorial 톤 안에서 quality refinement 라 분리 비교 가치 적음
+- [src/app/feed/FeedClient.tsx](../src/app/feed/FeedClient.tsx) — 진입 그대로
+- 데이터 페치, RLS, cursor, TTL refresh, IntersectionObserver, like/follow 행동 — 일체 무변경
+
+### 디자인 결정
+
+- **Letterbox = 0**: matte 회색 띠가 작품 옆에 균일하게 깔리던 패턴 제거. 작품 자기 비율로 페이지 white 위에 떠 있는 매거진 톤. 다크 작품일 때 끝선이 약간 약하지만 살롱 정신에 부합
+- **Persona-aware 표면**: 큐레이터/갤러리스트/컬렉터를 "작가의 세계" 라벨로 잘못 노출하던 버그 해소. main_role 이 4종 중 아니거나 null 인 사용자는 피드 표면에서 자동 drop. `/people` 등 다른 페이지 동작에는 영향 0 (피드 표면만 게이트)
+- **Discovery hook**: 사람·전시 strip 의 썸네일을 현재의 절반으로 줄여 *전체 그림은 보이되, 큰 사이즈로 보고 싶어 클릭하게* 만드는 hook. 두 strip 이 동일한 컴팩트 톤으로 통일
+- **Exhibition gate (>= 2 covers)**: cover 1개·0개 전시는 입구에서 drop. 빌더 결정론 안에서 처리해 그리드에 빈 슬롯이 절대 도달하지 않음
+
+### Verified
+
+- `npm run test:feed-living-salon` — 새 케이스 8개 포함 모두 ok
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — success
+- 우리가 수정한 파일 8개 lint clean
+
+### 권장 수동 QA
+
+- 페르소나 4종 노출 분기: artist (썸네일 4개 + 작가 보기) / curator / gallerist / collector (텍스트-only + 프로필 보기)
+- main_role 이 null 또는 4종 외 (writer 등) 인 추천 프로필이 피드에서 보이지 않는지
+- 전시: cover 1개 또는 0개 전시는 절대 노출되지 않는지. cover 2개면 grid-cols-2, 3개면 grid-cols-3 으로 그려지는지
+- 작품 카드: letterbox 회색 제거된 후 다크 작품 / 라이트 작품 모두 자연스러운지
+- 4 viewport (375 / 768 / 1024 / 1440) × 한·영 토글
+- 다른 메인 페이지 (`/people`, `/upload`, `/my`) 이동 시 헤더 톤 위화감 0
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 (Living Salon Feed v1.1 Editorial Spotlight)
 
 `/feed` 의 비주얼 정체성을 한 단계 더 살롱화. v1 (4월 29일) 의 12/6/2 그리드와 카드 박스 톤이 *밀도와 미감* 양쪽에서 부족했던 점을 고쳐, "옵션 C — Editorial Hybrid with Spotlight" 로 재설계. 데이터 척추, 결정론 빌더, 분석 이벤트 이름은 모두 그대로.

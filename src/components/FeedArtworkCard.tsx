@@ -108,11 +108,11 @@ export function FeedArtworkCard({
   // visual weight; a taller anchor would push the row height up. Mini stays
   // square as a quiet strip thumb.
   const aspectClass = isAnchor || isMini ? "aspect-square" : "aspect-[4/5]";
-  // Mini still gets a soft radius — it lives inside the strip and benefits
-  // from a small frame. Tile/anchor are fully borderless (matte image only).
-  const imageWrapClass = isMini
-    ? "rounded-md overflow-hidden bg-zinc-100"
-    : "bg-zinc-50";
+  // No matte fill behind the artwork — letterbox bands distract from the
+  // image. The page background (white) shows through any aspect mismatch,
+  // which reads as the artwork floating on paper rather than sitting in a
+  // grey frame. Mini still gets a quiet frame inside the strip.
+  const imageWrapClass = isMini ? "overflow-hidden" : "";
 
   function handleClick() {
     setArtworkBack(pathname ?? "/feed");
@@ -133,7 +133,7 @@ export function FeedArtworkCard({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       aria-label={artwork.title ?? undefined}
-      className="group flex h-full cursor-pointer flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
+      className="group flex h-full cursor-pointer flex-col focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
     >
       <div className={`relative w-full ${aspectClass} ${imageWrapClass}`}>
         {imageUrl ? (

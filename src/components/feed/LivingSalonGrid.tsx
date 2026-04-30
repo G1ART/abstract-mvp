@@ -80,6 +80,7 @@ export function LivingSalonGrid({
           >
             <ArtistWorldStrip
               profile={item.profile}
+              persona={item.persona}
               artworks={item.artworks}
               likedIds={likedIds}
               initialFollowing={followingIds.has(item.profile.id)}

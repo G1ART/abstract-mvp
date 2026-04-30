@@ -35,7 +35,7 @@ export function FeedHeader({
   const { t } = useT();
 
   return (
-    <header className="mb-8 border-b border-zinc-100 pb-5">
+    <header className="mb-12">
       <div className="mb-5">
         <h1 className="text-xl font-semibold tracking-tight text-zinc-900">
           {t("feed.todayTitle")}

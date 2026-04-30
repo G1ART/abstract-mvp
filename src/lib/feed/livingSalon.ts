@@ -15,6 +15,25 @@ import type { DiscoveryDatum, FeedEntry } from "./types";
  */
 export type LivingSalonArtworkVariant = "standard" | "anchor" | "quiet";
 
+/**
+ * Personas for "people-introducing" strips. Each persona has a different
+ * label, copy, and rendering rule (artist gets inline thumbs, others stay
+ * text-only). Profiles whose `main_role` is none of these are not surfaced
+ * in the feed at all.
+ */
+export type LivingSalonPersona =
+  | "artist"
+  | "curator"
+  | "gallerist"
+  | "collector";
+
+export const LIVING_SALON_PERSONAS: readonly LivingSalonPersona[] = [
+  "artist",
+  "curator",
+  "gallerist",
+  "collector",
+] as const;
+
 export type LivingSalonItem =
   | {
       kind: "artwork";
@@ -31,6 +50,7 @@ export type LivingSalonItem =
       kind: "artist_world";
       key: string;
       profile: PeopleRec;
+      persona: LivingSalonPersona;
       artworks: ArtworkWithLikes[];
     };
 
@@ -48,7 +68,12 @@ export type BuildLivingSalonInput = {
 const OPENING_REGION = 6;
 const ANCHOR_INDEX_PRIMARY = 3;
 const ANCHOR_INDEX_FALLBACK = 4;
+/** Artist-persona strips need at least this many public artworks to render. */
 const ARTIST_WORLD_MIN_ARTWORKS = 2;
+/** Exhibition strips need at least this many cover thumbs. Exhibitions with
+ * 0–1 covers read as empty / awkward in the feed; we drop them at the
+ * builder entrance so they never reach the surface. */
+const EXHIBITION_MIN_COVERS = 2;
 /** Minimum artwork-or-exhibition tiles between two artist-world strips. */
 const ARTIST_WORLD_MIN_GAP = 5;
 /** Maximum consecutive artworks from the same artist before we try to swap. */
@@ -130,12 +155,25 @@ export function buildLivingSalonItems(
   function takeArtistWorld(): LivingSalonItem | null {
     while (discoveryIdx < orderedDiscovery.length) {
       const datum = orderedDiscovery[discoveryIdx++];
-      if (datum.artworks.length < ARTIST_WORLD_MIN_ARTWORKS) continue;
+      const persona = parsePersona(datum.profile.main_role);
+      if (persona == null) continue;
+      // Artist personas need a minimum public artwork count so the inline
+      // thumb row is never empty. Other personas surface as text-only and
+      // ignore the artworks count.
+      if (
+        persona === "artist" &&
+        datum.artworks.length < ARTIST_WORLD_MIN_ARTWORKS
+      ) {
+        continue;
+      }
       return {
         kind: "artist_world",
         key: `aw-${datum.profile.id}`,
         profile: datum.profile,
-        artworks: datum.artworks.slice(0, 3),
+        persona,
+        // Only artist personas render thumbs; pass through up to 4 so the
+        // strip can show an inline row. Non-artist personas ignore this.
+        artworks: persona === "artist" ? datum.artworks.slice(0, 4) : [],
       };
     }
     return null;
@@ -272,7 +310,14 @@ function collectExhibitions(entries: FeedEntry[]): ExhibitionWithCredits[] {
     .filter(
       (e): e is Extract<FeedEntry, { type: "exhibition" }> => e.type === "exhibition"
     )
-    .map((e) => e.exhibition);
+    .map((e) => e.exhibition)
+    // Exhibitions with fewer than 2 cover images read as empty / awkward
+    // in the salon (a single thumb floats next to a credit line). Drop
+    // them at the builder entrance so they never compete for grid space.
+    .filter(
+      (exhibition) =>
+        (exhibition.cover_image_paths?.length ?? 0) >= EXHIBITION_MIN_COVERS
+    );
 }
 
 function filterDiscovery(data: DiscoveryDatum[]): DiscoveryDatum[] {
@@ -281,12 +326,36 @@ function filterDiscovery(data: DiscoveryDatum[]): DiscoveryDatum[] {
   for (const datum of data) {
     if (!datum.profile?.id) continue;
     if (seen.has(datum.profile.id)) continue;
+    const persona = parsePersona(datum.profile.main_role);
+    // Drop profiles whose main_role isn't one of the four supported
+    // personas. The feed should never label a non-artist as "Artist's
+    // world" or surface a person whose role we can't introduce.
+    if (persona == null) continue;
     const safeArtworks = datum.artworks.filter(isPublicSurfaceVisible);
-    if (safeArtworks.length < ARTIST_WORLD_MIN_ARTWORKS) continue;
+    // Artist personas still need the minimum public-artwork count so the
+    // thumb row isn't empty. Non-artists don't render thumbs, so they
+    // pass even with zero artworks.
+    if (persona === "artist" && safeArtworks.length < ARTIST_WORLD_MIN_ARTWORKS) {
+      continue;
+    }
     seen.add(datum.profile.id);
     out.push({ profile: datum.profile, artworks: safeArtworks });
   }
   return out;
+}
+
+/**
+ * Returns the canonical persona for a `main_role` value, or null when the
+ * role is missing / outside the supported four.
+ */
+export function parsePersona(
+  mainRole: string | null | undefined
+): LivingSalonPersona | null {
+  if (!mainRole) return null;
+  const normalized = mainRole.trim().toLowerCase();
+  return (LIVING_SALON_PERSONAS as readonly string[]).includes(normalized)
+    ? (normalized as LivingSalonPersona)
+    : null;
 }
 
 function isLastItemContext(items: LivingSalonItem[]): boolean {

@@ -57,24 +57,30 @@ function makeArtwork(
   };
 }
 
-function makeExhibition(id: string): ExhibitionWithCredits {
+function makeExhibition(
+  id: string,
+  coverImagePaths: string[] = ["cover-a", "cover-b"]
+): ExhibitionWithCredits {
   return {
     id,
     title: `Exhibition ${id}`,
     start_date: "2026-01-01",
     end_date: "2026-02-01",
     status: "ongoing",
-    cover_image_paths: [],
+    cover_image_paths: coverImagePaths,
   } as unknown as ExhibitionWithCredits;
 }
 
-function makeProfile(id: string): PeopleRec {
+function makeProfile(
+  id: string,
+  mainRole: string | null = "artist"
+): PeopleRec {
   return {
     id,
     username: `p_${id}`,
     display_name: `Profile ${id}`,
     avatar_url: null,
-    main_role: null,
+    main_role: mainRole,
     roles: null,
     reason_tags: ["follow_graph"],
   };
@@ -328,6 +334,189 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
     const idx = items.indexOf(anchors[0]);
     assert.ok(idx === 3 || idx === 4, `anchor at idx 3 or 4, saw ${idx}`);
   }
+}
+
+// ── Persona drop: main_role null ────────────────────────────────────
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_null", null),
+        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
+      },
+    ],
+  });
+  const aws = items.filter((i) => i.kind === "artist_world");
+  assert.equal(aws.length, 0, "profile with null main_role is dropped");
+}
+
+// ── Persona drop: main_role outside the four supported ──────────────
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_writer", "writer"),
+        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
+      },
+    ],
+  });
+  const aws = items.filter((i) => i.kind === "artist_world");
+  assert.equal(aws.length, 0, "profile with unsupported main_role is dropped");
+}
+
+// ── Persona surface: curator with zero artworks renders text-only ───
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_curator", "curator"),
+        artworks: [],
+      },
+    ],
+  });
+  const aws = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
+      i.kind === "artist_world"
+  );
+  assert.equal(aws.length, 1, "curator persona surfaces even with zero artworks");
+  assert.equal(aws[0].persona, "curator");
+  assert.equal(aws[0].artworks.length, 0, "non-artist persona has empty artworks");
+}
+
+// ── Persona surface: gallerist + collector also pass ────────────────
+{
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_gallerist", "gallerist"),
+        artworks: [],
+      },
+      {
+        profile: makeProfile("rec_collector", "collector"),
+        artworks: [makeArtwork("ra1", "artistR1")],
+      },
+    ],
+  });
+  const aws = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
+      i.kind === "artist_world"
+  );
+  const personas = aws.map((a) => a.persona);
+  assert.ok(personas.includes("gallerist"), "gallerist persona surfaces");
+  assert.ok(personas.includes("collector"), "collector persona surfaces");
+}
+
+// ── Artist persona still requires >= 2 artworks (regression) ────────
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_thin_artist", "artist"),
+        artworks: [makeArtwork("ra1", "artistR1")],
+      },
+    ],
+  });
+  const aws = items.filter((i) => i.kind === "artist_world");
+  assert.equal(aws.length, 0, "artist persona with 1 artwork is still dropped");
+}
+
+// ── Artist persona surfaces with up to 4 inline thumbs ──────────────
+{
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_artist", "artist"),
+        artworks: Array.from({ length: 6 }, (_, i) =>
+          makeArtwork(`ra${i}`, "artistR1")
+        ),
+      },
+    ],
+  });
+  const aws = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
+      i.kind === "artist_world"
+  );
+  assert.equal(aws.length, 1);
+  assert.equal(aws[0].persona, "artist");
+  assert.ok(
+    aws[0].artworks.length > 0 && aws[0].artworks.length <= 4,
+    `artist persona thumbs in 1..4, saw ${aws[0].artworks.length}`
+  );
+}
+
+// ── Exhibition gate: 0 covers dropped ───────────────────────────────
+{
+  const items = buildLivingSalonItems({
+    entries: [
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+      ),
+      makeExhEntry(makeExhibition("ex_no_cover", []), 10),
+    ],
+    discoveryData: [],
+  });
+  const exs = items.filter((i) => i.kind === "exhibition_strip");
+  assert.equal(exs.length, 0, "exhibition with 0 covers is dropped at entrance");
+}
+
+// ── Exhibition gate: 1 cover dropped ────────────────────────────────
+{
+  const items = buildLivingSalonItems({
+    entries: [
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+      ),
+      makeExhEntry(makeExhibition("ex_one_cover", ["only-one"]), 10),
+    ],
+    discoveryData: [],
+  });
+  const exs = items.filter((i) => i.kind === "exhibition_strip");
+  assert.equal(exs.length, 0, "exhibition with 1 cover is dropped at entrance");
+}
+
+// ── Exhibition gate: 2+ covers pass ─────────────────────────────────
+{
+  const items = buildLivingSalonItems({
+    entries: [
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+      ),
+      makeExhEntry(makeExhibition("ex_pair", ["c1", "c2"]), 20),
+      makeExhEntry(makeExhibition("ex_triple", ["c1", "c2", "c3"]), 21),
+    ],
+    discoveryData: [],
+  });
+  const exs = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "exhibition_strip" }> =>
+      i.kind === "exhibition_strip"
+  );
+  const ids = exs.map((e) => e.exhibition.id);
+  assert.ok(ids.includes("ex_pair"), "exhibition with 2 covers passes");
+  assert.ok(ids.includes("ex_triple"), "exhibition with 3 covers passes");
 }
 
 // ── Summary helpers ─────────────────────────────────────────────────
