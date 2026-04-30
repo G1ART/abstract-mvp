@@ -4,6 +4,7 @@ import type { LivingSalonItem } from "@/lib/feed/livingSalon";
 import { FeedArtworkCard } from "@/components/FeedArtworkCard";
 import { ArtistWorldStrip } from "./ArtistWorldStrip";
 import { ExhibitionMemoryStrip } from "./ExhibitionMemoryStrip";
+import { PeopleClusterStrip } from "./PeopleClusterStrip";
 
 type Props = {
   items: LivingSalonItem[];
@@ -73,6 +74,22 @@ export function LivingSalonGrid({
           );
         }
 
+        if (item.kind === "people_cluster") {
+          return (
+            <div
+              key={item.key}
+              className="col-span-2 min-w-0 md:col-span-3 lg:col-span-4"
+            >
+              <PeopleClusterStrip
+                persona={item.persona}
+                profiles={item.profiles}
+                followingIds={followingIds}
+                userId={userId}
+              />
+            </div>
+          );
+        }
+
         return (
           <div
             key={item.key}
@@ -80,7 +97,6 @@ export function LivingSalonGrid({
           >
             <ArtistWorldStrip
               profile={item.profile}
-              persona={item.persona}
               artworks={item.artworks}
               likedIds={likedIds}
               initialFollowing={followingIds.has(item.profile.id)}

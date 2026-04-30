@@ -2,6 +2,62 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.3 (Clustered People + Size Tag)
+
+v1.2 의 letterbox-free + 페르소나 분기 위에서, 사람 추천을 클러스터화하고 작품 위에 사이즈 라벨을 얹는 두 축의 패치. layout_version 은 `living_salon_v1.1_editorial` → `living_salon_v1.3_clustered` 로 격상 (mix·first paint 분리 비교용).
+
+### 사용자 합의
+
+- 비-artist 페르소나(curator/gallerist/collector)를 *3-카드 클러스터 row* 로 묶어 노출 — LinkedIn 의 "Jobs recommended for you" 패턴. 카드 안 아바타 + 이름 + role chip + reason 한 줄 + Follow per card. artist 페르소나는 기존 큰 strip(작품 inline thumbs 4) 유지
+- 작품 사이즈를 썸네일 우상단에 *흰 α80% backdrop-blur pill* 로 항상 노출 — 작품 사이즈가 정보 매몰 안 되도록. 호수 prefix 떼고 base 만 (`90.9 × 72.7 cm`). 한·영 자동 변환 (`formatSizeForLocale`). mini 변형(strip thumb) 제외
+
+### Supabase SQL — 돌려야 할 것 없음
+
+UI/표현 + 결정론 빌더 분기만 손댐.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) — `LivingSalonItem` 에 새 kind `people_cluster` (`persona: LivingSalonClusterPersona`, `profiles: PeopleRec[]`) 추가. `artist_world` 의 `persona` 는 항상 `"artist"` 로 좁힘. 새 export `LivingSalonClusterPersona`, `buildPeopleClusters()`. `filterDiscovery` 를 `filterArtistDiscovery` 로 분리 (artist 페르소나만 통과 + `>= 2` artworks 게이트), 비-artist 는 `buildPeopleClusters` 가 페르소나별 버킷 + 3-chunk 로 분리. 빌더 메인 루프에 `takePeopleCluster()` 분기 (artist_world 우선, 큐 비면 cluster 폴백, 같은 `tilesSinceArtistWorld` 게이트 공유). `summarizeLivingSalonMix` 반환에 `people_clusters` 카운트 추가. `summarizeFirstView` 가 cluster 도 context 로 카운트
+- [src/components/feed/PeopleClusterStrip.tsx](../src/components/feed/PeopleClusterStrip.tsx) — 신설. 페르소나별 헤더 (uppercase tracking 라벨) + `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` 카드 grid. 카드: `rounded-2xl border bg-white p-5`, 아바타 h-12 + 이름 (semibold) + handle/role chip + reason `line-clamp-2` + 카드 하단 full-width `<FollowButton>` (메시지 초안 모달 동작 그대로 재사용). 카드 본문 클릭 → `/u/${username}`, Follow 영역 click isolation
+- [src/components/feed/ArtistWorldStrip.tsx](../src/components/feed/ArtistWorldStrip.tsx) — `persona` prop 제거, artist-only 로 단순화. 비-artist 분기 코드 일체 삭제. 라벨은 항상 `feed.artistWorldLabel`, 액션은 `feed.viewArtist`
+- [src/components/feed/LivingSalonGrid.tsx](../src/components/feed/LivingSalonGrid.tsx) — `people_cluster` 매핑 추가 (전폭 `col-span-2 md:col-span-3 lg:col-span-4`). `ArtistWorldStrip` 에 `persona` prop 더 이상 전달 X
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — 우상단 absolute pill: `bg-white/80 px-2 py-0.5 text-[10px] font-medium tracking-tight text-zinc-700 shadow-sm backdrop-blur-sm`. `formatSizeForLocale(artwork.size, locale, artwork.size_unit)` 호출, 새 헬퍼 `extractSizeBase()` 가 호수 prefix(`30F · `, `약 30F · `, `~30F · `) 떼기. mini 변형 제외 + 파싱 실패/null 일 땐 미렌더 (조용히 숨김). like 어포던스(우하단)와 시각 충돌 0
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — `FEED_LAYOUT_VERSION` `living_salon_v1.1_editorial` → `living_salon_v1.3_clustered`. `item_mix` 에 `people_clusters` 카운트 추가
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — KR/EN 새 키 3개: `feed.curatorClusterHeader` ("큐레이터 추천 / Curators to meet"), `feed.galleristClusterHeader` ("갤러리스트 추천 / Galleries to know"), `feed.collectorClusterHeader` ("컬렉터 추천 / Collectors to follow"). 미사용 키 4개 제거: `feed.curatorMeetLabel`, `feed.galleristRoomLabel`, `feed.collectorEyeLabel`, `feed.viewProfile` (v1.2 단독 strip 라벨 → cluster 헤더로 이동, 카드 자체가 클릭 영역이라 viewProfile 불필요)
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — `summarizeLivingSalonMix` 새 키 반영, back-to-back 게이트가 cluster 도 context 로 보도록 갱신. v1.2 의 "curator with 0 artworks → artist_world" 케이스를 "→ people_cluster" 로 갱신, 동일하게 gallerist+collector 케이스도 cluster 로. 새 케이스 4개: 5명 curator → cluster(3) + cluster(2) 분할 / cluster persona 는 절대 "artist" 가 아님 / cluster·artist_world back-to-back 방지 / gallerist 1명도 단일 cluster 발행
+
+### 변경 없음 (의도)
+
+- 데이터 페치, RLS, cursor, TTL refresh, IntersectionObserver, like/follow 행동 — 일체 무변경
+- `<FeedExhibitionCard>` 톤 (현 전시 strip) — 사용자가 "전시 섹션은 지금 방식 좋다" 명시
+- 빌더 결정론 — same input → same output 그대로
+
+### 디자인 결정
+
+- **Cluster header** 는 strip 라벨처럼 `text-[11px] uppercase tracking-[0.18em] zinc-500` (그리드의 다른 strip 헤더와 톤 일관). 컨테이너는 `border-y border-zinc-100 py-8` 로 다른 strip 과 시각 리듬 동일
+- **Card border** 는 `rounded-2xl border-zinc-200` — strip 의 hairless 톤 안에서 카드 *내부* 만 살짝 박스를 둠으로써 cluster 가 strip 보다 한 단계 쪼개진 단위로 읽히도록. 카드 hover 는 `bg-zinc-50/40` (zinc-50 보다 더 옅게)
+- **Persona 라벨 카피**: "큐레이터 추천 / Curators to meet" — 추천(추천 시스템)이라는 의도를 명시하면서도, 영문은 "to meet/know/follow" 로 살롱 톤 유지
+- **Size pill 위치**: 우상단 (좌상단은 작가 아바타나 라벨이 들어올 잠재 슬롯, like 어포던스는 우하단). 항상 visible — hover 토글 시 모바일 발견 어려움
+- **호수 prefix 제거**: `30F · 90.9 × 72.7 cm` → `90.9 × 72.7 cm`. 호수는 한국 화가들 사이 영업 단위라, 일반 컬렉터/큐레이터에게는 인지 부하. base 만 보여주고 호수는 작품 디테일 페이지에서 노출
+- **Pill bg α80%**: 100% 흰색 pill 은 작품 위에 떠 있는 스티커처럼 boxy. 80% + backdrop-blur 가 "유리 라벨" 톤 — 작품 색조에 살짝 녹아드는 인상
+
+### 검증
+
+- `npm run test:feed-living-salon` — 새 케이스 + 기존 회귀 통과
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — success
+
+### Verified
+
+- 결정론 테스트 통과
+- 타입 체크 통과
+- 빌드 통과
+- people cluster 게이트 (5명 → 3+2 분할, 1명 → 단일 cluster, persona 일관, back-to-back 방지) 모두 통과
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.2 (Letterbox-free + Persona-aware)
 
 v1.1 의 editorial spotlight 그리드 위에서 미감/로직 두 측면을 한 단계 더 끌어올림. 같은 날 두 번째 패치라 layout_version 은 그대로 v1.1_editorial 유지 (mix·first paint 비교 키 불변), 빌더 결정론은 그대로.

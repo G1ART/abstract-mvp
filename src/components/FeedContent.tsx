@@ -38,7 +38,7 @@ const REC_CACHE_TTL_MS = 3 * 60 * 1000;
 const FEED_BG_REFRESH_TTL_MS = 90_000;
 const STRONG_SCORE_THRESHOLD = 2;
 const DISCOVERY_BLOCKS_MAX = 4;
-const FEED_LAYOUT_VERSION = "living_salon_v1.1_editorial";
+const FEED_LAYOUT_VERSION = "living_salon_v1.3_clustered";
 
 function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
   const seen = new Set<string>();
@@ -536,6 +536,7 @@ export function FeedContent({
           artworks: mix.artworks,
           exhibitions: mix.exhibitions,
           artist_worlds: mix.artist_worlds,
+          people_clusters: mix.people_clusters,
         },
         first_view_estimate: firstView,
       });

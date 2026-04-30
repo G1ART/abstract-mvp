@@ -17,7 +17,19 @@ import {
   formatRoleChips,
   hasPublicLinkableUsername,
 } from "@/lib/identity/format";
+import { formatSizeForLocale } from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
+
+/**
+ * `formatSizeForLocale` may prefix the dimensions with a Hosu marker
+ * (`30F · `, `약 30F · `, `~30F · `). The salon size pill is meant to
+ * read at a glance, so we drop any leading Hosu marker and keep only the
+ * dimension base (e.g. `90.9 × 72.7 cm`).
+ */
+function extractSizeBase(formatted: string | null): string | null {
+  if (!formatted) return null;
+  return formatted.replace(/^(?:약\s+|~)?\d+\s*[FPMSfpms]\s*·\s*/, "").trim() || null;
+}
 
 type ArtistProfileLite = {
   id?: string;
@@ -64,7 +76,7 @@ export function FeedArtworkCard({
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
-  const { t } = useT();
+  const { t, locale } = useT();
   const images = artwork.artwork_images ?? [];
   const sorted = [...images].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
@@ -103,6 +115,11 @@ export function FeedArtworkCard({
 
   const isAnchor = variant === "feedAnchor";
   const isMini = variant === "discoveryMini";
+  const sizeOverlay = isMini
+    ? null
+    : extractSizeBase(
+        formatSizeForLocale(artwork.size, locale, artwork.size_unit ?? null)
+      );
   // Standard tiles use a 4:5 portrait aspect for a magazine rhythm. Anchor /
   // spotlight stays square because its wider column span already gives it
   // visual weight; a taller anchor would push the row height up. Mini stays
@@ -155,6 +172,11 @@ export function FeedArtworkCard({
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
             {/* Intentionally muted: image-less tiles should disappear quietly, not shout "no image". */}
+          </div>
+        )}
+        {sizeOverlay && (
+          <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-medium tracking-tight text-zinc-700 shadow-sm backdrop-blur-sm">
+            {sizeOverlay}
           </div>
         )}
         {!isMini && userId && (

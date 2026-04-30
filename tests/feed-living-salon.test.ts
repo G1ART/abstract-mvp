@@ -258,9 +258,13 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
     const prev = items[i - 1];
     const cur = items[i];
     const prevIsContext =
-      prev.kind === "artist_world" || prev.kind === "exhibition_strip";
+      prev.kind === "artist_world" ||
+      prev.kind === "people_cluster" ||
+      prev.kind === "exhibition_strip";
     const curIsContext =
-      cur.kind === "artist_world" || cur.kind === "exhibition_strip";
+      cur.kind === "artist_world" ||
+      cur.kind === "people_cluster" ||
+      cur.kind === "exhibition_strip";
     if (prevIsContext && curIsContext) {
       // Sparse pool fallback may emit them at the very tail — only fail when
       // there are still artworks queued *before* the back-to-back pair.
@@ -372,7 +376,7 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   assert.equal(aws.length, 0, "profile with unsupported main_role is dropped");
 }
 
-// ── Persona surface: curator with zero artworks renders text-only ───
+// ── Persona surface: curator surfaces as people_cluster ─────────────
 {
   const arts = Array.from({ length: 12 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
@@ -386,18 +390,20 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       },
     ],
   });
-  const aws = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
-      i.kind === "artist_world"
+  const aws = items.filter((i) => i.kind === "artist_world");
+  assert.equal(aws.length, 0, "curator persona is no longer rendered as artist_world");
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
   );
-  assert.equal(aws.length, 1, "curator persona surfaces even with zero artworks");
-  assert.equal(aws[0].persona, "curator");
-  assert.equal(aws[0].artworks.length, 0, "non-artist persona has empty artworks");
+  assert.equal(clusters.length, 1, "curator surfaces as a people_cluster");
+  assert.equal(clusters[0].persona, "curator");
+  assert.equal(clusters[0].profiles.length, 1, "single curator forms a 1-card cluster");
 }
 
-// ── Persona surface: gallerist + collector also pass ────────────────
+// ── Persona surface: gallerist + collector pass via clusters ────────
 {
-  const arts = Array.from({ length: 18 }, (_, i) =>
+  const arts = Array.from({ length: 24 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
   );
   const items = buildLivingSalonItems({
@@ -413,13 +419,13 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       },
     ],
   });
-  const aws = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
-      i.kind === "artist_world"
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
   );
-  const personas = aws.map((a) => a.persona);
-  assert.ok(personas.includes("gallerist"), "gallerist persona surfaces");
-  assert.ok(personas.includes("collector"), "collector persona surfaces");
+  const personas = clusters.map((c) => c.persona);
+  assert.ok(personas.includes("gallerist"), "gallerist persona surfaces in cluster");
+  assert.ok(personas.includes("collector"), "collector persona surfaces in cluster");
 }
 
 // ── Artist persona still requires >= 2 artworks (regression) ────────
@@ -526,9 +532,129 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   );
   const items = buildLivingSalonItems({ entries: arts, discoveryData: [] });
   const mix = summarizeLivingSalonMix(items);
-  assert.equal(mix.artworks + mix.exhibitions + mix.artist_worlds, items.length);
+  assert.equal(
+    mix.artworks + mix.exhibitions + mix.artist_worlds + mix.people_clusters,
+    items.length
+  );
   const fv = summarizeFirstView(items);
   assert.ok(fv.anchors >= 0 && fv.context_modules >= 0);
+}
+
+// ── Cluster chunking: 5 curators → cluster(3) + cluster(2) ──────────
+{
+  const arts = Array.from({ length: 30 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
+  );
+  const discovery: DiscoveryDatum[] = Array.from({ length: 5 }, (_, i) => ({
+    profile: makeProfile(`rec_cur${i}`, "curator"),
+    artworks: [],
+  }));
+  const items = buildLivingSalonItems({ entries: arts, discoveryData: discovery });
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
+  );
+  assert.equal(clusters.length, 2, "5 curators chunk into 2 clusters");
+  assert.equal(clusters[0].profiles.length, 3, "first cluster holds 3 curators");
+  assert.equal(clusters[1].profiles.length, 2, "second cluster holds remaining 2");
+  for (const c of clusters) {
+    for (const p of c.profiles) {
+      assert.equal(p.main_role, "curator", "all profiles in a cluster share persona");
+    }
+  }
+}
+
+// ── Cluster persona is never "artist" ───────────────────────────────
+{
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_artist1", "artist"),
+        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
+      },
+      {
+        profile: makeProfile("rec_curator1", "curator"),
+        artworks: [],
+      },
+    ],
+  });
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
+  );
+  for (const c of clusters) {
+    assert.notEqual(c.persona, "artist" as never, "cluster persona never 'artist'");
+  }
+  const aws = items.filter((i) => i.kind === "artist_world");
+  for (const aw of aws) {
+    if (aw.kind === "artist_world") {
+      assert.equal(aw.persona, "artist", "artist_world persona is always 'artist'");
+    }
+  }
+}
+
+// ── Cluster gating: cluster never sits back-to-back with artist_world ──
+{
+  const arts = Array.from({ length: 30 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_artist1", "artist"),
+        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
+      },
+      {
+        profile: makeProfile("rec_curator1", "curator"),
+        artworks: [],
+      },
+    ],
+  });
+  for (let i = 1; i < items.length; i++) {
+    const prev = items[i - 1];
+    const cur = items[i];
+    const prevPeople =
+      prev.kind === "artist_world" || prev.kind === "people_cluster";
+    const curPeople =
+      cur.kind === "artist_world" || cur.kind === "people_cluster";
+    if (prevPeople && curPeople) {
+      const remainingArtworks = items
+        .slice(i + 1)
+        .some((it) => it.kind === "artwork");
+      assert.ok(
+        !remainingArtworks,
+        `people rows back-to-back at idx ${i} while artworks remain`
+      );
+    }
+  }
+}
+
+// ── Cluster gating: gallerist 1명도 단일 cluster 로 발행 ─────────────
+{
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      {
+        profile: makeProfile("rec_gal_solo", "gallerist"),
+        artworks: [],
+      },
+    ],
+  });
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
+  );
+  assert.equal(clusters.length, 1, "single gallerist still forms a cluster");
+  assert.equal(clusters[0].profiles.length, 1);
+  assert.equal(clusters[0].persona, "gallerist");
 }
 
 console.log("feed-living-salon.test.ts: ok");
