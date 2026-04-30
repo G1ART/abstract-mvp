@@ -149,9 +149,11 @@ export function formatSizeForLocale(
     return inBase;
   }
 
-  // size_unit 없음: 단위가 없는 입력값은 cm 로 가정한다(국내 작가 절대다수,
-  // 미국·유럽 시장에서도 cm 표기가 표준). locale 영문이면 inch 환산해 표시.
-  // 잘못 가정해도 단위 없이 숫자만 떠 있는 것보다 일관된 정보 밀도가 낫다.
+  // size_unit 없음. 입력에 *호수가 명기* 된 경우만 단위(cm)가 확정 — 호수
+  // 자체가 cm 기반 표준이라 안전. 그 외 순수 숫자(`120 × 80`)는 단위가
+  // cm 인지 in 인지 알 수 없어 임의로 부여하면 2.5배 오차로 사용자에게
+  // 잘못된 정보를 주게 된다. 호출처(예: 피드 사이즈 pill)에서 단위 부재
+  // 게이트로 미렌더 처리하도록 *수치만* 반환한다.
   if (hosuNumber != null && hosuType) {
     if (isKo) {
       const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
@@ -162,14 +164,8 @@ export function formatSizeForLocale(
     const base = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
     return `${hosuNumber}${hosuType} · ${base}`;
   }
-  if (isKo) {
-    const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
-    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
-    return base;
-  }
-  const wIn = cmToIn(widthCm);
-  const hIn = cmToIn(heightCm);
-  const base = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
+  // 호수 명기가 없으면 단위 미상 — 수치만 보존.
+  const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)}`;
   if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
   return base;
 }

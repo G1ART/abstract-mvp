@@ -17,7 +17,10 @@ import {
   formatRoleChips,
   hasPublicLinkableUsername,
 } from "@/lib/identity/format";
-import { formatSizeForLocale } from "@/lib/size/format";
+import {
+  formatSizeForLocale,
+  parseSizeWithUnit,
+} from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
 
 /**
@@ -32,17 +35,19 @@ function extractSizeBase(formatted: string | null): string | null {
 }
 
 /**
- * Build the size pill string for the salon grid. Returns null only when:
+ * Build the size pill string for the salon grid. Returns null when:
  * - the `size` field is missing / empty, or
- * - the value doesn't parse at all.
+ * - the value doesn't parse at all, or
+ * - the unit can't be confidently determined: no suffix on the input
+ *   (`120 × 80`), no Hosu marker (`30F`), and no `artwork.size_unit`
+ *   column. cm and inch differ by ~2.5x, so guessing a unit on a bare
+ *   number can mislead viewers far worse than quietly hiding the pill
+ *   until the data is patched (Artsy / Artnet / 1stDibs follow the
+ *   same policy).
  *
- * v1.5: when the input doesn't carry a unit suffix and `artwork.size_unit`
- * is also null, we no longer hide the pill. `formatSizeForLocale` falls
- * back to a cm assumption (with inch conversion in EN locales). The
- * trade-off — a small chance of misattributing a unit on legacy rows
- * vs. the consistent visual rhythm a unified pill gives the salon — was
- * decided in favour of consistency, with admin / artist self-edit
- * planned as a follow-up patch.
+ * Hosu inputs always evaluate as `unit: "cm"` in `parseSizeWithUnit`
+ * (Hosu is a cm-based standard) and therefore pass the gate. The only
+ * silently-hidden case is a bare unit-less number with no `size_unit`.
  */
 function buildSizePill(
   size: string | null | undefined,
@@ -50,6 +55,11 @@ function buildSizePill(
   locale: string
 ): string | null {
   if (!size || !size.trim()) return null;
+  const parsed = parseSizeWithUnit(size);
+  const inputHasUnit = parsed?.unit != null;
+  if (!inputHasUnit && (sizeUnit == null || sizeUnit === undefined)) {
+    return null;
+  }
   return extractSizeBase(formatSizeForLocale(size, locale, sizeUnit ?? null));
 }
 

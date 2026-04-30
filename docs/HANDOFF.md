@@ -2,6 +2,45 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.5.1 (Size Pill — Hosu-only cm Assumption)
+
+v1.5 가 `size_unit==null` 인 *모든 unit-less 입력* 을 cm 로 가정한 동작은 inch ↔ cm 2.5배 오차 위험 때문에 과도. 사용자 정정에 따라 *호수가 명기된 경우에만* cm 강제 부여로 좁힘. 그 외 순수 숫자 입력은 사이즈 pill 미렌더 (v1.4 정책으로 되돌림).
+
+### 사용자 합의
+
+- "호수가 명기되어 있어서 사이즈를 유추할 수 있을 때만 cm를 강제로 부여" — `30F` 같은 호수 표기는 항상 cm 기반 표준이라 안전. `120 × 80` 같은 unit-less 숫자는 `unit` 추정 불가 → pill 미렌더 (Artsy / Artnet / 1stDibs 정책 참조)
+- 단위 명시 입력 (`120 × 80 cm`, `60 × 40 in`) 또는 `artwork.size_unit` 컬럼 명시 케이스는 v1.4·v1.5 동작 그대로
+
+### Supabase SQL — 돌려야 할 것 없음
+
+타입·로직 두 파일만.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/size/format.ts](../src/lib/size/format.ts) — `formatSizeForLocale` 의 `size_unit==null` 분기 정정. 호수 명기 입력 (`hosuNumber + hosuType`) 은 KO `cm` / EN `in` 로 변환·표시. 호수 없는 unit-less 입력은 *수치만* 반환 (cm 강제 부여 제거). `nearestHosu` 추정에는 단위 부여 안 함 — 호출처가 게이트로 미렌더 처리하면 도달 자체가 없으니 안전
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — `buildSizePill` 의 *단위 부재 게이트* 복원. `parseSizeWithUnit` 다시 import. `parsed.unit == null && sizeUnit == null` 이면 pill 미렌더. 호수 입력은 `parseSizeWithUnit` 가 `unit: "cm"` 으로 평가 → 게이트 통과. v1.5 의 "모두 통과" 정책을 v1.4 정책으로 되돌리되, formatter 자체는 호수 분기에 cm 부여 능력을 갖춘 상태로 유지
+
+### 변경 없음 (의도)
+
+- v1.5 의 unified persona carousel · debug 패널 · `FEED_LAYOUT_VERSION = living_salon_v1.5_unified_carousel`
+- `formatSizeForLocale` 의 `size_unit === "cm"` / `"in"` 분기 (RPC 컬럼 명시 케이스 그대로)
+- 호수 prefix 떼는 `extractSizeBase` 동작
+
+### 디자인 결정
+
+- **호수만 cm 강제**: 호수는 *cm 기반 표준* 이라 정확. `120 × 80` 같은 임의 숫자는 작가가 inch 로 입력했을 수도 있어 임의 cm 부여는 2.5배 오차로 사용자 혼란이 더 큼. *살짝 덜 보이지만 정확한* 쪽이 살롱 톤에 맞음
+- **silent drop**: 단위 미상 입력은 pill 자체를 안 보임. 작가 본인의 size_unit 보완 CTA 는 별도 패치에서 (admin / artist self-edit)
+
+### 검증
+
+- `npm run test:feed-living-salon` — pass
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — pass
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.5 (Unified Persona Carousel + Size Unit Assumption + Debug Panel)
 
 v1.4 의 캐러셀이 비-artist 페르소나만 노출하던 비대칭, 사이즈 단위가 빠진 카드의 시각 비일관성, 무한 스크롤이 멈춰도 사용자가 원인을 찾을 수 없던 진단 부재 — 세 문제를 한꺼번에 수리.
