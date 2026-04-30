@@ -48,7 +48,6 @@ function makeArtwork(
           id: artistId,
           username: `u_${artistId}`,
           display_name: `Artist ${artistId}`,
-          // `is_public` lives on the joined profile row in production.
           is_public: isPublic,
         } as unknown as ArtworkWithLikes["profiles"])
       : null,
@@ -100,23 +99,25 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   return { type: "exhibition", created_at: tsForOffset(days), exhibition };
 }
 
+function makeArtistDiscovery(count: number, prefix = "rec_artist"): DiscoveryDatum[] {
+  return Array.from({ length: count }, (_, i) => ({
+    profile: makeProfile(`${prefix}${i}`, "artist"),
+    artworks: [],
+  }));
+}
+
 // ── Determinism: same input produces same output ────────────────────
 {
   const arts = Array.from({ length: 20 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
   );
-  const discovery: DiscoveryDatum[] = [
-    {
-      profile: makeProfile("rec1"),
-      artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-    },
-  ];
+  const discovery = makeArtistDiscovery(2);
   const a = buildLivingSalonItems({ entries: arts, discoveryData: discovery });
   const b = buildLivingSalonItems({ entries: arts, discoveryData: discovery });
   assert.deepEqual(a, b, "deterministic: same input → same output");
 }
 
-// ── Dedupe: duplicate artwork / exhibition ids drop ─────────────────
+// ── Dedupe: duplicate artwork ids drop ──────────────────────────────
 {
   const dupArt = makeArtwork("dup", "artistX");
   const items = buildLivingSalonItems({
@@ -140,54 +141,44 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       makeExhEntry(makeExhibition("e1"), 0),
       makeArtworkEntry(makeArtwork("a1", "artistA"), 1),
     ],
-    discoveryData: [
-      {
-        profile: makeProfile("rec1"),
-        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-      },
-    ],
+    discoveryData: makeArtistDiscovery(2),
   });
   if (items.length > 0) {
     assert.equal(items[0].kind, "artwork", "first item must be an artwork");
   }
 }
 
-// ── Artist-world only after opening region (>= 6 tiles) ─────────────
+// ── people_cluster only after opening region (>= 6 tiles) ───────────
 {
   const arts = Array.from({ length: 12 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
   );
-  const discovery: DiscoveryDatum[] = [
-    {
-      profile: makeProfile("rec1"),
-      artworks: [
-        makeArtwork("ra1", "artistR1"),
-        makeArtwork("ra2", "artistR1"),
-      ],
-    },
-  ];
-  const items = buildLivingSalonItems({ entries: arts, discoveryData: discovery });
-  const firstAW = items.findIndex((i) => i.kind === "artist_world");
-  if (firstAW !== -1) {
-    assert.ok(firstAW >= 6, `first artist_world at idx ${firstAW} must be >= 6`);
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: makeArtistDiscovery(2),
+  });
+  const firstCluster = items.findIndex((i) => i.kind === "people_cluster");
+  if (firstCluster !== -1) {
+    assert.ok(firstCluster >= 6, `first people_cluster idx >= 6, saw ${firstCluster}`);
   }
 }
 
-// ── Artist-world requires >= 2 artworks ─────────────────────────────
+// ── artist_world kind no longer exists ──────────────────────────────
 {
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
   const items = buildLivingSalonItems({
-    entries: Array.from({ length: 12 }, (_, i) =>
-      makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
-    ),
-    discoveryData: [
-      {
-        profile: makeProfile("rec1"),
-        artworks: [makeArtwork("ra1", "artistR1")],
-      },
-    ],
+    entries: arts,
+    discoveryData: makeArtistDiscovery(3),
   });
-  const aws = items.filter((i) => i.kind === "artist_world");
-  assert.equal(aws.length, 0, "artist-world with only 1 artwork is dropped");
+  for (const item of items) {
+    assert.notEqual(
+      (item as { kind: string }).kind,
+      "artist_world",
+      "artist_world kind must not be emitted in v1.5"
+    );
+  }
 }
 
 // ── Sparse pool does not crash ──────────────────────────────────────
@@ -214,19 +205,13 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   const exs = Array.from({ length: 6 }, (_, i) =>
     makeExhEntry(makeExhibition(`e${i}`), i + 30)
   );
-  const discovery: DiscoveryDatum[] = [
-    {
-      profile: makeProfile("rec1"),
-      artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-    },
-    {
-      profile: makeProfile("rec2"),
-      artworks: [makeArtwork("ra3", "artistR2"), makeArtwork("ra4", "artistR2")],
-    },
-  ];
   const items = buildLivingSalonItems({
     entries: [...arts, ...exs],
-    discoveryData: discovery,
+    discoveryData: [
+      ...makeArtistDiscovery(2),
+      { profile: makeProfile("rec_cur1", "curator"), artworks: [] },
+      { profile: makeProfile("rec_cur2", "curator"), artworks: [] },
+    ],
   });
   const keys = items.map((i) => i.key);
   assert.equal(new Set(keys).size, keys.length, "all keys unique");
@@ -240,34 +225,20 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   const exs = Array.from({ length: 6 }, (_, i) =>
     makeExhEntry(makeExhibition(`e${i}`), i + 30)
   );
-  const discovery: DiscoveryDatum[] = [
-    {
-      profile: makeProfile("rec1"),
-      artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-    },
-    {
-      profile: makeProfile("rec2"),
-      artworks: [makeArtwork("ra3", "artistR2"), makeArtwork("ra4", "artistR2")],
-    },
-  ];
   const items = buildLivingSalonItems({
     entries: [...arts, ...exs],
-    discoveryData: discovery,
+    discoveryData: [
+      ...makeArtistDiscovery(3),
+      { profile: makeProfile("rec_cur1", "curator"), artworks: [] },
+      { profile: makeProfile("rec_cur2", "curator"), artworks: [] },
+    ],
   });
   for (let i = 1; i < items.length; i++) {
     const prev = items[i - 1];
     const cur = items[i];
-    const prevIsContext =
-      prev.kind === "artist_world" ||
-      prev.kind === "people_cluster" ||
-      prev.kind === "exhibition_strip";
-    const curIsContext =
-      cur.kind === "artist_world" ||
-      cur.kind === "people_cluster" ||
-      cur.kind === "exhibition_strip";
-    if (prevIsContext && curIsContext) {
-      // Sparse pool fallback may emit them at the very tail — only fail when
-      // there are still artworks queued *before* the back-to-back pair.
+    const isCtx = (k: string) =>
+      k === "people_cluster" || k === "exhibition_strip";
+    if (isCtx(prev.kind) && isCtx(cur.kind)) {
       const remainingArtworks = items
         .slice(i + 1)
         .some((it) => it.kind === "artwork");
@@ -291,8 +262,6 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
     makeArtworkEntry(makeArtwork("o2", "otherB"), 5),
   ];
   const items = buildLivingSalonItems({ entries, discoveryData: [] });
-  // Walk the artworks in render order and confirm no run > 2 of the same
-  // artist when alternatives existed in the queue.
   let run = 0;
   for (const item of items) {
     if (item.kind !== "artwork") {
@@ -348,88 +317,60 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   const items = buildLivingSalonItems({
     entries: arts,
     discoveryData: [
-      {
-        profile: makeProfile("rec_null", null),
-        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-      },
-    ],
-  });
-  const aws = items.filter((i) => i.kind === "artist_world");
-  assert.equal(aws.length, 0, "profile with null main_role is dropped");
-}
-
-// ── Persona drop: main_role outside the four supported ──────────────
-{
-  const arts = Array.from({ length: 12 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
-  );
-  const items = buildLivingSalonItems({
-    entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_writer", "writer"),
-        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-      },
-    ],
-  });
-  const aws = items.filter((i) => i.kind === "artist_world");
-  assert.equal(aws.length, 0, "profile with unsupported main_role is dropped");
-}
-
-// ── Persona surface: single curator does NOT surface ────────────────
-//  v1.4 raises the floor: a row with only 1 profile reads as platform
-//  emptiness, so the builder drops persona buckets below
-//  PEOPLE_CLUSTER_MIN (= 2).
-{
-  const arts = Array.from({ length: 12 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
-  );
-  const items = buildLivingSalonItems({
-    entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_curator", "curator"),
-        artworks: [],
-      },
+      { profile: makeProfile("rec_null", null), artworks: [] },
+      { profile: makeProfile("rec_null2", null), artworks: [] },
     ],
   });
   const clusters = items.filter((i) => i.kind === "people_cluster");
-  assert.equal(clusters.length, 0, "single curator drops below cluster_min");
+  assert.equal(clusters.length, 0, "profiles with null main_role drop");
 }
 
-// ── Persona surface: 2+ curators → one merged cluster ───────────────
+// ── Persona drop: unsupported main_role ─────────────────────────────
 {
-  const arts = Array.from({ length: 18 }, (_, i) =>
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      { profile: makeProfile("rec_writer1", "writer"), artworks: [] },
+      { profile: makeProfile("rec_writer2", "writer"), artworks: [] },
+    ],
+  });
+  const clusters = items.filter((i) => i.kind === "people_cluster");
+  assert.equal(clusters.length, 0, "profiles with unsupported role drop");
+}
+
+// ── Single profile per persona drops below cluster_min ──────────────
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
   );
   const items = buildLivingSalonItems({
     entries: arts,
     discoveryData: [
       { profile: makeProfile("rec_cur1", "curator"), artworks: [] },
-      { profile: makeProfile("rec_cur2", "curator"), artworks: [] },
-      { profile: makeProfile("rec_cur3", "curator"), artworks: [] },
+      { profile: makeProfile("rec_gal1", "gallerist"), artworks: [] },
+      { profile: makeProfile("rec_artist_solo", "artist"), artworks: [] },
     ],
   });
-  const clusters = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
-      i.kind === "people_cluster"
-  );
-  assert.equal(clusters.length, 1, "all curators merge into one cluster row");
-  assert.equal(clusters[0].profiles.length, 3, "cluster carries every curator");
+  const clusters = items.filter((i) => i.kind === "people_cluster");
+  assert.equal(clusters.length, 0, "every persona has only 1 profile → no row");
 }
 
-// ── Persona surface: per-persona clusters (no chunking) ─────────────
+// ── 2+ profiles per persona produce a row each ──────────────────────
 {
-  const arts = Array.from({ length: 24 }, (_, i) =>
+  const arts = Array.from({ length: 30 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
   );
   const items = buildLivingSalonItems({
     entries: arts,
     discoveryData: [
+      ...makeArtistDiscovery(2),
+      { profile: makeProfile("rec_cur1", "curator"), artworks: [] },
+      { profile: makeProfile("rec_cur2", "curator"), artworks: [] },
       { profile: makeProfile("rec_gal1", "gallerist"), artworks: [] },
       { profile: makeProfile("rec_gal2", "gallerist"), artworks: [] },
-      { profile: makeProfile("rec_col1", "collector"), artworks: [] },
-      { profile: makeProfile("rec_col2", "collector"), artworks: [] },
     ],
   });
   const clusters = items.filter(
@@ -437,126 +378,15 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       i.kind === "people_cluster"
   );
   const personas = clusters.map((c) => c.persona);
+  assert.ok(personas.includes("artist"), "artist persona surfaces in v1.5");
+  assert.ok(personas.includes("curator"), "curator persona surfaces");
   assert.ok(personas.includes("gallerist"), "gallerist persona surfaces");
-  assert.ok(personas.includes("collector"), "collector persona surfaces");
   for (const c of clusters) {
     assert.ok(c.profiles.length >= 2, "every cluster meets cluster_min");
   }
 }
 
-// ── Artist persona still requires >= 2 artworks (regression) ────────
-{
-  const arts = Array.from({ length: 12 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
-  );
-  const items = buildLivingSalonItems({
-    entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_thin_artist", "artist"),
-        artworks: [makeArtwork("ra1", "artistR1")],
-      },
-    ],
-  });
-  const aws = items.filter((i) => i.kind === "artist_world");
-  assert.equal(aws.length, 0, "artist persona with 1 artwork is still dropped");
-}
-
-// ── Artist persona surfaces with up to 4 inline thumbs ──────────────
-{
-  const arts = Array.from({ length: 18 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
-  );
-  const items = buildLivingSalonItems({
-    entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_artist", "artist"),
-        artworks: Array.from({ length: 6 }, (_, i) =>
-          makeArtwork(`ra${i}`, "artistR1")
-        ),
-      },
-    ],
-  });
-  const aws = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "artist_world" }> =>
-      i.kind === "artist_world"
-  );
-  assert.equal(aws.length, 1);
-  assert.equal(aws[0].persona, "artist");
-  assert.ok(
-    aws[0].artworks.length > 0 && aws[0].artworks.length <= 4,
-    `artist persona thumbs in 1..4, saw ${aws[0].artworks.length}`
-  );
-}
-
-// ── Exhibition gate: 0 covers dropped ───────────────────────────────
-{
-  const items = buildLivingSalonItems({
-    entries: [
-      ...Array.from({ length: 6 }, (_, i) =>
-        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
-      ),
-      makeExhEntry(makeExhibition("ex_no_cover", []), 10),
-    ],
-    discoveryData: [],
-  });
-  const exs = items.filter((i) => i.kind === "exhibition_strip");
-  assert.equal(exs.length, 0, "exhibition with 0 covers is dropped at entrance");
-}
-
-// ── Exhibition gate: 1 cover dropped ────────────────────────────────
-{
-  const items = buildLivingSalonItems({
-    entries: [
-      ...Array.from({ length: 6 }, (_, i) =>
-        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
-      ),
-      makeExhEntry(makeExhibition("ex_one_cover", ["only-one"]), 10),
-    ],
-    discoveryData: [],
-  });
-  const exs = items.filter((i) => i.kind === "exhibition_strip");
-  assert.equal(exs.length, 0, "exhibition with 1 cover is dropped at entrance");
-}
-
-// ── Exhibition gate: 2+ covers pass ─────────────────────────────────
-{
-  const items = buildLivingSalonItems({
-    entries: [
-      ...Array.from({ length: 12 }, (_, i) =>
-        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
-      ),
-      makeExhEntry(makeExhibition("ex_pair", ["c1", "c2"]), 20),
-      makeExhEntry(makeExhibition("ex_triple", ["c1", "c2", "c3"]), 21),
-    ],
-    discoveryData: [],
-  });
-  const exs = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "exhibition_strip" }> =>
-      i.kind === "exhibition_strip"
-  );
-  const ids = exs.map((e) => e.exhibition.id);
-  assert.ok(ids.includes("ex_pair"), "exhibition with 2 covers passes");
-  assert.ok(ids.includes("ex_triple"), "exhibition with 3 covers passes");
-}
-
-// ── Summary helpers ─────────────────────────────────────────────────
-{
-  const arts = Array.from({ length: 12 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
-  );
-  const items = buildLivingSalonItems({ entries: arts, discoveryData: [] });
-  const mix = summarizeLivingSalonMix(items);
-  assert.equal(
-    mix.artworks + mix.exhibitions + mix.artist_worlds + mix.people_clusters,
-    items.length
-  );
-  const fv = summarizeFirstView(items);
-  assert.ok(fv.anchors >= 0 && fv.context_modules >= 0);
-}
-
-// ── Cluster carousel: 5 curators → one merged cluster (no chunking) ─
+// ── Cluster carousel: every persona merges into a single row ────────
 {
   const arts = Array.from({ length: 30 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
@@ -577,92 +407,85 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   }
 }
 
-// ── Cluster persona is never "artist" ───────────────────────────────
+// ── Persona output order: artist → curator → gallerist → collector ─
 {
-  const arts = Array.from({ length: 18 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  const arts = Array.from({ length: 60 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 8}`), i)
   );
   const items = buildLivingSalonItems({
     entries: arts,
     discoveryData: [
-      {
-        profile: makeProfile("rec_artist1", "artist"),
-        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-      },
-      {
-        profile: makeProfile("rec_curator1", "curator"),
-        artworks: [],
-      },
+      { profile: makeProfile("col1", "collector"), artworks: [] },
+      { profile: makeProfile("col2", "collector"), artworks: [] },
+      { profile: makeProfile("art1", "artist"), artworks: [] },
+      { profile: makeProfile("art2", "artist"), artworks: [] },
+      { profile: makeProfile("cur1", "curator"), artworks: [] },
+      { profile: makeProfile("cur2", "curator"), artworks: [] },
     ],
   });
   const clusters = items.filter(
     (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
       i.kind === "people_cluster"
   );
-  for (const c of clusters) {
-    assert.notEqual(c.persona, "artist" as never, "cluster persona never 'artist'");
-  }
-  const aws = items.filter((i) => i.kind === "artist_world");
-  for (const aw of aws) {
-    if (aw.kind === "artist_world") {
-      assert.equal(aw.persona, "artist", "artist_world persona is always 'artist'");
-    }
-  }
-}
-
-// ── Cluster gating: cluster never sits back-to-back with artist_world ──
-{
-  const arts = Array.from({ length: 30 }, (_, i) =>
-    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
+  const order = clusters.map((c) => c.persona);
+  assert.deepEqual(
+    order.slice(0, 3),
+    ["artist", "curator", "collector"],
+    "persona output order is canonical regardless of input order"
   );
-  const items = buildLivingSalonItems({
-    entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_artist1", "artist"),
-        artworks: [makeArtwork("ra1", "artistR1"), makeArtwork("ra2", "artistR1")],
-      },
-      {
-        profile: makeProfile("rec_curator1", "curator"),
-        artworks: [],
-      },
-    ],
-  });
-  for (let i = 1; i < items.length; i++) {
-    const prev = items[i - 1];
-    const cur = items[i];
-    const prevPeople =
-      prev.kind === "artist_world" || prev.kind === "people_cluster";
-    const curPeople =
-      cur.kind === "artist_world" || cur.kind === "people_cluster";
-    if (prevPeople && curPeople) {
-      const remainingArtworks = items
-        .slice(i + 1)
-        .some((it) => it.kind === "artwork");
-      assert.ok(
-        !remainingArtworks,
-        `people rows back-to-back at idx ${i} while artworks remain`
-      );
-    }
-  }
 }
 
-// ── Cluster gating: gallerist 1명만 있으면 row 자체 미렌더 ──────────
+// ── Exhibition gates ────────────────────────────────────────────────
 {
-  const arts = Array.from({ length: 18 }, (_, i) =>
+  const items = buildLivingSalonItems({
+    entries: [
+      ...Array.from({ length: 6 }, (_, i) =>
+        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+      ),
+      makeExhEntry(makeExhibition("ex_no_cover", []), 10),
+      makeExhEntry(makeExhibition("ex_one_cover", ["only"]), 11),
+    ],
+    discoveryData: [],
+  });
+  const exs = items.filter((i) => i.kind === "exhibition_strip");
+  assert.equal(exs.length, 0, "exhibitions with < 2 covers drop at entrance");
+}
+{
+  const items = buildLivingSalonItems({
+    entries: [
+      ...Array.from({ length: 12 }, (_, i) =>
+        makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+      ),
+      makeExhEntry(makeExhibition("ex_pair", ["c1", "c2"]), 20),
+    ],
+    discoveryData: [],
+  });
+  const ids = items
+    .filter(
+      (i): i is Extract<LivingSalonItem, { kind: "exhibition_strip" }> =>
+        i.kind === "exhibition_strip"
+    )
+    .map((e) => e.exhibition.id);
+  assert.ok(ids.includes("ex_pair"), "exhibition with 2 covers passes");
+}
+
+// ── Summary helpers ─────────────────────────────────────────────────
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
   );
   const items = buildLivingSalonItems({
     entries: arts,
-    discoveryData: [
-      {
-        profile: makeProfile("rec_gal_solo", "gallerist"),
-        artworks: [],
-      },
-    ],
+    discoveryData: makeArtistDiscovery(2),
   });
-  const clusters = items.filter((i) => i.kind === "people_cluster");
-  assert.equal(clusters.length, 0, "single gallerist drops below cluster_min");
+  const mix = summarizeLivingSalonMix(items);
+  assert.equal(
+    mix.artworks + mix.exhibitions + mix.people_clusters,
+    items.length,
+    "mix sum equals item count"
+  );
+  const fv = summarizeFirstView(items);
+  assert.ok(fv.anchors >= 0 && fv.context_modules >= 0);
 }
 
 console.log("feed-living-salon.test.ts: ok");

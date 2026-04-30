@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import { markFeedPerf, readFeedPerf } from "@/lib/feed/feedPerf";
 import {
   buildLivingSalonItems,
-  parsePersona,
   summarizeFirstView,
   summarizeLivingSalonMix,
 } from "@/lib/feed/livingSalon";
@@ -18,7 +17,6 @@ import {
   type ArtworkCursor,
   listFollowingArtworks,
   listPublicArtworks,
-  listPublicArtworksForProfile,
 } from "@/lib/supabase/artworks";
 import { getFollowingIds } from "@/lib/supabase/artists";
 import {
@@ -54,7 +52,7 @@ const DISCOVERY_BLOCKS_MAX = 24;
  * came back null.
  */
 const FEED_PAGE_SIZE = 60;
-const FEED_LAYOUT_VERSION = "living_salon_v1.4_carousel";
+const FEED_LAYOUT_VERSION = "living_salon_v1.5_unified_carousel";
 
 function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
   const seen = new Set<string>();
@@ -87,7 +85,18 @@ export function FeedContent({
   onSortChange,
 }: Props) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { t } = useT();
+  // Diagnostics panel — enabled by `?debug=feed` URL query OR by setting
+  // `localStorage.debug_feed = "1"` in the browser console. Off by
+  // default in production. Helps trace silent infinite-scroll halts
+  // (cursor=null vs viewport never reaches the sentinel).
+  const [debugMode, setDebugMode] = useState(false);
+  const [loadMoreCalls, setLoadMoreCalls] = useState(0);
+  const [lastLoadMoreFetched, setLastLoadMoreFetched] = useState<{
+    artworks: number;
+    exhibitions: number;
+  } | null>(null);
   const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([]);
   const [discoveryData, setDiscoveryData] = useState<DiscoveryDatum[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -108,6 +117,14 @@ export function FeedContent({
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const lastFullFetchRef = useRef(0);
   const dataLoadStartedRef = useRef(0);
+
+  useEffect(() => {
+    const fromQuery = searchParams?.get("debug") === "feed";
+    const fromStorage =
+      typeof window !== "undefined" &&
+      window.localStorage.getItem("debug_feed") === "1";
+    setDebugMode(Boolean(fromQuery || fromStorage));
+  }, [searchParams]);
 
   const fetchRecProfiles = useCallback(async (): Promise<PeopleRec[]> => {
     const now = Date.now();
@@ -228,6 +245,16 @@ export function FeedContent({
         const liked = await getLikedArtworkIds(allIds);
         setLikedIds(liked);
 
+        if (process.env.NODE_ENV === "development") {
+          console.debug("[Feed] initial fetch (following):", {
+            artworks_in: list.length,
+            exhibitions_in: exhibitions.length,
+            next_art_cursor: artworksRes.nextCursor != null,
+            next_exh_cursor: exhibitionsRes.nextCursor != null,
+            page_size: FEED_PAGE_SIZE,
+          });
+        }
+
         const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
         void logBetaEvent("feed_loaded", {
           tab,
@@ -240,27 +267,14 @@ export function FeedContent({
         markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
         const recProfiles = await fetchRecProfiles();
-        const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) => {
-          const persona = parsePersona(p.main_role);
-          // Non-artist personas (curator / gallerist / collector) render
-          // as a horizontal carousel and never need artwork thumbs, so
-          // skip the per-profile artwork fetch entirely. Artist personas
-          // still need ≥ 1 public work to clear the strip's thumb gate.
-          if (persona && persona !== "artist") {
-            return Promise.resolve<DiscoveryDatum>({ profile: p, artworks: [] });
-          }
-          return listPublicArtworksForProfile(p.id, { limit: 3 }).then(
-            ({ data: arts }) =>
-              (arts ?? []).length > 0
-                ? ({ profile: p, artworks: arts ?? [] } as DiscoveryDatum)
-                : null
-          );
-        });
-        const discoveryResults = await Promise.all(discoveryPromises);
-        const discoveryWithArtworks = discoveryResults.filter(
-          (r): r is DiscoveryDatum => r != null
-        );
-        setDiscoveryData(discoveryWithArtworks);
+        // v1.5: every persona renders as a horizontal carousel card with
+        // no inline artwork thumbs, so we skip the per-profile artwork
+        // fetch entirely. Builder gates the row on `PEOPLE_CLUSTER_MIN`
+        // (= 2 profiles) per persona.
+        const discoveryWithoutArtworks: DiscoveryDatum[] = recProfiles
+          .slice(0, DISCOVERY_BLOCKS_MAX)
+          .map((p) => ({ profile: p, artworks: [] }));
+        setDiscoveryData(discoveryWithoutArtworks);
         setLoading(false);
         return;
       }
@@ -299,6 +313,16 @@ export function FeedContent({
       const liked = await getLikedArtworkIds(allIds);
       setLikedIds(liked);
 
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[Feed] initial fetch (all):", {
+          artworks_in: list.length,
+          exhibitions_in: exhibitions.length,
+          next_art_cursor: artworksRes.nextCursor != null,
+          next_exh_cursor: exhibitionsRes.nextCursor != null,
+          page_size: FEED_PAGE_SIZE,
+        });
+      }
+
       const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
       void logBetaEvent("feed_loaded", {
         tab,
@@ -311,23 +335,10 @@ export function FeedContent({
       markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
       const recProfiles = await fetchRecProfiles();
-      const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) => {
-        const persona = parsePersona(p.main_role);
-        if (persona && persona !== "artist") {
-          return Promise.resolve<DiscoveryDatum>({ profile: p, artworks: [] });
-        }
-        return listPublicArtworksForProfile(p.id, { limit: 3 }).then(
-          ({ data: arts }) =>
-            (arts ?? []).length > 0
-              ? ({ profile: p, artworks: arts ?? [] } as DiscoveryDatum)
-              : null
-        );
-      });
-      const discoveryResults = await Promise.all(discoveryPromises);
-      const discoveryWithArtworks = discoveryResults.filter(
-        (r): r is DiscoveryDatum => r != null
-      );
-      setDiscoveryData(discoveryWithArtworks);
+      const discoveryWithoutArtworks: DiscoveryDatum[] = recProfiles
+        .slice(0, DISCOVERY_BLOCKS_MAX)
+        .map((p) => ({ profile: p, artworks: [] }));
+      setDiscoveryData(discoveryWithoutArtworks);
       setLoading(false);
     },
     [tab, sort, userId, fetchRecProfiles, t]
@@ -402,6 +413,19 @@ export function FeedContent({
           source: "load_more",
           layout_version: FEED_LAYOUT_VERSION,
         });
+        setLoadMoreCalls((c) => c + 1);
+        setLastLoadMoreFetched({
+          artworks: newArtworks.length,
+          exhibitions: newExhibitions.length,
+        });
+        if (process.env.NODE_ENV === "development") {
+          console.debug("[Feed] loadMore (following):", {
+            artworks_in: newArtworks.length,
+            exhibitions_in: newExhibitions.length,
+            next_art_cursor: artworksRes.nextCursor != null,
+            next_exh_cursor: exhibitionsRes.nextCursor != null,
+          });
+        }
       } finally {
         loadingMoreRef.current = false;
         setLoadingMore(false);
@@ -458,6 +482,19 @@ export function FeedContent({
         source: "load_more",
         layout_version: FEED_LAYOUT_VERSION,
       });
+      setLoadMoreCalls((c) => c + 1);
+      setLastLoadMoreFetched({
+        artworks: newArtworks.length,
+        exhibitions: newExhibitions.length,
+      });
+      if (process.env.NODE_ENV === "development") {
+        console.debug("[Feed] loadMore (all):", {
+          artworks_in: newArtworks.length,
+          exhibitions_in: newExhibitions.length,
+          next_art_cursor: artworksRes.nextCursor != null,
+          next_exh_cursor: exhibitionsRes.nextCursor != null,
+        });
+      }
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
@@ -578,7 +615,6 @@ export function FeedContent({
         item_mix: {
           artworks: mix.artworks,
           exhibitions: mix.exhibitions,
-          artist_worlds: mix.artist_worlds,
           people_clusters: mix.people_clusters,
         },
         first_view_estimate: firstView,
@@ -668,6 +704,117 @@ export function FeedContent({
           {t("feed.caughtUp")}
         </p>
       ) : null}
+
+      {debugMode && (
+        <FeedDebugPanel
+          tab={tab}
+          sort={sort}
+          feedEntriesCount={feedEntries.length}
+          livingSalonCount={livingSalonItems.length}
+          discoveryCount={discoveryData.length}
+          artworksNextCursor={artworksNextCursor}
+          exhibitionsNextCursor={exhibitionsNextCursor}
+          followingArtCursor={followingArtCursor}
+          followingExhCursor={followingExhCursor}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
+          loadMoreCalls={loadMoreCalls}
+          lastLoadMoreFetched={lastLoadMoreFetched}
+          discoveryData={discoveryData}
+        />
+      )}
+    </div>
+  );
+}
+
+function FeedDebugPanel({
+  tab,
+  sort,
+  feedEntriesCount,
+  livingSalonCount,
+  discoveryCount,
+  artworksNextCursor,
+  exhibitionsNextCursor,
+  followingArtCursor,
+  followingExhCursor,
+  hasMore,
+  loadingMore,
+  loadMoreCalls,
+  lastLoadMoreFetched,
+  discoveryData,
+}: {
+  tab: "all" | "following";
+  sort: "latest" | "popular";
+  feedEntriesCount: number;
+  livingSalonCount: number;
+  discoveryCount: number;
+  artworksNextCursor: ArtworkCursor | null;
+  exhibitionsNextCursor: ExhibitionCursor | null;
+  followingArtCursor: ArtworkCursor | null;
+  followingExhCursor: ExhibitionCursor | null;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMoreCalls: number;
+  lastLoadMoreFetched: { artworks: number; exhibitions: number } | null;
+  discoveryData: DiscoveryDatum[];
+}) {
+  const personaCounts = discoveryData.reduce(
+    (acc: Record<string, number>, d) => {
+      const role = d.profile.main_role ?? "unknown";
+      acc[role] = (acc[role] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+  const cursorLabel = (cur: unknown) =>
+    cur == null ? "null" : "present";
+  return (
+    <div className="fixed bottom-4 right-4 z-50 max-w-[280px] rounded-md border border-zinc-300 bg-white/95 p-3 text-[11px] leading-relaxed text-zinc-700 shadow-lg backdrop-blur">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+        Feed debug
+      </div>
+      <div>tab: {tab} · sort: {sort}</div>
+      <div>
+        feedEntries: <b>{feedEntriesCount}</b> · salonItems:{" "}
+        <b>{livingSalonCount}</b>
+      </div>
+      <div>
+        discovery: <b>{discoveryCount}</b> ({Object.entries(personaCounts)
+          .map(([k, v]) => `${k}:${v}`)
+          .join(", ") || "—"})
+      </div>
+      <div className="mt-1 border-t border-zinc-200 pt-1">
+        <div>
+          art cursor:{" "}
+          <b>
+            {tab === "all"
+              ? cursorLabel(artworksNextCursor)
+              : cursorLabel(followingArtCursor)}
+          </b>
+        </div>
+        <div>
+          exh cursor:{" "}
+          <b>
+            {tab === "all"
+              ? cursorLabel(exhibitionsNextCursor)
+              : cursorLabel(followingExhCursor)}
+          </b>
+        </div>
+        <div>
+          hasMore: <b>{hasMore ? "yes" : "no"}</b> · loading:{" "}
+          <b>{loadingMore ? "yes" : "no"}</b>
+        </div>
+      </div>
+      <div className="mt-1 border-t border-zinc-200 pt-1">
+        <div>
+          loadMore calls: <b>{loadMoreCalls}</b>
+        </div>
+        <div>
+          last fetch: <b>{lastLoadMoreFetched
+            ? `${lastLoadMoreFetched.artworks}art / ${lastLoadMoreFetched.exhibitions}exh`
+            : "—"}</b>
+        </div>
+      </div>
     </div>
   );
 }

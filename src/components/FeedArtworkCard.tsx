@@ -17,10 +17,7 @@ import {
   formatRoleChips,
   hasPublicLinkableUsername,
 } from "@/lib/identity/format";
-import {
-  formatSizeForLocale,
-  parseSizeWithUnit,
-} from "@/lib/size/format";
+import { formatSizeForLocale } from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
 
 /**
@@ -35,16 +32,17 @@ function extractSizeBase(formatted: string | null): string | null {
 }
 
 /**
- * Build the size pill string for the salon grid. Returns null when:
- * - no `size` field, or
- * - `size` doesn't parse, or
- * - the input has no detectable unit AND the artwork's `size_unit` column
- *   is also null. Showing a bare "120 × 80" without a unit is more
- *   confusing than helpful; we'd rather quietly hide the pill until the
- *   data is corrected (Artsy / Artnet / 1stDibs follow the same policy).
+ * Build the size pill string for the salon grid. Returns null only when:
+ * - the `size` field is missing / empty, or
+ * - the value doesn't parse at all.
  *
- * Hosu inputs (`30F`) always carry an implicit cm unit, so they're
- * treated as unit-bearing.
+ * v1.5: when the input doesn't carry a unit suffix and `artwork.size_unit`
+ * is also null, we no longer hide the pill. `formatSizeForLocale` falls
+ * back to a cm assumption (with inch conversion in EN locales). The
+ * trade-off — a small chance of misattributing a unit on legacy rows
+ * vs. the consistent visual rhythm a unified pill gives the salon — was
+ * decided in favour of consistency, with admin / artist self-edit
+ * planned as a follow-up patch.
  */
 function buildSizePill(
   size: string | null | undefined,
@@ -52,11 +50,6 @@ function buildSizePill(
   locale: string
 ): string | null {
   if (!size || !size.trim()) return null;
-  const parsed = parseSizeWithUnit(size);
-  const inputHasUnit = parsed?.unit != null;
-  if (!inputHasUnit && (sizeUnit == null || sizeUnit === undefined)) {
-    return null;
-  }
   return extractSizeBase(formatSizeForLocale(size, locale, sizeUnit ?? null));
 }
 

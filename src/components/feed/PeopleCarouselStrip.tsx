@@ -10,18 +10,19 @@ import {
 } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
-import type { LivingSalonClusterPersona } from "@/lib/feed/livingSalon";
+import type { LivingSalonPersona } from "@/lib/feed/livingSalon";
 import type { PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FollowButton } from "@/components/FollowButton";
 
 type Props = {
-  persona: LivingSalonClusterPersona;
+  persona: LivingSalonPersona;
   profiles: PeopleRec[];
   followingIds: Set<string>;
   userId: string | null;
 };
 
-const PERSONA_HEADER_KEY: Record<LivingSalonClusterPersona, string> = {
+const PERSONA_HEADER_KEY: Record<LivingSalonPersona, string> = {
+  artist: "feed.artistClusterHeader",
   curator: "feed.curatorClusterHeader",
   gallerist: "feed.galleristClusterHeader",
   collector: "feed.collectorClusterHeader",

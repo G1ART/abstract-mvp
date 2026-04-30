@@ -2,6 +2,67 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.5 (Unified Persona Carousel + Size Unit Assumption + Debug Panel)
+
+v1.4 의 캐러셀이 비-artist 페르소나만 노출하던 비대칭, 사이즈 단위가 빠진 카드의 시각 비일관성, 무한 스크롤이 멈춰도 사용자가 원인을 찾을 수 없던 진단 부재 — 세 문제를 한꺼번에 수리.
+
+### 사용자 합의
+
+- 모든 페르소나 (artist 포함) 를 동일한 가로 캐러셀 패턴으로 통일. v1.4 의 `artist_world` 단일 strip 패턴 폐기 — 사용자가 "주기적으로 페르소나별 유저 소개 행이 뜨면 좋겠다" 고 명시
+- 사이즈 단위가 식별 안 되더라도 *cm 가정* 으로 단위 표기 (한국 시장 + 살롱 톤). EN locale 은 inch 환산. 일관성 > 보존성
+- 무한 스크롤이 멈췄을 때 *원인 진단* 할 수 있도록 우하단 디버그 패널 + 풍부한 console.debug. `?debug=feed` 쿼리 또는 `localStorage.debug_feed = "1"` 로 토글
+
+### Supabase SQL — 돌려야 할 것 없음
+
+빌더 분기 + UI 컴포넌트 + 진단 패널만.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) — `artist_world` kind 와 `LivingSalonClusterPersona` 타입 폐기. `LivingSalonItem.people_cluster` 의 `persona` 가 `LivingSalonPersona` (artist 포함 4종) 로 확장. `filterArtistDiscovery`, `takeArtistWorld`, `ARTIST_WORLD_MIN_ARTWORKS` 모두 제거. `buildPeopleClusters` 가 4종 페르소나 모두 버킷, 동일하게 `PEOPLE_CLUSTER_MIN = 2` 게이트. 출력 순서 `artist → curator → gallerist → collector` 로 결정론. `summarizeLivingSalonMix` 반환에서 `artist_worlds` 키 제거
+- [src/components/feed/PeopleCarouselStrip.tsx](../src/components/feed/PeopleCarouselStrip.tsx) — `persona` prop 을 `LivingSalonPersona` 로 확장. `PERSONA_HEADER_KEY` 에 `artist: feed.artistClusterHeader` 추가. 카드 vocabulary 동일 (avatar + 이름 + role chip + reason + Follow). artist 카드도 다른 페르소나와 같은 패턴 — 작품 thumbs 미노출, 통일감 우선
+- [src/components/feed/ArtistWorldStrip.tsx](../src/components/feed/ArtistWorldStrip.tsx) — **삭제**. v1.4 까지 artist 단일 프로필 strip 이었으나, 카드 vocabulary 통일 위해 폐기
+- [src/components/feed/LivingSalonGrid.tsx](../src/components/feed/LivingSalonGrid.tsx) — `ArtistWorldStrip` import 제거, `artist_world` 분기 제거. people_cluster 만 처리
+- [src/lib/size/format.ts](../src/lib/size/format.ts) — `formatSizeForLocale` 의 `size_unit==null` 분기 변경. 이전엔 *원본 수치 그대로 단위 없이* 반환했지만, v1.5 부턴 *cm 가정* 으로 표시. KO locale 은 cm 그대로, EN locale 은 inch 환산. 호수 prefix 분기에도 동일 로직 적용
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — `buildSizePill` 의 단위 부재 게이트 제거. `parseSizeWithUnit` import 도 삭제. `size` 가 파싱되면 항상 pill 발행. 호수 prefix 떼는 `extractSizeBase` 동작 그대로
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — `FEED_LAYOUT_VERSION` `living_salon_v1.4_carousel` → `living_salon_v1.5_unified_carousel`. `parsePersona`, `listPublicArtworksForProfile` import 제거 (unified 카드는 작품 thumbs 안 씀). `discoveryPromises` 가 페르소나 분기 없이 모든 프로필 통과 (`{profile, artworks: []}` 매핑). `item_mix` 페이로드에서 `artist_worlds` 키 제거. 새 진단 인프라: `useSearchParams`, `?debug=feed` 또는 `localStorage.debug_feed === "1"` 시 `debugMode = true`. `loadMoreCalls`, `lastLoadMoreFetched` state 추가. fetchArtworks / loadMore 양쪽 분기 끝에 `console.debug` ("[Feed] initial fetch", "[Feed] loadMore") 풍부하게 발행 — `next_*_cursor: present|null`, `artworks_in`, `exhibitions_in`, `page_size` 모두 노출. JSX 마지막에 `<FeedDebugPanel>` (debugMode 시) 우하단 fixed pill — tab/sort, feedEntries / salonItems / discovery counts, persona breakdown, 두 cursor 상태, hasMore, loadMore 호출 횟수 + 마지막 결과
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — KR/EN 새 키 1개: `feed.artistClusterHeader` ("작가 추천 / Artists to discover"). 더 이상 쓰이지 않는 `feed.artistWorldLabel`, `feed.viewArtist` 두 키 제거
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — 통째 재작성. v1.4 의 chunk·artist_world 케이스 모두 갱신: `artist_world` kind 미발행 회귀, artist 페르소나도 `cluster_min` 게이트 (1명 drop / 2명+ row) 적용, 페르소나 출력 순서 `artist → curator → gallerist → collector` 확정 케이스, 모든 페르소나가 한 row 로 통합되는 케이스. `summarizeLivingSalonMix` 합 검증에서 `artist_worlds` 항 제거
+
+### 변경 없음 (의도)
+
+- 데이터 페치 layer (`listPublicArtworks` 등 RPC contract), RLS, like/follow 행동
+- 캐러셀 카드 vocabulary, scroll-snap·화살표 동작 (v1.4 그대로)
+- 빌더 결정론 — same input → same output
+
+### 디자인 결정
+
+- **artist 도 단일 strip 대신 캐러셀**: v1.4 의 단일 프로필 strip 은 시각적으로 더 정성스럽지만 *우연히 한 명만 등장* 시 강한 비대칭. 캐러셀은 한 페르소나 1명일 때 row 자체 미렌더 — *적게 보일 바엔 안 보이는 게 낫다*
+- **artist 카드 안 작품 thumbs 생략**: Behance 식 작품 thumbs 동반도 검토했으나 (v1.4 검토 D), curator/gallerist/collector 는 작품 풀 없어 비대칭. 통일감을 위해 모두 동일 vocabulary, 작품은 카드 클릭 → /u/username 디테일 페이지에서
+- **단위 cm 가정의 위험 vs 보상**: 일부 작품이 inch 입력이었을 가능성 있음. 미술 시장 데이터는 cm·in 둘 다 정상. 그러나 사용자 기준 *단위 없는 숫자가 더 시각 노이즈*. 정확성 살짝 희생해 일관성 확보. 후속으로 작가 본인의 unit 보완 CTA 가 데이터 정정 흐름
+- **debug 패널 우하단 fixed**: 페이지 흐름과 분리, max-w-[280px] 로 작게. 11px 타이포 — 정보 밀도 높은 진단용. `localStorage.debug_feed = "1"` 토글로 production 환경에서도 사용자가 켤 수 있음
+- **`console.debug` `[Feed]` prefix**: 다른 로그와 구분. `next_*_cursor: present|null` 만 발행 — 실제 cursor 값은 보안 노출 우려, *발행 여부만* 알면 무한 스크롤 진단 충분
+
+### 검증
+
+- `npm run test:feed-living-salon` — 갱신·신규 케이스 모두 통과
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — success
+
+### Verified
+
+- 결정론 테스트 통과 (artist_world 폐기, 페르소나 통합 cluster, 출력 순서)
+- 타입 체크 통과
+- 빌드 통과
+
+### 후속 (별도 패치 후보)
+
+- 작가 본인 작품 디테일 페이지에서 `size_unit` 보완 CTA — 데이터 정정 흐름
+- 진단 패널이 보여주는 `cursor=null` 케이스가 일상화되면 페이지 사이즈 / RLS / 클라이언트 필터 어디가 병목인지 다음 진단
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.4 (People Carousel + Infinite-Scroll Heal + Size Pill Gate)
 
 v1.3 의 cluster 가 후보 1명일 때 외롭게 보였던 문제, 사이즈 단위 부재시 의미 없는 숫자만 노출되던 문제, 무한 스크롤이 사실상 1회 이후 멈춰있던 문제를 한꺼번에 정리. layout_version 은 `living_salon_v1.3_clustered` → `living_salon_v1.4_carousel`.

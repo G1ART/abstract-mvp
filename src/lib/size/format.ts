@@ -149,12 +149,27 @@ export function formatSizeForLocale(
     return inBase;
   }
 
-  // size_unit 없음: 원본 수치를 보존하되 호수는 참고 표시
+  // size_unit 없음: 단위가 없는 입력값은 cm 로 가정한다(국내 작가 절대다수,
+  // 미국·유럽 시장에서도 cm 표기가 표준). locale 영문이면 inch 환산해 표시.
+  // 잘못 가정해도 단위 없이 숫자만 떠 있는 것보다 일관된 정보 밀도가 낫다.
   if (hosuNumber != null && hosuType) {
-    const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)}`;
+    if (isKo) {
+      const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
+      return `${hosuNumber}${hosuType} · ${base}`;
+    }
+    const wIn = cmToIn(widthCm);
+    const hIn = cmToIn(heightCm);
+    const base = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
     return `${hosuNumber}${hosuType} · ${base}`;
   }
-  const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)}`;
+  if (isKo) {
+    const base = `${widthCm.toFixed(1)} × ${heightCm.toFixed(1)} cm`;
+    if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
+    return base;
+  }
+  const wIn = cmToIn(widthCm);
+  const hIn = cmToIn(heightCm);
+  const base = `${wIn.toFixed(1)} × ${hIn.toFixed(1)} in`;
   if (nearestHosu) return `${hosuPrefix(nearestHosu)}${base}`;
   return base;
 }

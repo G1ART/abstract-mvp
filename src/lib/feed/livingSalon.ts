@@ -11,15 +11,16 @@ import type { DiscoveryDatum, FeedEntry } from "./types";
  *   full-viewport; the grid clamps anchor height so no single artwork
  *   dominates the first screen (see Work Order §F2).
  * - `quiet`: reserved for future dense regions; rendered identically to
- *   `standard` in v1.
+ *   `standard`.
  */
 export type LivingSalonArtworkVariant = "standard" | "anchor" | "quiet";
 
 /**
- * Personas for "people-introducing" surfaces. The `artist` persona renders
- * as a single-profile strip with inline thumbnails; the other three render
- * as a 3-card cluster row (LinkedIn "Jobs recommended for you" pattern).
- * Profiles whose `main_role` is none of these are not surfaced at all.
+ * Personas for "people-introducing" surfaces. v1.5 unifies all four
+ * personas under one carousel pattern — a single horizontal row per
+ * persona — so the feed never silently omits artists or treats one
+ * persona as a different visual unit. Profiles whose `main_role` is
+ * none of these are not surfaced at all.
  */
 export type LivingSalonPersona =
   | "artist"
@@ -27,16 +28,8 @@ export type LivingSalonPersona =
   | "gallerist"
   | "collector";
 
-export type LivingSalonClusterPersona = Exclude<LivingSalonPersona, "artist">;
-
 export const LIVING_SALON_PERSONAS: readonly LivingSalonPersona[] = [
   "artist",
-  "curator",
-  "gallerist",
-  "collector",
-] as const;
-
-const LIVING_SALON_CLUSTER_PERSONAS: readonly LivingSalonClusterPersona[] = [
   "curator",
   "gallerist",
   "collector",
@@ -55,16 +48,9 @@ export type LivingSalonItem =
       exhibition: ExhibitionWithCredits;
     }
   | {
-      kind: "artist_world";
-      key: string;
-      profile: PeopleRec;
-      persona: "artist";
-      artworks: ArtworkWithLikes[];
-    }
-  | {
       kind: "people_cluster";
       key: string;
-      persona: LivingSalonClusterPersona;
+      persona: LivingSalonPersona;
       profiles: PeopleRec[];
     };
 
@@ -73,7 +59,7 @@ export type BuildLivingSalonInput = {
   discoveryData: DiscoveryDatum[];
   /**
    * Reserved for future viewport-aware tweaks (e.g. fewer anchors on tiny
-   * screens). v1 builds the same presentation array for every viewport and
+   * screens). Builds the same presentation array for every viewport and
    * lets CSS handle responsive spans.
    */
   viewport?: "desktop" | "mobile";
@@ -82,8 +68,6 @@ export type BuildLivingSalonInput = {
 const OPENING_REGION = 6;
 const ANCHOR_INDEX_PRIMARY = 3;
 const ANCHOR_INDEX_FALLBACK = 4;
-/** Artist-persona strips need at least this many public artworks to render. */
-const ARTIST_WORLD_MIN_ARTWORKS = 2;
 /**
  * Exhibition strips need at least this many cover thumbs. Exhibitions with
  * 0–1 covers read as empty / awkward in the feed; we drop them at the
@@ -91,11 +75,10 @@ const ARTIST_WORLD_MIN_ARTWORKS = 2;
  */
 const EXHIBITION_MIN_COVERS = 2;
 /**
- * Minimum tiles between two adjacent "people" modules (artist_world or
- * people_cluster). Both reset this counter so two people-introducing rows
- * never sit too close together.
+ * Minimum tiles between two adjacent people_cluster rows. People rows
+ * never sit too close together so the salon doesn't read like a directory.
  */
-const ARTIST_WORLD_MIN_GAP = 5;
+const PEOPLE_CLUSTER_MIN_GAP = 5;
 /** Minimum profiles required to render a people_cluster row. */
 const PEOPLE_CLUSTER_MIN = 2;
 /** Maximum consecutive artworks from the same artist before we try to swap. */
@@ -107,26 +90,21 @@ const CONTEXT_MIN_GAP = 4;
  * Build the Living Salon presentation array.
  *
  * Pure / deterministic: same input always produces the same output. No
- * randomness, no clock reads — that lets QA take stable screenshots and lets
- * us cache results between renders without surprise reflow.
+ * randomness, no clock reads — that lets QA take stable screenshots and
+ * lets us cache results between renders without surprise reflow.
  *
  * Guarantees:
- * 1. Drops orphan / private-artist artworks via `isPublicSurfaceVisible`,
- *    forming a defensive second filter on top of the data helpers.
+ * 1. Drops orphan / private-artist artworks via `isPublicSurfaceVisible`.
  * 2. The first item is never a context module.
- * 3. Up to one `anchor` artwork sits in the opening region (idx 3 or 4),
- *    only when that index actually holds an artwork.
- * 4. Artist-world strips appear only for `artist` personas with
- *    `>= ARTIST_WORLD_MIN_ARTWORKS` public artworks. The first people row
- *    waits until at least `OPENING_REGION` tiles have rendered.
- * 5. Non-artist personas are bucketed by persona and emitted as
- *    `people_cluster` rows of up to 3 profiles each. Same-persona-only
- *    clusters keep the section header coherent.
- * 6. Two context modules never sit back-to-back (sparse pools degrade
+ * 3. Up to one `anchor` artwork sits in the opening region (idx 3 or 4).
+ * 4. People-cluster rows appear only after the opening region, with a
+ *    `PEOPLE_CLUSTER_MIN_GAP` gap between rows. Each row holds a single
+ *    persona and at least `PEOPLE_CLUSTER_MIN` profiles.
+ * 5. Two context modules never sit back-to-back (sparse pools degrade
  *    gracefully).
- * 7. Same-artist runs above `SAME_ARTIST_RUN_LIMIT` are softened by
+ * 6. Same-artist runs above `SAME_ARTIST_RUN_LIMIT` are softened by
  *    swapping in the next non-same-artist artwork later in the queue.
- * 8. Item keys are stable and unique; duplicates by id are dropped.
+ * 7. Item keys are stable and unique; duplicates by id are dropped.
  */
 export function buildLivingSalonItems(
   input: BuildLivingSalonInput
@@ -134,7 +112,6 @@ export function buildLivingSalonItems(
   const safeEntries = filterEntries(input.entries);
   const orderedArtworks = collectArtworks(safeEntries);
   const orderedExhibitions = collectExhibitions(safeEntries);
-  const artistDiscovery = filterArtistDiscovery(input.discoveryData);
   const peopleClusters = buildPeopleClusters(input.discoveryData);
 
   const artworkQueue = softenSameArtistRuns(orderedArtworks);
@@ -143,12 +120,9 @@ export function buildLivingSalonItems(
   const seenKeys = new Set<string>();
   let artworkIdx = 0;
   let exhibitionIdx = 0;
-  let artistDiscoveryIdx = 0;
   let clusterIdx = 0;
-  /** Tiles emitted since the last context module (any people / exhibition). */
   let tilesSinceContext = Number.POSITIVE_INFINITY;
-  /** Tiles emitted since the last people module (artist_world OR cluster). */
-  let tilesSinceArtistWorld = Number.POSITIVE_INFINITY;
+  let tilesSincePeople = Number.POSITIVE_INFINITY;
   let anchorAssigned = false;
 
   function pushUnique(item: LivingSalonItem) {
@@ -178,18 +152,6 @@ export function buildLivingSalonItems(
     };
   }
 
-  function takeArtistWorld(): LivingSalonItem | null {
-    if (artistDiscoveryIdx >= artistDiscovery.length) return null;
-    const datum = artistDiscovery[artistDiscoveryIdx++];
-    return {
-      kind: "artist_world",
-      key: `aw-${datum.profile.id}`,
-      profile: datum.profile,
-      persona: "artist",
-      artworks: datum.artworks.slice(0, 4),
-    };
-  }
-
   function takePeopleCluster(): LivingSalonItem | null {
     if (clusterIdx >= peopleClusters.length) return null;
     const cluster = peopleClusters[clusterIdx++];
@@ -206,16 +168,15 @@ export function buildLivingSalonItems(
     switch (item.kind) {
       case "artwork":
         tilesSinceContext += 1;
-        tilesSinceArtistWorld += 1;
+        tilesSincePeople += 1;
         break;
       case "exhibition_strip":
         tilesSinceContext = 0;
-        tilesSinceArtistWorld += 1;
+        tilesSincePeople += 1;
         break;
-      case "artist_world":
       case "people_cluster":
         tilesSinceContext = 0;
-        tilesSinceArtistWorld = 0;
+        tilesSincePeople = 0;
         break;
     }
   }
@@ -224,7 +185,6 @@ export function buildLivingSalonItems(
     return (
       artworkIdx < artworkQueue.length ||
       exhibitionIdx < orderedExhibitions.length ||
-      artistDiscoveryIdx < artistDiscovery.length ||
       clusterIdx < peopleClusters.length
     );
   }
@@ -232,21 +192,12 @@ export function buildLivingSalonItems(
   while (hasMore()) {
     const renderedCount = items.length;
 
-    // People row: artist_world or people_cluster. Same gap logic — both
-    // reset `tilesSinceArtistWorld`. artist_world is preferred when both
-    // queues are non-empty (single-profile + thumbs feels stronger as the
-    // first people row).
     const canPlacePeople =
       renderedCount >= OPENING_REGION &&
-      tilesSinceArtistWorld >= ARTIST_WORLD_MIN_GAP &&
+      tilesSincePeople >= PEOPLE_CLUSTER_MIN_GAP &&
       tilesSinceContext >= CONTEXT_MIN_GAP &&
       !isLastItemContext(items);
     if (canPlacePeople) {
-      const aw = takeArtistWorld();
-      if (aw) {
-        emit(aw);
-        continue;
-      }
       const pc = takePeopleCluster();
       if (pc) {
         emit(pc);
@@ -254,8 +205,6 @@ export function buildLivingSalonItems(
       }
     }
 
-    // Exhibition strips drop in once we've seeded enough artworks and the
-    // last item wasn't itself a context module.
     const canPlaceExhibition =
       renderedCount >= OPENING_REGION / 2 &&
       tilesSinceContext >= CONTEXT_MIN_GAP &&
@@ -274,7 +223,6 @@ export function buildLivingSalonItems(
       }
     }
 
-    // Default: emit the next artwork.
     const art = takeArtwork();
     if (art) {
       if (
@@ -290,16 +238,10 @@ export function buildLivingSalonItems(
       continue;
     }
 
-    // Sparse pool: no artworks left. Emit any remaining context modules
-    // (relax the no-back-to-back rule so we don't crash on tiny pools).
+    // Sparse pool fallback: drain remaining context modules.
     const ex = takeExhibitionStrip();
     if (ex) {
       emit(ex);
-      continue;
-    }
-    const aw = takeArtistWorld();
-    if (aw) {
-      emit(aw);
       continue;
     }
     const pc = takePeopleCluster();
@@ -354,42 +296,21 @@ function collectExhibitions(entries: FeedEntry[]): ExhibitionWithCredits[] {
 }
 
 /**
- * Returns artist-persona discovery data only — non-artist personas are
- * surfaced via `buildPeopleClusters` instead. Drops profiles whose
- * `main_role` is missing or outside the supported four.
- */
-function filterArtistDiscovery(data: DiscoveryDatum[]): DiscoveryDatum[] {
-  const seen = new Set<string>();
-  const out: DiscoveryDatum[] = [];
-  for (const datum of data) {
-    if (!datum.profile?.id) continue;
-    if (seen.has(datum.profile.id)) continue;
-    const persona = parsePersona(datum.profile.main_role);
-    if (persona !== "artist") continue;
-    const safeArtworks = datum.artworks.filter(isPublicSurfaceVisible);
-    if (safeArtworks.length < ARTIST_WORLD_MIN_ARTWORKS) continue;
-    seen.add(datum.profile.id);
-    out.push({ profile: datum.profile, artworks: safeArtworks });
-  }
-  return out;
-}
-
-/**
- * Buckets non-artist profiles by persona and emits *one row per persona*
- * containing every profile of that persona — the row renders as a
- * horizontal carousel, so chunking by N would just create artificial
- * page breaks. Buckets with fewer than `PEOPLE_CLUSTER_MIN` profiles are
- * dropped so the surface never reads as a thin "1 person" row that
- * makes the platform look empty (Work Order v1.4).
+ * Buckets profiles by persona and emits one row per persona — a
+ * horizontal carousel that stays the same visual unit across all four
+ * personas (artist / curator / gallerist / collector). Buckets with
+ * fewer than `PEOPLE_CLUSTER_MIN` profiles are dropped so the surface
+ * never reads as a thin "1 person" row.
  *
- * Output order is `curator → gallerist → collector`, preserving input
- * order within each persona — fully deterministic.
+ * Output order is `artist → curator → gallerist → collector`, preserving
+ * input order within each persona — fully deterministic.
  */
 export function buildPeopleClusters(
   data: DiscoveryDatum[]
-): { persona: LivingSalonClusterPersona; profiles: PeopleRec[] }[] {
+): { persona: LivingSalonPersona; profiles: PeopleRec[] }[] {
   const seen = new Set<string>();
-  const buckets: Record<LivingSalonClusterPersona, PeopleRec[]> = {
+  const buckets: Record<LivingSalonPersona, PeopleRec[]> = {
+    artist: [],
     curator: [],
     gallerist: [],
     collector: [],
@@ -398,12 +319,12 @@ export function buildPeopleClusters(
     if (!datum.profile?.id) continue;
     if (seen.has(datum.profile.id)) continue;
     const persona = parsePersona(datum.profile.main_role);
-    if (persona == null || persona === "artist") continue;
+    if (persona == null) continue;
     seen.add(datum.profile.id);
     buckets[persona].push(datum.profile);
   }
-  const out: { persona: LivingSalonClusterPersona; profiles: PeopleRec[] }[] = [];
-  for (const persona of LIVING_SALON_CLUSTER_PERSONAS) {
+  const out: { persona: LivingSalonPersona; profiles: PeopleRec[] }[] = [];
+  for (const persona of LIVING_SALON_PERSONAS) {
     const profiles = buckets[persona];
     if (profiles.length < PEOPLE_CLUSTER_MIN) continue;
     out.push({ persona, profiles });
@@ -429,17 +350,15 @@ function isLastItemContext(items: LivingSalonItem[]): boolean {
   const last = items[items.length - 1];
   if (!last) return false;
   return (
-    last.kind === "artist_world" ||
-    last.kind === "people_cluster" ||
-    last.kind === "exhibition_strip"
+    last.kind === "people_cluster" || last.kind === "exhibition_strip"
   );
 }
 
 /**
- * Soften same-artist runs. We never reorder beyond a small local swap so the
- * presentation stays close to chronological order — the goal is only to avoid
- * showing three or four works from the same artist back-to-back when there
- * are alternatives nearby.
+ * Soften same-artist runs. We never reorder beyond a small local swap so
+ * the presentation stays close to chronological order — the goal is only
+ * to avoid showing three or four works from the same artist back-to-back
+ * when there are alternatives nearby.
  */
 function softenSameArtistRuns(
   artworks: ArtworkWithLikes[]
@@ -472,13 +391,11 @@ function softenSameArtistRuns(
 export function summarizeLivingSalonMix(items: LivingSalonItem[]): {
   artworks: number;
   exhibitions: number;
-  artist_worlds: number;
   people_clusters: number;
   anchors: number;
 } {
   let artworks = 0;
   let exhibitions = 0;
-  let artistWorlds = 0;
   let peopleClusters = 0;
   let anchors = 0;
   for (const item of items) {
@@ -490,9 +407,6 @@ export function summarizeLivingSalonMix(items: LivingSalonItem[]): {
       case "exhibition_strip":
         exhibitions += 1;
         break;
-      case "artist_world":
-        artistWorlds += 1;
-        break;
       case "people_cluster":
         peopleClusters += 1;
         break;
@@ -501,7 +415,6 @@ export function summarizeLivingSalonMix(items: LivingSalonItem[]): {
   return {
     artworks,
     exhibitions,
-    artist_worlds: artistWorlds,
     people_clusters: peopleClusters,
     anchors,
   };
@@ -520,11 +433,7 @@ export function summarizeFirstView(items: LivingSalonItem[]): {
   let contextModules = 0;
   for (const item of window) {
     if (item.kind === "artwork" && item.variant === "anchor") anchors += 1;
-    if (
-      item.kind === "artist_world" ||
-      item.kind === "people_cluster" ||
-      item.kind === "exhibition_strip"
-    ) {
+    if (item.kind === "people_cluster" || item.kind === "exhibition_strip") {
       contextModules += 1;
     }
   }
