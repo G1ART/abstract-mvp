@@ -2,6 +2,86 @@
 
 Last updated: 2026-04-29
 
+## 2026-04-29 — Living Salon Feed v1 (피드 페이지 업그레이드 패치)
+
+`/feed` 의 비주얼·제품 정체성을 "Living Salon" 으로 업그레이드. 데이터 척추 (RLS / cursor / infinite scroll / TTL refresh / analytics) 는 전부 그대로 두고 그 위에 결정론적 리듬 빌더 + 살롱 그리드 + 카드 변형 + 작가의 세계 / 전시의 기억 strip + 브랜디드 헤더를 얹음.
+
+### Supabase SQL — 돌려야 할 것 없음
+
+이번 패치는 UI/제품 표현 레이어만 손댐. 마이그레이션 0건.
+
+### 환경 변수 — 변경 없음
+
+### 새 파일
+
+- `src/lib/feed/types.ts` — `FeedEntry`, `DiscoveryDatum` (FeedContent 와 livingSalon 공용 어휘)
+- `src/lib/feed/visibility.ts` — `isPublicSurfaceVisible` 를 supabase client 사이드이펙트와 분리해서 순수/테스트 가능 경로로 빼냄. `src/lib/supabase/artworks.ts` 가 이걸 import & re-export
+- `src/lib/feed/livingSalon.ts` — `buildLivingSalonItems` 결정론 리듬 빌더 + `summarizeLivingSalonMix` / `summarizeFirstView` 분석용 헬퍼
+- `src/components/feed/FeedHeader.tsx` — "오늘의 Abstract" 카피 + Primary `[추천] [팔로잉]` pill 토글 + Secondary `[새 작품] [반응 좋은 작품]` sort + quiet refresh
+- `src/components/feed/LivingSalonGrid.tsx` — 12/6/2 col CSS grid 렌더러. anchor `max-h-[55vh]` 로 hero dominance 차단
+- `src/components/feed/ArtistWorldStrip.tsx` — 작가의 세계 strip (구 `FeedDiscoveryBlock` 대체). dashed border 제거, 작은 아바타, `discoveryMini` 썸네일 3개, [작가 보기] + FollowButton
+- `src/components/feed/ExhibitionMemoryStrip.tsx` — 전시의 기억 strip (구 `FeedExhibitionCard` 대체). dashed 제거, thumb 3개. 커버 없으면 텍스트-forward fallback
+- `tests/feed-living-salon.test.ts` — 결정론 / dedupe / 첫 아이템 비-context / artist-world 최소 게이트 / sparse / 키 unique / no back-to-back context / same-artist run softening / 비공계 orphan 필터 / anchor 배치 / mix summary
+
+### 수정 파일
+
+- `src/components/FeedArtworkCard.tsx` — `variant: feedTile | feedAnchor | discoveryMini` 도입. 가격 기본 숨김, `pricing_mode === "inquire"` 일 때만 quiet `문의 가능 / Inquire` 라벨. role chip 은 데스크톱 + opt-in. 모바일 vertical text/role-chip collapse 전부 차단 (`truncate` + `whitespace-nowrap` + `sm:` 게이트). edit 어포던스는 데스크톱 owner 전용
+- `src/components/FeedContent.tsx` — `buildLivingSalonItems` + `<LivingSalonGrid>` 사용. refresh 버튼은 헤더로 이동. skeleton 을 살롱 리듬 (4 artwork + 1 strip + 4 artwork) 으로 교체. raw `String(error)` 제거 → `t("feed.errorTitle")` + retry. analytics payload 에 `layout_version: "living_salon_v1"` + `item_mix` + `first_view_estimate` 추가. `feed_loaded` / `feed_load_more` / `feed_first_paint` 모두 새 페이로드 채움
+- `src/app/feed/FeedClient.tsx` — slim down: `<FeedHeader>` + `<FeedContent>` 만 wrap. `max-w-[1200px]` 로 12-col 호흡 확보. 기존 query 시맨틱 (`tab=all|following`, `sort=latest|popular`) 그대로
+- `src/lib/i18n/messages.ts` — KR/EN 새 키 16개 (`feed.todayTitle`, `feed.todaySubtitle`, `feed.tabRecommended`, `feed.tabFollowing`, `feed.sortNewWorks`, `feed.sortResonating`, `feed.refreshQuiet`, `feed.refreshing`, `feed.caughtUp`, `feed.artistWorldLabel`, `feed.exhibitionMemoryLabel`, `feed.viewArtist`, `feed.viewExhibition`, `feed.saveQuiet`, `feed.inquireQuiet`, `feed.errorTitle`, `feed.errorRetry`). 하드코드 영문 `You're all caught up` 제거
+- `src/lib/supabase/artworks.ts` — `isPublicSurfaceVisible` 를 새 모듈에서 import 후 re-export (호환성 유지). 호출자 변경 없음
+- `package.json` — `npm run test:feed-living-salon` 스크립트 추가
+
+### 삭제 파일
+
+- `src/components/FeedDiscoveryBlock.tsx`
+- `src/components/FeedExhibitionCard.tsx`
+
+(둘 다 grep 으로 사용처 0 확인 후 제거. 새 strip 컴포넌트들이 콘셉트를 계승.)
+
+### 보존된 동작 (척추)
+
+- `tab=all|following` / `sort=latest|popular` 쿼리 시맨틱
+- keyset cursor 페이지네이션 (artwork + exhibition 양쪽)
+- 90s TTL background refresh + `pathname?.startsWith("/feed")` re-entry / focus / visibility refresh
+- IntersectionObserver 무한 스크롤 (`rootMargin: 400px`)
+- private-artist orphan 가드 (`isPublicSurfaceVisible`) — 빌더 입구에서 한 번 더 통과해 방어선 이중화
+- like / follow 클릭 isolation
+- `setArtworkBack(pathname)` → detail → back 흐름
+- `feed_loaded` / `feed_load_more` / `feed_first_paint` 분석 이벤트 (페이로드만 확장, 이름 추가 X)
+
+### 디자인 결정 (Work Order 충실)
+
+- **Hero 도미넌트 금지**: anchor artwork 도 `col-span-6` + `max-h-[55vh]`. 첫 viewport 에 다른 작품/모듈이 같이 보이도록 grid 가 강제
+- **이미지 contain**: matte `bg-zinc-100` + `object-contain`. 작품 비율 보존, 임의 crop 없음
+- **가격 de-emphasis**: 기본 가격 숨김. `inquire` 모드만 quiet `문의 가능` 라벨로 표시. 가격이 피드를 끌고 가지 않음
+- **컨텍스트 strip**: dashed border / `bg-zinc-50/80` 제거. `bg-zinc-50/60 border-zinc-200` 로 통일
+- **모바일 vertical collapse 차단**: 카드 메타 라인 모두 `truncate` + role chip 은 `sm:` 이상에서만 표시
+- **결정론 리듬**: 빌더는 random 없음 → 동일 입력 = 동일 출력. QA 스크린샷 재현 가능
+- **AI 미사용**: 런타임 LLM 호출 없음. 추천 reason 은 기존 `reasonTagToI18n` 결정론 매핑
+
+### Verified
+
+- `npm run lint` — 우리 패치 파일들 모두 clean. 기타 잔존 lint 에러 (`set-state-in-effect` 등) 는 패치 이전부터 존재, 무관
+- `npm run build` — pass (Next 16.1.6 / Turbopack)
+- `npm run test:feed-living-salon` — pass (12 케이스)
+- `npm run test:website-import` — pass
+- `npm run test:onboarding-runtime` — pass
+- `npm run test:onboarding-smoke` — pre-existing failure (signup-first onboarding routing). 이번 패치와 무관
+- `npm run test:ai-safety` — pre-existing failures (IntroMessageAssist auto-fire, hardcoded locale). 이번 패치와 무관
+
+### 수동 QA 권장 (베타 풀 패스)
+
+- `/feed?tab=all&sort=latest` / `popular` / `tab=following&sort=latest` / `popular` 4종 조합 모두 첫 viewport 에 anchor 1개 + 다른 작품/strip 같이 보이는지
+- viewport 4종 (390×844 / 768×1024 / 1440×900 / 1920×1080) 에서 카드 vertical text collapse / role chip 세로 핍 / 가격 도미넌스 0
+- 비공계 작가 작품이 피드에 새지 않는지 — 빌더 입구 + RLS 이중 가드
+- 작품 클릭 → detail → back 흐름이 끊기지 않는지
+- like / follow 버튼이 카드 클릭과 충돌 없이 isolation 되는지
+- 무한 스크롤 + manual refresh + focus / visibility refresh 모두 정상
+- 한↔영 토글 시 잔존 영문 0 (`You're all caught up`, `Recommended · People`, `Recommended · Exhibitions` 등 사라졌는지)
+
+---
+
 ## 2026-04-29 — 위임 권한 풀 RLS 정렬 / 변경 요청 거부 path / 비공계 작품 피드 누락 / 영문 Back 어색한 한글 청소
 
 세 갈래 묶음 패치. 위임 권한 변경 흐름을 깊이 감사하다 권한 풀 자체가 두 갈래로 분기되어 있는 것을 발견했고, 그 김에 비공계 노출과 UI 텍스트 통일까지 같이 정리.

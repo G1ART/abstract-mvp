@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useT } from "@/lib/i18n/useT";
 import { logBetaEvent } from "@/lib/beta/logEvent";
 import { markFeedPerf, readFeedPerf } from "@/lib/feed/feedPerf";
+import {
+  buildLivingSalonItems,
+  summarizeFirstView,
+  summarizeLivingSalonMix,
+} from "@/lib/feed/livingSalon";
+import type { DiscoveryDatum, FeedEntry } from "@/lib/feed/types";
 import {
   type ArtworkWithLikes,
   type ArtworkCursor,
@@ -25,55 +31,14 @@ import {
   getPeopleRecommendations,
   type PeopleRec,
 } from "@/lib/supabase/recommendations";
-import { FeedArtworkCard } from "./FeedArtworkCard";
-import { FeedDiscoveryBlock } from "./FeedDiscoveryBlock";
-import { FeedExhibitionCard } from "./FeedExhibitionCard";
+import { FeedHeader } from "./feed/FeedHeader";
+import { LivingSalonGrid } from "./feed/LivingSalonGrid";
 
-const REC_CACHE_TTL_MS = 3 * 60 * 1000; // 3 min
+const REC_CACHE_TTL_MS = 3 * 60 * 1000;
 const FEED_BG_REFRESH_TTL_MS = 90_000;
-const INTERLEAVE_EVERY = 5; // 5 items (artwork/exhibition) : 1 discovery block
 const STRONG_SCORE_THRESHOLD = 2;
 const DISCOVERY_BLOCKS_MAX = 4;
-
-type FeedEntry =
-  | { type: "artwork"; created_at: string | null; artwork: ArtworkWithLikes }
-  | { type: "exhibition"; created_at: string | null; exhibition: ExhibitionWithCredits };
-
-type FeedItem =
-  | { type: "artwork"; artwork: ArtworkWithLikes }
-  | { type: "exhibition"; exhibition: ExhibitionWithCredits }
-  | { type: "discovery"; profile: PeopleRec; artworks: ArtworkWithLikes[] };
-
-function buildFeedItems(
-  entries: FeedEntry[],
-  discoveryData: { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
-): FeedItem[] {
-  const items: FeedItem[] = [];
-  let entryIdx = 0;
-  let recIdx = 0;
-  let sinceLastRec = 0;
-
-  while (entryIdx < entries.length || recIdx < discoveryData.length) {
-    while (entryIdx < entries.length && sinceLastRec < INTERLEAVE_EVERY) {
-      const e = entries[entryIdx];
-      if (e.type === "artwork") items.push({ type: "artwork", artwork: e.artwork });
-      else items.push({ type: "exhibition", exhibition: e.exhibition });
-      entryIdx++;
-      sinceLastRec++;
-    }
-    sinceLastRec = 0;
-
-    if (recIdx < discoveryData.length) {
-      const d = discoveryData[recIdx];
-      if (d.artworks.length > 0) {
-        items.push({ type: "discovery", profile: d.profile, artworks: d.artworks });
-      }
-      recIdx++;
-    }
-  }
-
-  return items;
-}
+const FEED_LAYOUT_VERSION = "living_salon_v1";
 
 function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
   const seen = new Set<string>();
@@ -94,15 +59,21 @@ type Props = {
   tab: "all" | "following";
   sort?: "latest" | "popular";
   userId: string | null;
+  onTabChange: (tab: "all" | "following") => void;
+  onSortChange: (sort: "latest" | "popular") => void;
 };
 
-export function FeedContent({ tab, sort = "latest", userId }: Props) {
+export function FeedContent({
+  tab,
+  sort = "latest",
+  userId,
+  onTabChange,
+  onSortChange,
+}: Props) {
   const pathname = usePathname();
   const { t } = useT();
   const [feedEntries, setFeedEntries] = useState<FeedEntry[]>([]);
-  const [discoveryData, setDiscoveryData] = useState<
-    { profile: PeopleRec; artworks: ArtworkWithLikes[] }[]
-  >([]);
+  const [discoveryData, setDiscoveryData] = useState<DiscoveryDatum[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
   const [followingProfileIds, setFollowingProfileIds] = useState<string[]>([]);
@@ -211,7 +182,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
 
         const list = artworksRes.data ?? [];
         if (artworksRes.error) {
-          setError(String((artworksRes.error as { message?: string })?.message ?? artworksRes.error));
+          setError(t("feed.errorTitle"));
           setLoading(false);
           return;
         }
@@ -233,7 +204,14 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         setLikedIds(liked);
 
         const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
-        void logBetaEvent("feed_loaded", { tab, sort, duration_ms: elapsed, source, item_count: entries.length });
+        void logBetaEvent("feed_loaded", {
+          tab,
+          sort,
+          duration_ms: elapsed,
+          source,
+          item_count: entries.length,
+          layout_version: FEED_LAYOUT_VERSION,
+        });
         markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
         const recProfiles = await fetchRecProfiles();
@@ -244,7 +222,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         );
         const discoveryResults = await Promise.all(discoveryPromises);
         const discoveryWithArtworks = discoveryResults.filter(
-          (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
+          (r): r is DiscoveryDatum => r != null
         );
         setDiscoveryData(discoveryWithArtworks);
         setLoading(false);
@@ -262,9 +240,7 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       const list = artworksRes.data ?? [];
       const err = artworksRes.error;
       if (err) {
-        setError(
-          (err as { message?: string })?.message ?? (typeof err === "string" ? err : JSON.stringify(err))
-        );
+        setError(t("feed.errorTitle"));
         setLoading(false);
         return;
       }
@@ -288,7 +264,14 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       setLikedIds(liked);
 
       const elapsed = Math.round(performance.now() - dataLoadStartedRef.current);
-      void logBetaEvent("feed_loaded", { tab, sort, duration_ms: elapsed, source, item_count: entries.length });
+      void logBetaEvent("feed_loaded", {
+        tab,
+        sort,
+        duration_ms: elapsed,
+        source,
+        item_count: entries.length,
+        layout_version: FEED_LAYOUT_VERSION,
+      });
       markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
       const recProfiles = await fetchRecProfiles();
@@ -299,12 +282,12 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
       );
       const discoveryResults = await Promise.all(discoveryPromises);
       const discoveryWithArtworks = discoveryResults.filter(
-        (r): r is { profile: PeopleRec; artworks: ArtworkWithLikes[] } => r != null
+        (r): r is DiscoveryDatum => r != null
       );
       setDiscoveryData(discoveryWithArtworks);
       setLoading(false);
     },
-    [tab, sort, userId, fetchRecProfiles]
+    [tab, sort, userId, fetchRecProfiles, t]
   );
 
   const loadMore = useCallback(async () => {
@@ -369,7 +352,13 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
         }
         const ms = Math.round(performance.now() - t0);
-        void logBetaEvent("feed_load_more", { tab, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
+        void logBetaEvent("feed_load_more", {
+          tab,
+          duration_ms: ms,
+          item_count: newEntries.length,
+          source: "load_more",
+          layout_version: FEED_LAYOUT_VERSION,
+        });
       } finally {
         loadingMoreRef.current = false;
         setLoadingMore(false);
@@ -418,7 +407,14 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
         setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
       }
       const ms = Math.round(performance.now() - t0);
-      void logBetaEvent("feed_load_more", { tab, sort, duration_ms: ms, item_count: newEntries.length, source: "load_more" });
+      void logBetaEvent("feed_load_more", {
+        tab,
+        sort,
+        duration_ms: ms,
+        item_count: newEntries.length,
+        source: "load_more",
+        layout_version: FEED_LAYOUT_VERSION,
+      });
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
@@ -482,15 +478,6 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     };
   }, [fetchArtworks]);
 
-  useEffect(() => {
-    if (loading) return;
-    const firstPaint = readFeedPerf("feed_first_paint");
-    if (firstPaint == null) {
-      markFeedPerf("feed_first_paint");
-      void logBetaEvent("feed_first_paint", { tab, sort, data_ms: readFeedPerf("feed_data_loaded_ms"), item_count: feedEntries.length, source: "initial" });
-    }
-  }, [loading, tab, sort, feedEntries.length]);
-
   const handleLikeUpdate = useCallback(
     (artworkId: string, liked: boolean, count: number) => {
       setLikedIds((prev) => {
@@ -522,68 +509,90 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
     void fetchArtworks({ force: true, source: "manual" });
   }, [fetchArtworks]);
 
-  if (loading) {
-    return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
-        {Array.from({ length: 12 }, (_, i) => (
-          <div
-            key={i}
-            className="min-h-[200px] animate-pulse rounded-lg bg-zinc-200 sm:min-h-[240px]"
-            aria-hidden
-          />
-        ))}
-      </div>
-    );
-  }
+  const livingSalonItems = useMemo(
+    () =>
+      buildLivingSalonItems({
+        entries: feedEntries,
+        discoveryData,
+      }),
+    [feedEntries, discoveryData]
+  );
 
-  if (error) {
-    return (
-      <div className="py-12 text-center">
-        <p className="text-red-600">{String(error)}</p>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (loading) return;
+    const firstPaint = readFeedPerf("feed_first_paint");
+    if (firstPaint == null) {
+      markFeedPerf("feed_first_paint");
+      const mix = summarizeLivingSalonMix(livingSalonItems);
+      const firstView = summarizeFirstView(livingSalonItems);
+      void logBetaEvent("feed_first_paint", {
+        tab,
+        sort,
+        data_ms: readFeedPerf("feed_data_loaded_ms"),
+        item_count: feedEntries.length,
+        source: "initial",
+        layout_version: FEED_LAYOUT_VERSION,
+        item_mix: {
+          artworks: mix.artworks,
+          exhibitions: mix.exhibitions,
+          artist_worlds: mix.artist_worlds,
+        },
+        first_view_estimate: firstView,
+      });
+    }
+  }, [loading, tab, sort, feedEntries.length, livingSalonItems]);
 
   const isEmpty = feedEntries.length === 0 && discoveryData.length === 0;
   const isFollowingEmpty = tab === "following" && isEmpty;
 
-  const feedItems = buildFeedItems(feedEntries, discoveryData);
-
   return (
     <div>
-      <div className="mb-4 flex justify-end">
-        <button
-          type="button"
-          onClick={handleManualRefresh}
-          className="rounded border border-zinc-200 px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-50"
-        >
-          {t("common.refresh")}
-        </button>
-      </div>
-      {isFollowingEmpty ? (
-        <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-          <p className="text-zinc-600">{t("feed.followingEmptyTitle")}</p>
+      <FeedHeader
+        tab={tab}
+        sort={sort}
+        isLoading={loading}
+        onTabChange={onTabChange}
+        onSortChange={onSortChange}
+        onRefresh={handleManualRefresh}
+      />
+
+      {loading ? (
+        <SalonSkeleton />
+      ) : error ? (
+        <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+          <p className="text-sm text-zinc-700">{error}</p>
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            className="rounded-full border border-zinc-300 px-4 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50"
+          >
+            {t("feed.errorRetry")}
+          </button>
+        </div>
+      ) : isFollowingEmpty ? (
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+          <p className="text-sm text-zinc-600">{t("feed.followingEmptyTitle")}</p>
           <Link
             href="/people"
-            className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+            className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
           >
             {t("feed.followingEmptyCta")}
           </Link>
         </div>
       ) : isEmpty ? (
-        <div className="flex flex-col items-center justify-center gap-4 py-12 text-center">
-          <p className="text-zinc-600">{t("feed.noArtworks")}</p>
+        <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+          <p className="text-sm text-zinc-600">{t("feed.noArtworks")}</p>
           {tab === "all" && (
             <div className="flex flex-wrap items-center justify-center gap-3">
               <Link
                 href="/upload"
-                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
               >
                 {t("feed.emptyAllCtaUpload")}
               </Link>
               <Link
                 href="/people"
-                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 {t("feed.emptyAllCtaPeople")}
               </Link>
@@ -591,59 +600,61 @@ export function FeedContent({ tab, sort = "latest", userId }: Props) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:gap-5">
-          {feedItems.map((item, idx) => {
-            if (item.type === "artwork") {
-              const isPriority = idx < 2;
-              return (
-                <div key={`art-${item.artwork.id}`} className="min-w-0">
-                  <FeedArtworkCard
-                    artwork={item.artwork}
-                    likedIds={likedIds}
-                    userId={userId}
-                    onLikeUpdate={handleLikeUpdate}
-                    priority={isPriority}
-                  />
-                </div>
-              );
-            }
-            if (item.type === "exhibition") {
-              return (
-                <div
-                  key={`exhibition-${item.exhibition.id}`}
-                  className="col-span-full min-w-0 lg:col-span-2"
-                >
-                  <FeedExhibitionCard exhibition={item.exhibition} />
-                </div>
-              );
-            }
-            return (
-              <FeedDiscoveryBlock
-                key={`discovery-${item.profile.id}-${idx}`}
-                profile={item.profile}
-                artworks={item.artworks}
-                likedIds={likedIds}
-                initialFollowing={followingIds.has(item.profile.id)}
-                userId={userId}
-                onLikeUpdate={handleLikeUpdate}
-              />
-            );
-          })}
-        </div>
+        <LivingSalonGrid
+          items={livingSalonItems}
+          likedIds={likedIds}
+          followingIds={followingIds}
+          userId={userId}
+          onLikeUpdate={handleLikeUpdate}
+        />
       )}
+
       {hasMore ? (
         <div
           ref={loadMoreSentinelRef}
-          className="flex min-h-[80px] items-center justify-center py-4"
+          className="flex min-h-[80px] items-center justify-center py-6"
           aria-hidden
         >
           {loadingMore && (
-            <span className="text-sm text-zinc-500">{t("common.loading") || "Loading…"}</span>
+            <span className="text-xs text-zinc-500">{t("feed.loading")}</span>
           )}
         </div>
       ) : feedEntries.length > 0 ? (
-        <p className="py-8 text-center text-xs text-zinc-400">You&apos;re all caught up</p>
+        <p className="py-10 text-center text-xs text-zinc-400">
+          {t("feed.caughtUp")}
+        </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * Skeleton that mirrors the salon rhythm rather than a uniform 12-grid: a
+ * handful of artwork tiles, one wide context strip, then a few more tiles.
+ * Keeps SSR/client mismatch low and prevents the loading state from looking
+ * like a different product than the loaded feed.
+ */
+function SalonSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-6 lg:grid-cols-12 lg:gap-5">
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={`s-art-top-${i}`}
+          className="col-span-1 aspect-square animate-pulse rounded-xl bg-zinc-200 md:col-span-3 lg:col-span-4"
+          aria-hidden
+        />
+      ))}
+      <div
+        className="col-span-2 h-32 animate-pulse rounded-2xl bg-zinc-200 md:col-span-6 lg:col-span-8"
+        aria-hidden
+      />
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={`s-art-bot-${i}`}
+          className="col-span-1 aspect-square animate-pulse rounded-xl bg-zinc-200 md:col-span-3 lg:col-span-4"
+          aria-hidden
+        />
+      ))}
     </div>
   );
 }

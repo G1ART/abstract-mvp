@@ -3,6 +3,7 @@ import { removeStorageFiles } from "./storage";
 import { recordUsageEvent } from "@/lib/metering";
 import { USAGE_KEYS } from "@/lib/metering/usageKeys";
 import { recordActingContextEvent } from "@/lib/delegation/actingContext";
+import { isPublicSurfaceVisible } from "@/lib/feed/visibility";
 
 const BUCKET = "artworks";
 
@@ -443,19 +444,12 @@ function normalizeArtworkRow(r: Record<string, unknown>): ArtworkWithLikes {
  * Drop those orphans on the client so a single misaligned policy
  * cannot leak content. Authenticated owner / follower / delegate
  * surfaces use their own listing helpers and stay unaffected.
+ *
+ * Implementation lives in `@/lib/feed/visibility` so it stays import-safe
+ * from pure / testable code paths (the supabase client module has
+ * top-level side effects).
  */
-export function isPublicSurfaceVisible(row: ArtworkWithLikes): boolean {
-  const artistProfile = (row as unknown as {
-    profiles?: { id?: string | null; is_public?: boolean | null } | null;
-  }).profiles;
-  if (row.artist_id == null) {
-    // External / unclaimed artworks (no profile to gate on) stay visible.
-    return true;
-  }
-  if (!artistProfile || !artistProfile.id) return false;
-  if (artistProfile.is_public === false) return false;
-  return true;
-}
+export { isPublicSurfaceVisible } from "@/lib/feed/visibility";
 
 type FollowingOptions = {
   limit?: number;
