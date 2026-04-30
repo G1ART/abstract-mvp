@@ -35,7 +35,8 @@ function getAvatarUrl(avatarUrl: string | null): string | null {
 /**
  * Living Salon "Artist world" strip — replaces the older recommendation
  * block. The visual grammar is intentionally calmer than a card: no dashed
- * border, no oversized avatar, no nested full-card grid. The label, name,
+ * border, no card box, no oversized avatar. A pair of hairlines top and
+ * bottom separates the strip from the surrounding grid; the label, name,
  * and reason sit on the left; up to three compact thumbnails sit on the
  * right (or below on mobile) and the strip closes with quiet text actions.
  */
@@ -70,16 +71,16 @@ export function ArtistWorldStrip({
   }
 
   return (
-    <article className="overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/60">
-      <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:gap-6">
+    <article className="border-y border-zinc-100 py-8">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:gap-6">
         <div
           role="button"
           tabIndex={0}
           onClick={handleHeaderClick}
           onKeyDown={handleHeaderKeyDown}
-          className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 focus:outline-none focus:ring-2 focus:ring-zinc-300"
+          className="flex min-w-0 flex-1 cursor-pointer items-start gap-3 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-300"
         >
-          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-200">
+          <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-zinc-100">
             {avatarUrl ? (
               <Image
                 src={avatarUrl}
@@ -97,10 +98,10 @@ export function ArtistWorldStrip({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-zinc-500">
+            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
               {t("feed.artistWorldLabel")}
             </p>
-            <p className="mt-0.5 truncate text-base font-semibold text-zinc-900">
+            <p className="mt-1 truncate text-base font-semibold tracking-tight text-zinc-900">
               {displayName}
             </p>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-500">
@@ -108,25 +109,25 @@ export function ArtistWorldStrip({
                 <span className="truncate">{handleLabel}</span>
               )}
               {roleChips[0] && (
-                <span className="rounded-full border border-zinc-200 bg-white px-1.5 py-0.5 text-[10px] text-zinc-500">
+                <span className="rounded-full border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500">
                   {roleChips[0].label}
                 </span>
               )}
             </div>
-            <p className="mt-1 line-clamp-2 text-xs text-zinc-500">
+            <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-zinc-500">
               {reasonLine}
             </p>
           </div>
         </div>
 
         <div
-          className="flex shrink-0 flex-wrap items-center gap-2"
+          className="flex shrink-0 flex-wrap items-center gap-4"
           onClick={(e) => e.stopPropagation()}
         >
           {username && (
             <Link
               href={`/u/${username}`}
-              className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs text-zinc-700 transition-colors hover:bg-zinc-50"
+              className="text-sm font-medium tracking-tight text-zinc-700 underline-offset-4 hover:underline"
             >
               {t("feed.viewArtist")}
             </Link>
@@ -142,7 +143,7 @@ export function ArtistWorldStrip({
       </div>
 
       {visibleArtworks.length > 0 && (
-        <div className="grid grid-cols-3 gap-2 border-t border-zinc-200 p-4 sm:gap-3 sm:p-5">
+        <div className="mt-6 grid grid-cols-3 gap-3 sm:gap-4">
           {visibleArtworks.map((artwork) => (
             <div key={artwork.id} className="min-w-0">
               <FeedArtworkCard

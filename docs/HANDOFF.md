@@ -1,6 +1,65 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
+
+## 2026-04-30 — 오늘의 살롱 (Living Salon Feed v1.1 Editorial Spotlight)
+
+`/feed` 의 비주얼 정체성을 한 단계 더 살롱화. v1 (4월 29일) 의 12/6/2 그리드와 카드 박스 톤이 *밀도와 미감* 양쪽에서 부족했던 점을 고쳐, "옵션 C — Editorial Hybrid with Spotlight" 로 재설계. 데이터 척추, 결정론 빌더, 분석 이벤트 이름은 모두 그대로.
+
+### 사용자 합의
+
+- 헤더 카피: `오늘의 Abstract / Today on Abstract` → `오늘의 살롱 / Today's Salon` (로고 옆에 "Abstract" 가 두 번 등장하던 시각 노이즈 해소; 사용자가 미국에서 운영하는 살롱(더그린) 정신을 표면화)
+- 그리드: 옵션 C (4-up + 2x2 spotlight + dense flow) 채택
+- 톤: 다른 메인 페이지 (`/people`, `/upload`, `/my/*`, `/invites/*`, `/room/[token]`) 와 폰트·사이즈·여백 위화감 0 이 절대조건
+
+### Supabase SQL — 돌려야 할 것 없음
+
+UI/표현 레이어만 손댐. 마이그레이션 0건.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/components/feed/LivingSalonGrid.tsx](../src/components/feed/LivingSalonGrid.tsx) — 12/6/2 col → **2/3/4 col + `[grid-auto-flow:dense]`** 로 재설계. anchor 는 `lg+` 에서만 `col-span-2 row-span-2` spotlight 로 발현, 모바일/태블릿은 standard 폴백. gap `gap-4 lg:gap-5` → `gap-x-6 gap-y-10` (24/40px) 로 매거진 호흡. context strip 들은 전폭 (`col-span-2 md:col-span-3 lg:col-span-4`)
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — **무경계화**: `border / rounded-xl / bg-white` 제거. 이미지 아래 텍스트만. 메타 3-라인 (작가 `text-sm font-medium zinc-900` / 제목 `text-sm font-normal zinc-700` / 보조 `text-xs zinc-500 tracking-tight`). aspect: standard `aspect-[4/5]` (매거진 portrait), anchor/spotlight `aspect-square`. hover scale `1.02 → 1.01`. **`showPrice` prop 완전 제거** — 가격은 작품 상세에서만. 작가 본인 chip / edit / LikeButton 어포던스는 `lg+` 에서 hover/focus-only (`opacity-0 group-hover:opacity-100`) 로 격하해 살롱 spread 가 조용히 유지되게 함. anchor `sizes` 는 `(max-width: 1024px) 50vw, 600px` 로 정정해 데스크톱 화소 안전
+- [src/components/feed/FeedHeader.tsx](../src/components/feed/FeedHeader.tsx) — H1 `sm:text-2xl` 제거 → `text-xl font-semibold tracking-tight text-zinc-900` 단일 (다른 메인 페이지 H1 과 정확히 동일). 헤더 하단에 `border-b border-zinc-100 pb-5` hairline 한 줄로 그리드와 호흡 분리. 토글/sort 텍스트는 `tracking-tight` 통일. Refresh 라벨은 `sm` 미만에서 숨겨 아이콘만, `sm+` 에서 라벨 노출
+- [src/components/feed/ArtistWorldStrip.tsx](../src/components/feed/ArtistWorldStrip.tsx) — 카드 박스 (`overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50/60`) 제거 → `border-y border-zinc-100 py-8` hairline 만. 라벨 tracking `0.08em → 0.18em`, 이유 라인 `text-xs → text-sm leading-relaxed`. "작가 보기" 액션을 pill 버튼에서 `text-sm font-medium underline-offset-4` 텍스트 액션으로 변경
+- [src/components/feed/ExhibitionMemoryStrip.tsx](../src/components/feed/ExhibitionMemoryStrip.tsx) — 같은 패턴: 카드 박스 제거 → `border-y border-zinc-100 py-8`. "전시 보기" 도 텍스트 액션. 안 썸네일 frame 제거 (`rounded-md` 삭제), `bg-zinc-50` 만 남김
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — `FEED_LAYOUT_VERSION` `living_salon_v1 → living_salon_v1.1_editorial` 격상 (이전 v1 과 mix·first paint 분리 비교 가능). `SalonSkeleton` 도 새 그리드 톤 (2x2 spotlight 자리 + 4:5 portrait + 무경계 `bg-zinc-100` blocks) 으로 재작성
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `feed.todayTitle`/`feed.todaySubtitle` 카피 교체 (한·영). 사용처 0 인 `feed.saveQuiet` / `feed.inquireQuiet` 키 제거 (가격 라벨 미노출 정책)
+
+### 변경 없음 (의도)
+
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) 빌더 / [src/lib/feed/types.ts](../src/lib/feed/types.ts) — anchor variant 가 spotlight 매핑의 입력. 빌더 결정론 그대로
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — 빌더 변경 0 → 기존 결정론 테스트 그대로 통과
+- 데이터 페치, RLS, cursor, TTL refresh, IntersectionObserver, like/follow 행동, `setArtworkBack` flow
+
+### 디자인 결정 (다른 페이지 톤과 위화감 0)
+
+- **Typography 시스템 단일 유지**: Geist Sans + Hangul fallback. serif 도입 X (한글 짝맞춤·페이지 일관성 동시 보호). 살롱 톤은 weight·tracking·여백으로 표현
+- **H1 사이즈 통일**: 모든 메인 페이지 (`/people` `PeopleClient`, `/upload`, `/my/*`, `/invites/*`, `/room/[token]`) 와 동일한 `text-xl font-semibold tracking-tight`
+- **카드 무경계**: 매거진처럼 이미지가 자기 비율로 호흡, 메타는 이미지 아래 텍스트로 만 존재. border / shadow / bg 0
+- **가격 완전 숨김**: 피드는 *작품·작가·전시* 만 보여주고, 가격은 상세에서. 살롱 정신: 거래 layer 가 첫 표면에 노출되지 않게
+- **Spotlight breakpoint**: `lg(≥1024)` 에서만 `col-span-2 row-span-2`. 모바일/태블릿은 절대 full-viewport hero 가 되지 않도록 standard 폴백
+- **Dense auto-flow**: spotlight 옆 빈 슬롯이 후속 standard tile 로 채워져 매거진 spread 와 동일한 시각 밀도
+
+### Verified
+
+- `npm run test:feed-living-salon` — `feed-living-salon.test.ts: ok`
+- `npx tsc --noEmit` — 0 errors (잔존 stale `routes.d 3.ts` macOS 복사본 1건 정리)
+- `npm run build` — success
+- 우리가 수정한 7개 파일 lint clean (전역 lint 의 잔존 issue 들은 모두 useT.ts / artworks.ts 등 *기존* 파일의 pre-existing — 본 패치와 무관)
+
+### 권장 수동 QA
+
+- 4 viewport (375 / 768 / 1024 / 1440) × 4 URL (`/feed?tab=all&sort=latest`, `tab=all&sort=popular`, `tab=following&sort=latest`, `tab=following&sort=popular`) × 한·영
+- spotlight 작동: 1024 이상에서만 한 자리에 2x2 spotlight, 그 옆 standard tile 들이 dense flow 로 채워지는지
+- 카드 무경계: 메타 3-라인 (artist / title / year·medium) 항상 가시, 이전 패치의 metadata clipping 재발 없음
+- chip / edit / Like 어포던스: 모바일/태블릿에서 *보이지 않음*, lg+ 에서는 *hover 시에만* 등장
+- 다른 메인 페이지 (`/people`, `/upload`, `/my`, `/invites/*`) 로 이동 시 헤더 H1 사이즈·hairline 톤·여백이 같은 시스템 안에 있는지 시각 점검
+- 이전 patch 의 결정론 / 사생활 가드 / like/follow isolation / 무한 스크롤 / 90s TTL refresh 회귀 0
+
+---
 
 ## 2026-04-29 — Living Salon Feed v1 (피드 페이지 업그레이드 패치)
 

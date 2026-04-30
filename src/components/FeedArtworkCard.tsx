@@ -29,10 +29,11 @@ type ArtistProfileLite = {
 
 /**
  * Card variants used inside the Living Salon grid.
- * - `feedTile`: standard tile in the salon grid.
- * - `feedAnchor`: slightly larger anchor; same content rules as `feedTile`
- *   but image area is given more breathing room. The grid clamps height so
- *   it never dominates the viewport (Work Order §F2).
+ * - `feedTile`: standard tile in the salon grid. Borderless, magazine-style:
+ *   image on top, three-line meta block below (artist / title / year·medium).
+ * - `feedAnchor`: spotlight tile on `lg+`. Same meta vocabulary as the tile;
+ *   visual weight comes from a wider column span (col-span-2 row-span-2) and
+ *   a higher-resolution image, not a louder frame.
  * - `discoveryMini`: compact thumb used inside artist-world strips. Title is
  *   shown but everything else is hidden so the strip stays quiet.
  */
@@ -45,8 +46,6 @@ type Props = {
   onLikeUpdate?: (artworkId: string, liked: boolean, count: number) => void;
   priority?: boolean;
   variant?: FeedArtworkCardVariant;
-  /** When true, show a quiet `Inquire` label for `pricing_mode === "inquire"`. */
-  showPrice?: boolean;
   /** When true, render the artist's primary role chip on desktop. */
   showRoleChip?: boolean;
   /** When true, render the small claim/multi-claim summary line. */
@@ -60,7 +59,6 @@ export function FeedArtworkCard({
   onLikeUpdate,
   priority = false,
   variant = "feedTile",
-  showPrice = false,
   showRoleChip = false,
   showClaimLine = false,
 }: Props) {
@@ -72,9 +70,10 @@ export function FeedArtworkCard({
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
   );
   const first = sorted[0];
-  // Anchor tiles are visibly larger; thumb (400px) blurs noticeably there,
-  // so anchors load `medium` (1200px) while standard / mini stay on thumb to
-  // keep the first-screen network footprint small (Work Order §2.1 / §C4).
+  // Anchor/spotlight tiles are visibly larger (~600px wide on lg); thumb
+  // (400px) blurs noticeably there, so anchors load `medium` (1200px) while
+  // standard tiles (~290px col-1/4) and mini stay on thumb to keep the
+  // first-screen network footprint small.
   const imageVariant: "thumb" | "medium" =
     variant === "feedAnchor" ? "medium" : "thumb";
   const imageUrl = first
@@ -104,13 +103,16 @@ export function FeedArtworkCard({
 
   const isAnchor = variant === "feedAnchor";
   const isMini = variant === "discoveryMini";
-  // Anchor stays square so the salon row keeps a calm rhythm; the anchor's
-  // visual weight comes from its wider column span, not a taller aspect.
-  // A taller aspect would push the row height up and stretch sibling tiles.
-  const aspectClass = "aspect-square";
-  const radiusClass = isMini ? "rounded-lg" : "rounded-xl";
-  const padClass = isMini ? "p-2.5" : "p-3";
-  const borderClass = "border-zinc-200";
+  // Standard tiles use a 4:5 portrait aspect for a magazine rhythm. Anchor /
+  // spotlight stays square because its wider column span already gives it
+  // visual weight; a taller anchor would push the row height up. Mini stays
+  // square as a quiet strip thumb.
+  const aspectClass = isAnchor || isMini ? "aspect-square" : "aspect-[4/5]";
+  // Mini still gets a soft radius — it lives inside the strip and benefits
+  // from a small frame. Tile/anchor are fully borderless (matte image only).
+  const imageWrapClass = isMini
+    ? "rounded-md overflow-hidden bg-zinc-100"
+    : "bg-zinc-50";
 
   function handleClick() {
     setArtworkBack(pathname ?? "/feed");
@@ -124,13 +126,6 @@ export function FeedArtworkCard({
     }
   }
 
-  const inquireBadge =
-    showPrice && artwork.pricing_mode === "inquire" ? (
-      <span className="text-[11px] font-normal text-zinc-500">
-        {t("feed.inquireQuiet")}
-      </span>
-    ) : null;
-
   return (
     <article
       role="link"
@@ -138,9 +133,9 @@ export function FeedArtworkCard({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       aria-label={artwork.title ?? undefined}
-      className={`group flex h-full cursor-pointer flex-col overflow-hidden border bg-white transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400 ${radiusClass} ${borderClass}`}
+      className="group flex h-full cursor-pointer flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2"
     >
-      <div className={`relative w-full bg-zinc-100 ${aspectClass}`}>
+      <div className={`relative w-full ${aspectClass} ${imageWrapClass}`}>
         {imageUrl ? (
           <Image
             src={imageUrl}
@@ -148,14 +143,14 @@ export function FeedArtworkCard({
             fill
             sizes={
               isAnchor
-                ? "(max-width: 768px) 50vw, 50vw"
+                ? "(max-width: 1024px) 50vw, 600px"
                 : isMini
                   ? "(max-width: 768px) 33vw, 200px"
-                  : "(max-width: 768px) 50vw, 33vw"
+                  : "(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
             }
             loading={priority ? "eager" : "lazy"}
             priority={priority}
-            className="object-contain transition-transform group-hover:scale-[1.02]"
+            className="object-contain transition-transform duration-300 ease-out group-hover:scale-[1.01]"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-xs text-zinc-400">
@@ -164,7 +159,7 @@ export function FeedArtworkCard({
         )}
         {!isMini && userId && (
           <div
-            className="absolute bottom-2 right-2"
+            className="absolute bottom-2 right-2 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             <LikeButton
@@ -181,64 +176,60 @@ export function FeedArtworkCard({
       </div>
 
       {isMini ? (
-        <div className={`flex flex-1 flex-col gap-0.5 ${padClass}`}>
+        <div className="flex flex-1 flex-col gap-0.5 px-0.5 pt-2">
           <h3 className="truncate text-xs font-medium text-zinc-900">
             {artwork.title ?? ""}
           </h3>
         </div>
       ) : (
-        <div className={`flex flex-1 flex-col gap-1 ${padClass}`}>
-          {/* Artist identity — single line, never wraps. Role chip is desktop-only and opt-in. */}
-          <div className="flex min-w-0 items-center gap-2 text-xs">
-            <span className="min-w-0 truncate">
+        <div className="flex flex-1 flex-col gap-0.5 pt-3">
+          {/* Artist identity — single line, never wraps. */}
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 truncate text-sm font-medium tracking-tight text-zinc-900">
               {artistUsername ? (
                 <Link
                   href={`/u/${artistUsername}`}
                   onClick={(e) => e.stopPropagation()}
-                  className="font-medium text-zinc-900 hover:underline"
+                  className="hover:underline"
                 >
                   {artistName}
                 </Link>
               ) : (
-                <span className="font-medium text-zinc-900">
-                  {formatDisplayName(artistIdentityInput, t)}
-                </span>
+                <span>{formatDisplayName(artistIdentityInput, t)}</span>
               )}
             </span>
             {showRoleChip && artistRoleChips[0] && (
-              <span className="hidden shrink-0 rounded-full border border-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500 sm:inline-block">
+              <span className="hidden shrink-0 rounded-full border border-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500 lg:inline-block">
                 {artistRoleChips[0].label}
               </span>
             )}
           </div>
 
-          <h3 className="truncate text-sm font-semibold text-zinc-900">
+          <h3 className="truncate text-sm font-normal tracking-tight text-zinc-700">
             {artwork.title ?? ""}
           </h3>
 
           {(artwork.year || artwork.medium) && (
-            <p className="truncate text-xs text-zinc-500">
+            <p className="truncate text-xs tracking-tight text-zinc-500">
               {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
             </p>
           )}
 
-          {(showClaimLine && claimCount > 0) || inquireBadge ? (
-            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-zinc-500">
-              {showClaimLine && claimCount > 1 && (
-                <span title={t("artwork.viewHistory")}>
-                  +{claimCount - 1} {t("artwork.moreInHistory")}
-                </span>
-              )}
-              {inquireBadge}
-            </div>
+          {showClaimLine && claimCount > 1 ? (
+            <p className="text-[11px] tracking-tight text-zinc-500">
+              <span title={t("artwork.viewHistory")}>
+                +{claimCount - 1} {t("artwork.moreInHistory")}
+              </span>
+            </p>
           ) : null}
 
           {userId && canEditArtwork(artwork, userId) && (
             <Link
               href={`/artwork/${artwork.id}/edit`}
               onClick={(e) => e.stopPropagation()}
-              // Edit affordance only appears on desktop where there's clean room.
-              className="mt-0.5 hidden self-start text-[11px] text-zinc-500 hover:text-zinc-800 sm:inline"
+              // Edit affordance hidden by default; reveals on hover/focus on
+              // lg+ where there's clean room. Keeps the salon spread quiet.
+              className="mt-1 hidden self-start text-[11px] text-zinc-500 opacity-0 transition-opacity hover:text-zinc-800 group-hover:opacity-100 group-focus-within:opacity-100 lg:inline-block"
             >
               {t("common.edit")}
             </Link>

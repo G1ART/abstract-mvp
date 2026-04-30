@@ -14,11 +14,19 @@ type Props = {
 };
 
 /**
- * Living Salon grid — 12-column on desktop, 6-column on tablet, 2-column on
- * mobile. Standard artworks span 4/3/1; anchor artworks span 6/6/1 (mobile
- * falls back to a standard tile so we never produce a full-width hero on
- * small screens). All cells are aligned to the row start so a tall context
- * strip or a slightly larger anchor never stretches the rest of the row.
+ * Living Salon grid — Editorial Hybrid (Option C).
+ *
+ * - 4-column base on desktop, 3-column on tablet, 2-column on mobile.
+ * - Standard artworks: `col-span-1`.
+ * - Anchor artworks: become a 2x2 spotlight on `lg+`; on mobile/tablet they
+ *   fold back into a standard tile so we never produce a full-viewport hero
+ *   on small screens (Work Order §2.1).
+ * - `grid-auto-flow: dense` so the cell adjacent to a spotlight is filled by
+ *   the next standard tile rather than left empty.
+ * - `auto-rows-min items-start` so a tall context strip or spotlight never
+ *   stretches sibling rows.
+ * - `gap-x-6 gap-y-10` (24/40px) to give artworks room to breathe like a
+ *   magazine spread instead of a commodity grid.
  *
  * The grid is intentionally a thin renderer — the rhythm and dedupe live in
  * `buildLivingSalonItems`, so this component just maps `LivingSalonItem` to
@@ -32,16 +40,13 @@ export function LivingSalonGrid({
   onLikeUpdate,
 }: Props) {
   return (
-    <div className="grid auto-rows-min grid-cols-2 items-start gap-4 md:grid-cols-6 lg:grid-cols-12 lg:gap-5">
+    <div className="grid auto-rows-min grid-cols-2 items-start gap-x-6 gap-y-10 [grid-auto-flow:dense] md:grid-cols-3 lg:grid-cols-4">
       {items.map((item, idx) => {
         if (item.kind === "artwork") {
           const isAnchor = item.variant === "anchor";
-          // Mobile fallback: anchors fold back into a standard tile so we
-          // never produce a full-viewport hero on small screens (Work Order
-          // §2.1). Desktop and tablet keep the wider 6-col span.
           const span = isAnchor
-            ? "col-span-1 md:col-span-6 lg:col-span-6"
-            : "col-span-1 md:col-span-3 lg:col-span-4";
+            ? "col-span-1 lg:col-span-2 lg:row-span-2"
+            : "col-span-1";
           const isPriority = idx < 2 || isAnchor;
           return (
             <div key={item.key} className={`min-w-0 ${span}`}>
@@ -52,7 +57,6 @@ export function LivingSalonGrid({
                 onLikeUpdate={onLikeUpdate}
                 priority={isPriority}
                 variant={isAnchor ? "feedAnchor" : "feedTile"}
-                showPrice
               />
             </div>
           );
@@ -62,7 +66,7 @@ export function LivingSalonGrid({
           return (
             <div
               key={item.key}
-              className="col-span-2 min-w-0 md:col-span-6 lg:col-span-8"
+              className="col-span-2 min-w-0 md:col-span-3 lg:col-span-4"
             >
               <ExhibitionMemoryStrip exhibition={item.exhibition} />
             </div>
@@ -72,7 +76,7 @@ export function LivingSalonGrid({
         return (
           <div
             key={item.key}
-            className="col-span-2 min-w-0 md:col-span-6 lg:col-span-12"
+            className="col-span-2 min-w-0 md:col-span-3 lg:col-span-4"
           >
             <ArtistWorldStrip
               profile={item.profile}

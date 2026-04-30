@@ -35,12 +35,12 @@ export function FeedHeader({
   const { t } = useT();
 
   return (
-    <header className="mb-6 sm:mb-8">
-      <div className="mb-4 sm:mb-6">
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl">
+    <header className="mb-8 border-b border-zinc-100 pb-5">
+      <div className="mb-5">
+        <h1 className="text-xl font-semibold tracking-tight text-zinc-900">
           {t("feed.todayTitle")}
         </h1>
-        <p className="mt-1 max-w-xl text-sm leading-relaxed text-zinc-500">
+        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-zinc-500">
           {t("feed.todaySubtitle")}
         </p>
       </div>
@@ -87,10 +87,10 @@ export function FeedHeader({
             onClick={onRefresh}
             disabled={isLoading}
             aria-label={t("feed.refreshQuiet")}
-            className="inline-flex min-w-[6.5rem] items-center justify-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-zinc-200 px-2.5 py-1.5 text-xs font-medium tracking-tight text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 sm:min-w-[6.5rem] sm:px-3"
           >
             <RefreshGlyph spinning={isLoading} />
-            <span>
+            <span className="hidden sm:inline">
               {isLoading ? t("feed.refreshing") : t("feed.refreshQuiet")}
             </span>
           </button>
@@ -114,7 +114,7 @@ function PillButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`rounded-full px-3.5 py-1.5 text-sm transition-colors ${
+      className={`rounded-full px-3.5 py-1.5 text-sm font-medium tracking-tight transition-colors ${
         active
           ? "bg-zinc-900 text-white"
           : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
@@ -139,10 +139,10 @@ function SortButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`text-sm transition-colors ${
+      className={`text-sm tracking-tight transition-colors ${
         active
           ? "font-medium text-zinc-900"
-          : "text-zinc-500 hover:text-zinc-700"
+          : "font-normal text-zinc-500 hover:text-zinc-700"
       }`}
     >
       {children}
