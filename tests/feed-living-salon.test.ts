@@ -376,7 +376,10 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   assert.equal(aws.length, 0, "profile with unsupported main_role is dropped");
 }
 
-// ── Persona surface: curator surfaces as people_cluster ─────────────
+// ── Persona surface: single curator does NOT surface ────────────────
+//  v1.4 raises the floor: a row with only 1 profile reads as platform
+//  emptiness, so the builder drops persona buckets below
+//  PEOPLE_CLUSTER_MIN (= 2).
 {
   const arts = Array.from({ length: 12 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
@@ -390,18 +393,32 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       },
     ],
   });
-  const aws = items.filter((i) => i.kind === "artist_world");
-  assert.equal(aws.length, 0, "curator persona is no longer rendered as artist_world");
+  const clusters = items.filter((i) => i.kind === "people_cluster");
+  assert.equal(clusters.length, 0, "single curator drops below cluster_min");
+}
+
+// ── Persona surface: 2+ curators → one merged cluster ───────────────
+{
+  const arts = Array.from({ length: 18 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      { profile: makeProfile("rec_cur1", "curator"), artworks: [] },
+      { profile: makeProfile("rec_cur2", "curator"), artworks: [] },
+      { profile: makeProfile("rec_cur3", "curator"), artworks: [] },
+    ],
+  });
   const clusters = items.filter(
     (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
       i.kind === "people_cluster"
   );
-  assert.equal(clusters.length, 1, "curator surfaces as a people_cluster");
-  assert.equal(clusters[0].persona, "curator");
-  assert.equal(clusters[0].profiles.length, 1, "single curator forms a 1-card cluster");
+  assert.equal(clusters.length, 1, "all curators merge into one cluster row");
+  assert.equal(clusters[0].profiles.length, 3, "cluster carries every curator");
 }
 
-// ── Persona surface: gallerist + collector pass via clusters ────────
+// ── Persona surface: per-persona clusters (no chunking) ─────────────
 {
   const arts = Array.from({ length: 24 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
@@ -409,14 +426,10 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   const items = buildLivingSalonItems({
     entries: arts,
     discoveryData: [
-      {
-        profile: makeProfile("rec_gallerist", "gallerist"),
-        artworks: [],
-      },
-      {
-        profile: makeProfile("rec_collector", "collector"),
-        artworks: [makeArtwork("ra1", "artistR1")],
-      },
+      { profile: makeProfile("rec_gal1", "gallerist"), artworks: [] },
+      { profile: makeProfile("rec_gal2", "gallerist"), artworks: [] },
+      { profile: makeProfile("rec_col1", "collector"), artworks: [] },
+      { profile: makeProfile("rec_col2", "collector"), artworks: [] },
     ],
   });
   const clusters = items.filter(
@@ -424,8 +437,11 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       i.kind === "people_cluster"
   );
   const personas = clusters.map((c) => c.persona);
-  assert.ok(personas.includes("gallerist"), "gallerist persona surfaces in cluster");
-  assert.ok(personas.includes("collector"), "collector persona surfaces in cluster");
+  assert.ok(personas.includes("gallerist"), "gallerist persona surfaces");
+  assert.ok(personas.includes("collector"), "collector persona surfaces");
+  for (const c of clusters) {
+    assert.ok(c.profiles.length >= 2, "every cluster meets cluster_min");
+  }
 }
 
 // ── Artist persona still requires >= 2 artworks (regression) ────────
@@ -540,7 +556,7 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   assert.ok(fv.anchors >= 0 && fv.context_modules >= 0);
 }
 
-// ── Cluster chunking: 5 curators → cluster(3) + cluster(2) ──────────
+// ── Cluster carousel: 5 curators → one merged cluster (no chunking) ─
 {
   const arts = Array.from({ length: 30 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 5}`), i)
@@ -554,13 +570,10 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
     (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
       i.kind === "people_cluster"
   );
-  assert.equal(clusters.length, 2, "5 curators chunk into 2 clusters");
-  assert.equal(clusters[0].profiles.length, 3, "first cluster holds 3 curators");
-  assert.equal(clusters[1].profiles.length, 2, "second cluster holds remaining 2");
-  for (const c of clusters) {
-    for (const p of c.profiles) {
-      assert.equal(p.main_role, "curator", "all profiles in a cluster share persona");
-    }
+  assert.equal(clusters.length, 1, "5 curators merge into a single carousel row");
+  assert.equal(clusters[0].profiles.length, 5, "row carries every curator");
+  for (const p of clusters[0].profiles) {
+    assert.equal(p.main_role, "curator", "all profiles in row share persona");
   }
 }
 
@@ -634,7 +647,7 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
   }
 }
 
-// ── Cluster gating: gallerist 1명도 단일 cluster 로 발행 ─────────────
+// ── Cluster gating: gallerist 1명만 있으면 row 자체 미렌더 ──────────
 {
   const arts = Array.from({ length: 18 }, (_, i) =>
     makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 4}`), i)
@@ -648,13 +661,8 @@ function makeExhEntry(exhibition: ExhibitionWithCredits, days = 0): FeedEntry {
       },
     ],
   });
-  const clusters = items.filter(
-    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
-      i.kind === "people_cluster"
-  );
-  assert.equal(clusters.length, 1, "single gallerist still forms a cluster");
-  assert.equal(clusters[0].profiles.length, 1);
-  assert.equal(clusters[0].persona, "gallerist");
+  const clusters = items.filter((i) => i.kind === "people_cluster");
+  assert.equal(clusters.length, 0, "single gallerist drops below cluster_min");
 }
 
 console.log("feed-living-salon.test.ts: ok");

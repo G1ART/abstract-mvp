@@ -8,6 +8,7 @@ import { logBetaEvent } from "@/lib/beta/logEvent";
 import { markFeedPerf, readFeedPerf } from "@/lib/feed/feedPerf";
 import {
   buildLivingSalonItems,
+  parsePersona,
   summarizeFirstView,
   summarizeLivingSalonMix,
 } from "@/lib/feed/livingSalon";
@@ -37,8 +38,23 @@ import { LivingSalonGrid } from "./feed/LivingSalonGrid";
 const REC_CACHE_TTL_MS = 3 * 60 * 1000;
 const FEED_BG_REFRESH_TTL_MS = 90_000;
 const STRONG_SCORE_THRESHOLD = 2;
-const DISCOVERY_BLOCKS_MAX = 4;
-const FEED_LAYOUT_VERSION = "living_salon_v1.3_clustered";
+/**
+ * Hard cap on discovery profiles flowing into the salon. The horizontal
+ * carousel can comfortably show many cards, and we still need enough
+ * non-artist profiles per persona to clear the `PEOPLE_CLUSTER_MIN` gate
+ * (= 2). 24 keeps fetch cost reasonable while letting curator /
+ * gallerist / collector buckets all fill above the gate.
+ */
+const DISCOVERY_BLOCKS_MAX = 24;
+/**
+ * Page size for the artwork feed and its `loadMore`. 60 (was 30) keeps
+ * the first paint dense and means cursor pagination kicks in only when
+ * the dataset is genuinely large — preventing the "stale empty feed"
+ * bug where the initial fetch already drained the pool and `nextCursor`
+ * came back null.
+ */
+const FEED_PAGE_SIZE = 60;
+const FEED_LAYOUT_VERSION = "living_salon_v1.4_carousel";
 
 function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
   const seen = new Set<string>();
@@ -102,14 +118,17 @@ export function FeedContent({
       return recCacheRef.current.profiles;
     }
     if (!userId) return [];
-    const [likesRes, followRes] = await Promise.all([
-      getPeopleRecommendations({ lane: "likes_based", limit: 10 }),
-      getPeopleRecommendations({ lane: "follow_graph", limit: 10 }),
+    const [likesRes, followRes, expandRes] = await Promise.all([
+      getPeopleRecommendations({ lane: "likes_based", limit: 30 }),
+      getPeopleRecommendations({ lane: "follow_graph", limit: 30 }),
+      getPeopleRecommendations({ lane: "expand", limit: 30 }),
     ]);
     const seen = new Set<string>();
     const strong: PeopleRec[] = [];
-    const add = (p: PeopleRec) => {
+    const weak: PeopleRec[] = [];
+    const classify = (p: PeopleRec) => {
       if (seen.has(p.id) || p.id === userId) return;
+      seen.add(p.id);
       const mut = p.mutual_follow_sources ?? 0;
       const liked = p.liked_artists_count ?? 0;
       const tags = p.reason_tags ?? [];
@@ -117,14 +136,20 @@ export function FeedContent({
         (tags.includes("follow_graph") && mut >= STRONG_SCORE_THRESHOLD) ||
         (tags.includes("likes_based") && liked >= STRONG_SCORE_THRESHOLD);
       if (isStrong) {
-        seen.add(p.id);
         strong.push(p);
+      } else {
+        weak.push(p);
       }
     };
-    (likesRes.data ?? []).forEach(add);
-    (followRes.data ?? []).forEach(add);
-    recCacheRef.current = { profiles: strong, fetchedAt: now };
-    return strong;
+    (likesRes.data ?? []).forEach(classify);
+    (followRes.data ?? []).forEach(classify);
+    (expandRes.data ?? []).forEach(classify);
+    // Strong candidates lead, weak candidates fill the carousel so a
+    // young platform with few mutuals still surfaces enough people per
+    // persona to clear `PEOPLE_CLUSTER_MIN` (= 2). Order is stable.
+    const profiles = [...strong, ...weak];
+    recCacheRef.current = { profiles, fetchedAt: now };
+    return profiles;
   }, [userId]);
 
   const fetchArtworks = useCallback(
@@ -170,7 +195,7 @@ export function FeedContent({
         setFollowingProfileIds(ids);
 
         const [artworksRes, exhibitionsRes] = await Promise.all([
-          listFollowingArtworks({ limit: 30, mergeOwnClaimedWorks: true, followingIds: ids }),
+          listFollowingArtworks({ limit: FEED_PAGE_SIZE, mergeOwnClaimedWorks: true, followingIds: ids }),
           ids.length > 0
             ? listExhibitionsForFollowingFeed(ids, { limit: 12 })
             : Promise.resolve({
@@ -215,11 +240,22 @@ export function FeedContent({
         markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
         const recProfiles = await fetchRecProfiles();
-        const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
-          listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
-            (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
-          )
-        );
+        const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) => {
+          const persona = parsePersona(p.main_role);
+          // Non-artist personas (curator / gallerist / collector) render
+          // as a horizontal carousel and never need artwork thumbs, so
+          // skip the per-profile artwork fetch entirely. Artist personas
+          // still need ≥ 1 public work to clear the strip's thumb gate.
+          if (persona && persona !== "artist") {
+            return Promise.resolve<DiscoveryDatum>({ profile: p, artworks: [] });
+          }
+          return listPublicArtworksForProfile(p.id, { limit: 3 }).then(
+            ({ data: arts }) =>
+              (arts ?? []).length > 0
+                ? ({ profile: p, artworks: arts ?? [] } as DiscoveryDatum)
+                : null
+          );
+        });
         const discoveryResults = await Promise.all(discoveryPromises);
         const discoveryWithArtworks = discoveryResults.filter(
           (r): r is DiscoveryDatum => r != null
@@ -230,7 +266,7 @@ export function FeedContent({
       }
 
       const [artworksRes, followingRes, exhibitionsRes] = await Promise.all([
-        listPublicArtworks({ limit: 30, sort }),
+        listPublicArtworks({ limit: FEED_PAGE_SIZE, sort }),
         getFollowingIds(),
         listPublicExhibitionsForFeed(20),
       ]);
@@ -275,11 +311,18 @@ export function FeedContent({
       markFeedPerf("feed_data_loaded_ms", String(elapsed));
 
       const recProfiles = await fetchRecProfiles();
-      const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) =>
-        listPublicArtworksForProfile(p.id, { limit: 3 }).then(({ data: arts }) =>
-          (arts ?? []).length > 0 ? { profile: p, artworks: arts ?? [] } : null
-        )
-      );
+      const discoveryPromises = recProfiles.slice(0, DISCOVERY_BLOCKS_MAX).map((p) => {
+        const persona = parsePersona(p.main_role);
+        if (persona && persona !== "artist") {
+          return Promise.resolve<DiscoveryDatum>({ profile: p, artworks: [] });
+        }
+        return listPublicArtworksForProfile(p.id, { limit: 3 }).then(
+          ({ data: arts }) =>
+            (arts ?? []).length > 0
+              ? ({ profile: p, artworks: arts ?? [] } as DiscoveryDatum)
+              : null
+        );
+      });
       const discoveryResults = await Promise.all(discoveryPromises);
       const discoveryWithArtworks = discoveryResults.filter(
         (r): r is DiscoveryDatum => r != null
@@ -307,7 +350,7 @@ export function FeedContent({
         const [artworksRes, exhibitionsRes] = await Promise.all([
           artCur
             ? listFollowingArtworks({
-                limit: 30,
+                limit: FEED_PAGE_SIZE,
                 cursor: artCur,
                 mergeOwnClaimedWorks: false,
               })
@@ -374,7 +417,7 @@ export function FeedContent({
     try {
       const [artworksRes, exhibitionsRes] = await Promise.all([
         artworksNextCursor
-          ? listPublicArtworks({ limit: 30, sort, cursor: artworksNextCursor })
+          ? listPublicArtworks({ limit: FEED_PAGE_SIZE, sort, cursor: artworksNextCursor })
           : Promise.resolve({ data: [] as ArtworkWithLikes[], nextCursor: null as ArtworkCursor | null, error: null }),
         exhibitionsNextCursor
           ? listPublicExhibitionsForFeed(20, exhibitionsNextCursor)
@@ -444,7 +487,7 @@ export function FeedContent({
         (entries) => {
           if (entries[0]?.isIntersecting && !loadingMoreRef.current) void loadMore();
         },
-        { root: null, rootMargin: "400px", threshold: 0 }
+        { root: null, rootMargin: "800px", threshold: 0 }
       );
       obs.observe(el);
     }

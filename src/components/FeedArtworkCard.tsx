@@ -17,7 +17,10 @@ import {
   formatRoleChips,
   hasPublicLinkableUsername,
 } from "@/lib/identity/format";
-import { formatSizeForLocale } from "@/lib/size/format";
+import {
+  formatSizeForLocale,
+  parseSizeWithUnit,
+} from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
 
 /**
@@ -29,6 +32,32 @@ import { LikeButton } from "./LikeButton";
 function extractSizeBase(formatted: string | null): string | null {
   if (!formatted) return null;
   return formatted.replace(/^(?:약\s+|~)?\d+\s*[FPMSfpms]\s*·\s*/, "").trim() || null;
+}
+
+/**
+ * Build the size pill string for the salon grid. Returns null when:
+ * - no `size` field, or
+ * - `size` doesn't parse, or
+ * - the input has no detectable unit AND the artwork's `size_unit` column
+ *   is also null. Showing a bare "120 × 80" without a unit is more
+ *   confusing than helpful; we'd rather quietly hide the pill until the
+ *   data is corrected (Artsy / Artnet / 1stDibs follow the same policy).
+ *
+ * Hosu inputs (`30F`) always carry an implicit cm unit, so they're
+ * treated as unit-bearing.
+ */
+function buildSizePill(
+  size: string | null | undefined,
+  sizeUnit: "cm" | "in" | null | undefined,
+  locale: string
+): string | null {
+  if (!size || !size.trim()) return null;
+  const parsed = parseSizeWithUnit(size);
+  const inputHasUnit = parsed?.unit != null;
+  if (!inputHasUnit && (sizeUnit == null || sizeUnit === undefined)) {
+    return null;
+  }
+  return extractSizeBase(formatSizeForLocale(size, locale, sizeUnit ?? null));
 }
 
 type ArtistProfileLite = {
@@ -117,9 +146,7 @@ export function FeedArtworkCard({
   const isMini = variant === "discoveryMini";
   const sizeOverlay = isMini
     ? null
-    : extractSizeBase(
-        formatSizeForLocale(artwork.size, locale, artwork.size_unit ?? null)
-      );
+    : buildSizePill(artwork.size, artwork.size_unit ?? null, locale);
   // Standard tiles use a 4:5 portrait aspect for a magazine rhythm. Anchor /
   // spotlight stays square because its wider column span already gives it
   // visual weight; a taller anchor would push the row height up. Mini stays

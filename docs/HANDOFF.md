@@ -2,6 +2,68 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.4 (People Carousel + Infinite-Scroll Heal + Size Pill Gate)
+
+v1.3 의 cluster 가 후보 1명일 때 외롭게 보였던 문제, 사이즈 단위 부재시 의미 없는 숫자만 노출되던 문제, 무한 스크롤이 사실상 1회 이후 멈춰있던 문제를 한꺼번에 정리. layout_version 은 `living_salon_v1.3_clustered` → `living_salon_v1.4_carousel`.
+
+### 사용자 합의
+
+- 사람 추천을 *페르소나별 가로 캐러셀* 로. 1명만 있는 페르소나는 row 자체 미렌더 (`PEOPLE_CLUSTER_MIN = 2`)
+- 작품 사이즈 pill: 단위가 식별 안 되면 미렌더 (Artsy / Artnet / 1stDibs 정책과 일치). 작가 인라인 unit 보완은 별도 후속 패치
+- 무한 스크롤 보강 (sentinel rootMargin 800px + page limit 60) 우선 시도
+
+### Supabase SQL — 돌려야 할 것 없음
+
+데이터 fetch 양만 늘리고 빌더·UI 분기만 손댐.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — 새 헬퍼 `buildSizePill()`. `parseSizeWithUnit()` 으로 입력에 단위 표식 있는지 판단, 없고 `artwork.size_unit` 도 null 이면 pill 미렌더 (조용히 숨김). 호수 입력은 항상 cm 로 간주되어 통과
+- [src/components/feed/PeopleCarouselStrip.tsx](../src/components/feed/PeopleCarouselStrip.tsx) — 신설. 페르소나 헤더 + 가로 `snap-x snap-mandatory` 캐러셀. 카드 너비 260-280px, 모바일 네이티브 스와이프, lg+ 좌/우 화살표 버튼 (`scrollBy clientWidth × 0.85`), 스크롤 양 끝에서 화살표 비활성. 스크롤바 숨김. 카드 vocabulary 는 v1.3 cluster 카드 그대로 (avatar + 이름 + role chip + reason `line-clamp-2` + 카드 하단 `<FollowButton>`)
+- [src/components/feed/PeopleClusterStrip.tsx](../src/components/feed/PeopleClusterStrip.tsx) — **삭제**. v1.3 의 grid cluster. 가로 캐러셀로 대체됨
+- [src/components/feed/LivingSalonGrid.tsx](../src/components/feed/LivingSalonGrid.tsx) — `PeopleClusterStrip` import → `PeopleCarouselStrip` 으로 교체. props 동일
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) — `PEOPLE_CLUSTER_CHUNK = 3` 제거, 새 `PEOPLE_CLUSTER_MIN = 2` (cluster 발행 최소 인원). `buildPeopleClusters` 가 더 이상 chunk 분할 안 함 — 페르소나 버킷 하나가 *하나의 row* 로 통째 발행. `< MIN` 인 버킷은 drop. 결과 row 는 항상 같은 페르소나
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — `FEED_LAYOUT_VERSION` v1.4_carousel, `DISCOVERY_BLOCKS_MAX` 4 → 24, 새 상수 `FEED_PAGE_SIZE = 60` (모든 fetch + loadMore 통일). `fetchRecProfiles` 가 likes_based + follow_graph 외에 `expand` lane 까지 호출 (limit 30 each), strong/weak 분류 후 strong 우선·weak 폴백 (초기 플랫폼에서 mutual=0 인 후보도 cluster_min 통과하도록). 비-artist 페르소나는 `listPublicArtworksForProfile` 호출 자체를 skip 하고 `artworks: []` 로 통과 — v1.3 빌더 의도와 데이터 단계 정렬. sentinel rootMargin 400 → 800 (캐러셀 row 가 viewport 를 길게 차지해도 미리 trigger)
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — KR/EN 새 키 2개: `feed.carouselPrev` ("이전 / Previous"), `feed.carouselNext` ("다음 / Next") (캐러셀 화살표 aria-label 용)
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — chunk 회귀 케이스 갱신: "5 curators → 3+2 분할" → "5 curators → 단일 row(5)". 새 floor 케이스: 1명 curator drop / 1명 gallerist drop / 페르소나별 row 분리 (gallerist+collector 2명씩 → 두 row). cluster_min 통과한 모든 row 에 `profiles.length >= 2` assertion 추가
+
+### 변경 없음 (의도)
+
+- 데이터 페치 layer (`listPublicArtworks`, `getPeopleRecommendations` 등) 의 RPC contract — 호출 limit 만 상향
+- RLS, cursor 발행 로직, like/follow 행동
+- artist_world strip — 단일 프로필 + thumbs 형태가 워낙 잘 작동해서 그대로 둠
+
+### 디자인 결정
+
+- **카드 너비 260-280px**: LinkedIn 의 People recommendation 폭과 거의 일치. 모바일에선 한 카드가 viewport 의 ~70% 차지 → 다음 카드의 일부가 보여 스와이프 어포던스 자연스럽게 노출
+- **`snap-mandatory` over `proximity`**: 살롱 톤에 맞게 카드를 또박또박 정렬. proximity 는 자유롭지만 격조가 떨어짐
+- **lg+ 화살표만, 모바일은 네이티브 스와이프**: 데스크톱은 마우스가 horizontal scroll 어색 → 화살표 필요. 터치는 화살표가 노이즈
+- **`PEOPLE_CLUSTER_MIN = 2`**: 1명 row 가 가장 큰 시각 노이즈. 2명부터는 카드가 옆에 한 장 더 있어 *최소한의 활성도* 보임. 3명 이상은 카드 잘림으로 "더 있다" 어포던스
+- **`expand` lane 추가**: strong 게이트(mutual ≥2)만으론 초기 플랫폼에서 cluster_min 못 채움. expand lane 은 일반 추천 풀이라 weak 후보 백업
+- **rootMargin 400 → 800**: 캐러셀 row 가 가로로 길어 sentinel 이 *늦게* viewport 에 진입. 미리 trigger 하면 사용자 체감으론 이미 다음 페이지가 준비된 채 스크롤
+- **page limit 60**: 30 은 *전체 풀이 작은* 베타 환경에서 첫 fetch 가 *cursor=null* 을 받아 무한 스크롤 자체가 비활성화되는 회귀 위험. 60 은 일반 풀에선 충분히 크고, 매우 큰 풀에선 cursor 가 정상 발행
+
+### 검증
+
+- `npm run test:feed-living-salon` — 기존 + v1.4 회귀 통과
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — success
+
+### Verified
+
+- 결정론 테스트 통과 (cluster_min 게이트, 페르소나 분리 row, chunk 제거)
+- 타입 체크 통과
+- 빌드 통과
+
+### 후속 (별도 패치 후보)
+
+- 작가 본인 작품 디테일 페이지에서 `size_unit` 보완 CTA — 데이터 정정 흐름
+- 카드 카드 너비 / 카드 안 작품 미니썸 (Behance 스타일) 노출 여부 검토 — 정보 풍부함 vs salon 톤 균형
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.3 (Clustered People + Size Tag)
 
 v1.2 의 letterbox-free + 페르소나 분기 위에서, 사람 추천을 클러스터화하고 작품 위에 사이즈 라벨을 얹는 두 축의 패치. layout_version 은 `living_salon_v1.1_editorial` → `living_salon_v1.3_clustered` 로 격상 (mix·first paint 분리 비교용).

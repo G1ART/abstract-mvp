@@ -96,8 +96,8 @@ const EXHIBITION_MIN_COVERS = 2;
  * never sit too close together.
  */
 const ARTIST_WORLD_MIN_GAP = 5;
-/** Maximum profiles per people_cluster card row. */
-const PEOPLE_CLUSTER_CHUNK = 3;
+/** Minimum profiles required to render a people_cluster row. */
+const PEOPLE_CLUSTER_MIN = 2;
 /** Maximum consecutive artworks from the same artist before we try to swap. */
 const SAME_ARTIST_RUN_LIMIT = 2;
 /** Minimum gap (tiles) between two adjacent context modules. */
@@ -375,10 +375,15 @@ function filterArtistDiscovery(data: DiscoveryDatum[]): DiscoveryDatum[] {
 }
 
 /**
- * Buckets non-artist profiles by persona and chunks each bucket into rows
- * of up to `PEOPLE_CLUSTER_CHUNK`. Output order is `curator → gallerist →
- * collector`, preserving input order within each persona — fully
- * deterministic.
+ * Buckets non-artist profiles by persona and emits *one row per persona*
+ * containing every profile of that persona — the row renders as a
+ * horizontal carousel, so chunking by N would just create artificial
+ * page breaks. Buckets with fewer than `PEOPLE_CLUSTER_MIN` profiles are
+ * dropped so the surface never reads as a thin "1 person" row that
+ * makes the platform look empty (Work Order v1.4).
+ *
+ * Output order is `curator → gallerist → collector`, preserving input
+ * order within each persona — fully deterministic.
  */
 export function buildPeopleClusters(
   data: DiscoveryDatum[]
@@ -400,12 +405,8 @@ export function buildPeopleClusters(
   const out: { persona: LivingSalonClusterPersona; profiles: PeopleRec[] }[] = [];
   for (const persona of LIVING_SALON_CLUSTER_PERSONAS) {
     const profiles = buckets[persona];
-    for (let i = 0; i < profiles.length; i += PEOPLE_CLUSTER_CHUNK) {
-      out.push({
-        persona,
-        profiles: profiles.slice(i, i + PEOPLE_CLUSTER_CHUNK),
-      });
-    }
+    if (profiles.length < PEOPLE_CLUSTER_MIN) continue;
+    out.push({ persona, profiles });
   }
   return out;
 }

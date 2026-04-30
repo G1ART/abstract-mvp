@@ -4,7 +4,7 @@ import type { LivingSalonItem } from "@/lib/feed/livingSalon";
 import { FeedArtworkCard } from "@/components/FeedArtworkCard";
 import { ArtistWorldStrip } from "./ArtistWorldStrip";
 import { ExhibitionMemoryStrip } from "./ExhibitionMemoryStrip";
-import { PeopleClusterStrip } from "./PeopleClusterStrip";
+import { PeopleCarouselStrip } from "./PeopleCarouselStrip";
 
 type Props = {
   items: LivingSalonItem[];
@@ -80,7 +80,7 @@ export function LivingSalonGrid({
               key={item.key}
               className="col-span-2 min-w-0 md:col-span-3 lg:col-span-4"
             >
-              <PeopleClusterStrip
+              <PeopleCarouselStrip
                 persona={item.persona}
                 profiles={item.profiles}
                 followingIds={followingIds}
