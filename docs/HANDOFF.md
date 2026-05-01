@@ -2,6 +2,48 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.5.2 (Size Pill — Output-side Unit Guard)
+
+v1.5.1 의 입력단 게이트 (`buildSizePill`) 가 견고함에도 *단위 없는 pill* 이 화면에 보이는 케이스가 보고됨 (`152.4 × 121.9`, `61.0 × 10.2` 등). 원인 분석:
+
+1. `artwork.size_unit` 컬럼은 DB constraint 로 `null | 'cm' | 'in'` 만 허용 — 빈 문자열 누수 없음.
+2. `buildSizePill` 게이트도 `parseSizeWithUnit` 결과 + 컬럼 값으로 정확히 잡음.
+3. 그러나 `formatSizeForLocale` 의 `parseSize` fall-through (`if (!parsed) return size.trim()`) 또는 stale 빌드 (v1.3 시점 always-visible 정책) 같은 *부수 경로* 에서 단위 없는 string 이 새어나갈 수 있음. `extractSizeBase` 는 그동안 호수 prefix 만 떼고 *단위 검증을 안 했음* — 이게 진짜 누수 구멍.
+
+해결: **출력단 안전망 추가**. `extractSizeBase` 가 `\b(?:cm|in)\b` 패턴이 *반드시 포함된* 결과만 통과시킴. 어떤 빌드/경로로든 단위 없는 pill 이 노출되는 일은 영구 봉쇄.
+
+### 사용자 합의
+
+- "size pill 이 노출될거면 호수 기반 추정 단위가 붙어야 하고, 단위 추정이 불가능하면 size pill 노출이 안 되어야 한다" — 출력단에서도 동일 약속을 강제
+
+### Supabase SQL — 돌려야 할 것 없음
+
+UI 컴포넌트 1개만.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — `extractSizeBase` 가 호수 prefix 제거 후 *cm 또는 in 단위 마커가 반드시 있는지* 검증. 없으면 null 반환 → pill 미렌더. 다중 방어 레이어로 입력단 게이트 → format 분기 → 출력단 검증 세 단계 모두 단위 보장된 경우만 노출
+
+### 변경 없음 (의도)
+
+- v1.5.1 의 `buildSizePill` 입력단 게이트, `formatSizeForLocale` 의 호수 명기 분기 cm/in 부여 동작
+- v1.5 의 unified persona carousel · debug 패널 · `FEED_LAYOUT_VERSION`
+
+### 디자인 결정
+
+- **출력단 검증의 정당성**: 입력단 게이트와 별개로 *결과* 자체에 단위가 있어야 통과. 호수 prefix 제거는 시각 정리용이니 그 후 단위 검증을 묶어두는 게 책임 일관성 좋음. cm/in 둘 중 하나라도 있으면 통과 — `약 30F · 90.9 × 72.7 cm` → cm 살아남음, `30F · 90.9 × 72.7 cm` → cm 살아남음, `152.4 × 121.9` → null
+- **stale 빌드 방어 효과**: v1.3 빌드 (always-visible) 가 일부 페이지/CDN 에 캐시되어 있어도, 새 빌드 배포 시 이 출력단 가드가 자동으로 차단
+
+### 검증
+
+- `npm run test:feed-living-salon` — pass
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — pass
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.5.1 (Size Pill — Hosu-only cm Assumption)
 
 v1.5 가 `size_unit==null` 인 *모든 unit-less 입력* 을 cm 로 가정한 동작은 inch ↔ cm 2.5배 오차 위험 때문에 과도. 사용자 정정에 따라 *호수가 명기된 경우에만* cm 강제 부여로 좁힘. 그 외 순수 숫자 입력은 사이즈 pill 미렌더 (v1.4 정책으로 되돌림).

@@ -28,10 +28,24 @@ import { LikeButton } from "./LikeButton";
  * (`30F · `, `약 30F · `, `~30F · `). The salon size pill is meant to
  * read at a glance, so we drop any leading Hosu marker and keep only the
  * dimension base (e.g. `90.9 × 72.7 cm`).
+ *
+ * Final defence: if the base does *not* end with a `cm` / `in` unit
+ * marker, return null so the pill never renders without a unit. cm and
+ * inch differ by ~2.5x — a unit-less number on a thumbnail can mislead
+ * viewers far worse than silently hiding the pill until the data is
+ * patched. This catches legacy / stale-build paths in which an upstream
+ * formatter accidentally emits a unit-less string (e.g. raw fall-through
+ * in `formatSizeForLocale` when `parseSize` doesn't match a known
+ * pattern, or older builds where the gate didn't yet exist).
  */
 function extractSizeBase(formatted: string | null): string | null {
   if (!formatted) return null;
-  return formatted.replace(/^(?:약\s+|~)?\d+\s*[FPMSfpms]\s*·\s*/, "").trim() || null;
+  const stripped = formatted
+    .replace(/^(?:약\s+|~)?\d+\s*[FPMSfpms]\s*·\s*/, "")
+    .trim();
+  if (!stripped) return null;
+  if (!/\b(?:cm|in)\b/i.test(stripped)) return null;
+  return stripped;
 }
 
 /**
