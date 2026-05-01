@@ -93,7 +93,7 @@ export function PeopleResultCard({
     <article
       data-people-card
       tabIndex={-1}
-      className="group relative flex items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50/60 focus-within:ring-1 focus-within:ring-zinc-300 focus-within:ring-offset-2 focus-within:ring-offset-white"
+      className="group relative flex items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50/70 focus-within:ring-1 focus-within:ring-zinc-300 focus-within:ring-offset-2 focus-within:ring-offset-white"
     >
       <Link
         href={`/u/${username}`}

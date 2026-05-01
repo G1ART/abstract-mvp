@@ -27,6 +27,7 @@ import { SectionLabel } from "@/components/ds/SectionLabel";
 import { FloorPanel } from "@/components/ds/FloorPanel";
 import { LaneChips } from "@/components/ds/LaneChips";
 import { FilterChip } from "@/components/ds/FilterChip";
+import { ListCardSkeleton } from "@/components/ds/PageShellSkeleton";
 import { getMyProfile } from "@/lib/supabase/me";
 import { getProfileSurface } from "@/lib/profile/surface";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
@@ -568,7 +569,7 @@ export function PeopleClient() {
         </div>
 
         {loading ? (
-          <PeopleListSkeleton />
+          <ListCardSkeleton rows={4} />
         ) : error ? (
           <div className="rounded-2xl border border-red-100 bg-red-50/50 px-5 py-6">
             <p className="text-sm text-red-700">{error}</p>
@@ -801,24 +802,3 @@ function TrendingChip({ profile }: { profile: PeopleRec }) {
   );
 }
 
-// Salon-tone skeleton used for the in-tab loading state — matches the
-// card geometry of the real list so the swap is invisible.
-function PeopleListSkeleton() {
-  return (
-    <div aria-hidden="true" className="space-y-3">
-      {[0, 1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="flex animate-pulse items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5"
-        >
-          <div className="h-14 w-14 shrink-0 rounded-full bg-zinc-200" />
-          <div className="min-w-0 flex-1 space-y-2">
-            <div className="h-3.5 w-1/3 rounded bg-zinc-200" />
-            <div className="h-2.5 w-1/4 rounded bg-zinc-100" />
-            <div className="h-2.5 w-2/3 rounded bg-zinc-100" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}

@@ -31,7 +31,7 @@ export function EmptyState({
   const pad = size === "sm" ? "px-4 py-6" : "px-4 py-10";
   return (
     <div
-      className={`flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 text-center ${pad}`}
+      className={`flex flex-col items-center gap-3 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/70 text-center ${pad}`}
     >
       {icon && <div aria-hidden className="text-zinc-400">{icon}</div>}
       <p className="text-sm text-zinc-700">{title}</p>

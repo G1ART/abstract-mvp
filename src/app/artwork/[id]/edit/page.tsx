@@ -637,7 +637,7 @@ function EditArtworkContent() {
           )}
         </div>
 
-        <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-4">
           <h2 className="mb-2 font-medium text-zinc-900">{t("artwork.provenanceTitle")}</h2>
           <p className="mb-4 text-sm text-zinc-600">{t("artwork.provenanceHint")}</p>
           <div className="mb-4 flex items-center gap-2">

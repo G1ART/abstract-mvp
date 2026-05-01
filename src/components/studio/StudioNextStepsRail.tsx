@@ -26,7 +26,7 @@ export function StudioNextStepsRail({ actions, max = 4 }: Props) {
     <aside
       data-tour="studio-next-steps"
       aria-label={t("studio.nextSteps.title")}
-      className="flex h-full flex-col gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4"
+      className="flex h-full flex-col gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-4"
     >
       <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
         {t("studio.nextSteps.title")}

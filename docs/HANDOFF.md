@@ -2,6 +2,40 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — Salon System v2 P2: 톤 정렬 (floor-tint 통일 + 스켈레톤 흡수 + EmptyState 이중 구현 정리)
+
+P1 마이그레이션 후 *코드 곳곳에 흩어진 톤 어긋남* 을 한꺼번에 정리. P2 는 surface-level 정렬이라 페이지별 변경이 적지만 *시각 일관성* 을 마무리짓는 단계.
+
+### 사용자 합의
+
+- floor-tint 단일 불투명도 = `/70`. 이전 `/50` `/60` 변형 모두 흡수
+- in-tab 스켈레톤은 DS 가 소유하는 두 primitive (`FeedGridSkeleton` · `ListCardSkeleton`) 로 통합. 이는 `PageShellSkeleton` 이 내부적으로 재사용
+
+### Supabase SQL — **돌려야 할 것 없음**
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- floor-tint `/50` `/60` → `/70` 일괄 정렬:
+  - DS 자체: [src/components/ds/SectionFrame.tsx](../src/components/ds/SectionFrame.tsx) (muted/dashed), [src/components/ds/EmptyState.tsx](../src/components/ds/EmptyState.tsx)
+  - 메인 페이지 잔재: [src/components/studio/StudioSignals.tsx](../src/components/studio/StudioSignals.tsx), [src/components/studio/StudioNextStepsRail.tsx](../src/components/studio/StudioNextStepsRail.tsx), [src/app/people/PeopleResultCard.tsx](../src/app/people/PeopleResultCard.tsx)
+  - 인접 surface: [src/app/login/page.tsx](../src/app/login/page.tsx), [src/app/my/exhibitions/[id]/page.tsx](../src/app/my/exhibitions/[id]/page.tsx), [src/app/my/exhibitions/[id]/edit/page.tsx](../src/app/my/exhibitions/[id]/edit/page.tsx), [src/app/my/exhibitions/[id]/add/page.tsx](../src/app/my/exhibitions/[id]/add/page.tsx), [src/app/my/exhibitions/new/page.tsx](../src/app/my/exhibitions/new/page.tsx), [src/app/my/delegations/page.tsx](../src/app/my/delegations/page.tsx), [src/app/my/messages/page.tsx](../src/app/my/messages/page.tsx), [src/app/my/messages/[peer]/page.tsx](../src/app/my/messages/[peer]/page.tsx), [src/app/my/shortlists/page.tsx](../src/app/my/shortlists/page.tsx), [src/app/my/shortlists/[id]/page.tsx](../src/app/my/shortlists/[id]/page.tsx), [src/app/artwork/[id]/page.tsx](../src/app/artwork/[id]/page.tsx), [src/app/artwork/[id]/edit/page.tsx](../src/app/artwork/[id]/edit/page.tsx), [src/components/delegation/CreateDelegationWizard.tsx](../src/components/delegation/CreateDelegationWizard.tsx), [src/components/ai/IntroMessageAssist.tsx](../src/components/ai/IntroMessageAssist.tsx), [src/components/upload/WebsiteImportPanel.tsx](../src/components/upload/WebsiteImportPanel.tsx)
+- [src/components/FeedArtworkCard.tsx](../src/components/FeedArtworkCard.tsx) — artist 역할 inline pill (`text-[10px] border border-zinc-200`) → `<Chip tone="muted" size="xs">`. People / 공개 프로필 / Studio Hero 와 동일한 chip vocabulary 로 정렬.
+- [src/components/ds/PageShellSkeleton.tsx](../src/components/ds/PageShellSkeleton.tsx) — `FeedGridSkeleton` · `ListCardSkeleton` 두 primitive 추가 export. Suspense 폴백 (PageShellSkeleton) 도 이 둘을 내부에서 재사용하도록 리팩터.
+- [src/components/ds/index.ts](../src/components/ds/index.ts) — 두 신규 export.
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) — 인라인 `SalonSkeleton` 함수 제거, `<FeedGridSkeleton/>` 사용.
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx) — 인라인 `PeopleListSkeleton` 함수 제거, `<ListCardSkeleton rows={4}/>` 사용.
+- [src/app/my/delegations/page.tsx](../src/app/my/delegations/page.tsx) — 로컬 `EmptyState` (DS 와 이름 충돌) → `DelegationsEmptyPanel` 로 rename. CTA `rounded-lg` → `rounded-full`. 두 explainer 카드 구조는 보존 (DS EmptyState 가 표현 못 함).
+
+### Verified
+
+- `npx tsc --noEmit` ✅ clean
+- `npm run build` ✅
+- `npm run test:feed-living-salon` ✅
+- `npm run test:people-reason` ✅
+
+---
+
 ## 2026-05-01 — Salon System v2 P1: 메인 5 페이지 디자인 통일 (DS primitive 도입 + 페이지 마이그레이션)
 
 플랫폼 5 메인 페이지 (Feed · People · Upload · My Studio · 공개 프로필) 의 디자인 어휘가 페이지마다 약간씩 어긋나 *같은 앱이라는 인상* 을 약화시키던 문제를 수리. 사용자가 People 의 "탐색 (DISCOVER)" kicker 를 노이즈로 느낀 것이 시발점이었지만, 코드 audit 에서 더 큰 구조적 어긋남이 드러남:

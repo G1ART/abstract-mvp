@@ -556,7 +556,7 @@ export default function EditExhibitionPage() {
               </Link>
             </div>
 
-            <div className="mt-8 rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
+            <div className="mt-8 rounded-lg border border-zinc-200 bg-zinc-50/70 p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-zinc-700">{t("delegation.shareExhibitionAccess")}</p>

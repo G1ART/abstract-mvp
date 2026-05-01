@@ -440,7 +440,7 @@ export default function NewExhibitionPage() {
           </div>
 
           {title.trim().length > 0 && (
-            <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/60">
+            <div className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50/70">
               <button
                 type="button"
                 onClick={() => setShowDraftAssist((v) => !v)}

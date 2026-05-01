@@ -22,6 +22,7 @@ import {
   parseSizeWithUnit,
 } from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
+import { Chip } from "@/components/ds";
 
 /**
  * `formatSizeForLocale` may prefix the dimensions with a Hosu marker
@@ -265,9 +266,13 @@ export function FeedArtworkCard({
               )}
             </span>
             {showRoleChip && artistRoleChips[0] && (
-              <span className="hidden shrink-0 rounded-full border border-zinc-200 px-1.5 py-0.5 text-[10px] font-normal text-zinc-500 lg:inline-block">
+              <Chip
+                tone="muted"
+                size="xs"
+                className="hidden shrink-0 lg:inline-flex"
+              >
                 {artistRoleChips[0].label}
-              </span>
+              </Chip>
             )}
           </div>
 

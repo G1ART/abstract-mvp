@@ -289,7 +289,7 @@ export default function MyDelegationsPage() {
         {loading ? (
           <p className="text-sm text-zinc-500">{t("common.loading")}</p>
         ) : isEmpty ? (
-          <EmptyState onCreate={() => setWizardOpen(true)} />
+          <DelegationsEmptyPanel onCreate={() => setWizardOpen(true)} />
         ) : (
           <>
             <section data-tour="delegation-received" className="mb-10">
@@ -581,10 +581,16 @@ function SentCard({
   );
 }
 
-function EmptyState({ onCreate }: { onCreate: () => void }) {
+// Renamed from `EmptyState` to avoid shadowing the DS primitive (which is
+// the canonical "single sentence + CTA" empty state). The delegations
+// surface needs *two explainer cards* alongside the CTA, so the DS
+// primitive can't host this content directly — but the panel still
+// shares the floor-tinted surface tone with every other empty / muted
+// surface on the platform (`bg-zinc-50/70` via the `FloorPanel` token).
+function DelegationsEmptyPanel({ onCreate }: { onCreate: () => void }) {
   const { t } = useT();
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-6">
+    <div className="rounded-2xl border border-zinc-200 bg-zinc-50/70 p-6">
       <p className="text-base font-semibold text-zinc-900">{t("delegation.empty.headline")}</p>
       <p className="mt-1 text-sm text-zinc-600">{t("delegation.empty.body")}</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -600,7 +606,7 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
       <button
         type="button"
         onClick={onCreate}
-        className="mt-5 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-zinc-800"
+        className="mt-5 rounded-full bg-zinc-900 px-5 py-2 text-sm font-medium text-white hover:bg-zinc-800"
       >
         {t("delegation.cta.create")}
       </button>

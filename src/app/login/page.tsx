@@ -216,7 +216,7 @@ function LoginInner() {
       {passwordlessOpen && (
         <div
           id="login-passwordless"
-          className="mt-3 rounded-md border border-zinc-200 bg-zinc-50/60 p-3"
+          className="mt-3 rounded-md border border-zinc-200 bg-zinc-50/70 p-3"
         >
           <p className="text-xs text-zinc-600">{t("login.passwordlessHint")}</p>
           {passwordlessSent ? (

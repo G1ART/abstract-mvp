@@ -139,7 +139,7 @@ function ShortlistsContent() {
       {loading ? (
         <p className="mt-8 text-zinc-500">{t("common.loading")}</p>
       ) : lists.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 p-6 text-center">
+        <div className="mt-8 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-center">
           <p className="text-sm font-medium text-zinc-800">{t("boards.empty")}</p>
           <p className="mt-1 text-xs text-zinc-500">{t("boards.emptyHint")}</p>
         </div>

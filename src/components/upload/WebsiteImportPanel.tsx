@@ -403,7 +403,7 @@ export function WebsiteImportPanel(props: {
             ? "border-emerald-200/90 bg-emerald-50/40"
             : row.match_status === "review_needed"
               ? "border-amber-200/90 bg-amber-50/35"
-              : "border-zinc-200 bg-zinc-50/50"
+              : "border-zinc-200 bg-zinc-50/70"
         }`}
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
@@ -590,7 +590,7 @@ export function WebsiteImportPanel(props: {
             <span className={matched && matchRows.length > 0 ? "text-zinc-900" : ""}>{t("bulk.wi.step4")}</span>
           </nav>
 
-          <div className="rounded-xl border border-zinc-100 bg-zinc-50/60 px-3 py-2.5 text-xs leading-relaxed text-zinc-700">
+          <div className="rounded-xl border border-zinc-100 bg-zinc-50/70 px-3 py-2.5 text-xs leading-relaxed text-zinc-700">
             <p>{t("bulk.wi.stageIntro")}</p>
             <p className="mt-1 text-[11px] text-zinc-500">{t("bulk.wi.privacyNote")}</p>
           </div>

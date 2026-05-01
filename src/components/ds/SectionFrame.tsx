@@ -19,8 +19,8 @@ const PADDINGS: Record<NonNullable<Props["padding"]>, string> = {
 
 const TONES: Record<NonNullable<Props["tone"]>, string> = {
   default: "border-zinc-200 bg-white",
-  muted: "border-zinc-200 bg-zinc-50/60",
-  dashed: "border-dashed border-zinc-300 bg-zinc-50/60",
+  muted: "border-zinc-200 bg-zinc-50/70",
+  dashed: "border-dashed border-zinc-300 bg-zinc-50/70",
 };
 
 /**

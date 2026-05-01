@@ -282,7 +282,7 @@ export default function MessageThreadPage() {
           )}
         </header>
 
-        <section className="flex-1 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50/60 p-4">
+        <section className="flex-1 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50/70 p-4">
           {nextCursor && (
             <div className="mb-3 flex justify-center">
               <button

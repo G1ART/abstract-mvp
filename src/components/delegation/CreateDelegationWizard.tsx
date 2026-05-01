@@ -663,7 +663,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
             <div data-step="4">
               <p className="mb-3 text-base font-medium text-zinc-900">{t("delegation.wizard.step4Title")}</p>
               <dl className="space-y-3 text-sm">
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                   <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">{t("delegation.wizard.step4Person")}</dt>
                   <dd className="mt-1 text-zinc-800">
                     {person?.kind === "user"
@@ -673,7 +673,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
                       : "—"}
                   </dd>
                 </div>
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                   <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">{t("delegation.wizard.step4Scope")}</dt>
                   <dd className="mt-1 text-zinc-800">
                     {scope === "project"
@@ -683,7 +683,7 @@ export function CreateDelegationWizard(props: CreateDelegationWizardProps) {
                       : t("delegation.scopeAccount")}
                   </dd>
                 </div>
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+                <div className="rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                   <dt className="text-xs font-medium uppercase tracking-wide text-zinc-500">{t("delegation.wizard.step4Preset")}</dt>
                   <dd className="mt-1 text-zinc-800">{t(presetTitleKey(preset))}</dd>
                   <PermsRollup t={t} permissions={effectivePermissions} />

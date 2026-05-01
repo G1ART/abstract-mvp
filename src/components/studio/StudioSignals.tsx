@@ -26,7 +26,7 @@ export function StudioSignals({ signals, emptyHint }: Props) {
   const { t } = useT();
   if (!signals.length) {
     return (
-      <section className="mb-6 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/60 p-4 text-sm text-zinc-500">
+      <section className="mb-6 rounded-2xl border border-dashed border-zinc-300 bg-zinc-50/70 p-4 text-sm text-zinc-500">
         {emptyHint ?? t("studio.empty.network")}
       </section>
     );

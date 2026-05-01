@@ -639,7 +639,7 @@ function ArtworkDetailContent() {
               {getArtworkPriceDisplay(artwork, t)}
             </p>
             {showPriceInquiryBlock && (
-              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                 {priceInquiryLoading ? (
                   <p className="text-sm text-zinc-500">{t("common.loading")}</p>
                 ) : myPriceInquiry ? (
@@ -732,7 +732,7 @@ function ArtworkDetailContent() {
               </div>
             )}
             {showArtistInquiryBlock && (
-              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+              <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                 <p className="mb-2 text-sm font-medium text-zinc-800">{t("priceInquiry.title")}</p>
                 {artistInquiriesLoading ? (
                   <p className="text-sm text-zinc-500">{t("common.loading")}</p>
@@ -973,7 +973,7 @@ function ArtworkDetailContent() {
                   )}
                 </div>
                 {claimTypeToRequest && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50/50 px-3 py-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded border border-zinc-200 bg-zinc-50/70 px-3 py-2">
                     <label className="text-sm text-zinc-600">
                       {t("artwork.periodLabel")}:
                       <select
@@ -1009,7 +1009,7 @@ function ArtworkDetailContent() {
               </div>
             )}
             {isOwner && pendingClaims.length > 0 && (
-              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+              <div className="mt-4 rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
                 <p className="mb-2 text-sm font-medium text-zinc-700">{t("artwork.pendingRequests")}</p>
                 <ul className="space-y-2">
                   {pendingClaims.map((row) => {

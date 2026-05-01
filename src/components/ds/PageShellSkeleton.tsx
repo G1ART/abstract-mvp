@@ -7,12 +7,10 @@ import { PAGE_SHELL_TOKENS } from "./PageShell";
  * and lines up with `PageShell` width / padding tokens, so the swap
  * from skeleton to live content is geometrically invisible.
  *
- * Layout variants:
- *  - `default` — kicker + h1 + chip rail + list of card-shaped rows.
- *  - `feed`    — wide grid skeleton mimicking the salon-style feed.
- *  - `narrow`  — single-column form skeleton for upload/edit pages.
- *  - `studio`  — operator dashboard skeleton (header + KPI rail + panel).
- *  - `library` — wide-table skeleton.
+ * For *in-tab* shimmers (e.g. when the feed grid is repopulating but the
+ * page header is already painted), use the `FeedGridSkeleton` /
+ * `ListCardSkeleton` exports below directly — `PageShellSkeleton` just
+ * composes them under a header + chip rail for the full-page case.
  */
 
 type Variant = PageShellVariant;
@@ -67,6 +65,65 @@ function Header({ variant }: { variant: Variant }) {
   );
 }
 
+/**
+ * In-tab list skeleton — used for People in-tab loading and any other
+ * surface whose body is "card rows on white". Card geometry mirrors the
+ * real `PeopleResultCard` so the swap is invisible.
+ */
+export function ListCardSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div aria-hidden="true" className="space-y-3">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div
+          key={i}
+          className="flex animate-pulse items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5"
+        >
+          <div className="h-14 w-14 shrink-0 rounded-full bg-zinc-200" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-1/3 rounded bg-zinc-200" />
+            <div className="h-2.5 w-1/4 rounded bg-zinc-100" />
+            <div className="h-2.5 w-2/3 rounded bg-zinc-100" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * In-tab feed grid skeleton — mirrors the editorial salon grid (a
+ * 2×2 spotlight on lg + standard tiles + one full-width context strip).
+ * Borderless to match the loaded grid.
+ */
+export function FeedGridSkeleton() {
+  return (
+    <div className="grid auto-rows-min grid-cols-2 items-start gap-x-6 gap-y-10 [grid-auto-flow:dense] md:grid-cols-3 lg:grid-cols-4">
+      <div
+        className="col-span-1 aspect-square animate-pulse bg-zinc-100 lg:col-span-2 lg:row-span-2"
+        aria-hidden
+      />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div
+          key={`s-art-top-${i}`}
+          className="col-span-1 aspect-[4/5] animate-pulse bg-zinc-100"
+          aria-hidden
+        />
+      ))}
+      <div
+        className="col-span-2 h-28 animate-pulse bg-zinc-100 md:col-span-3 lg:col-span-4"
+        aria-hidden
+      />
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={`s-art-bot-${i}`}
+          className="col-span-1 aspect-[4/5] animate-pulse bg-zinc-100"
+          aria-hidden
+        />
+      ))}
+    </div>
+  );
+}
+
 function ListBody() {
   return (
     <>
@@ -76,21 +133,7 @@ function ListBody() {
         <span className="h-9 w-32 rounded-full bg-zinc-100" />
         <span className="h-9 w-32 rounded-full bg-zinc-100" />
       </div>
-      <div className="space-y-3">
-        {[0, 1, 2].map((i) => (
-          <div
-            key={i}
-            className="flex items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-5"
-          >
-            <div className="h-14 w-14 shrink-0 rounded-full bg-zinc-200" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <div className="h-3.5 w-1/3 rounded bg-zinc-200" />
-              <div className="h-2.5 w-1/4 rounded bg-zinc-100" />
-              <div className="h-2.5 w-2/3 rounded bg-zinc-100" />
-            </div>
-          </div>
-        ))}
-      </div>
+      <ListCardSkeleton rows={3} />
     </>
   );
 }
@@ -103,19 +146,7 @@ function FeedBody() {
         <span className="h-7 w-24 rounded-full bg-zinc-100" />
         <span className="h-7 w-24 rounded-full bg-zinc-100" />
       </div>
-      <div className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="space-y-3">
-            <div
-              className={`w-full rounded-md bg-zinc-100 ${
-                i % 4 === 0 ? "aspect-square" : "aspect-[3/4]"
-              }`}
-            />
-            <div className="h-2.5 w-2/3 rounded bg-zinc-100" />
-            <div className="h-2 w-1/3 rounded bg-zinc-100" />
-          </div>
-        ))}
-      </div>
+      <FeedGridSkeleton />
     </>
   );
 }

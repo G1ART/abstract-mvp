@@ -32,6 +32,7 @@ import {
 } from "@/lib/supabase/recommendations";
 import { FeedHeader } from "./feed/FeedHeader";
 import { LivingSalonGrid } from "./feed/LivingSalonGrid";
+import { FeedGridSkeleton } from "@/components/ds";
 
 const REC_CACHE_TTL_MS = 3 * 60 * 1000;
 const FEED_BG_REFRESH_TTL_MS = 90_000;
@@ -644,7 +645,7 @@ export function FeedContent({
       />
 
       {loading ? (
-        <SalonSkeleton />
+        <FeedGridSkeleton />
       ) : error ? (
         <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
           <p className="text-sm text-zinc-700">{error}</p>
@@ -826,38 +827,3 @@ function FeedDebugPanel({
   );
 }
 
-/**
- * Skeleton that mirrors the editorial rhythm: a 2x2 spotlight on lg, a
- * handful of standard tiles, one full-width context strip, and a few more
- * tiles. Tiles use the same 4:5 aspect as the loaded feed so the loading
- * state never looks like a different product. Borderless to match the
- * loaded grid (no rounded card frames).
- */
-function SalonSkeleton() {
-  return (
-    <div className="grid auto-rows-min grid-cols-2 items-start gap-x-6 gap-y-10 [grid-auto-flow:dense] md:grid-cols-3 lg:grid-cols-4">
-      <div
-        className="col-span-1 aspect-square animate-pulse bg-zinc-100 lg:col-span-2 lg:row-span-2"
-        aria-hidden
-      />
-      {[0, 1, 2, 3, 4].map((i) => (
-        <div
-          key={`s-art-top-${i}`}
-          className="col-span-1 aspect-[4/5] animate-pulse bg-zinc-100"
-          aria-hidden
-        />
-      ))}
-      <div
-        className="col-span-2 h-28 animate-pulse bg-zinc-100 md:col-span-3 lg:col-span-4"
-        aria-hidden
-      />
-      {[0, 1, 2, 3].map((i) => (
-        <div
-          key={`s-art-bot-${i}`}
-          className="col-span-1 aspect-[4/5] animate-pulse bg-zinc-100"
-          aria-hidden
-        />
-      ))}
-    </div>
-  );
-}

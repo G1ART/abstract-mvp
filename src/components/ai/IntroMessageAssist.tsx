@@ -645,7 +645,7 @@ function InlineDraftView({
 
   return (
     <div className="mt-3 rounded-2xl border border-zinc-200 bg-white overflow-hidden">
-      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-zinc-100 bg-zinc-50/60">
+      <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-zinc-100 bg-zinc-50/70">
         <SparkleIcon className="text-zinc-500" />
         <p className="text-xs font-medium text-zinc-600">{t("ai.intro.panel.title")}</p>
       </div>

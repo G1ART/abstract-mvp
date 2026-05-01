@@ -720,7 +720,7 @@ export default function ExhibitionDetailPage() {
               </section>
             ))}
 
-            <section className="mb-8 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/50 p-4">
+            <section className="mb-8 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/70 p-4">
               <h2 className="mb-2 text-sm font-medium text-zinc-700">{t("exhibition.addCustomBucket")}</h2>
               <p className="mb-3 text-xs text-zinc-500">{t("exhibition.addCustomBucketHint")}</p>
               <div className="flex flex-wrap items-end gap-2">

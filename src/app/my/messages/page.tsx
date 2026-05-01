@@ -84,7 +84,7 @@ export default function MyMessagesPage() {
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
         ) : conversations.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/60 p-8 text-center">
+          <div className="rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 p-8 text-center">
             <p className="text-sm text-zinc-600">
               {t("connection.inbox.empty")}
             </p>

@@ -362,7 +362,7 @@ export default function AddWorkToExhibitionPage() {
         </div>
 
         {/* 전시 권한 공유 (in-context CTA) */}
-        <div id="invite" className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/50 p-3">
+        <div id="invite" className="mb-4 rounded-lg border border-zinc-200 bg-zinc-50/70 p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-medium text-zinc-700">{t("delegation.shareExhibitionAccess")}</p>
@@ -676,7 +676,7 @@ export default function AddWorkToExhibitionPage() {
                           className={`mb-3 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
                             dragOverBucketKey === bucketKey
                               ? "border-zinc-900 bg-zinc-100"
-                              : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400"
+                              : "border-zinc-300 bg-zinc-50/70 hover:border-zinc-400"
                           }`}
                         >
                           {t("exhibition.dropImagesHere")}
@@ -747,7 +747,7 @@ export default function AddWorkToExhibitionPage() {
                             className={`mb-3 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${
                               dragOverBucketKey === bucketKey
                                 ? "border-zinc-900 bg-zinc-100"
-                                : "border-zinc-300 bg-zinc-50/50 hover:border-zinc-400"
+                                : "border-zinc-300 bg-zinc-50/70 hover:border-zinc-400"
                             }`}
                           >
                             {t("exhibition.dropImagesHere")}
