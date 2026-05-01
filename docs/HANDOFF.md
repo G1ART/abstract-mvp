@@ -2,6 +2,79 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — 사람 탭 v1.3 (P3: Trending + Invite Salon Tone + Dead-Code Drop)
+
+진단 리포트의 묶음 4 (P3 옵션) 마지막 마무리. 검색 빈 상태에 *생기를 주는* trending row, invite 페이지 살롱 톤, 그리고 dead RPC/i18n 정리.
+
+### 사용자 합의
+
+- 진단 리포트의 묶음 4: S4 trending · S6 invite copy · D dead-code drop. **S7 role chip hover** 는 RPC payload 에 `affiliation`/`program_focus` 같은 보조 컬럼을 추가해야 의미 있는 hover 정보가 생기는데, 묶음 1~3 에서 이미 RPC 가 세 번 재정의된 상태라 다섯 번째 재정의 비용이 가치를 넘어섬 — *후속 패치로 이관 (deferred)* 하고 데이터 모델이 더 풍부해질 때 다시 검토
+
+### Supabase SQL — **돌려야 함**
+
+> Supabase SQL Editor 에서 실행 필요한 마이그레이션 — `supabase/migrations/20260601300000_people_recs_quality_p3.sql`
+>
+> 선행 조건: P0 + P1 + P2 마이그레이션.
+
+- **S4 — `get_trending_people(p_limit)` RPC 신설**: 최근 7일 내 *accepted* follows 를 가장 많이 받은 공개·presentable 프로필을 desc 정렬로 반환. dismissals 와 본인의 기존 follow 는 제외. payload 가 기존 lane RPC 와 envelope 호환 (`reason_tags=["trending"]`, `top_signal="trending"`, `signal_count=recent_followers`, `mutual_avatars=[]`, `is_recently_active`)
+- **D dead-code drop**:
+  - `drop function public.get_recommended_people(text[], int, text)` — `get_people_recs(p_mode='likes_based')` 로 대체된 지 오래된 dead RPC. 클라이언트 어디에서도 호출 안 함
+  - `drop function public.search_people(text, text[], int, text, boolean)` — P1 에서 4-arg 가 본문 내부 fuzzy 처리하도록 흡수돼 5-arg 시그니처는 dead. `p0_search_fuzzy_pg_trgm.sql` 의 함수가 정리됨
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [supabase/migrations/20260601300000_people_recs_quality_p3.sql](../supabase/migrations/20260601300000_people_recs_quality_p3.sql) — 신규
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx):
+  - 검색 input 의 onFocus / onBlur — `searchFocused` state. 검색 input 가 focus 됐고 검색어가 비어있으면 lane 영역 대신 *trending row* 노출. blur 시 180ms 후 hide (trending chip 클릭이 onBlur 보다 먼저 처리되도록)
+  - `TrendingChip` — 가로 스크롤 가능한 작은 pill (avatar + 이름). lane 영역과 같은 floor-tint 패널 안에 8개. 1줄 헤더는 살롱 kicker 어휘
+  - `getScoreBadge` 에 `trending` 분기 추가 — "이번 주 +N명" / "+N this week"
+- [src/lib/supabase/peopleRecs.ts](../src/lib/supabase/peopleRecs.ts) — `getTrendingPeople(limit=8)` 클라 wrapper 추가
+- [src/lib/supabase/artists.ts](../src/lib/supabase/artists.ts) — `getRecommendedPeople` 함수 + `GetRecommendedPeopleOptions` 타입 제거. 짧은 주석으로 SQL drop 마이그레이션 가리킴
+- [src/lib/people/reason.ts](../src/lib/people/reason.ts) — `if (set.has("trending"))` 분기 — "이번 주 여러 사람이 팔로우했어요" / "Many followed this person this week"
+- [src/app/people/invite/page.tsx](../src/app/people/invite/page.tsx) — 살롱 톤 어셈블 (S6):
+  - 헤더: kicker + 2px accent + tracking-[0.22em] + h1
+  - input: `rounded-xl border-zinc-200 bg-white px-4 py-3 text-[15px]` 살롱 input 어휘
+  - 버튼: `rounded` → `rounded-full`. primary "초대 보내기" zinc-900, secondary "사람 검색으로" zinc-300 ring
+  - Suspense fallback 영문 literal "Loading..." 제거 → `PeopleInviteSkeleton` (텍스트 없이 형태만)
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — 정리 + 추가:
+  - dead 키 제거: `people.tabRecommended`, `people.tabSearch` (UI 미연결)
+  - 신규: `people.trendingHeader` ("이번 주 주목할 사람" / "Trending this week"), `people.signal.trending` ("이번 주 +{count}명" / "+{count} this week"), `people.reason.trending`
+
+### 변경 없음 (의도)
+
+- **S7 deferred**: role chip 의 hover 보조 정보 (예: 갤러리스트의 운영 갤러리 이름) 는 RPC payload 가 `affiliation`/`program_focus` 같은 컬럼을 carry 해야 의미 있음. 현 RPC 는 P0~P2 동안 세 번 재정의돼서 *추가 재정의의 회귀 위험* 이 가치보다 큼. 다음 사이클에 데이터 모델 차원에서 정돈한 뒤 재검토. 진단 리포트의 다른 묶음 4 항목은 모두 이번에 처리
+- 기존 lane (`follow_graph` / `likes_based` / `expand`) 의 RPC 본문은 P3 마이그레이션에서 손대지 않음 — trending 은 별도 RPC, dead-code drop 도 별도 RPC. lane RPC 는 P2 그대로
+- trending 카드를 `PeopleResultCard` 가 아닌 작은 chip 으로 — 검색 빈 상태의 *빠른 진입* 어휘에 더 맞음. 카드 풀 높이를 한 줄에 8개 보여주는 건 정보 밀도 과잉
+
+### 디자인 결정
+
+- **S4 carrier 위치 — lane 위 vs lane 대체**: 처음엔 lane 영역 *위에* 두는 안을 검토. 그러나 사용자가 명시적으로 검색을 시작했을 때 (input focus) 만 의미 있는 어휘이고, 평상시 lane 과 같은 자리를 차지하는 게 시선 처리에 깔끔. blur 후 사라지므로 일상 사용에 방해 없음
+- **trending pill vs full card**: 목적이 *빠른 출구* — 사용자가 누구를 검색할지 모를 때 한두 명을 빠르게 시도해 보는 영역. full card 는 정보 밀도가 다른 lane 의 영역과 충돌. 가로 스크롤 가능한 작은 pill 이 LinkedIn / Instagram 의 "팔로우 추천 캐러셀" 어휘와도 가까움
+- **invite 페이지 — 단일 surface 살롱 톤화**: People 메인과 invite 페이지가 시각적으로 *다른 앱처럼* 느껴지면 "검색 → 초대" 흐름이 한 사고 단위로 안 묶임. 같은 kicker / input / 버튼 어휘로 통일하니 흐름이 이어짐
+- **dead-code drop 순서 — drop function 만**: 마이그레이션 이력은 *그대로 둠* (revert 시 반대로 가야 함). drop 자체만 새 마이그레이션으로 — 이력 누적이 SSOT 인 패턴
+
+### 검증
+
+- `npx tsc --noEmit` — pass (`getRecommendedPeople` 제거 후 import 누락 없음 확인)
+- `npm run test:feed-living-salon` — pass
+- `npm run test:people-reason` — pass
+- `npm run build` — pass
+
+### 사람 탭 4-사이클 종합 (v1.0 → v1.3)
+
+| 묶음 | 마이그레이션 | 핵심 |
+|---|---|---|
+| v1.0 (P0) | `20260601000000_people_recs_quality_p0.sql` | accepted-only 게이트 + presentable 게이트 + 살롱 톤 어셈블 + literal leak 정리 |
+| v1.1 (P1) | `20260601100000_people_recs_quality_p1.sql` | expand 시그널 / likes_based 정합 / score envelope / mutual avatars / search fuzzy + 정렬 |
+| v1.2 (P2) | `20260601200000_people_recs_quality_p2.sql` | last_active_at + dot · dismissals + kebab 메뉴 · follow undo 토스트 · loadMore retry · focus refresh · 키보드 네비 · 카드 a11y |
+| v1.3 (P3) | `20260601300000_people_recs_quality_p3.sql` | trending RPC + 검색 빈 상태 row · invite 살롱 톤 · dead-code drop |
+
+진단 리포트의 모든 항목 처리 완료 (S7 만 데이터 모델 정리 후 재검토로 명시 deferred).
+
+---
+
 ## 2026-05-01 — 사람 탭 v1.2 (P2: Subtle Quality Layer — a11y, dismiss, undo, recently-active)
 
 추천 풀과 시그널이 안정된 위에 *사려깊은 작은 디테일* 들. a11y 정리, 활동 dot, dismiss/snooze, follow undo, 키보드 네비, 백그라운드 refresh, loadMore retry. "와 빈틈없다" 인상에 가까워지는 단계.

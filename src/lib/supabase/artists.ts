@@ -26,32 +26,10 @@ export function encodePeopleCursor(id: string): string {
   return Buffer.from(id, "utf8").toString("base64");
 }
 
-export type GetRecommendedPeopleOptions = {
-  roles?: string[];
-  limit: number;
-  cursor?: string | null;
-};
-
-export async function getRecommendedPeople(
-  options: GetRecommendedPeopleOptions
-): Promise<{ data: PublicProfile[]; nextCursor: string | null; error: unknown }> {
-  const { roles = [], limit = 15, cursor = null } = options;
-  const rolesArr = Array.isArray(roles) ? roles : [];
-  const cleanRoles = rolesArr.filter((r) => ROLE_OPTIONS.includes(r as (typeof ROLE_OPTIONS)[number]));
-
-  const { data, error } = await supabase.rpc("get_recommended_people", {
-    p_roles: cleanRoles,
-    p_limit: limit,
-    p_cursor: cursor || null,
-  });
-
-  if (error) return { data: [], nextCursor: null, error };
-  const rows = (data ?? []) as PublicProfile[];
-  const nextCursor = rows.length >= limit && rows[rows.length - 1]?.id
-    ? encodePeopleCursor(rows[rows.length - 1].id)
-    : null;
-  return { data: rows, nextCursor, error: null };
-}
+// `getRecommendedPeople` was removed in P3 (sample-tab-quality): the
+// `get_recommended_people` RPC was superseded by `get_people_recs`
+// (lanes RPC) and no client called it. Drop in
+// `20260601300000_people_recs_quality_p3.sql`.
 
 export type SearchPeopleOptions = {
   q: string;

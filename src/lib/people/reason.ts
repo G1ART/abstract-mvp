@@ -36,6 +36,7 @@ export function reasonTagToI18n(
   if (set.has("similar_keywords")) return t("people.reason.similarKeywords");
   if (set.has("saved_interest")) return t("people.reason.sharedInterest");
   if (set.has("expand")) return t("people.reason.expand");
+  if (set.has("trending")) return t("people.reason.trending");
 
   return t("people.reason.fallback");
 }

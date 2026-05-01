@@ -12,7 +12,11 @@ import {
   type PeopleLane,
   type PeopleRec,
 } from "@/lib/supabase/recommendations";
-import { dismissPerson, undismissPerson } from "@/lib/supabase/peopleRecs";
+import {
+  dismissPerson,
+  undismissPerson,
+  getTrendingPeople,
+} from "@/lib/supabase/peopleRecs";
 import { AuthGate } from "@/components/AuthGate";
 import { hasPublicLinkableUsername } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
@@ -22,6 +26,7 @@ import { getProfileSurface } from "@/lib/profile/surface";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { PeopleResultCard } from "./PeopleResultCard";
+import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
@@ -69,6 +74,9 @@ function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string |
   }
   if (top === "likes_based") {
     return t("people.signal.likesMatched").replace("{count}", String(count));
+  }
+  if (top === "trending") {
+    return t("people.signal.trending").replace("{count}", String(count));
   }
   return null;
 }
@@ -133,6 +141,17 @@ export function PeopleClient() {
   const lastFetchAtRef = useRef<number>(0);
   const cardsContainerRef = useRef<HTMLDivElement>(null);
   const toastIdRef = useRef(0);
+
+  // S4 — trending row state. The `searchFocused` flag toggles when the
+  // user enters/leaves the search field; while focused with an empty
+  // query we replace the lane area with a trending strip so the
+  // empty-state has something concrete to act on. We delay the
+  // blur-driven hide by a tick so a tap on a trending card isn't
+  // cancelled before the click handler runs.
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [trendingProfiles, setTrendingProfiles] = useState<PeopleRec[]>([]);
+  const trendingLoadedRef = useRef(false);
+  const blurTimerRef = useRef<number | null>(null);
 
   const updateUrl = useCallback(
     (opts: { q?: string; roles?: Set<string>; lane?: LaneKey }) => {
@@ -398,6 +417,33 @@ export function PeopleClient() {
     [pushToast, t]
   );
 
+  // ── Trending fetch (S4) ──────────────────────────────────────────────
+  const ensureTrendingLoaded = useCallback(async () => {
+    if (trendingLoadedRef.current) return;
+    trendingLoadedRef.current = true;
+    const res = await getTrendingPeople(8);
+    if (!res.error) setTrendingProfiles(res.data);
+  }, []);
+
+  function handleSearchFocus() {
+    if (blurTimerRef.current) {
+      window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    setSearchFocused(true);
+    void ensureTrendingLoaded();
+  }
+  function handleSearchBlur() {
+    // Delay so a click on a trending card lands before the row is unmounted.
+    if (blurTimerRef.current) window.clearTimeout(blurTimerRef.current);
+    blurTimerRef.current = window.setTimeout(() => {
+      setSearchFocused(false);
+      blurTimerRef.current = null;
+    }, 180);
+  }
+
+  const showTrending = searchFocused && !isSearchMode && trendingProfiles.length > 0;
+
   // ── Keyboard navigation (S8) ─────────────────────────────────────────
   // j / k step focus through cards; the inner Link handles Enter →
   // navigate. Skip when the user is typing in the search field or in
@@ -458,11 +504,27 @@ export function PeopleClient() {
             placeholder={t("people.searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onFocus={handleSearchFocus}
+            onBlur={handleSearchBlur}
             className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-[15px] text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-200"
           />
         </div>
 
-        {!isSearchMode && (
+        {showTrending && (
+          <section className="mb-6 rounded-2xl bg-zinc-50/70 px-5 py-5 lg:px-6 lg:py-6">
+            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
+              <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
+              {t("people.trendingHeader")}
+            </p>
+            <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 lg:-mx-6 lg:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {trendingProfiles.map((profile) => (
+                <TrendingChip key={profile.id} profile={profile} />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {!isSearchMode && !showTrending && (
           <section className="mb-6 rounded-2xl bg-zinc-50/70 px-5 py-5 lg:px-6 lg:py-6">
             <div data-tour="people-lane-tabs" className="flex flex-wrap gap-2">
               {(["follow", "likes", "expand"] as LaneKey[]).map((l) => {
@@ -717,6 +779,45 @@ function ToastStack({
         </div>
       ))}
     </div>
+  );
+}
+
+// Trending chip — small profile pill for the search-focus empty
+// state. Clicking navigates to the profile; the list itself is
+// horizontally scrollable on mobile.
+function TrendingChip({ profile }: { profile: PeopleRec }) {
+  const username = profile.username ?? "";
+  if (!username) return null;
+  if (!hasPublicLinkableUsername(profile)) return null;
+  const display =
+    (profile.display_name ?? "").trim() ||
+    (username.startsWith("@") ? username : `@${username}`);
+  // We use a plain anchor so the click happens before the input's
+  // onBlur callback can hide the trending row (we already gate that
+  // with a short timeout, but anchor-based navigation is more robust).
+  return (
+    <Link
+      href={`/u/${username}`}
+      className="flex shrink-0 snap-start items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-50 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300"
+    >
+      <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-zinc-100 text-[10px] font-medium text-zinc-500">
+        {profile.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={
+              profile.avatar_url.startsWith("http")
+                ? profile.avatar_url
+                : getArtworkImageUrl(profile.avatar_url, "avatar")
+            }
+            alt=""
+            className="h-full w-full object-cover"
+          />
+        ) : (
+          <span>{display.charAt(0).toUpperCase()}</span>
+        )}
+      </span>
+      <span className="max-w-[12rem] truncate">{display}</span>
+    </Link>
   );
 }
 

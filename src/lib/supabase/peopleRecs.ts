@@ -265,6 +265,21 @@ export async function searchPeopleWithArtwork(
   return { data: merged, nextCursor, suggestion, error: null };
 }
 
+// ── Trending (S4) ──────────────────────────────────────────────────────
+// Surfaces accounts that gained the most accepted-follows in the last
+// 7 days. Used by the People tab when the search field is focused but
+// empty so the empty state has something to interact with instead of
+// a blank canvas.
+export async function getTrendingPeople(
+  limit: number = 8
+): Promise<{ data: PeopleRec[]; error: unknown }> {
+  const { data, error } = await supabase.rpc("get_trending_people", {
+    p_limit: Math.min(Math.max(limit, 1), 24),
+  });
+  if (error) return { data: [], error };
+  return { data: (data ?? []) as PeopleRec[], error: null };
+}
+
 // ── People dismissal (S3) ─────────────────────────────────────────────
 // Wraps `people_dismiss` / `people_undismiss` SECURITY DEFINER RPCs.
 // `mode = 'snooze'` hides the target for 30 days; `'block'` hides
