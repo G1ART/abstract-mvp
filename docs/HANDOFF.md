@@ -1,6 +1,80 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-04-30
+Last updated: 2026-05-01
+
+## 2026-05-01 — 사람 탭 v1.0 (P0: Recommendation Pool Integrity + Salon Tone)
+
+피드 v1.7 까지 살롱 톤이 안정되면서 사람 탭의 미감·로직 차이가 도드라졌다. 이번 패치는 사용자가 요청한 사람 탭 진단 리포트의 **묶음 1 (P0 핵심)** 항목 — 추천 풀 정합성 (A1·A2·S1) · 영문 literal leak (C1) · 살롱 비주얼 어셈블 (G1) — 다섯을 한 번에 묶어 시작 지점을 잡는다.
+
+### 사용자 합의
+
+- "그동안 우리가 UX & 디자인적 미감 완성도 관점에서 ... 피드를 작업했으니, 사람 탭의 완성도도 그정도로 따라와줘야해"
+- "(1) 우선 눈에 띄는 버그나 기능 저해 요소들을 제거하고 (2) 우리 플랫폼 결에 잘 맞는 ... 굵직하거나 섬세한 기능들을 리스트업"
+- 단정·사려깊은 톤 — "와, 정말 섬세하고 빈틈없다, 이런 기능은 참 사려깊다" 같은 감탄을 자아낼 것
+
+### Supabase SQL — **돌려야 함**
+
+> Supabase SQL Editor 에서 실행 필요한 마이그레이션 — `supabase/migrations/20260601000000_people_recs_quality_p0.sql`
+
+- `public.is_placeholder_username(text)` SQL helper 신설 — 클라이언트 SSOT (`isPlaceholderUsername` in `src/lib/identity/placeholder.ts`) 와 정확히 일치하는 정규식 (`^user_[a-f0-9]{6,16}$`)
+- `public.is_presentable_profile(display_name, username)` SQL helper 신설 — display_name 또는 non-placeholder username 둘 중 하나라도 있으면 true
+- `public.get_people_recs(text, text[], int, text)` 재정의:
+  - **A1 status='accepted' 게이트**: 모든 lane 의 `follows where follower_id = v_uid` 절에 `and status = 'accepted'` 추가. follow_graph 는 양 hop 모두 accepted 만 카운트. 비공개 계정에 follow request 보낸 직후 그 프로필이 모든 lane 에서 사라지던 증상 수리. mutual_follow_sources 도 pending edge 가 부풀리지 않음
+  - **A2/S1 presentable 게이트**: 모든 lane 의 candidate `profiles p` join 에 `is_presentable_profile(...)` 추가. RPC 가 15 row 반환했는데 클라가 8 카드만 그리고 cursor 는 15 row 만큼 진행하던 페이지 정합 누수 차단
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [supabase/migrations/20260601000000_people_recs_quality_p0.sql](../supabase/migrations/20260601000000_people_recs_quality_p0.sql) — A1 + A2/S1 마이그레이션
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx) — 살롱 톤 어셈블 (G1) + literal leak (C1)
+  - `max-w-2xl` → `max-w-3xl`, `py-8` → `py-10 lg:py-14`
+  - 헤더: 캡션 + 2px accent + tracking-[0.22em] (피드 헤더 어휘) + h1
+  - 검색창: `border-zinc-300` → `rounded-xl border-zinc-200 bg-white px-4 py-3` 살롱 톤 + focus ring
+  - lane 영역: `bg-zinc-50/70 rounded-2xl` floor-tint 패널 안에 chip + lane subtitle (각 lane 마다 i18n 분기)
+  - role 필터: 캡션 + `rounded-full` chip 살롱 톤
+  - 카드: avatar 12 → 14, typography 강화 (display_name 15px semibold tracking-tight, secondary 인라인), focus-visible ring 살롱 톤. `space-y-4` → `space-y-3`
+  - empty state: `bg-zinc-50/70 rounded-2xl` 패널, 버튼 `rounded` → `rounded-full`
+  - error state: 사일런트 retry 가 아니라 빨간 floor-tint 패널 + "다시 시도" 버튼 (`common.retry` i18n 사용)
+  - loading state: `<p>로딩…</p>` → `PeopleListSkeleton` (실제 카드 형태와 동일한 shimmer)
+  - **getScoreBadge literal leak (C1)** 수리: `${liked} signals` → `t("people.signal.likesMatched").replace("{count}", ...)` + follow_graph 도 한국어 자연스러운 카피
+- [src/app/people/page.tsx](../src/app/people/page.tsx) — Suspense fallback 영문 literal "Loading…" → 텍스트 없는 `PeopleShellSkeleton` (서버 렌더라 useT 미사용 — 스켈레톤은 로케일 무관)
+- [src/components/feed/PeopleCarouselStrip.tsx](../src/components/feed/PeopleCarouselStrip.tsx) — `formatIdentityPair(profile)` → `formatIdentityPair(profile, t)`. placeholder username 만 있는 row 가 fallback 했을 때 한국어 강제 라벨 ("설정 중인 프로필") 이 EN 로케일에도 노출되던 잔류 leak 수리
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — 새 키:
+  - `people.kicker` — 헤더 캡션 ("DISCOVER" / "탐 색")
+  - `people.signal.followNetwork` / `people.signal.likesMatched` — score badge 카피
+  - `people.lanes.likesBasedSubtitle` / `people.lanes.expandSubtitle` — lane 별 보조 문구
+  - `people.lanes.followGraphSubtitle` (KO) — 사용자 멘탈 모델 ("팔로우한 사람이 팔로우") 과 정렬: "팔로우한 사람들이 팔로우하고 있어요"
+
+### 변경 없음 (의도)
+
+- search RPC (search_people, search_artists_by_artwork) 는 묶음 2 (B1·B2·B3) 에서 다룸 — 이번엔 추천 풀만 손댐
+- `expand` lane 의 의미 부재 (A3) 와 `likes_based` fallback 비대칭 (A4) 도 묶음 2 에서. 이번엔 *정합성 게이트* 만
+- C2 (a11y / role=button + nested button) 와 C5/C6 (loadMore retry / focus refresh) 는 묶음 3 의 톤·사려 항목으로 이관
+- 살롱 톤 floor-tint 가 *카드 자체* 까지 침범하지 않도록 의도적으로 자제 — 정보 카드는 흰 위에 단정한 zinc-200 border 가 가독성에 더 적합
+- placeholder username 클라이언트 가드 (`hasPublicLinkableUsername`) 는 *defence in depth* 로 유지. RPC 게이트가 SSOT 가 됐지만 stale build/캐시에 대비
+
+### 디자인 결정
+
+- **헤더 어휘 통일 vs 사람 탭 고유성**: 피드의 kicker (uppercase, 2px accent, tracking-[0.22em]) 를 그대로 가져오되 max-width 는 3xl 로 좁힘. 사람 탭은 list-first 라 좁은 폭이 *읽힘 시간* 측면에서 더 좋음. 시각 시스템은 통일, 폼 팩터는 surface 의 본분에 맞게 다름
+- **lane 패널 floor-tint**: 피드의 PeopleCarouselStrip / ExhibitionMemoryStrip 와 동일한 어휘 — "이 영역은 다른 chapter 다" 시그널을 zinc-50/70 으로. lane subtitle 까지 패널 안에 두어 의미 단위로 묶임
+- **getScoreBadge 카피**: "n signals" 직역 대신 KO 는 "공감 시그널 n건" / "n명과 연결돼 있어요" 로 의역. EN 은 "matched signals" / "in your network" — 추상적 메트릭 보다 *체감되는 단어* 선택
+- **page.tsx skeleton 의 텍스트 부재**: Suspense fallback 은 SSR 단계라 useT 못 씀. "Loading..." 영문 literal 을 KO 가 보면 *영어가 한 번 깜빡* 하는 인상이라 톤이 깨짐. 텍스트 없는 시각 skeleton 이 로케일 무관하게 동작 — 형태가 곧 메시지
+- **A1/A2 게이트의 위치 — RPC vs 클라이언트**: v1.7.1 의 빌더 게이트는 *피드 surface 정책* 이라 빌더에 둠. 사람 탭의 게이트는 *RPC 가 약속한 row 수와 화면 row 수가 같아야 함* 이라는 데이터 정합 — 본질이 backend 책임. 클라 가드는 두 번째 안전망
+
+### 검증
+
+- `npx tsc --noEmit` — pass (stale `.next/types` 정리 후)
+- `npm run test:feed-living-salon` — pass
+- `npm run build` — pass (Static 17개 / Dynamic 13개 라우트 그대로)
+
+### 다음 단계
+
+- 묶음 2 (P1 풍부함): A3 expand 시그널 부여 · A4 likes_based fallback 정합 · B1·B2 검색 fuzzy + 정렬 우선순위 · B3 search cursor · G2 score envelope 일원화 · G3 mutual avatar stack · S10 회귀 테스트
+- 묶음 3 (P2 섬세): C2/C5/C6 + S2/S3/S5/S8/S9
+- 묶음 4 (P3 옵션): S4/S6/S7 + dead-code 정리
+
+---
 
 ## 2026-04-30 — 오늘의 살롱 v1.7.1 (Presentable-Profile Gate + Artist 카피 통일)
 

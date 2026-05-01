@@ -40,6 +40,12 @@ const LANE_TO_CONTRACT: Record<LaneKey, PeopleLane> = {
   expand: "expand",
 };
 
+const LANE_SUBTITLE_KEY: Record<LaneKey, string> = {
+  follow: "people.lanes.followGraphSubtitle",
+  likes: "people.lanes.likesBasedSubtitle",
+  expand: "people.lanes.expandSubtitle",
+};
+
 function formatReasonLine(profile: PeopleRec, t: (key: string) => string): string {
   const detail = profile.reason_detail ?? {};
   return reasonTagToI18n(profile.reason_tags ?? [], t, {
@@ -53,10 +59,10 @@ function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string |
   const liked = profile.liked_artists_count ?? 0;
   const tags = profile.reason_tags ?? [];
   if (tags.includes("follow_graph") && mut >= 2) {
-    return `${mut} ${t("people.reason.followGraph")}`;
+    return t("people.signal.followNetwork").replace("{count}", String(mut));
   }
   if (tags.includes("likes_based") && liked >= 2) {
-    return `${liked} signals`;
+    return t("people.signal.likesMatched").replace("{count}", String(liked));
   }
   return null;
 }
@@ -265,71 +271,93 @@ export function PeopleClient() {
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.people} />
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <h1 className="min-w-0 flex-1 text-xl font-semibold">{t("people.title")}</h1>
-          <TourHelpButton tourId={TOUR_IDS.people} />
+      {/* Salon-tone shell — matches FeedClient header vocabulary
+          (kicker + accent bar + tracking-[0.22em]) so the People tab
+          and the Living Salon feed read as two chapters of the same
+          editorial. */}
+      <main className="mx-auto max-w-3xl px-6 py-10 lg:py-14">
+        <header className="mb-8">
+          <div className="flex items-center justify-between gap-3">
+            <p className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
+              <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
+              {t("people.kicker")}
+            </p>
+            <TourHelpButton tourId={TOUR_IDS.people} />
+          </div>
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-900">
+            {t("people.title")}
+          </h1>
+        </header>
+
+        <div className="mb-8">
+          <input
+            ref={searchInputRef}
+            data-tour="people-search"
+            type="search"
+            placeholder={t("people.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-[15px] text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-200"
+          />
         </div>
 
-        <input
-          ref={searchInputRef}
-          data-tour="people-search"
-          type="search"
-          placeholder={t("people.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="mb-4 w-full rounded border border-zinc-300 px-3 py-2"
-        />
-
         {!isSearchMode && (
-          <div className="mb-4 flex flex-col gap-2">
+          <section className="mb-6 rounded-2xl bg-zinc-50/70 px-5 py-5 lg:px-6 lg:py-6">
             <div data-tour="people-lane-tabs" className="flex flex-wrap gap-2">
-              {(["follow", "likes", "expand"] as LaneKey[]).map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  onClick={() => setLaneAndUpdate(l)}
-                  className={`rounded-lg px-3 py-2 text-left text-sm font-medium ${
-                    lane === l
-                      ? "bg-zinc-900 text-white"
-                      : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-                  }`}
-                >
-                  {l === "follow" && t("people.lanes.followGraphTitle")}
-                  {l === "likes" && t("people.lanes.likesBasedTitle")}
-                  {l === "expand" && t("people.lanes.expandTitle")}
-                </button>
-              ))}
+              {(["follow", "likes", "expand"] as LaneKey[]).map((l) => {
+                const active = lane === l;
+                return (
+                  <button
+                    key={l}
+                    type="button"
+                    onClick={() => setLaneAndUpdate(l)}
+                    aria-pressed={active}
+                    className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
+                      active
+                        ? "bg-zinc-900 text-white"
+                        : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100"
+                    }`}
+                  >
+                    {l === "follow" && t("people.lanes.followGraphTitle")}
+                    {l === "likes" && t("people.lanes.likesBasedTitle")}
+                    {l === "expand" && t("people.lanes.expandTitle")}
+                  </button>
+                );
+              })}
             </div>
-            {lane === "follow" && (
-              <p className="text-xs text-zinc-500">
-                {t("people.lanes.followGraphSubtitle")}
-              </p>
-            )}
-          </div>
+            <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+              {t(LANE_SUBTITLE_KEY[lane])}
+            </p>
+          </section>
         )}
 
-        <div data-tour="people-role-filters" className="mb-6 flex flex-wrap items-center gap-2">
-          <span className="text-sm text-zinc-500">{t("people.filtersLabel")}:</span>
-          {ROLE_OPTIONS.map((role) => (
-            <button
-              key={role}
-              type="button"
-              onClick={() => toggleRole(role)}
-              className={`rounded-full px-3 py-1 text-sm ${
-                selectedRoles.has(role)
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-200 text-zinc-700 hover:bg-zinc-300"
-              }`}
-            >
-              {t(`people.role.${role}`)}
-            </button>
-          ))}
+        <div data-tour="people-role-filters" className="mb-8 flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            {t("people.filtersLabel")}
+          </span>
+          {ROLE_OPTIONS.map((role) => {
+            const active = selectedRoles.has(role);
+            return (
+              <button
+                key={role}
+                type="button"
+                onClick={() => toggleRole(role)}
+                aria-pressed={active}
+                className={`rounded-full px-3 py-1 text-sm transition-colors ${
+                  active
+                    ? "bg-zinc-900 text-white"
+                    : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100"
+                }`}
+              >
+                {t(`people.role.${role}`)}
+              </button>
+            );
+          })}
           {selectedRoles.size > 0 && (
             <button
               type="button"
               onClick={clearRoles}
-              className="rounded-full px-3 py-1 text-sm text-zinc-600 hover:bg-zinc-100"
+              className="rounded-full px-3 py-1 text-sm text-zinc-500 hover:bg-zinc-100"
             >
               {t("people.filterAll")}
             </button>
@@ -337,30 +365,39 @@ export function PeopleClient() {
         </div>
 
         {loading ? (
-          <p className="text-zinc-600">{t("common.loading")}</p>
+          <PeopleListSkeleton />
         ) : error ? (
-          <p className="text-red-600">{error}</p>
+          <div className="rounded-2xl border border-red-100 bg-red-50/50 px-5 py-6">
+            <p className="text-sm text-red-700">{error}</p>
+            <button
+              type="button"
+              onClick={fetchInitial}
+              className="mt-3 inline-flex rounded-full border border-red-200 bg-white px-4 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              {t("common.retry")}
+            </button>
+          </div>
         ) : emptyRecommendations ? (
-          <div className="py-12 text-center">
+          <div className="rounded-2xl bg-zinc-50/70 px-6 py-12 text-center">
             <p className="mb-4 text-zinc-600">{t("people.noRecommendations")}</p>
             <div className="flex flex-wrap justify-center gap-3">
               <button
                 type="button"
                 onClick={() => searchInputRef.current?.focus()}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 {t("people.trySearch")}
               </button>
               <a
                 href="/onboarding"
-                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 {t("people.completeProfile")}
               </a>
             </div>
           </div>
         ) : emptySearch ? (
-          <div className="py-12 text-center">
+          <div className="rounded-2xl bg-zinc-50/70 px-6 py-12 text-center">
             <p className="mb-4 text-zinc-600">{t("people.noSearchResults")}</p>
             {searchSuggestion && (
               <p className="mb-3 text-zinc-700">
@@ -377,7 +414,7 @@ export function PeopleClient() {
                     updateUrl({ q: searchSuggestion });
                     setSearchSuggestion(null);
                   }}
-                  className="rounded border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                  className="rounded-full border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
                 >
                   {t("people.searchSuggestion").replace("{suggestion}", searchSuggestion)}
                 </button>
@@ -385,7 +422,7 @@ export function PeopleClient() {
               <button
                 type="button"
                 onClick={clearRoles}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 {t("people.filterAll")}
               </button>
@@ -394,7 +431,7 @@ export function PeopleClient() {
               <p className="mb-2 text-sm font-medium text-zinc-700">{t("people.inviteCta")}</p>
               <Link
                 href={`/people/invite?name=${encodeURIComponent(debouncedSearch.trim())}`}
-                className="inline-block rounded-lg border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="inline-block rounded-full border border-zinc-900 bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
               >
                 {t("people.inviteCtaButton")}
               </Link>
@@ -402,13 +439,15 @@ export function PeopleClient() {
           </div>
         ) : (
           <>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {profiles.map((profile, profileIdx) => {
                 const username = profile.username ?? "";
                 if (!username) return null;
                 // Suppress placeholder (user_xxxxxxxx) identities from
-                // public people lanes — see Onboarding Identity Overhaul,
-                // Track I.
+                // public people lanes. The RPC now applies the same
+                // gate (P0 migration), but we keep the client-side
+                // fence as a defence in depth so a stale RPC build
+                // never leaks ghost rows.
                 if (!hasPublicLinkableUsername(profile)) return null;
                 const isFirstVisibleCard = profileIdx === 0;
                 const isSelf = userId === profile.id;
@@ -439,9 +478,9 @@ export function PeopleClient() {
                         handleCardClick(username);
                       }
                     }}
-                    className="flex cursor-pointer items-center gap-4 rounded-2xl border border-zinc-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-zinc-400"
+                    className="flex cursor-pointer items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50/60 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
                   >
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-zinc-200">
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-zinc-100">
                       {profile.avatar_url ? (
                         <img
                           src={
@@ -459,8 +498,13 @@ export function PeopleClient() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="flex items-center gap-2 font-medium text-zinc-900">
+                      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[15px] font-semibold tracking-tight text-zinc-900">
                         <span className="truncate">{identity.primary}</span>
+                        {identity.secondary && (
+                          <span className="text-sm font-normal text-zinc-500">
+                            {identity.secondary}
+                          </span>
+                        )}
                         {isPrivateTarget ? (
                           <span
                             className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-600"
@@ -481,15 +525,12 @@ export function PeopleClient() {
                           </span>
                         ) : null}
                       </p>
-                      {identity.secondary && (
-                        <p className="text-sm text-zinc-500">{identity.secondary}</p>
-                      )}
                       {profile.bio && (
                         <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
                           {profile.bio}
                         </p>
                       )}
-                      <div className="mt-1 flex flex-wrap gap-1">
+                      <div className="mt-2 flex flex-wrap gap-1">
                         {roleChips.map((chip) => (
                           <Chip key={chip.key} tone={chip.isPrimary ? "accent" : "neutral"}>
                             {chip.label}
@@ -497,10 +538,8 @@ export function PeopleClient() {
                         ))}
                       </div>
                       {reasonLine && (
-                        <p className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-                          <span>
-                            {t("people.whyRecommended")}: {reasonLine}
-                          </span>
+                        <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                          <span>{reasonLine}</span>
                           {badge && <Chip tone="muted">{badge}</Chip>}
                         </p>
                       )}
@@ -571,12 +610,12 @@ export function PeopleClient() {
               })}
             </div>
             {nextCursor && (
-              <div className="mt-6 flex justify-center">
+              <div className="mt-8 flex justify-center">
                 <button
                   type="button"
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="rounded-lg border border-zinc-300 bg-white px-6 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  className="rounded-full border border-zinc-300 bg-white px-6 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
                 >
                   {loadingMore ? t("common.loading") : t("people.loadMore")}
                 </button>
@@ -586,5 +625,27 @@ export function PeopleClient() {
         )}
       </main>
     </AuthGate>
+  );
+}
+
+// Salon-tone skeleton used for the in-tab loading state — matches the
+// card geometry of the real list so the swap is invisible.
+function PeopleListSkeleton() {
+  return (
+    <div aria-hidden="true" className="space-y-3">
+      {[0, 1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="flex animate-pulse items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5"
+        >
+          <div className="h-14 w-14 shrink-0 rounded-full bg-zinc-200" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="h-3.5 w-1/3 rounded bg-zinc-200" />
+            <div className="h-2.5 w-1/4 rounded bg-zinc-100" />
+            <div className="h-2.5 w-2/3 rounded bg-zinc-100" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

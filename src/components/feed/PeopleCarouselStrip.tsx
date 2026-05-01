@@ -188,7 +188,7 @@ function PersonCard({
   const { t } = useT();
   const username = profile.username ?? "";
   const { primary: displayName, secondary: handleLabel } =
-    formatIdentityPair(profile);
+    formatIdentityPair(profile, t);
   const avatarUrl = getAvatarUrl(profile.avatar_url);
   const roleChips = formatRoleChips(profile, t, { max: 1 });
   const reasonLine = reasonTagToI18n(profile.reason_tags ?? [], t);
