@@ -2,6 +2,49 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — Salon System v2 P4: 업로드 탭 마감 (폭 축 통일 + 전시 탭 인라인 + 역할 버튼 톤)
+
+P0~P3 사이클로 메인 5 페이지가 자리잡은 뒤, 업로드 탭의 *서브 페이지 사이* UX/디자인 통일감이 여전히 떨어진다는 사용자 피드백. 스크린샷 audit 으로 잡힌 어긋남:
+
+- **폭 축 이중화** — 업로드 레이아웃은 `PageShell.studio` (max-w-5xl) 인데 `/upload`, `/upload/bulk` 의 본문은 다시 `<div className="mx-auto max-w-xl">` 로 감쌈 → 탭은 max-w-5xl 좌측에, h1·폼은 max-w-xl 가운데. *같은 surface 안에 두 개의 폭 축* 이 공존해 시선이 미끄러짐. 플랜 4.3 의 `<PageShell variant="narrow">` 약속과도 어긋나 있었음.
+- **bulk 후퇴 링크 중복** — h1 우측에 `← 개별 업로드` 인라인 링크. 같은 일을 하는 LaneChips 가 바로 위에 있어 *어포던스 이중*.
+- **역할 버튼 톤 어긋남** — 4 개의 역할 카드가 `rounded-lg` + `border border-zinc-200` + 좌측 정렬 텍스트만. 살롱 톤 (`rounded-2xl` / `rounded-full`) 결과 미세 어긋남, 어포던스 힌트 (chevron) 부재.
+- **전시 탭 = 다른 페이지로 점프** — `/upload/exhibition` 이 `/my/exhibitions/new?from=upload` 로 redirect → 클릭 즉시 업로드 탭 strip 이 사라지는 가장 큰 시각 점프. 사용자가 "업로드 탭의 서브페이지들 구성" 으로 인지하는 전체 그림이 깨짐.
+
+### 사용자 합의
+
+- 폭 축은 *narrow (max-w-2xl)* 로 단일화 — 업로드는 *집중적인 폼 surface* 이지 dashboard 가 아님.
+- 전시 탭은 redirect 대신 *인라인 렌더* — 업로드 탭 strip 이 유지되어야 함.
+- 역할 카드는 `rounded-2xl` + chevron + `bg-zinc-50/70` hover 로 살롱 톤 정렬.
+
+### Supabase SQL — **돌려야 할 것 없음**
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/app/upload/layout.tsx](../src/app/upload/layout.tsx) — `PageShell.studio` → `PageShell.narrow` (max-w-2xl). 플랜 4.3 약속 정정. 탭 / H1 / 본문 축 통일.
+- [src/app/upload/page.tsx](../src/app/upload/page.tsx) — `<div className="mx-auto max-w-xl">` 래퍼 제거 (PageShell 이 폭 결정). 역할 버튼 4 개를 `group flex w-full items-center justify-between gap-4 rounded-2xl border ... px-5 py-4 ... hover:bg-zinc-50/70` + chevron `→` 로 정렬. attribution / form / dedup 단계의 Back 버튼을 `rounded` → `rounded-full border ... text-zinc-700 hover:bg-zinc-50` 로 통일.
+- [src/app/upload/bulk/page.tsx](../src/app/upload/bulk/page.tsx) — `max-w-xl` 래퍼 제거. h1 / `← 개별 업로드` 링크 행 → `<PageHeader variant="plain" title={t("bulk.title")} actions={...}>` 으로 교체 (전시 add 컨텍스트일 때만 actions 슬롯에 한 개 링크). 역할 버튼 4 개 동일 톤 정렬. CTA `rounded` → `rounded-full` (`startUpload`, `applyTitleBulk`, `deleteSelected`, `deleteAll`, `publishSelected`). Dropzone `rounded-lg bg-zinc-50` → `rounded-2xl bg-zinc-50/70`. 사용하지 않게 된 `backToLabel` 임포트 / `locale` 디스트럭처 제거.
+- [src/components/exhibitions/NewExhibitionFormShell.tsx](../src/components/exhibitions/NewExhibitionFormShell.tsx) — **신규**. `/my/exhibitions/new` 의 폼 본문 (TourTrigger + PageHeader + boardContext banner + ActingAsChip + form) 을 통째로 재사용 가능한 클라이언트 컴포넌트로 추출. props: `showCancelLink?`, `cancelHref?`. 두 입구 (Upload tab / Studio Exhibitions) 가 같은 폼을 다른 shell 에서 렌더할 수 있게 함. 보드 컨텍스트 banner 도 `rounded-2xl bg-zinc-50/70` 로 톤 정렬.
+- [src/app/upload/exhibition/page.tsx](../src/app/upload/exhibition/page.tsx) — redirect 제거. `<NewExhibitionFormShell showCancelLink={false} />` 인라인 렌더. 업로드 탭 strip 유지. Suspense fallback 은 PageShell 가 이미 layout 이 제공하므로 단순 in-place skeleton.
+- [src/app/my/exhibitions/new/page.tsx](../src/app/my/exhibitions/new/page.tsx) — 522 줄 페이지를 50 줄로 슬림화. `<main className="mx-auto max-w-2xl px-4 py-8">` → `<PageShell variant="narrow">`. 본문은 `<NewExhibitionFormShell />` 위임. `from=upload` 일 때 back link "Back to Upload" / cancel 숨김. Suspense + `<PageShellSkeleton variant="narrow" />` fallback.
+
+### 효과 (스크린샷 audit 기준)
+
+- 업로드 탭 strip / h1 / 폼이 단 하나의 max-w-2xl 축 위에 정렬 (`/upload`, `/upload/bulk` 모두).
+- 역할 카드 4 개가 `rounded-2xl` + chevron 으로 살롱 카드 vocabulary 와 정렬.
+- 전시 탭 클릭 시 업로드 탭 strip 이 사라지지 않음 — *3 개 입구가 진짜 한 페이지 set 처럼 작동*.
+- `/my/exhibitions/new` 진입로도 동일 톤 (PageShell.narrow + PageHeader.plain).
+
+### Verified
+
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+- `npm run test:feed-living-salon` ✅
+- `npm run test:people-reason` ✅
+
+---
+
 ## 2026-05-01 — Salon System v2 P3: 카피·문서 정리 (kicker 정책 마무리 + DS 가이드 신설)
 
 P0 → P3 4 사이클 디자인 통일 작업의 마지막 사이클. 시각적 변화 거의 없음 — kicker 어휘 잔재 / Bulk 영문 literal 청소 / DS 결정 가이드 문서화.

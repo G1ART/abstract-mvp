@@ -1,24 +1,36 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
-import { useT } from "@/lib/i18n/useT";
+import { Suspense } from "react";
+import { NewExhibitionFormShell } from "@/components/exhibitions/NewExhibitionFormShell";
 
 /**
- * Upload tab "전시 만들기": redirect to the canonical new exhibition page
- * with from=upload so the back link returns to Upload.
+ * "전시 게시물 만들기" tab inside Upload. Renders the canonical new
+ * exhibition form INLINE (no redirect) so the upload tab strip stays
+ * visible and the user keeps the same page identity while creating an
+ * exhibition. Cancel link is hidden because the LaneChips above already
+ * provide a way back to the other upload entrypoints.
+ *
+ * The fallback is a plain skeleton (no `<main>`) because the upload
+ * layout already supplies the `PageShell` wrapper.
  */
 export default function UploadExhibitionPage() {
-  const router = useRouter();
-  const { t } = useT();
-
-  useEffect(() => {
-    router.replace("/my/exhibitions/new?from=upload");
-  }, [router]);
-
   return (
-    <div className="flex min-h-[40vh] items-center justify-center text-zinc-500">
-      <p>{t("common.redirecting")}</p>
+    <Suspense fallback={<UploadExhibitionFallback />}>
+      <NewExhibitionFormShell showCancelLink={false} />
+    </Suspense>
+  );
+}
+
+function UploadExhibitionFallback() {
+  return (
+    <div aria-hidden="true" className="space-y-4">
+      <header className="mb-8">
+        <span className="block h-7 w-40 animate-pulse rounded bg-zinc-200" />
+        <span className="mt-2.5 block h-3 w-2/3 max-w-md animate-pulse rounded bg-zinc-100" />
+      </header>
+      <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />
+      <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />
+      <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />
     </div>
   );
 }

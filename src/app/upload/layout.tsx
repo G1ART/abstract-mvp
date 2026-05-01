@@ -47,7 +47,7 @@ export default function UploadLayout({
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.upload} />
       <PageShell
-        variant="studio"
+        variant="narrow"
         topAccessory={<TourHelpButton tourId={TOUR_IDS.upload} />}
       >
         <LaneChips

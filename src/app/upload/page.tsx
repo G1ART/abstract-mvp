@@ -421,7 +421,7 @@ function UploadPageContent() {
 
   return (
     <AuthGate>
-      <div className="mx-auto max-w-xl">
+      <div>
         {inviteToast && (
           <div
             className={`fixed bottom-4 right-4 rounded-lg px-4 py-2 text-sm text-white shadow-lg ${
@@ -445,9 +445,15 @@ function UploadPageContent() {
                   key={opt.value}
                   type="button"
                   onClick={() => handleIntentSelect(opt.value)}
-                  className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
+                  className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-left font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-50/70"
                 >
-                  {t(opt.labelKey)}
+                  <span>{t(opt.labelKey)}</span>
+                  <span
+                    aria-hidden
+                    className="text-zinc-400 transition-colors group-hover:text-zinc-600"
+                  >
+                    →
+                  </span>
                 </button>
               ))}
             </div>
@@ -542,7 +548,7 @@ function UploadPageContent() {
               <button
                 type="button"
                 onClick={() => setStep("intent")}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 {t("common.back")}
               </button>
@@ -791,7 +797,7 @@ function UploadPageContent() {
               <button
                 type="button"
                 onClick={() => (needsAttribution(intent) ? setStep("attribution") : setStep("intent"))}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 {t("common.back")}
               </button>
@@ -834,7 +840,7 @@ function UploadPageContent() {
               <button
                 type="button"
                 onClick={() => setStep("form")}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
               >
                 {t("common.back")}
               </button>

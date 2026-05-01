@@ -26,7 +26,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
 import { useT } from "@/lib/i18n/useT";
-import { backToLabel } from "@/lib/i18n/back";
+import { PageHeader } from "@/components/ds/PageHeader";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import {
   addWorkToExhibition,
@@ -82,7 +82,7 @@ export default function BulkUploadPage() {
   const preselectedExternalName = searchParams.get("externalName");
   const preselectedExternalEmail = searchParams.get("externalEmail");
 
-  const { t, locale } = useT();
+  const { t } = useT();
   const { actingAsProfileId } = useActingAs();
   const [drafts, setDrafts] = useState<ArtworkWithLikes[]>([]);
   const [loading, setLoading] = useState(true);
@@ -713,28 +713,25 @@ export default function BulkUploadPage() {
   return (
     <AuthGate>
       <div>
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{t("bulk.title")}</h1>
-          <div className="flex items-center gap-4">
-            {addToExhibitionId && (
+        <PageHeader
+          variant="plain"
+          title={t("bulk.title")}
+          actions={
+            addToExhibitionId ? (
               <Link
                 href={`/my/exhibitions/${addToExhibitionId}/add`}
                 className="text-sm text-zinc-600 hover:text-zinc-900"
               >
                 ← {t("exhibition.backToExhibitionAdd")}
               </Link>
-            )}
-            <Link href="/upload" className="text-sm text-zinc-600 hover:text-zinc-900">
-              ← {backToLabel(t("upload.tabSingle"), locale)}
-            </Link>
-          </div>
-        </div>
+            ) : undefined
+          }
+        />
 
         <ActingAsChip mode="posting" />
 
-        {/* Step: Intent — same width as single upload (max-w-xl) */}
         {(showIntent || showAttribution) && (
-          <div className="max-w-xl">
+          <div>
         {showIntent && (
           <div className="mb-8 space-y-4">
             <p className="text-sm text-zinc-600">{t("bulk.intentHint")}</p>
@@ -744,9 +741,15 @@ export default function BulkUploadPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setIntent(opt.value)}
-                  className="w-full rounded-lg border border-zinc-200 bg-white px-4 py-3 text-left font-medium text-zinc-900 hover:border-zinc-300 hover:bg-zinc-50"
+                  className="group flex w-full items-center justify-between gap-4 rounded-2xl border border-zinc-200 bg-white px-5 py-4 text-left font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-50/70"
                 >
-                  {t(opt.labelKey)}
+                  <span>{t(opt.labelKey)}</span>
+                  <span
+                    aria-hidden
+                    className="text-zinc-400 transition-colors group-hover:text-zinc-600"
+                  >
+                    →
+                  </span>
                 </button>
               ))}
             </div>
@@ -918,7 +921,7 @@ export default function BulkUploadPage() {
 
         {/* Dropzone */}
         <div
-          className="mb-6 cursor-pointer rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 px-6 py-12 text-center hover:border-zinc-400"
+          className="mb-6 cursor-pointer rounded-2xl border-2 border-dashed border-zinc-300 bg-zinc-50/70 px-6 py-12 text-center hover:border-zinc-400"
           onClick={() => document.getElementById("bulk-file-input")?.click()}
           onDrop={(e) => {
             e.preventDefault();
@@ -969,7 +972,7 @@ export default function BulkUploadPage() {
               <button
                 type="button"
                 onClick={startUpload}
-                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800"
               >
                 {t("bulk.startUpload")} ({pendingFiles.length})
               </button>
@@ -1121,7 +1124,7 @@ export default function BulkUploadPage() {
                       runTitleBulk
                     )
                   }
-                  className="rounded bg-zinc-800 px-2 py-1 text-sm text-white disabled:opacity-50"
+                  className="rounded-full bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50"
                 >
                   {t("bulk.applyTitleBulk")}
                 </button>
@@ -1292,7 +1295,7 @@ export default function BulkUploadPage() {
                 type="button"
                 onClick={handleDeleteSelected}
                 disabled={selectedIds.length === 0 || deleting}
-                className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                className="rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
                 {t("bulk.deleteSelected")}
               </button>
@@ -1300,7 +1303,7 @@ export default function BulkUploadPage() {
                 type="button"
                 onClick={handleDeleteAll}
                 disabled={deleting}
-                className="rounded border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                className="rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
               >
                 {t("bulk.deleteAll")}
               </button>
@@ -1308,7 +1311,7 @@ export default function BulkUploadPage() {
                 type="button"
                 onClick={handlePublish}
                 disabled={!canPublishSelected || publishing}
-                className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 {t("bulk.publishSelected")}
               </button>
