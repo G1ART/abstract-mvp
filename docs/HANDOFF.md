@@ -2,6 +2,42 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — Salon System v2 P3: 카피·문서 정리 (kicker 정책 마무리 + DS 가이드 신설)
+
+P0 → P3 4 사이클 디자인 통일 작업의 마지막 사이클. 시각적 변화 거의 없음 — kicker 어휘 잔재 / Bulk 영문 literal 청소 / DS 결정 가이드 문서화.
+
+### 사용자 합의
+
+- People 페이지 헤더의 "탐색 (DISCOVER)" kicker 가 노이즈로 느껴진다는 사용자 지적이 시발점이었기에, P1 에서 People 헤더를 `PageHeader.plain` 으로 강등한 것을 P3 에서 `messages.ts` 키 정리로 마감 (`people.kicker` → `people.lead`).
+- DS primitive 가 자리잡았으니 *언제 무엇을 쓰는가* 에 대한 짧은 결정 가이드를 별도 문서로 분리. 신규 컨트리뷰터가 헤더 / 패널 / lane 을 인라인으로 다시 짤 동기를 줄이는 것이 목적.
+
+### Supabase SQL — **돌려야 할 것 없음**
+### 환경 변수 — 변경 없음
+
+### 수정 / 신규 파일
+
+- [src/app/upload/bulk/page.tsx](../src/app/upload/bulk/page.tsx) — Bulk 표 헤더의 마지막 영문 literal `Title` → `t("bulk.tableTitle")`. `messages.ts` 에 KO/EN 키 추가는 P1 에서 완료된 분 외 잔재 0.
+- [docs/04_DESIGN_SYSTEM.md](04_DESIGN_SYSTEM.md) — 신규. PageShell · PageHeader · SectionLabel · FloorPanel · LaneChips · FilterChip · Chip · EmptyState · PageShellSkeleton 의 *언제 무엇을 쓰는가* 결정 가이드. 한 페이지 분량.
+
+### 4 사이클 통합 요약
+
+| 사이클 | 핵심 |
+| ------ | ---- |
+| P0 | DS primitive 8 개 신규 + Chip xs / EmptyState rounded-full variant 추가. 페이지 무영향. |
+| P1 | 5 메인 페이지 (Feed · People · Upload · My Studio · 공개 프로필) + Header 마이그레이션. kicker 정책 (page or strip) 적용. 영문 literal i18n 큰 줄기. |
+| P2 | floor-tint `/70` 단일화. 스켈레톤 (`FeedGridSkeleton` · `ListCardSkeleton`) 통합. delegations 로컬 EmptyState 이중 구현 제거. FeedArtworkCard 역할 pill → Chip xs. |
+| P3 | kicker 어휘 잔재 정리. Bulk 영문 literal 끝까지 청소. DS 결정 가이드 (`docs/04_DESIGN_SYSTEM.md`) 신설. |
+
+### Verified
+
+- `npx tsc --noEmit` ✅ clean
+- `npm run build` ✅
+- `npm run lint` ✅
+- `npm run test:feed-living-salon` ✅
+- `npm run test:people-reason` ✅
+
+---
+
 ## 2026-05-01 — Salon System v2 P2: 톤 정렬 (floor-tint 통일 + 스켈레톤 흡수 + EmptyState 이중 구현 정리)
 
 P1 마이그레이션 후 *코드 곳곳에 흩어진 톤 어긋남* 을 한꺼번에 정리. P2 는 surface-level 정렬이라 페이지별 변경이 적지만 *시각 일관성* 을 마무리짓는 단계.

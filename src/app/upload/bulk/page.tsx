@@ -1340,7 +1340,7 @@ export default function BulkUploadPage() {
                     />
                   </th>
                   <th className="p-2 text-left"> </th>
-                  <th className="p-2 text-left">Title</th>
+                  <th className="p-2 text-left">{t("bulk.tableTitle")}</th>
                   <th className="p-2 text-left">{t("bulk.year")}</th>
                   <th className="p-2 text-left">{t("bulk.medium")}</th>
                   <th className="p-2 text-left">{t("bulk.ownershipStatus")}</th>

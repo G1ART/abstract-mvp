@@ -497,9 +497,9 @@ export function PeopleClient() {
       <TourTrigger tourId={TOUR_IDS.people} />
       <PageShell variant="default">
         <PageHeader
-          variant="editorial"
-          kicker={t("people.kicker")}
+          variant="plain"
           title={t("people.title")}
+          lead={t("people.lead")}
           actions={<TourHelpButton tourId={TOUR_IDS.people} />}
         />
 
