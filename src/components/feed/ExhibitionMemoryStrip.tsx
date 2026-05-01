@@ -38,12 +38,16 @@ export function ExhibitionMemoryStrip({ exhibition }: Props) {
   return (
     <Link
       href={`/e/${exhibition.id}`}
-      className="group block border-y border-zinc-100 py-8 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+      // Same floor-tint treatment as PeopleCarouselStrip so any non-artwork
+      // module reads as a single category in the eye's vocabulary —
+      // editorial paragraph break, not a thin hairline.
+      className="group block rounded-2xl bg-zinc-50/70 px-6 py-9 my-2 lg:px-8 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
     >
       <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:gap-10">
         <div className="flex min-w-0 flex-1 items-start gap-6">
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+            <p className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
+              <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
               {t("feed.exhibitionMemoryLabel")}
             </p>
             {creditsLine && (

@@ -2,6 +2,64 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.6 (Infinite-Scroll Cursor Fix + Section Floor-tint)
+
+**(1) 무한 스크롤 cursor 누수 수리** + **(2) 작품 그리드와 사람·전시 섹션의 시각적 분리 강화**.
+
+### 사용자 합의
+
+- "피드 리프레시는 여전히 작동하지 않아... 데이터베이스에 훨씬 더 많은 작품이 있는데 어딘가에서 막혀서 출력이 안되고 있어" — RPC 차원의 진짜 원인 추적
+- "작품이 보여지는 곳들과 사람 혹은 전시 게시물을 소개하는 섹션이 조금 더 확실하게 구분되었으면" — 시선 처리·정보 수집 측면
+
+### 진단 — 무한 스크롤이 *조용히* 멈췄던 이유
+
+`listPublicArtworks` 의 두 군데 결함:
+
+1. **`pageSize = Math.min(limit, 30)` cap** — `FEED_PAGE_SIZE = 60` 으로 호출해도 30 으로 강제 cap 됨. 의도했던 dense 첫 paint 가 절반으로 깎임.
+2. **post-filter 기준 cursor 발행 (핵심)** — RPC 가 `pageSize + 1` row 반환 후 `isPublicSurfaceVisible` (RLS 누수 방어용 client-side filter) 로 일부 drop. 그런데 `nextCursor` 결정은 *filter 후 list.length* 기준:
+   ```
+   if (list.length > pageSize && list[pageSize]) { nextCursor = ... }
+   ```
+   filter 가 단 1개라도 잘라내면 `list.length === pageSize` (또는 미만) → `nextCursor = null` → DB 에 더 많은 row 가 있어도 무한 스크롤 정지.
+
+   결과적으로 *user-private 또는 visibility 누수 의심* row 가 단 한 건만 RPC 페이지에 끼어 있어도 그 페이지 이후 cursor 가 죽었음. 작가 가시성 정책이 mature 해질수록 더 자주 발생.
+
+### Supabase SQL — 돌려야 할 것 없음
+
+RPC 로직 + UI 컴포넌트만.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/supabase/artworks.ts](../src/lib/supabase/artworks.ts) —
+  - `listPublicArtworks`: pageSize cap `30 → 100` (FEED_PAGE_SIZE 60 의도 존중). raw fetch list 와 visible (post-filter) list 를 분리. **cursor 는 raw 기준**, **표시는 visible 기준**. 두 단계 분리로 filter 가 row 를 잘라내도 cursor 가 살아남음
+  - `listFollowingArtworks`: pageSize cap `30 → 100` 동일 완화 (cursor 누수는 client-side filter 미적용이라 별도, cap 만 정합)
+- [src/components/feed/PeopleCarouselStrip.tsx](../src/components/feed/PeopleCarouselStrip.tsx) — 외곽을 `rounded-2xl bg-zinc-50/70 px-6 py-9 my-2` floor-tint container 로 교체. `border-y` hairline 제거. 헤더 좌측에 `h-3 w-[2px] bg-zinc-900` 작은 vertical accent 추가, typography `text-zinc-700 + tracking-[0.22em]` 로 살짝 강화. carousel 의 `-mx-6 lg:-mx-8 px-6 lg:px-8` 로 padding 보정해 슬라이드는 끝까지 가게
+- [src/components/feed/ExhibitionMemoryStrip.tsx](../src/components/feed/ExhibitionMemoryStrip.tsx) — 동일 floor-tint container 적용 (`rounded-2xl bg-zinc-50/70 px-6 py-9 my-2`). 헤더 vertical accent + typography 강화. 두 strip 이 *같은 시각 어휘* 로 통일되어 사용자 눈에 "맥락 전환 모듈" 로 즉시 인지
+
+### 변경 없음 (의도)
+
+- `FEED_LAYOUT_VERSION` 그대로 (`living_salon_v1.5_unified_carousel` — UI 분리 강화는 layout 버전 의미 변화 아님). 분석 페이로드 일관성 유지
+- 빌더 `buildLivingSalonItems` 결정론, anchor / cluster 게이트, 사이즈 pill 동작
+- `listFollowingArtworks` 의 cursor 결정 (이쪽은 client-side filter 안 함 → 누수 없음)
+
+### 디자인 결정
+
+- **floor tint 의 정당성**: 작품은 흰 갤러리 벽 위에서 가장 잘 보이고, 사람·전시 추천은 *별도의 메타 표지판*. zinc-50/70 (70% 투명) 은 정확히 *문단 구분* 의 톤 — 광고 박스처럼 무겁지 않고, hairline 처럼 약하지도 않음
+- **vertical accent 마커**: 헤더 시작점에 2px 폭 작은 막대 — 살롱 톤의 "조용한 강조". 좌측 정렬되어 *문단 들여쓰기* 처럼 읽힘
+- **cursor 분리의 trade-off**: visible 이 적게 반환되어도 cursor 살아남음 → 다음 fetch 가 또 RPC 호출 후 또 일부 filter — 약간의 over-fetch 비용. 무한 스크롤이 *진짜 동작* 하는 가치가 더 큼. cap 100 도 아주 큰 limit 호출 방지용 안전망 (실 사용 60)
+- **layout 버전 미상승**: 그리드 구성은 그대로, 외곽 컨테이너만 강화 — `LivingSalonItem` 의 사용자 노출 vocabulary 가 바뀌지 않음. 분석 호환성 유지
+
+### 검증
+
+- `npm run test:feed-living-salon` — pass (deterministic 빌더 회귀 없음)
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — pass
+- 디버그 패널 (`?debug=feed`) 에서 `art cursor: present` 가 페이지 끝까지 유지되어야 정상. `null` 인데 화면에 carousel/exhibitions 만 보인다면 본 이슈 가능성
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.5.2 (Size Pill — Output-side Unit Guard)
 
 v1.5.1 의 입력단 게이트 (`buildSizePill`) 가 견고함에도 *단위 없는 pill* 이 화면에 보이는 케이스가 보고됨 (`152.4 × 121.9`, `61.0 × 10.2` 등). 원인 분석:

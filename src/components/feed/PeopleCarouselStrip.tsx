@@ -90,9 +90,15 @@ export function PeopleCarouselStrip({
   }
 
   return (
-    <section className="border-y border-zinc-100 py-8">
-      <div className="mb-5 flex items-center justify-between gap-3">
-        <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+    // Floor tint + rounded container: artworks render directly on the
+    // page (white), so a soft zinc-50 panel here lets the eye snap to
+    // "this is a different unit" without shouting. Paired with the
+    // 2px-wide accent before the header so the section reads as an
+    // editorial paragraph break, not just a quiet hairline divider.
+    <section className="my-2 rounded-2xl bg-zinc-50/70 px-6 py-9 lg:px-8">
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <p className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
+          <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
           {t(PERSONA_HEADER_KEY[persona])}
         </p>
         <div className="hidden items-center gap-2 lg:flex">
@@ -112,7 +118,7 @@ export function PeopleCarouselStrip({
       </div>
       <div
         ref={scrollerRef}
-        className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-6 pb-1 lg:-mx-8 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {profiles.map((profile) => (
           <div

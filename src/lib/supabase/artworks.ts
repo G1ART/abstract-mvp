@@ -344,7 +344,11 @@ export async function listPublicArtworks(
   error: unknown;
 }> {
   const { limit = 50, sort = "latest", cursor = null } = options;
-  const pageSize = Math.min(limit, 30);
+  // Cap raised from 30 → 100. The salon feed deliberately requests
+  // FEED_PAGE_SIZE = 60 to keep the first paint dense; capping at 30
+  // silently halved the requested page and made `nextCursor` go null
+  // sooner than the dataset warranted.
+  const pageSize = Math.min(limit, 100);
   const requestLimit = pageSize + 1;
   const isPopular = sort === "popular";
 
@@ -381,14 +385,23 @@ export async function listPublicArtworks(
   }
 
   const { data, error } = await query;
-  const list = (data ?? [])
-    .map((r) => normalizeArtworkRow(r as Record<string, unknown>))
-    .filter(isPublicSurfaceVisible) as ArtworkWithLikes[];
+  // Two-stage materialization: keep the *raw* fetched list (only normalized,
+  // not yet filtered) for cursor decisions, and the *visible* list for
+  // rendering. `isPublicSurfaceVisible` is a defensive client-side guard
+  // against RLS edge cases (e.g. private profile leak); when it drops rows,
+  // the visible list shrinks but the dataset boundary did NOT move, so we
+  // must continue to issue a cursor. Previously the cursor was decided on
+  // the post-filter length — any time the filter dropped >=1 row out of a
+  // pageSize+1 fetch, `nextCursor` came back null and infinite scroll
+  // halted even though the DB still had unseen rows.
+  const raw = (data ?? []).map((r) =>
+    normalizeArtworkRow(r as Record<string, unknown>)
+  );
+  const visible = raw.filter(isPublicSurfaceVisible) as ArtworkWithLikes[];
 
   let nextCursor: ArtworkCursor | null = null;
-  const resultList = list.length > pageSize ? list.slice(0, pageSize) : list;
-  if (list.length > pageSize && list[pageSize]) {
-    const next = list[pageSize];
+  if (raw.length > pageSize && raw[pageSize]) {
+    const next = raw[pageSize];
     if (next.created_at != null && next.id) {
       nextCursor = {
         created_at: next.created_at,
@@ -397,6 +410,8 @@ export async function listPublicArtworks(
       };
     }
   }
+  const resultList =
+    visible.length > pageSize ? visible.slice(0, pageSize) : visible;
 
   return {
     data: resultList,
@@ -470,7 +485,9 @@ export async function listFollowingArtworks(
     mergeOwnClaimedWorks = cursor == null,
   } = options;
 
-  const pageSize = Math.min(limit, 30);
+  // Cap raised from 30 → 100 to honour FEED_PAGE_SIZE = 60. See
+  // `listPublicArtworks` rationale.
+  const pageSize = Math.min(limit, 100);
   const requestLimit = pageSize + 1;
 
   const {
