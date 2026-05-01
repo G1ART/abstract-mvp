@@ -435,6 +435,72 @@ function makeArtistDiscovery(count: number, prefix = "rec_artist"): DiscoveryDat
   );
 }
 
+// ── Presentable-profile gate ────────────────────────────────────────
+// Profiles missing both display_name and a real (non-placeholder)
+// username must not surface in the recommendation carousel — the
+// salon's people row is meant for *named* faces.
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      // Both unnamed: bucket should drop
+      {
+        profile: {
+          ...makeProfile("ph1", "artist"),
+          username: "user_a8f3c102",
+          display_name: null,
+        },
+        artworks: [],
+      },
+      {
+        profile: {
+          ...makeProfile("ph2", "artist"),
+          username: null,
+          display_name: null,
+        },
+        artworks: [],
+      },
+    ],
+  });
+  const clusters = items.filter((i) => i.kind === "people_cluster");
+  assert.equal(
+    clusters.length,
+    0,
+    "all-placeholder artist bucket drops below MIN gate"
+  );
+}
+{
+  const arts = Array.from({ length: 12 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i}`), i)
+  );
+  // 2 named + 1 placeholder: row renders with the 2 named profiles only.
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: [
+      { profile: makeProfile("named1", "artist"), artworks: [] },
+      { profile: makeProfile("named2", "artist"), artworks: [] },
+      {
+        profile: {
+          ...makeProfile("ph", "artist"),
+          username: "user_b1f0c233",
+          display_name: null,
+        },
+        artworks: [],
+      },
+    ],
+  });
+  const clusters = items.filter(
+    (i): i is Extract<LivingSalonItem, { kind: "people_cluster" }> =>
+      i.kind === "people_cluster"
+  );
+  assert.equal(clusters.length, 1, "named profiles still surface");
+  const ids = clusters[0].profiles.map((p) => p.id);
+  assert.deepEqual(ids, ["named1", "named2"], "placeholder profile is filtered out");
+}
+
 // ── Exhibition gates ────────────────────────────────────────────────
 {
   const items = buildLivingSalonItems({

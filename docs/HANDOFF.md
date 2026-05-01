@@ -2,6 +2,47 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.7.1 (Presentable-Profile Gate + Artist 카피 통일)
+
+작은 두 가지 정리: (1) 작품 영역 외 카피 어휘를 "아티스트" 로 통일, (2) display_name·real username 둘 다 비어 있는 placeholder 프로필이 추천 캐러셀 전면에 떠서 베타 인상을 흐리던 문제 차단.
+
+### 사용자 합의
+
+- "아티스트 추천 박스는 작가라는 단어 대신 '아티스트'로 통일하기로 했었으니까, 여기도 아티스트로 문구를 통일하자"
+- "난수아이디/null 유저네임 아티스트나 비아티스트 유저들은 추천 상단에서 제외 ... 이름과 아이디가 잘 보이는 사람이 전면에 추천되어야"
+
+### Supabase SQL — 돌려야 할 것 없음
+
+i18n 1줄 + 빌더 게이트 1개.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — KO `feed.artistClusterHeader` "작가 추천" → **"아티스트 추천"**. EN 은 이미 "Artists to discover" 로 일관 — 변경 없음
+- [src/lib/feed/livingSalon.ts](../src/lib/feed/livingSalon.ts) — `isPresentableProfile` 게이트 추가. `display_name` 이 비었고 `username` 도 없거나 `isPlaceholderUsername` ( `user_<6–16hex>` ) 패턴이면 추천 카드에서 silent drop. `buildPeopleClusters` 가 버킷 채우기 직전에 게이트로 거름
+- [tests/feed-living-salon.test.ts](../tests/feed-living-salon.test.ts) — 게이트 회귀 두 케이스: (a) 모두 placeholder 면 `cluster_min` 미달로 row 자체 미발행, (b) named 2 + placeholder 1 이면 named 만 통과
+
+### 변경 없음 (의도)
+
+- placeholder 프로필 자체는 People 탭 전용 lane 에서 "설정 중인 프로필" 라벨로 여전히 노출 가능 — 살롱의 *전면 추천* 만 제외. People 탭 처리는 별도 surface 의 책임
+- v1.7 의 정렬·페이지 사이즈·cursor 동작 그대로
+- placeholder username 룰 (`isPlaceholderUsername`) 은 SSOT 그대로 — 빌더가 import 만 함
+
+### 디자인 결정
+
+- **silent drop vs 라벨 표시**: 이름 없는 카드를 "설정 중인 프로필" 로 보여주면 *플랫폼이 비어 보임* — 베타 단계에선 더 큰 신뢰 손실. 익명 카드는 *그 사람을 위해서도 좋지 않으니* 살롱 전면에선 제거가 맞음
+- **카피 SSOT**: "아티스트" 표기를 외부 노출 키워드 표준으로 굳힘. 내부 코드 식별자 (`persona: "artist"`, `main_role`, type `LivingSalonPersona`) 는 영문 그대로 — UI/code 어휘 분리
+- **게이트 위치**: 빌더 안 (RPC 가 아니라). RPC 는 *모든* 추천 후보를 그대로 주고, 빌더가 surface 별 정책을 결정. 다른 surface (e.g. People 탭) 에서 같은 후보를 다른 정책으로 활용할 여지 보존
+
+### 검증
+
+- `npm run test:feed-living-salon` — pass (placeholder 게이트 회귀 2 케이스 추가)
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — pass
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.7 (Sort Distinction + Incremental Load)
 
 **(1) `latest` vs `popular` 정렬이 화면에서 동일해 보이던 진짜 원인 수리** + **(2) 첫 paint 가 무거워진 패치를 incremental load 로 복원**.

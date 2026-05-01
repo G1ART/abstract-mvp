@@ -2373,7 +2373,7 @@ export const messages = {
     "feed.refreshQuiet": "다시 불러오기",
     "feed.refreshing": "불러오는 중…",
     "feed.caughtUp": "오늘은 여기까지 둘러보셨어요.",
-    "feed.artistClusterHeader": "작가 추천",
+    "feed.artistClusterHeader": "아티스트 추천",
     "feed.curatorClusterHeader": "큐레이터 추천",
     "feed.galleristClusterHeader": "갤러리스트 추천",
     "feed.collectorClusterHeader": "컬렉터 추천",

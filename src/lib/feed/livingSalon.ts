@@ -1,6 +1,7 @@
 import type { ArtworkWithLikes } from "@/lib/supabase/artworks";
 import type { ExhibitionWithCredits } from "@/lib/exhibitionCredits";
 import type { PeopleRec } from "@/lib/supabase/peopleRecs";
+import { isPlaceholderUsername } from "@/lib/identity/placeholder";
 import { isPublicSurfaceVisible } from "./visibility";
 import type { DiscoveryDatum, FeedEntry } from "./types";
 
@@ -296,6 +297,28 @@ function collectExhibitions(entries: FeedEntry[]): ExhibitionWithCredits[] {
 }
 
 /**
+ * A profile is "presentable" enough to surface in the front-facing
+ * recommendation carousel only if it carries either a real
+ * `display_name` *or* a real (non-placeholder) `username`. Placeholder
+ * handles like `user_a8f3c102` and rows with no display name read as
+ * `설정 중인 프로필 / Untitled` cards in the salon — recommending an
+ * unidentifiable person is worse for trust than dropping the slot
+ * silently. Beta users especially expect curated, *named* faces.
+ *
+ * Profiles failing this gate aren't deleted from discovery — they may
+ * still appear in dedicated People-tab lanes where the empty-state
+ * styling is appropriate. They just don't lead the salon's hero
+ * recommendation surface.
+ */
+function isPresentableProfile(profile: PeopleRec): boolean {
+  const dn = (profile.display_name ?? "").trim();
+  if (dn) return true;
+  const u = (profile.username ?? "").trim();
+  if (!u) return false;
+  return !isPlaceholderUsername(u);
+}
+
+/**
  * Buckets profiles by persona and emits one row per persona — a
  * horizontal carousel that stays the same visual unit across all four
  * personas (artist / curator / gallerist / collector). Buckets with
@@ -318,6 +341,7 @@ export function buildPeopleClusters(
   for (const datum of data) {
     if (!datum.profile?.id) continue;
     if (seen.has(datum.profile.id)) continue;
+    if (!isPresentableProfile(datum.profile)) continue;
     const persona = parsePersona(datum.profile.main_role);
     if (persona == null) continue;
     seen.add(datum.profile.id);
