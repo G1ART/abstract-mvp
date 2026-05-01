@@ -6,6 +6,7 @@ import { AuthGate } from "@/components/AuthGate";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { PageShell } from "@/components/ds/PageShell";
+import { PageHeader } from "@/components/ds/PageHeader";
 import { LaneChips, type LaneOption } from "@/components/ds/LaneChips";
 
 type TabKey = "single" | "bulk" | "exhibition";
@@ -46,17 +47,21 @@ export default function UploadLayout({
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.upload} />
-      <PageShell
-        variant="narrow"
-        topAccessory={<TourHelpButton tourId={TOUR_IDS.upload} />}
-      >
+      <PageShell variant="narrow">
+        <PageHeader
+          variant="plain"
+          title={t("upload.title")}
+          lead={t("upload.layoutLead")}
+          actions={<TourHelpButton tourId={TOUR_IDS.upload} />}
+          density="tight"
+        />
         <LaneChips
           variant="lane"
           options={options}
           active={activeKey}
-          ariaLabel={t("upload.tabSingle")}
+          ariaLabel={t("upload.title")}
           data-tour="upload-tabs"
-          className="mb-6"
+          className="mb-8"
         />
         {children}
       </PageShell>

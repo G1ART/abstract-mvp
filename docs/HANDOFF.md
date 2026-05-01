@@ -2,6 +2,49 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — Salon System v2 P4.1: 업로드 헤더 순서 정렬 (페이지 정체성 단일화)
+
+P4 직후 사용자 피드백 — *Upload 만 LaneChips 가 H1 위에 있어 다른 메인 페이지와 시각 순서가 도치되어 있다*. 코드 audit 결과 더 깊은 구조적 어긋남 발견:
+
+- Feed: H1 ("오늘의 살롱") → lead → LaneChips ("추천 / 팔로잉")
+- People: H1 ("사람") → lead → search → LaneChips
+- Upload (P4 시점): **LaneChips ("개별 / 일괄 / 전시") → 각 서브페이지의 자체 H1 ("업로드", "일괄 업로드", "전시 게시물 만들기")**
+
+페이지 정체성이 *서브페이지마다 다른 H1 으로 분산* 되어 있어, 사용자가 같은 surface 안에서 H1 이 매번 바뀌는 인상을 받음. 다른 메인 페이지가 *하나의 정체성 + 그 안의 LaneChips 모드 토글* 인 것과 정반대.
+
+### 사용자 합의
+
+- 페이지 정체성 = "업로드" 하나. LaneChips (개별 / 일괄 / 전시 게시물 만들기) 는 그 안의 *세 모드*.
+- 각 서브페이지의 자체 H1 제거 — 모드 식별은 LaneChips 가 함.
+- 다른 메인 페이지와 동일한 순서: PageHeader → LaneChips → body.
+
+### Supabase SQL — **돌려야 할 것 없음**
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/app/upload/layout.tsx](../src/app/upload/layout.tsx) — `topAccessory` 슬롯 제거. 단일 `<PageHeader variant="plain" title={t("upload.title")} lead={t("upload.layoutLead")} actions={<TourHelpButton />} density="tight" />` 위에 `<LaneChips className="mb-8">` 가 *아래* 에 옴. Feed / People 와 동일한 순서.
+- [src/app/upload/page.tsx](../src/app/upload/page.tsx) — 자체 `<PageHeader title={t("upload.title")} />` 제거. PageHeader import 도 정리. body 는 이제 step="intent" 일 때 prompt "어떤 작품을 올리시나요?" 로 바로 시작 (lane chip 이 모드 식별).
+- [src/app/upload/bulk/page.tsx](../src/app/upload/bulk/page.tsx) — 자체 `<PageHeader title={t("bulk.title")} />` 제거. PageHeader import 도 정리. `addToExhibitionId` 가 있을 때만 노출되던 `← 전시 작품 추가로` 링크는 *본문 상단의 작은 컨텍스트 배너* (`rounded-2xl border bg-zinc-50/70`) 로 강등 — "기존 전시에 작품을 추가 중이에요." 안내 + 링크.
+- [src/components/exhibitions/NewExhibitionFormShell.tsx](../src/components/exhibitions/NewExhibitionFormShell.tsx) — 신규 prop `showHeader?: boolean` (기본 true). false 일 때 내부 PageHeader / TourTrigger / TourHelpButton 을 모두 드롭하고 `createSubtitle` 를 작은 lead 문단으로만 렌더 → 부모 surface (Upload 레이아웃) 가 H1 을 소유하므로 한 surface 한 H1 정책 유지.
+- [src/app/upload/exhibition/page.tsx](../src/app/upload/exhibition/page.tsx) — `<NewExhibitionFormShell showHeader={false} showCancelLink={false} />`. fallback 도 헤더 스켈레톤 제거 (이미 layout 이 제공).
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — 신규 키 `upload.layoutLead` (KO: "한 점씩 올리거나, 일괄로 등록하거나, 전시 게시물을 만들어 공유합니다." / EN: "Add a single work, bulk import a series, or build an exhibition page."), `exhibition.addingWorksContext` (bulk 컨텍스트 배너용).
+
+### 효과
+
+- 5 메인 페이지 모두 동일 시각 순서: PageHeader (H1 + lead + actions) → 1 차 navigation/필터 → body.
+- 업로드 surface 안에서 H1 이 더 이상 서브페이지마다 바뀌지 않음 — 정체성은 "업로드" 하나.
+- 전시 탭 진입 시에도 H1 "업로드" + LaneChips ("전시 게시물 만들기" 활성) → form lead → form. 한 surface, 한 H1.
+
+### Verified
+
+- `npx tsc --noEmit` ✅
+- `npm run build` ✅
+- `npm run test:feed-living-salon` ✅
+- `npm run test:people-reason` ✅
+
+---
+
 ## 2026-05-01 — Salon System v2 P4: 업로드 탭 마감 (폭 축 통일 + 전시 탭 인라인 + 역할 버튼 톤)
 
 P0~P3 사이클로 메인 5 페이지가 자리잡은 뒤, 업로드 탭의 *서브 페이지 사이* UX/디자인 통일감이 여전히 떨어진다는 사용자 피드백. 스크린샷 audit 으로 잡힌 어긋남:

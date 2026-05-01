@@ -16,7 +16,7 @@ import { NewExhibitionFormShell } from "@/components/exhibitions/NewExhibitionFo
 export default function UploadExhibitionPage() {
   return (
     <Suspense fallback={<UploadExhibitionFallback />}>
-      <NewExhibitionFormShell showCancelLink={false} />
+      <NewExhibitionFormShell showHeader={false} showCancelLink={false} />
     </Suspense>
   );
 }
@@ -24,10 +24,7 @@ export default function UploadExhibitionPage() {
 function UploadExhibitionFallback() {
   return (
     <div aria-hidden="true" className="space-y-4">
-      <header className="mb-8">
-        <span className="block h-7 w-40 animate-pulse rounded bg-zinc-200" />
-        <span className="mt-2.5 block h-3 w-2/3 max-w-md animate-pulse rounded bg-zinc-100" />
-      </header>
+      <div className="mb-6 h-3 w-2/3 max-w-md animate-pulse rounded bg-zinc-100" />
       <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />
       <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />
       <div className="h-10 w-full animate-pulse rounded bg-zinc-100" />

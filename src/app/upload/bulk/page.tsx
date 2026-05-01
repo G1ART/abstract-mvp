@@ -26,7 +26,6 @@ import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
 import { useT } from "@/lib/i18n/useT";
-import { PageHeader } from "@/components/ds/PageHeader";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import {
   addWorkToExhibition,
@@ -713,20 +712,17 @@ export default function BulkUploadPage() {
   return (
     <AuthGate>
       <div>
-        <PageHeader
-          variant="plain"
-          title={t("bulk.title")}
-          actions={
-            addToExhibitionId ? (
-              <Link
-                href={`/my/exhibitions/${addToExhibitionId}/add`}
-                className="text-sm text-zinc-600 hover:text-zinc-900"
-              >
-                ← {t("exhibition.backToExhibitionAdd")}
-              </Link>
-            ) : undefined
-          }
-        />
+        {addToExhibitionId && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-sm">
+            <span className="text-zinc-600">{t("exhibition.addingWorksContext")}</span>
+            <Link
+              href={`/my/exhibitions/${addToExhibitionId}/add`}
+              className="text-zinc-700 hover:text-zinc-900"
+            >
+              ← {t("exhibition.backToExhibitionAdd")}
+            </Link>
+          </div>
+        )}
 
         <ActingAsChip mode="posting" />
 

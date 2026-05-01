@@ -25,7 +25,6 @@ import { formatSupabaseError } from "@/lib/errors/supabase";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
-import { PageHeader } from "@/components/ds/PageHeader";
 import { PageShellSkeleton } from "@/components/ds/PageShellSkeleton";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
@@ -431,7 +430,6 @@ function UploadPageContent() {
             {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
           </div>
         )}
-        <PageHeader variant="plain" title={t("upload.title")} />
 
         <ActingAsChip mode="posting" />
 

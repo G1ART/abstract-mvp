@@ -29,6 +29,13 @@ type ProfileOption = { id: string; username: string | null; display_name: string
 
 type NewExhibitionFormShellProps = {
   /**
+   * `false` when the parent surface already owns the page H1 (e.g. the
+   * Upload layout's "업로드" header sits above the LaneChips). Drops the
+   * inner `PageHeader` + tour wiring to keep a single H1 per surface,
+   * and renders the createSubtitle as a quiet lead instead.
+   */
+  showHeader?: boolean;
+  /**
    * Standalone surfaces (e.g. `/my/exhibitions/new`) typically link
    * back to a list. The Upload tab variant of this surface relies on
    * the upload `LaneChips` for cross-navigation, so the cancel CTA is
@@ -39,6 +46,7 @@ type NewExhibitionFormShellProps = {
 };
 
 export function NewExhibitionFormShell({
+  showHeader = true,
   showCancelLink = true,
   cancelHref = "/my/exhibitions",
 }: NewExhibitionFormShellProps) {
@@ -184,13 +192,21 @@ export function NewExhibitionFormShell({
 
   return (
     <>
-      <TourTrigger tourId={TOUR_IDS.exhibitionCreate} />
-      <PageHeader
-        variant="plain"
-        title={t("exhibition.create")}
-        lead={t("exhibition.createSubtitle")}
-        actions={<TourHelpButton tourId={TOUR_IDS.exhibitionCreate} />}
-      />
+      {showHeader ? (
+        <>
+          <TourTrigger tourId={TOUR_IDS.exhibitionCreate} />
+          <PageHeader
+            variant="plain"
+            title={t("exhibition.create")}
+            lead={t("exhibition.createSubtitle")}
+            actions={<TourHelpButton tourId={TOUR_IDS.exhibitionCreate} />}
+          />
+        </>
+      ) : (
+        <p className="mb-6 text-sm leading-relaxed text-zinc-500">
+          {t("exhibition.createSubtitle")}
+        </p>
+      )}
 
       {boardContext && (
         <div className="mb-5 rounded-2xl border border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-600">
