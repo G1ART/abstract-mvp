@@ -363,8 +363,11 @@ export async function listPublicArtworks(
       .order("likes_count", { ascending: false })
       .order("created_at", { ascending: false })
       .order("id", { ascending: false });
-    if (cursor && cursor.likes_count != null) {
-      const lc = Number(cursor.likes_count);
+    if (cursor) {
+      // Some rows have NULL likes_count (legacy / not-yet-aggregated).
+      // Falling back to 0 keeps cursor pagination consistent — we never
+      // silently bail out on the cursor and start the page over.
+      const lc = Number(cursor.likes_count ?? 0);
       const createdAt = String(cursor.created_at).replace(/"/g, '\\"');
       const id = String(cursor.id).replace(/"/g, '\\"');
       query = query.or(
@@ -406,7 +409,9 @@ export async function listPublicArtworks(
       nextCursor = {
         created_at: next.created_at,
         id: next.id,
-        ...(isPopular && next.likes_count != null && { likes_count: Number(next.likes_count) }),
+        // popular: always carry likes_count (0 for nullable legacy rows)
+        // so the cursor is unambiguous on the next page.
+        ...(isPopular && { likes_count: Number(next.likes_count ?? 0) }),
       };
     }
   }

@@ -2,6 +2,69 @@
 
 Last updated: 2026-04-30
 
+## 2026-04-30 — 오늘의 살롱 v1.7 (Sort Distinction + Incremental Load)
+
+**(1) `latest` vs `popular` 정렬이 화면에서 동일해 보이던 진짜 원인 수리** + **(2) 첫 paint 가 무거워진 패치를 incremental load 로 복원**.
+
+### 사용자 합의
+
+- "예전처럼 처음부터 다 끌어다오지 말고 (페이지 로딩 속도 퍼포먼스 고려) 스크롤이 내려감에 따라 리프레시 하면서 추가적으로 불러오는 알고리즘으로 다시 돌아가자"
+- "지금 보면 새 작품(업로드순)과 반응 좋은 작품 (인기순) 간에 차이가 없는거 같아"
+
+### 진단 — sort 가 *조용히* 동일해진 이유
+
+`listPublicArtworks` 의 RPC 정렬 분기는 정상이었음:
+- `popular`: `likes_count desc → created_at desc → id desc`
+- `latest`: `created_at desc → id desc`
+
+진짜 문제는 `FeedContent` 가 RPC 결과를 *받자마자* 두 군데에서 `created_at` 으로 **다시 정렬** 하던 것:
+
+1. 초기 fetch (all/following) 의 `entries.sort((a, b) => b.created_at - a.created_at)`
+2. `loadMore` 의 `deduplicateAndSort` 도 같은 로직
+
+→ popular 로 정렬돼서 온 row 가 화면에 그려지기 직전 created_at 으로 덮어써져 `latest` 와 *시각적으로 동일* 한 결과. 빌더 (`buildLivingSalonItems`) 는 entries 의 *type 별 상대 순서* 만 사용하므로, 이 재정렬은 정렬 차이를 죽이는 것 외에는 가치가 없었음.
+
+### Supabase SQL — 돌려야 할 것 없음
+
+RPC 코드 + UI 컴포넌트만.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/components/FeedContent.tsx](../src/components/FeedContent.tsx) —
+  - 두 곳의 `entries.sort(...)` 제거 (initial fetch all + following). RPC 가 결정한 순서를 *그대로* 보존
+  - `deduplicateAndSort` → `dedupePreservingOrder` 로 rename + 재정렬 로직 삭제. 초기 fetch · loadMore 모두 sort 미수행
+  - `FEED_PAGE_SIZE` `60 → 24`. 4 cols × ~6 rows 의 첫 paint. cursor-leak fix (v1.6) 덕에 작은 페이지 사이즈에서도 무한 스크롤이 안정적으로 작동하므로 첫 TTFB 비용을 낮추는 게 옳음
+  - `FEED_LAYOUT_VERSION` `living_salon_v1.5_unified_carousel → living_salon_v1.7_incremental` (incremental load 정책 + sort 수리 회기 추적용 분석 키)
+
+- [src/lib/supabase/artworks.ts](../src/lib/supabase/artworks.ts) — `listPublicArtworks` 의 popular 분기 cursor 처리 sanity 보강:
+  - cursor 사용 시 `likes_count` null 이어도 `0` fallback. 이전엔 `cursor.likes_count != null` 체크가 false 면 cursor 자체를 무시 → 같은 페이지 반복 가능
+  - cursor 발행 시도 `likes_count ?? 0` 로 항상 채움. legacy / NULL 컬럼 row 가 끼어도 cursor 가 명확
+
+### 변경 없음 (의도)
+
+- `popular` 정렬의 RPC 순서 정의 (`likes_count desc → created_at desc → id desc`)
+- `likes_count` 컬럼은 `not null default 0` + `sync_artwork_likes_count` 트리거로 정합 (마이그레이션 `p0_artworks_likes_count.sql`)
+- 빌더 결정론, anchor·cluster·exhibition 게이트
+- v1.6 의 cursor 누수 수리, floor-tint 섹션 분리, 사이즈 pill 출력단 가드
+
+### 디자인 결정
+
+- **sort 의 RPC-only authority**: 정렬은 한 곳에서만 결정. 클라이언트가 한 번 더 다른 기준으로 sort 하면 의도 침해. 빌더가 type 간 mixing 만 책임지고, type 내 순서는 RPC 의 명시적 의도를 그대로 따름
+- **page size 24 의 근거**: 4 cols × 6 rows = 24. spotlight 1 + 표준 5 + 컨텍스트 1~2 가 첫 viewport 에 dense 하게 채워짐. 60 으로 부풀리지 않아도 *체감* 충분. 무한 스크롤이 *진짜 작동* 하니 뒤는 자연스럽게 따라옴
+- **likes_count 0 fallback**: 데이터 정합 측면에서 트리거가 있어 보통 NULL 이 아니지만, legacy 또는 트리거 도입 전 row 의 방어. cursor 가 누수되어 같은 페이지 반복되는 silent failure 보다 0 으로 fallback 해서 명확한 끝점 결정이 항상 옳음
+- **데이터 의존성 노트**: 만약 likes_count 가 모두 0 인 신생 플랫폼 단계라면 popular 의 sub-order 가 created_at desc → latest 와 사실상 동일한 순서가 자연 발생. 코드는 정상이고, 데이터가 충분히 분포되면 자동으로 시각 차이 발현
+
+### 검증
+
+- `npm run test:feed-living-salon` — pass
+- `npx tsc --noEmit` — 0 errors
+- `npm run build` — pass
+- `?debug=feed` 패널: `art cursor: present` 가 스크롤 진행에 따라 갱신되어야 정상
+
+---
+
 ## 2026-04-30 — 오늘의 살롱 v1.6 (Infinite-Scroll Cursor Fix + Section Floor-tint)
 
 **(1) 무한 스크롤 cursor 누수 수리** + **(2) 작품 그리드와 사람·전시 섹션의 시각적 분리 강화**.

@@ -45,27 +45,35 @@ const STRONG_SCORE_THRESHOLD = 2;
  */
 const DISCOVERY_BLOCKS_MAX = 24;
 /**
- * Page size for the artwork feed and its `loadMore`. 60 (was 30) keeps
- * the first paint dense and means cursor pagination kicks in only when
- * the dataset is genuinely large — preventing the "stale empty feed"
- * bug where the initial fetch already drained the pool and `nextCursor`
- * came back null.
+ * Page size for the artwork feed and its `loadMore`.
+ *
+ * 24 = 4 cols x ~6 rows of the salon grid — enough for the first paint
+ * to feel dense (anchor + 5 standard tiles + a couple of context
+ * modules above the fold) without paying the full TTFB cost of a 60-row
+ * fetch up-front. The cursor-leak fix (`listPublicArtworks` raw vs
+ * visible split, v1.6) lets pagination kick in reliably even at this
+ * smaller page size, so subsequent rows arrive as the user scrolls.
  */
-const FEED_PAGE_SIZE = 60;
-const FEED_LAYOUT_VERSION = "living_salon_v1.5_unified_carousel";
+const FEED_PAGE_SIZE = 24;
+const FEED_LAYOUT_VERSION = "living_salon_v1.7_incremental";
 
-function deduplicateAndSort(entries: FeedEntry[]): FeedEntry[] {
+/**
+ * Dedupe by id while *preserving* the order in which entries arrived. The
+ * RPC layer (`listPublicArtworks`) already orders rows by the active sort
+ * — `latest` → created_at desc, `popular` → likes_count desc → created_at
+ * desc. If we re-sort here by created_at we silently destroy the popular
+ * ordering and the two sort modes look identical on screen. The Living
+ * Salon builder only relies on per-type relative order (artworks vs
+ * exhibitions are collected separately), so preserving the concat order
+ * is enough.
+ */
+function dedupePreservingOrder(entries: FeedEntry[]): FeedEntry[] {
   const seen = new Set<string>();
-  const unique = entries.filter((e) => {
+  return entries.filter((e) => {
     const id = e.type === "artwork" ? `a:${e.artwork.id}` : `e:${e.exhibition.id}`;
     if (seen.has(id)) return false;
     seen.add(id);
     return true;
-  });
-  return unique.sort((a, b) => {
-    const ta = new Date(a.created_at ?? 0).getTime();
-    const tb = new Date(b.created_at ?? 0).getTime();
-    return tb - ta;
   });
 }
 
@@ -232,14 +240,14 @@ export function FeedContent({
         setFollowingExhCursor(exhibitionsRes.nextCursor ?? null);
 
         const exhibitions = exhibitionsRes.data ?? [];
+        // No re-sort: the RPC already orders by the active sort. The
+        // Living Salon builder collects artworks and exhibitions
+        // separately, so per-type order from the RPC is what reaches
+        // the screen.
         const entries: FeedEntry[] = [
           ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
           ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
-        ].sort((a, b) => {
-          const ta = new Date(a.created_at ?? 0).getTime();
-          const tb = new Date(b.created_at ?? 0).getTime();
-          return tb - ta;
-        });
+        ];
         setFeedEntries(entries);
         const allIds = list.map((a) => a.id);
         const liked = await getLikedArtworkIds(allIds);
@@ -299,14 +307,13 @@ export function FeedContent({
       setExhibitionsNextCursor(exhibitionsRes.nextCursor ?? null);
 
       const exhibitions = exhibitionsRes.data ?? [];
+      // Same as above — preserve RPC sort. With `popular`, this keeps
+      // likes_count desc visible; with `latest`, RPC already gives
+      // created_at desc.
       const entries: FeedEntry[] = [
         ...list.map((a) => ({ type: "artwork" as const, created_at: a.created_at ?? null, artwork: a })),
         ...exhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
-      ].sort((a, b) => {
-        const ta = new Date(a.created_at ?? 0).getTime();
-        const tb = new Date(b.created_at ?? 0).getTime();
-        return tb - ta;
-      });
+      ];
       setFeedEntries(entries);
 
       const allIds = list.map((a) => a.id);
@@ -403,7 +410,7 @@ export function FeedContent({
           })),
         ];
         if (newEntries.length > 0) {
-          setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
+          setFeedEntries((prev) => dedupePreservingOrder([...prev, ...newEntries]));
         }
         const ms = Math.round(performance.now() - t0);
         void logBetaEvent("feed_load_more", {
@@ -471,7 +478,7 @@ export function FeedContent({
         ...newExhibitions.map((e) => ({ type: "exhibition" as const, created_at: e.created_at ?? null, exhibition: e })),
       ];
       if (newEntries.length > 0) {
-        setFeedEntries((prev) => deduplicateAndSort([...prev, ...newEntries]));
+        setFeedEntries((prev) => dedupePreservingOrder([...prev, ...newEntries]));
       }
       const ms = Math.round(performance.now() - t0);
       void logBetaEvent("feed_load_more", {
