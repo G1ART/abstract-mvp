@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
@@ -12,26 +12,24 @@ import {
   type PeopleLane,
   type PeopleRec,
 } from "@/lib/supabase/recommendations";
-import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { dismissPerson, undismissPerson } from "@/lib/supabase/peopleRecs";
 import { AuthGate } from "@/components/AuthGate";
-import { FollowButton } from "@/components/FollowButton";
-import {
-  formatIdentityPair,
-  formatRoleChips,
-  hasPublicLinkableUsername,
-} from "@/lib/identity/format";
+import { hasPublicLinkableUsername } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { SectionFrame } from "@/components/ds/SectionFrame";
-import { Chip } from "@/components/ds/Chip";
-import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
 import { getMyProfile } from "@/lib/supabase/me";
 import { getProfileSurface } from "@/lib/profile/surface";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { PeopleResultCard } from "./PeopleResultCard";
 
 const DEBOUNCE_MS = 250;
 const INITIAL_LIMIT = 15;
 const LOAD_MORE_LIMIT = 10;
+// Background-refresh TTL (C6). When the user returns to the tab via
+// focus / visibility-change and the data is older than this threshold,
+// silently re-fetch. 90s mirrors the feed's refresh policy.
+const PEOPLE_REFRESH_TTL_MS = 90_000;
 
 type LaneKey = "follow" | "likes" | "expand";
 const LANE_TO_CONTRACT: Record<LaneKey, PeopleLane> = {
@@ -60,8 +58,7 @@ function formatReasonLine(profile: PeopleRec, t: (key: string) => string): strin
  * Reads the lane-uniform score envelope (G2): every RPC row carries
  * `signal_count` + `top_signal`, so the client doesn't have to know
  * the lane to pick the badge. We still gate at >= 2 so the badge
- * only appears when the signal is genuinely meaningful (a single
- * mutual / liked-by-1 row would be noise).
+ * only appears when the signal is genuinely meaningful.
  */
 function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string | null {
   const count = profile.signal_count ?? 0;
@@ -73,11 +70,19 @@ function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string |
   if (top === "likes_based") {
     return t("people.signal.likesMatched").replace("{count}", String(count));
   }
-  // expand lane signals (shared_themes / shared_medium / same_city)
-  // are already verbalised by `reasonTagToI18n` — we don't double up
-  // with a numeric badge for those.
   return null;
 }
+
+// Page-local toast — small, slides in from the bottom-right. Auto
+// dismisses after `durationMs`. Optional Undo button that calls
+// the toast's `onUndo` and immediately closes the toast.
+type ToastSpec = {
+  id: number;
+  message: string;
+  undoLabel?: string;
+  onUndo?: () => void;
+  durationMs?: number;
+};
 
 export function PeopleClient() {
   const router = useRouter();
@@ -110,13 +115,10 @@ export function PeopleClient() {
   const [searchSuggestion, setSearchSuggestion] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  // C5 — surfaced load-more error state, kept separate from initial-fetch
+  // error so the existing list stays visible while we offer a retry.
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
-  // Per-profile counter that opens the Connection Messages intro sheet.
-  // In the "follow-first" flow we now intercept the Follow click *before*
-  // committing any DB write — the sheet becomes the review surface and
-  // commits the follow itself (via handleSend or handleFollowOnly inside
-  // IntroMessageAssist). Each IntroMessageAssist watches its own counter
-  // via `openSignal` and opens its sheet when the counter changes.
   const [introOpenSignal, setIntroOpenSignal] = useState<Record<string, number>>({});
   const [userId, setUserId] = useState<string | null>(null);
   const [myProfile, setMyProfile] = useState<{
@@ -127,6 +129,10 @@ export function PeopleClient() {
     city: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastSpec[]>([]);
+  const lastFetchAtRef = useRef<number>(0);
+  const cardsContainerRef = useRef<HTMLDivElement>(null);
+  const toastIdRef = useRef(0);
 
   const updateUrl = useCallback(
     (opts: { q?: string; roles?: Set<string>; lane?: LaneKey }) => {
@@ -182,11 +188,16 @@ export function PeopleClient() {
     }
   }, [debouncedSearch]);
 
-  const rolesArr = selectedRoles.size > 0 ? Array.from(selectedRoles) : [];
+  const rolesArr = useMemo(
+    () => (selectedRoles.size > 0 ? Array.from(selectedRoles) : []),
+    [selectedRoles]
+  );
+  const rolesKey = rolesArr.join(",");
 
   const fetchInitial = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setLoadMoreError(false);
     setProfiles([]);
     setNextCursor(null);
 
@@ -215,6 +226,7 @@ export function PeopleClient() {
       setProfiles(res.data);
       setNextCursor(res.nextCursor);
       setSearchSuggestion(isSearchMode ? res.suggestion : null);
+      lastFetchAtRef.current = Date.now();
     } catch (err) {
       if (process.env.NODE_ENV === "development") {
         console.warn("[People] fetch error:", err);
@@ -223,15 +235,34 @@ export function PeopleClient() {
     } finally {
       setLoading(false);
     }
-  }, [isSearchMode, lane, debouncedSearch, rolesArr.join(","), t]);
+  }, [isSearchMode, lane, debouncedSearch, rolesKey, t]);
 
   useEffect(() => {
     fetchInitial();
   }, [fetchInitial]);
 
+  // C6 — refresh on visibility / focus when stale.
+  useEffect(() => {
+    function maybeRefresh() {
+      if (loading) return;
+      if (Date.now() - lastFetchAtRef.current < PEOPLE_REFRESH_TTL_MS) return;
+      fetchInitial();
+    }
+    function onVisibility() {
+      if (document.visibilityState === "visible") maybeRefresh();
+    }
+    window.addEventListener("focus", maybeRefresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("focus", maybeRefresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [fetchInitial, loading]);
+
   const loadMore = useCallback(async () => {
     if (!nextCursor || loadingMore) return;
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
       const contractLane: PeopleLane = isSearchMode
         ? "search"
@@ -244,13 +275,18 @@ export function PeopleClient() {
         cursor: nextCursor,
         searchVariant: isSearchMode ? "merged" : undefined,
       });
-      if (res.error) return;
+      if (res.error) {
+        setLoadMoreError(true);
+        return;
+      }
       setProfiles((prev) => [...prev, ...res.data]);
       setNextCursor(res.nextCursor);
+    } catch {
+      setLoadMoreError(true);
     } finally {
       setLoadingMore(false);
     }
-  }, [isSearchMode, lane, debouncedSearch, rolesArr.join(","), nextCursor, loadingMore]);
+  }, [isSearchMode, lane, debouncedSearch, rolesKey, nextCursor, loadingMore]);
 
   function setLaneAndUpdate(l: LaneKey) {
     setLane(l);
@@ -272,9 +308,126 @@ export function PeopleClient() {
     updateUrl({ roles: new Set() });
   }
 
-  function handleCardClick(username: string) {
-    router.push(`/u/${username}`);
-  }
+  // ── Toast helpers ─────────────────────────────────────────────────────
+  const pushToast = useCallback((spec: Omit<ToastSpec, "id">) => {
+    toastIdRef.current += 1;
+    const id = toastIdRef.current;
+    const dur = spec.durationMs ?? 5000;
+    setToasts((prev) => [...prev, { ...spec, id }]);
+    window.setTimeout(() => {
+      setToasts((prev) => prev.filter((tt) => tt.id !== id));
+    }, dur);
+  }, []);
+
+  const dismissToast = useCallback((id: number) => {
+    setToasts((prev) => prev.filter((tt) => tt.id !== id));
+  }, []);
+
+  // ── Dismiss flow (S3) ────────────────────────────────────────────────
+  const handleDismiss = useCallback(
+    async (target: PeopleRec, mode: "snooze" | "block") => {
+      // Optimistic remove; fire the RPC; on failure restore + toast
+      // the error. On success show a confirmation toast with Undo.
+      const prevList = profiles;
+      setProfiles((prev) => prev.filter((p) => p.id !== target.id));
+      const res = await dismissPerson(target.id, mode);
+      if (!res.ok) {
+        setProfiles(prevList);
+        pushToast({ message: t("people.loadFailed") });
+        return;
+      }
+      pushToast({
+        message: t("people.dismiss.confirmed"),
+        undoLabel: t("people.dismiss.undo"),
+        onUndo: async () => {
+          await undismissPerson(target.id);
+          setProfiles((prev) => {
+            // Restore at original position when possible.
+            const idx = prevList.findIndex((p) => p.id === target.id);
+            if (idx === -1) return [target, ...prev];
+            const next = prev.slice();
+            next.splice(idx, 0, target);
+            return next;
+          });
+        },
+      });
+    },
+    [profiles, pushToast, t]
+  );
+
+  // ── Follow undo (S5) ─────────────────────────────────────────────────
+  // The actual follow write is committed by FollowButton (or
+  // IntroMessageAssist's handleFollowOnly / handleSend). Here we
+  // surface the resulting status and offer a one-tap undo via
+  // `cancel_follow_request` (works for both pending and accepted —
+  // it functions as an unfollow when the row is accepted).
+  const handleFollowed = useCallback(
+    async (target: PeopleRec, status: "accepted" | "pending") => {
+      // Update local follow tracking.
+      setFollowingIds((prev) => {
+        if (prev.has(target.id)) return prev;
+        const next = new Set(prev);
+        next.add(target.id);
+        return next;
+      });
+      const message =
+        status === "pending"
+          ? t("people.follow.requested")
+          : t("people.follow.added");
+      pushToast({
+        message,
+        undoLabel: t("people.follow.undo"),
+        onUndo: async () => {
+          // Best-effort unfollow / cancel. We don't surface a
+          // failure toast — undo is opportunistic.
+          try {
+            const { supabase } = await import("@/lib/supabase/client");
+            await supabase.rpc("cancel_follow_request", { p_target: target.id });
+          } catch {
+            // swallow — undo is best-effort
+          }
+          setFollowingIds((prev) => {
+            if (!prev.has(target.id)) return prev;
+            const next = new Set(prev);
+            next.delete(target.id);
+            return next;
+          });
+        },
+      });
+    },
+    [pushToast, t]
+  );
+
+  // ── Keyboard navigation (S8) ─────────────────────────────────────────
+  // j / k step focus through cards; the inner Link handles Enter →
+  // navigate. Skip when the user is typing in the search field or in
+  // any other input/textarea.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement | null)?.tagName ?? "";
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key !== "j" && e.key !== "k") return;
+      const container = cardsContainerRef.current;
+      if (!container) return;
+      const cards = Array.from(
+        container.querySelectorAll<HTMLAnchorElement>(
+          "[data-people-card] > a"
+        )
+      );
+      if (cards.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      const idx = active ? cards.indexOf(active as HTMLAnchorElement) : -1;
+      const nextIdx =
+        e.key === "j"
+          ? Math.min(cards.length - 1, idx + 1)
+          : Math.max(0, idx === -1 ? 0 : idx - 1);
+      e.preventDefault();
+      cards[nextIdx]?.focus();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const emptyRecommendations =
     !loading && !isSearchMode && profiles.length === 0;
@@ -283,10 +436,6 @@ export function PeopleClient() {
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.people} />
-      {/* Salon-tone shell — matches FeedClient header vocabulary
-          (kicker + accent bar + tracking-[0.22em]) so the People tab
-          and the Living Salon feed read as two chapters of the same
-          editorial. */}
       <main className="mx-auto max-w-3xl px-6 py-10 lg:py-14">
         <header className="mb-8">
           <div className="flex items-center justify-between gap-3">
@@ -451,246 +600,123 @@ export function PeopleClient() {
           </div>
         ) : (
           <>
-            <div className="space-y-3">
+            <div ref={cardsContainerRef} className="space-y-3">
               {profiles.map((profile, profileIdx) => {
                 const username = profile.username ?? "";
                 if (!username) return null;
-                // Suppress placeholder (user_xxxxxxxx) identities from
-                // public people lanes. The RPC now applies the same
-                // gate (P0 migration), but we keep the client-side
-                // fence as a defence in depth so a stale RPC build
-                // never leaks ghost rows.
+                // Defence in depth — RPC also gates this in P0.
                 if (!hasPublicLinkableUsername(profile)) return null;
                 const isFirstVisibleCard = profileIdx === 0;
                 const isSelf = userId === profile.id;
                 const initialFollowing = followingIds.has(profile.id);
-                // Private Account v2 — search results may now include
-                // private accounts (`is_public === false`). For those, the
-                // FollowButton sends a *request* via the SQL RPC and we
-                // skip the intro-message intercept (sending a note before
-                // the principal accepts would be a wasted draft).
-                const isPrivateTarget = profile.is_public === false;
                 const reasonLine =
                   !isSearchMode && (profile.reason_tags?.length ?? 0) > 0
                     ? formatReasonLine(profile, t)
                     : null;
                 const badge = !isSearchMode ? getScoreBadge(profile, t) : null;
-                const identity = formatIdentityPair(profile, t);
-                const roleChips = formatRoleChips(profile, t, { max: 3 });
-
                 return (
-                  <article
+                  <PeopleResultCard
                     key={profile.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => handleCardClick(username)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleCardClick(username);
-                      }
+                    profile={profile}
+                    initialFollowing={initialFollowing}
+                    isSelf={isSelf}
+                    isFirstVisibleCard={isFirstVisibleCard}
+                    reasonLine={reasonLine}
+                    badge={badge}
+                    onDismiss={
+                      !isSelf && !isSearchMode
+                        ? (mode) => handleDismiss(profile, mode)
+                        : undefined
+                    }
+                    onFollowed={
+                      !isSelf
+                        ? (status) => handleFollowed(profile, status)
+                        : undefined
+                    }
+                    me={myProfile}
+                    userId={userId}
+                    introOpenSignal={introOpenSignal[profile.id]}
+                    setIntroOpenSignal={() => {
+                      setIntroOpenSignal((prev) => ({
+                        ...prev,
+                        [profile.id]: (prev[profile.id] ?? 0) + 1,
+                      }));
                     }}
-                    className="flex cursor-pointer items-start gap-4 rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50/60 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                  >
-                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-full bg-zinc-100">
-                      {profile.avatar_url ? (
-                        <img
-                          src={
-                            profile.avatar_url.startsWith("http")
-                              ? profile.avatar_url
-                              : getArtworkImageUrl(profile.avatar_url, "avatar")
-                          }
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center text-lg font-medium text-zinc-500">
-                          {identity.primary.charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[15px] font-semibold tracking-tight text-zinc-900">
-                        <span className="truncate">{identity.primary}</span>
-                        {identity.secondary && (
-                          <span className="text-sm font-normal text-zinc-500">
-                            {identity.secondary}
-                          </span>
-                        )}
-                        {isPrivateTarget ? (
-                          <span
-                            className="inline-flex items-center gap-1 rounded-full border border-zinc-300 bg-zinc-50 px-2 py-0.5 text-[10px] font-medium text-zinc-600"
-                            title={t("profile.private.lockBadge")}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              className="h-3 w-3"
-                              aria-hidden="true"
-                            >
-                              <rect x="5" y="11" width="14" height="9" rx="2" />
-                              <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                            </svg>
-                            {t("profile.private.lockBadge")}
-                          </span>
-                        ) : null}
-                      </p>
-                      {profile.bio && (
-                        <p className="mt-1 line-clamp-2 whitespace-pre-line text-sm text-zinc-600">
-                          {profile.bio}
-                        </p>
-                      )}
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {roleChips.map((chip) => (
-                          <Chip key={chip.key} tone={chip.isPrimary ? "accent" : "neutral"}>
-                            {chip.label}
-                          </Chip>
-                        ))}
-                      </div>
-                      {reasonLine && (
-                        <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                          <MutualAvatarStack
-                            sources={profile.mutual_avatars ?? []}
-                          />
-                          <span>{reasonLine}</span>
-                          {badge && <Chip tone="muted">{badge}</Chip>}
-                        </p>
-                      )}
-                    </div>
-                    {!isSelf && (
-                      <div
-                        data-tour={isFirstVisibleCard ? "people-card-actions" : undefined}
-                        className="flex shrink-0 flex-col items-end gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                        onKeyDown={(e) => e.stopPropagation()}
-                      >
-                        <FollowButton
-                          targetProfileId={profile.id}
-                          initialFollowing={initialFollowing}
-                          isPrivateTarget={isPrivateTarget}
-                          size="sm"
-                          interceptFollow={
-                            isPrivateTarget
-                              ? undefined
-                              : () => {
-                                  // Don't commit the follow here — open
-                                  // the intro sheet as a review surface.
-                                  // The sheet commits via handleSend
-                                  // (send + follow) or handleFollowOnly
-                                  // (follow only). For private targets we
-                                  // skip the sheet because the principal
-                                  // hasn't accepted the request yet.
-                                  setIntroOpenSignal((prev) => ({
-                                    ...prev,
-                                    [profile.id]:
-                                      (prev[profile.id] ?? 0) + 1,
-                                  }));
-                                }
-                          }
-                        />
-                        {userId && !isPrivateTarget && (
-                          <IntroMessageAssist
-                            me={{
-                              display_name: myProfile?.display_name ?? null,
-                              role: myProfile?.main_role ?? null,
-                              themes: myProfile?.themes ?? [],
-                              mediums: myProfile?.mediums ?? [],
-                              city: myProfile?.city ?? null,
-                            }}
-                            recipient={{
-                              id: profile.id,
-                              display_name: profile.display_name,
-                              role: profile.main_role,
-                              sharedSignals: profile.reason_tags ?? [],
-                            }}
-                            recipientId={profile.id}
-                            isFollowing={initialFollowing}
-                            openSignal={introOpenSignal[profile.id]}
-                            onFollowed={() => {
-                              setFollowingIds((prev) => {
-                                if (prev.has(profile.id)) return prev;
-                                const next = new Set(prev);
-                                next.add(profile.id);
-                                return next;
-                              });
-                            }}
-                          />
-                        )}
-                      </div>
-                    )}
-                  </article>
+                  />
                 );
               })}
             </div>
             {nextCursor && (
               <div className="mt-8 flex justify-center">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="rounded-full border border-zinc-300 bg-white px-6 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                >
-                  {loadingMore ? t("common.loading") : t("people.loadMore")}
-                </button>
+                {loadMoreError ? (
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    className="rounded-full border border-red-200 bg-white px-6 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+                  >
+                    {t("people.loadMoreFailed")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className="rounded-full border border-zinc-300 bg-white px-6 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                  >
+                    {loadingMore ? t("common.loading") : t("people.loadMore")}
+                  </button>
+                )}
               </div>
             )}
           </>
         )}
+
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </main>
     </AuthGate>
   );
 }
 
-/**
- * "X, Y +N follow this person" avatar stack — surfaces the actual
- * middle-graph profiles behind a follow_graph recommendation. Three
- * overlapping avatars + an optional "+N" pip when the candidate has
- * more mutual sources than we display. This is the social-proof
- * detail that LinkedIn / Twitter use to make a single number ("3 in
- * your network") feel concrete and trustable.
- */
-function MutualAvatarStack({
-  sources,
+// ─── Toast UI ──────────────────────────────────────────────────────────
+// Tiny page-local stack — fixed bottom-center on mobile, bottom-right on
+// larger screens. We deliberately avoid pulling in a global toast
+// system because People is the only surface using these affordances
+// today; the contract is intentionally local.
+function ToastStack({
+  toasts,
+  onDismiss,
 }: {
-  sources: Array<{
-    id: string;
-    avatar_url: string | null;
-    display_name: string | null;
-    username: string | null;
-  }>;
+  toasts: ToastSpec[];
+  onDismiss: (id: number) => void;
 }) {
-  if (!sources || sources.length === 0) return null;
-  const visible = sources.slice(0, 3);
+  if (toasts.length === 0) return null;
   return (
-    <span
-      aria-hidden="true"
-      className="inline-flex -space-x-1.5"
+    <div
+      role="region"
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 bottom-6 z-30 flex flex-col items-center gap-2 px-4 sm:bottom-8 sm:right-8 sm:left-auto sm:items-end"
     >
-      {visible.map((s) => {
-        const url = !s.avatar_url
-          ? null
-          : s.avatar_url.startsWith("http")
-            ? s.avatar_url
-            : getArtworkImageUrl(s.avatar_url, "avatar");
-        const initial =
-          (s.display_name ?? s.username ?? "·").charAt(0).toUpperCase();
-        return (
-          <span
-            key={s.id}
-            className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white bg-zinc-100 text-[9px] font-medium text-zinc-500"
-          >
-            {url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={url} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span>{initial}</span>
-            )}
-          </span>
-        );
-      })}
-    </span>
+      {toasts.map((tt) => (
+        <div
+          key={tt.id}
+          className="pointer-events-auto flex max-w-sm items-center gap-3 rounded-full border border-zinc-200 bg-white px-4 py-2.5 shadow-lg"
+        >
+          <span className="text-sm text-zinc-800">{tt.message}</span>
+          {tt.undoLabel && tt.onUndo && (
+            <button
+              type="button"
+              onClick={() => {
+                tt.onUndo?.();
+                onDismiss(tt.id);
+              }}
+              className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline"
+            >
+              {tt.undoLabel}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
   );
 }
 

@@ -48,6 +48,9 @@ export type PeopleRec = {
   top_signal?: string;
   // ── Mutual avatar stack (G3) ───────────────────────────────────────────
   mutual_avatars?: PeopleRecMutualAvatar[];
+  // ── Activity dot (S2) ─────────────────────────────────────────────────
+  /** True when the candidate has been active within the last 14 days. */
+  is_recently_active?: boolean;
 };
 
 export type GetPeopleRecsOptions = {
@@ -260,4 +263,34 @@ export async function searchPeopleWithArtwork(
   const nextCursor = primaryNameRes?.nextCursor ?? null;
 
   return { data: merged, nextCursor, suggestion, error: null };
+}
+
+// ── People dismissal (S3) ─────────────────────────────────────────────
+// Wraps `people_dismiss` / `people_undismiss` SECURITY DEFINER RPCs.
+// `mode = 'snooze'` hides the target for 30 days; `'block'` hides
+// permanently. The RPC is idempotent — repeated calls just refresh
+// the timestamp / mode.
+
+export type PeopleDismissMode = "snooze" | "block";
+
+export async function dismissPerson(
+  targetId: string,
+  mode: PeopleDismissMode = "snooze"
+): Promise<{ ok: boolean; error: unknown }> {
+  if (!targetId) return { ok: false, error: new Error("missing target") };
+  const { error } = await supabase.rpc("people_dismiss", {
+    p_target: targetId,
+    p_mode: mode,
+  });
+  return { ok: !error, error: error ?? null };
+}
+
+export async function undismissPerson(
+  targetId: string
+): Promise<{ ok: boolean; error: unknown }> {
+  if (!targetId) return { ok: false, error: new Error("missing target") };
+  const { error } = await supabase.rpc("people_undismiss", {
+    p_target: targetId,
+  });
+  return { ok: !error, error: error ?? null };
 }

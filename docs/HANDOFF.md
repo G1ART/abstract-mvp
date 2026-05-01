@@ -2,6 +2,79 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — 사람 탭 v1.2 (P2: Subtle Quality Layer — a11y, dismiss, undo, recently-active)
+
+추천 풀과 시그널이 안정된 위에 *사려깊은 작은 디테일* 들. a11y 정리, 활동 dot, dismiss/snooze, follow undo, 키보드 네비, 백그라운드 refresh, loadMore retry. "와 빈틈없다" 인상에 가까워지는 단계.
+
+### 사용자 합의
+
+- 진단 리포트의 묶음 3 전 항목: C2 a11y / C5 loadMore retry / C6 focus refresh / S2 last_active_at / S3 dismiss / S5 follow undo / S8 키보드 / S9 skeleton (이미 v1.0 에 부분 적용)
+
+### Supabase SQL — **돌려야 함**
+
+> Supabase SQL Editor 에서 실행 필요한 마이그레이션 — `supabase/migrations/20260601200000_people_recs_quality_p2.sql`
+>
+> 선행 조건: P0 + P1 마이그레이션 (helper 와 RPC 의존).
+
+- **S2 — `profiles.last_active_at` 컬럼**: 신규 timestamptz 컬럼 + `idx_profiles_last_active_at` 인덱스. 백필: 기존 row 의 `last_active_at = created_at` 으로 conservative 초기화. trigger 3개 — `artworks_bump_artist_active` (작품 업로드/공개), `follows_bump_active` (양방향, accepted only for principal), `artwork_likes_bump_active` (좋아요한 사용자) — 모두 `bump_profile_last_active(uuid)` 헬퍼 함수 호출. RPC 가 14일 이내 활동 여부를 `is_recently_active` boolean 으로 발행 (timestamp 누설 없음)
+- **S3 — `people_dismissals` 테이블 + RPC**: `(user_id, target_id, mode, dismissed_at, expires_at)` 기본키. RLS: 본인 row 만 SELECT, mutation 은 SECURITY DEFINER RPC 만. RPC: `people_dismiss(target, mode='snooze'|'block')` (snooze=30일, block=영구) + `people_undismiss(target)`. `get_people_recs` 의 모든 lane 이 dismissed candidate 를 expires_at 체크와 함께 제외
+- get_people_recs 가 *세 번째* 재정의됨 — payload 의 모든 row 가 `is_recently_active` 추가, candidate 필터에 dismissals not-in 추가. 기존 envelope (signal_count / top_signal / mutual_avatars / reason_*) 모두 보존
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [supabase/migrations/20260601200000_people_recs_quality_p2.sql](../supabase/migrations/20260601200000_people_recs_quality_p2.sql) — 신규
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx) — 카드 렌더링은 새 `PeopleResultCard` 로 위임. 추가 책임:
+  - **C5 loadMore retry**: `loadMoreError` state 분리. 실패 시 빨간 retry 버튼 노출, 기존 카드 리스트는 유지. 네트워크 단절·잠시 RPC 에러 후에도 사용자가 보던 정보는 그대로 유지
+  - **C6 focus / visibilitychange refresh**: `lastFetchAtRef` + `PEOPLE_REFRESH_TTL_MS = 90s`. 다른 탭 갔다 돌아오면 stale 데이터를 silent 재페치. 피드의 동일한 정책과 통일
+  - **S3 dismiss flow**: `handleDismiss(profile, mode)` — 옵티미스틱 제거 + RPC 발화 + 실패 시 복원 + 성공 시 undo 토스트 (5초). undo 는 원래 위치에 다시 삽입
+  - **S5 follow undo flow**: `handleFollowed(profile, status)` — FollowButton/IntroMessageAssist 의 onFollowed 콜백을 받아 토스트 노출 + 본인의 followingIds set 갱신. undo 는 `cancel_follow_request` RPC 로 (accepted/pending 둘 다 처리)
+  - **S8 키보드 네비**: 글로벌 keydown listener — `j`/`k` 카드 focus 이동 (input/textarea 안일 때 무시, modifier 키 무시). Enter 는 카드 내 Link 가 자체 처리
+  - **ToastStack** 인라인 컴포넌트: 페이지-로컬, fixed bottom-right, max-w-sm, rounded-full + shadow-lg. 글로벌 토스트 시스템을 가져오지 않은 이유는 People 만이 이 어휘를 쓰기 때문
+- [src/app/people/PeopleResultCard.tsx](../src/app/people/PeopleResultCard.tsx) — **신규 분리 카드 컴포넌트**:
+  - **C2 a11y 수리**: `<article role="button">` 안에 `<button>` 중첩이던 구조 해소. 카드는 평범한 `<article>`. avatar+이름+bio+role+reason 영역은 한 개의 `<Link>`. action column (Follow / kebab) 은 Link **밖** — 더 이상 button-in-button 이 아니고 스크린 리더에서도 명료. focus-within ring 으로 카드 단위 시각 hover 유지
+  - **S2 활동 dot**: avatar 우하단 `bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500` — `is_recently_active === true` 일 때만 노출. aria-label "최근 활동 중"
+  - **S3 DismissMenu**: action column 안 작은 kebab (3-dot) 버튼. 클릭 시 우측 정렬 popover (snooze/block 두 옵션). outside-click + Escape 닫기. snooze 가 first item — 가장 부드러운 선택을 default 로
+  - MutualAvatarStack 도 PeopleClient → 카드 컴포넌트로 이전 (자기 책임 영역에 함께)
+- [src/lib/supabase/peopleRecs.ts](../src/lib/supabase/peopleRecs.ts):
+  - `PeopleRec.is_recently_active` 필드 추가
+  - `dismissPerson(targetId, mode='snooze')` / `undismissPerson(targetId)` 클라 wrapper
+  - `PeopleDismissMode` 타입 export
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — 새 키:
+  - `people.signal.recentlyActive` — dot 의 aria-label
+  - `people.dismiss.menuLabel` / `people.dismiss.snooze` / `people.dismiss.block` / `people.dismiss.confirmed` / `people.dismiss.undo` — kebab 메뉴 + 토스트
+  - `people.follow.added` / `people.follow.requested` / `people.follow.undo` — follow 토스트
+  - `people.loadMoreFailed` — retry 버튼 카피
+
+### 변경 없음 (의도)
+
+- 기존 카드 제스처: 여전히 *카드 전체 영역이 클릭 가능* 하게 보임. Link 가 카드 내부 80% 를 차지하고 hover/focus-within ring 이 카드 단위라서 시각적 인상은 동일. a11y 만 *내부적으로* 정돈됨
+- `interceptFollow` 의 IntroMessageAssist 패턴 보존: PrivateTarget 이 아닐 때 Follow 버튼 클릭 → 시트 오픈 → 시트가 commit → onFollowed 콜백. v1.1 의 모든 동작 그대로
+- `last_active_at` 의 trigger 들은 *이벤트 기반 bump* 만 — 별도 cron 으로 매시간 sweep 하는 식의 비용은 안 듬. 기존 INSERT 시점에 한 번 bump 하므로 추가 부하 미미
+- `people_dismissals` 가 RLS 활성. Mutation 은 SECURITY DEFINER RPC 로만 — 클라가 직접 INSERT/UPDATE 불가. 다른 사용자의 dismiss row 는 SELECT 도 안 됨
+
+### 디자인 결정
+
+- **a11y 우선 — 시각적 패턴 보존**: Pinterest/LinkedIn 식 "전체 클릭" 카드는 a11y 와 충돌. 일반적 패턴 (이미지·이름은 Link, 액션은 분리) 으로 가되 hover/focus-within ring 을 카드 단위로 유지. 사용자가 "카드 전체가 클릭" 으로 *느끼는* 부분은 유지하면서 a11y/스크린 리더 명료성을 회복
+- **dismiss 의 default = snooze**: "이 사람 다시는 보지 않게" 같은 무거운 제스처 (block) 는 두 번째 옵션. 첫 번째는 30일 snooze. 예술계 인간관계는 *시점* 에 민감 — 지금 자주 보고 싶지 않을 뿐 영원히 차단하고 싶지 않은 경우가 더 흔함. UI 가 그 *비대칭* 을 반영
+- **undo 토스트 vs 시트 review**: IntroMessageAssist 시트는 "메시지 동봉 follow" 의 *메시지 작성* 영역. follow 행위 자체의 review 는 5초 undo 토스트가 자연스러움. Gmail/Twitter 식 패턴. 시트가 열린 케이스에선 시트가 commit 도 책임지므로 undo 토스트가 그 직후 노출되어도 어색하지 않음 (사용자 의도 = follow + 메시지)
+- **활동 dot — boolean only**: 정확한 timestamp 를 노출하면 *얼마나 자주 들어오는지* 가 사회적 부담이 됨 ("이 사람 5일째 안 들어왔네" 같은 인상). 14일 이내 활동 여부만 boolean 으로 발행 — Slack 의 active dot 어휘. 임계값(14일) 은 RPC 의 `v_active_threshold` 한 줄에서 튜닝
+- **글로벌 토스트 시스템 vs 로컬**: 다른 surface 가 토스트를 안 쓰는 현 상태에서 *제일 가벼운 선택* 은 페이지-로컬 ToastStack. 추후 다른 surface 가 동일 어휘를 원하면 lift-and-shift 가능. 지금부터 큰 시스템을 짓는 건 over-engineering
+
+### 검증
+
+- `npx tsc --noEmit` — pass
+- `npm run test:feed-living-salon` — pass
+- `npm run test:people-reason` — pass
+- `npm run build` — pass
+
+### 다음 단계
+
+- 묶음 4 (P3 옵션): S4 검색 미입력 시 trending / 큐레이션 + S6 invite copy 강화 + S7 role chip hover 보조 정보 + dead-code drop (`get_recommended_people`, search_people 5-arg fuzzy)
+
+---
+
 ## 2026-05-01 — 사람 탭 v1.1 (P1: Signal Richness + Search Hardening + Mutual Avatars)
 
 묶음 1 의 정합성 게이트 위에 *시그널 자체* 의 의미를 강화. expand 가 정말 "발견" 으로 동작하고, follow_graph 카드에 LinkedIn / Twitter 류의 mutual avatar stack 이 붙고, 검색이 단순 가입순이 아닌 의도된 정렬로 동작하도록.
