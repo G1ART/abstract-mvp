@@ -10,6 +10,18 @@ export { ROLE_OPTIONS };
 
 export type PeopleRecMode = "follow_graph" | "likes_based" | "expand";
 
+/**
+ * Mutual-source profile shipped with `follow_graph` recommendations.
+ * Up to 3 of the actual middle-graph people who follow the candidate,
+ * for the LinkedIn / Twitter style "X, Y +N follow this person" stack.
+ */
+export type PeopleRecMutualAvatar = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+};
+
 export type PeopleRec = {
   id: string;
   username: string | null;
@@ -25,6 +37,17 @@ export type PeopleRec = {
   liked_artists_count?: number;
   /** 0 = exact name, 1 = fuzzy name, 2 = artwork/theme match; lower is better. */
   match_rank?: number;
+  /** Tiered search rank from `search_people` — 0 = exact, 4 = fuzzy. */
+  match_tier?: number;
+  /** Similarity score from `search_people` (pg_trgm), 0..1. */
+  match_similarity?: number;
+  // ── Score envelope (G2) ────────────────────────────────────────────────
+  /** Lane-uniform headline number (mutual sources / liked count / shared count). */
+  signal_count?: number;
+  /** Lane-uniform top signal token (`follow_graph`, `likes_based`, `shared_themes`, …). */
+  top_signal?: string;
+  // ── Mutual avatar stack (G3) ───────────────────────────────────────────
+  mutual_avatars?: PeopleRecMutualAvatar[];
 };
 
 export type GetPeopleRecsOptions = {
@@ -131,7 +154,21 @@ export async function getSearchSuggestion(
   return { suggestion: suggestion && String(suggestion).trim() ? String(suggestion).trim() : null, error: null };
 }
 
-/** People search: name + artwork/theme, cross-language variants, ranked, optional "Did you mean?". */
+/** People search: name + artwork/theme, cross-language variants, ranked, optional "Did you mean?".
+ *
+ * Pagination contract (B3):
+ *   - First page (`cursor === null`): we run *all* query variants in
+ *     parallel — name search across each variant + artwork match across
+ *     each variant — and merge by `match_rank`. The returned
+ *     `nextCursor` is the primary-variant name search's cursor (i.e.
+ *     the unmodified `q`). This is enough for "load more": once the
+ *     user is past the first page the artwork-matched and language-
+ *     variant rows are already shown, and additional pages should
+ *     simply continue the primary fuzzy result list.
+ *   - Subsequent pages (`cursor !== null`): we run a single primary
+ *     fuzzy `searchPeople` call and pass the cursor through. No
+ *     artwork-side fanout (it would re-fetch already-shown rows).
+ */
 export async function searchPeopleWithArtwork(
   options: SearchPeopleOptions
 ): Promise<{
@@ -140,12 +177,36 @@ export async function searchPeopleWithArtwork(
   suggestion: string | null;
   error: unknown;
 }> {
-  const { q, roles, limit = 30 } = options;
+  const { q, roles, limit = 30, cursor = null } = options;
   const normalized = q.trim();
   if (!normalized) return { data: [], nextCursor: null, suggestion: null, error: null };
 
+  // Subsequent-page path: cursor is set → page through the primary
+  // fuzzy variant only. The first page already exposed every variant
+  // and every artwork-derived row.
+  if (cursor) {
+    const res = await searchPeople({ q: normalized, roles, limit, cursor });
+    return {
+      data: res.data,
+      nextCursor: res.nextCursor,
+      suggestion: null,
+      error: res.error,
+    };
+  }
+
   const variants = getSearchQueryVariants(normalized);
-  const namePromises = variants.map((v) => searchPeople({ q: v, roles, limit: 40, cursor: null }));
+  const namePromises = variants.map((v) =>
+    // The primary variant (the user's literal input) is the one whose
+    // cursor we'll surface for "load more". Run it with the requested
+    // limit so its cursor logic stays consistent. Other variants stay
+    // bounded to ~40 to keep merging cheap.
+    searchPeople({
+      q: v,
+      roles,
+      limit: v === normalized ? limit : 40,
+      cursor: null,
+    })
+  );
   const artworkPromises = variants.map((v) => searchArtistsByArtwork({ q: v, roles, limit: 20 }));
 
   const [nameResults, artworkResults] = await Promise.all([
@@ -174,7 +235,14 @@ export async function searchPeopleWithArtwork(
       const ra = a.match_rank ?? 99;
       const rb = b.match_rank ?? 99;
       if (ra !== rb) return ra - rb;
-      return 0;
+      // Within the same match_rank, prefer richer search-tier signal
+      // (tier 0 exact name → tier 4 fuzzy). Falls back to similarity.
+      const ta = a.match_tier ?? 99;
+      const tb = b.match_tier ?? 99;
+      if (ta !== tb) return ta - tb;
+      const sa = a.match_similarity ?? 0;
+      const sb = b.match_similarity ?? 0;
+      return sb - sa;
     })
     .slice(0, limit);
 
@@ -184,5 +252,12 @@ export async function searchPeopleWithArtwork(
     suggestion = sugRes.suggestion;
   }
 
-  return { data: merged, nextCursor: null, suggestion, error: null };
+  // Primary-variant name results: their cursor is the one we expose so
+  // the caller can keep paginating *after* the first merged page.
+  const primaryNameRes = nameResults[
+    Math.max(0, variants.indexOf(normalized))
+  ];
+  const nextCursor = primaryNameRes?.nextCursor ?? null;
+
+  return { data: merged, nextCursor, suggestion, error: null };
 }

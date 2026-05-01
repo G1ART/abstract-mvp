@@ -54,16 +54,28 @@ function formatReasonLine(profile: PeopleRec, t: (key: string) => string): strin
   });
 }
 
+/**
+ * Render the headline numerical badge for a recommendation card.
+ *
+ * Reads the lane-uniform score envelope (G2): every RPC row carries
+ * `signal_count` + `top_signal`, so the client doesn't have to know
+ * the lane to pick the badge. We still gate at >= 2 so the badge
+ * only appears when the signal is genuinely meaningful (a single
+ * mutual / liked-by-1 row would be noise).
+ */
 function getScoreBadge(profile: PeopleRec, t: (key: string) => string): string | null {
-  const mut = profile.mutual_follow_sources ?? 0;
-  const liked = profile.liked_artists_count ?? 0;
-  const tags = profile.reason_tags ?? [];
-  if (tags.includes("follow_graph") && mut >= 2) {
-    return t("people.signal.followNetwork").replace("{count}", String(mut));
+  const count = profile.signal_count ?? 0;
+  const top = profile.top_signal ?? "";
+  if (count < 2) return null;
+  if (top === "follow_graph") {
+    return t("people.signal.followNetwork").replace("{count}", String(count));
   }
-  if (tags.includes("likes_based") && liked >= 2) {
-    return t("people.signal.likesMatched").replace("{count}", String(liked));
+  if (top === "likes_based") {
+    return t("people.signal.likesMatched").replace("{count}", String(count));
   }
+  // expand lane signals (shared_themes / shared_medium / same_city)
+  // are already verbalised by `reasonTagToI18n` — we don't double up
+  // with a numeric badge for those.
   return null;
 }
 
@@ -539,6 +551,9 @@ export function PeopleClient() {
                       </div>
                       {reasonLine && (
                         <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                          <MutualAvatarStack
+                            sources={profile.mutual_avatars ?? []}
+                          />
                           <span>{reasonLine}</span>
                           {badge && <Chip tone="muted">{badge}</Chip>}
                         </p>
@@ -625,6 +640,57 @@ export function PeopleClient() {
         )}
       </main>
     </AuthGate>
+  );
+}
+
+/**
+ * "X, Y +N follow this person" avatar stack — surfaces the actual
+ * middle-graph profiles behind a follow_graph recommendation. Three
+ * overlapping avatars + an optional "+N" pip when the candidate has
+ * more mutual sources than we display. This is the social-proof
+ * detail that LinkedIn / Twitter use to make a single number ("3 in
+ * your network") feel concrete and trustable.
+ */
+function MutualAvatarStack({
+  sources,
+}: {
+  sources: Array<{
+    id: string;
+    avatar_url: string | null;
+    display_name: string | null;
+    username: string | null;
+  }>;
+}) {
+  if (!sources || sources.length === 0) return null;
+  const visible = sources.slice(0, 3);
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex -space-x-1.5"
+    >
+      {visible.map((s) => {
+        const url = !s.avatar_url
+          ? null
+          : s.avatar_url.startsWith("http")
+            ? s.avatar_url
+            : getArtworkImageUrl(s.avatar_url, "avatar");
+        const initial =
+          (s.display_name ?? s.username ?? "·").charAt(0).toUpperCase();
+        return (
+          <span
+            key={s.id}
+            className="inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-white bg-zinc-100 text-[9px] font-medium text-zinc-500"
+          >
+            {url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={url} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <span>{initial}</span>
+            )}
+          </span>
+        );
+      })}
+    </span>
   );
 }
 

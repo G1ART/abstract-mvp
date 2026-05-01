@@ -20,6 +20,11 @@ export function reasonTagToI18n(
 ): string {
   const set = new Set((tags ?? []).map((x) => String(x).trim()).filter(Boolean));
 
+  // Resolution order matters — the most specific signal wins. The
+  // `expand` lane carries `["expand", ...overlap_tags]`; we want the
+  // overlap tag (shared_medium / similar_keywords / same_city) to be
+  // the headline copy because it reads as a *reason*, while a bare
+  // "expand" tag still has the generic `people.reason.expand` copy.
   if (set.has("follow_graph")) return t("people.reason.followedArtistsConnected");
   if (set.has("matches_liked") || set.has("likes_based")) return t("people.reason.matchesLiked");
   if (set.has("shared_medium") && ctx.medium) {
@@ -30,6 +35,7 @@ export function reasonTagToI18n(
   }
   if (set.has("similar_keywords")) return t("people.reason.similarKeywords");
   if (set.has("saved_interest")) return t("people.reason.sharedInterest");
+  if (set.has("expand")) return t("people.reason.expand");
 
   return t("people.reason.fallback");
 }

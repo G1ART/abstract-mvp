@@ -2,6 +2,73 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — 사람 탭 v1.1 (P1: Signal Richness + Search Hardening + Mutual Avatars)
+
+묶음 1 의 정합성 게이트 위에 *시그널 자체* 의 의미를 강화. expand 가 정말 "발견" 으로 동작하고, follow_graph 카드에 LinkedIn / Twitter 류의 mutual avatar stack 이 붙고, 검색이 단순 가입순이 아닌 의도된 정렬로 동작하도록.
+
+### 사용자 합의
+
+- "Don't stop until you have completed all the to-dos" — 묶음 1 (P0 핵심) 이후 묶음 2 (P1 풍부함) 자연스럽게 이어 진행
+- 진단 리포트의 묶음 2 항목들 모두: A3 expand 시그널 부여 · A4 likes_based fallback 정합 · G2 점수 envelope 일원화 · G3 mutual avatar stack · B1+B2 검색 fuzzy + 정렬 · B3 search cursor · S10 회귀 테스트
+
+### Supabase SQL — **돌려야 함**
+
+> Supabase SQL Editor 에서 실행 필요한 마이그레이션 — `supabase/migrations/20260601100000_people_recs_quality_p1.sql`
+>
+> 선행 조건: `20260601000000_people_recs_quality_p0.sql` 가 먼저 적용돼 있어야 함 (`is_placeholder_username` / `is_presentable_profile` helper 의존).
+
+- **A3 expand 시그널**: viewer 의 `profiles.themes` / `profiles.mediums` / `profiles.location` 과 candidate 의 동일 컬럼 교집합·일치를 점수화 (`shared_themes_count * 3 + shared_mediums_count * 2 + same_city`). reason_tags 에 `shared_medium` / `similar_keywords` / `same_city` 추가하고 reason_detail.medium·city 도 채움. 클라이언트 humanizer 가 이미 그 키들을 이해하고 있어 "Shared medium: oil" / "Shares similar subject keywords" 같은 자연 카피로 즉시 동작
+- **A4 likes_based fallback 정합**: fallback_rows 가 *primary_rows 가 비어있을 때만* 발화하도록 변경 (`(select n from primary_count) = 0`). 좋아요 기록이 있는데도 fallback 이 섞여 lane 이 "최신 공개 사용자" 로 변질되던 문제 차단. `top_signal` 도 row 별로 `likes_based` vs `fallback` 분기
+- **G2 score envelope**: 모든 lane 의 jsonb_build_object 에 `signal_count` (lane-uniform headline number) + `top_signal` (lane token) 추가. 클라이언트의 `getScoreBadge` 가 lane 분기 하드코딩 없이 envelope 만 읽어 동작
+- **G3 mutual avatars**: follow_graph 의 two_hop CTE 에 candidate 별 *최대 3 명* 의 source 프로필 (id / username / display_name / avatar_url) 을 jsonb_agg 로 동봉. 결정론 정렬 (`order by sp.id`) 로 paginated 요청에서도 stack 이 흔들리지 않음
+- **B1+B2 search 정렬 강화**: `search_people(p_q, p_roles, p_limit, p_cursor)` 4-arg 가 본문 내부에서 fuzzy (pg_trgm) 매칭 + 5-tier 우선순위 (exact username > exact display_name > prefix > contains > fuzzy similarity) 로 동작. dead-code 인 5-arg 시그니처는 묶음 4 에서 drop 예정
+- 새 컬럼 `match_tier` / `match_similarity` 가 응답 envelope 에 추가됨 (클라이언트 merge 정렬 시 활용)
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [supabase/migrations/20260601100000_people_recs_quality_p1.sql](../supabase/migrations/20260601100000_people_recs_quality_p1.sql) — 신규 마이그레이션
+- [src/lib/supabase/peopleRecs.ts](../src/lib/supabase/peopleRecs.ts):
+  - `PeopleRec` 타입 확장: `signal_count` / `top_signal` / `mutual_avatars` (G2 + G3) / `match_tier` / `match_similarity` (B1+B2)
+  - `PeopleRecMutualAvatar` 타입 신설
+  - `searchPeopleWithArtwork` 가 cursor 발행 (B3): 첫 페이지는 모든 variant + 모든 artwork-match 합쳐 보여주고 nextCursor 는 *primary variant* 의 fuzzy cursor. 두 번째 페이지부터는 primary variant 한 개만 cursor 로 페이지네이션 (이미 보인 artwork-match·다른 variant row 를 다시 fetch 하지 않음)
+  - merge 정렬에 `match_tier` 와 `match_similarity` 보조 키 추가 — 동일 `match_rank` 안에서 더 정밀한 우선순위
+- [src/lib/people/reason.ts](../src/lib/people/reason.ts) — 우선순위 정리 + bare `expand` 분기 추가. shared_medium/similar_keywords/same_city 가 expand 와 함께 올 때 overlap 태그가 헤드라인 카피로, 그것도 없으면 `people.reason.expand` 로 (이전엔 generic fallback 으로 떨어짐)
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx):
+  - `getScoreBadge` — lane 분기 하드코딩 제거, score envelope (`signal_count` / `top_signal`) 만 읽음
+  - `MutualAvatarStack` 컴포넌트 신설: 3 명까지 겹쳐 보이는 -space-x-1.5 avatar stack, 각 avatar 는 5x5 rounded-full + white border. follow_graph 카드의 reasonLine 줄 앞에 inline 으로 렌더되어 "이 사람을 X, Y 도 팔로우" 의 시각적 신뢰감을 1줄 더 사용하지 않고 압축
+  - reasonLine 옆 카피·badge·avatar stack 모두 한 줄에 자연스럽게 wrap
+- [tests/people-reason.test.ts](../tests/people-reason.test.ts) — 신규 회귀 테스트 (S10): reasonTagToI18n 의 9 케이스 (follow_graph priority / likes_based vs expand / shared_medium with·without context / same_city / similar_keywords / bare expand / unknown / null·empty)
+- [package.json](../package.json) — `test:people-reason` 스크립트 추가
+
+### 변경 없음 (의도)
+
+- `match_rank` 의 0/1/2 의미는 보존: 0 = exact name (tier 0–1), 1 = prefix/contains/fuzzy (tier 2–4), 2 = artwork-derived. 클라 머지 코드의 *해석* 만 풍부해진 것이지 contract 는 동일
+- search RPC 의 5-arg 시그니처 (`p0_search_fuzzy_pg_trgm.sql` 의 dead code) 는 *지금은 그대로 둠*. 묶음 4 (P3 옵션) 의 dead-code drop 에서 `drop function ... (text, text[], int, text, boolean)` 으로 정리
+- `searchPeople` 4-arg 호출 시그니처는 그대로 — RPC 본문만 똑똑해짐. 클라이언트는 코드 변경 없이 정렬·fuzzy 자동 적용
+
+### 디자인 결정
+
+- **score envelope (G2) — RPC 가 lane 을 알고 있다**: 클라이언트가 `tags.includes("follow_graph")` 같은 분기로 lane 별 카피를 결정하던 구조는 새 lane 추가 시 지뢰. RPC 가 이미 lane 을 결정한 상태이니 *headline number + top signal* 만 envelope 으로 발행하고 클라는 그것만 본다. 묶음 3 의 dismiss / S2 의 active recently 같은 새 시그널을 추가할 때도 envelope 만 늘리면 끝
+- **mutual avatar stack 위치 — 새 줄 vs 같은 줄**: 카드 정보 밀도가 이미 충분하니 새 줄을 추가하는 대신 reasonLine 의 *prefix 포지션* 에 inline. 텍스트 라벨 ("X 외 N명 팔로우") 은 의도적으로 생략 — 작은 avatar 묶음 자체가 이미 "당신의 네트워크 안 사람들" 시그널이고, 옆의 reasonLine 이 그 이유를 풀어줌. 두 어휘를 겹쳐 쓰면 군더더기
+- **expand 시그널 가중치 (themes\*3 + mediums\*2 + city\*1)**: 예술 추천에선 *주제* 가 가장 두꺼운 시그널, *매체* 는 그 다음, *도시* 는 가장 약한 부수 시그널. 비공식 가중이지만 추천 lane 의 주관적 인상을 좌우하는 중요한 손잡이라 RPC 본문에 그대로 노출 (튜닝 시 한 곳만 바꿀 수 있도록)
+- **B3 cursor 단순화 — primary variant only**: 검색 첫 페이지는 *언어 변형 + artwork match* 까지 다 보여주는 게 검색 의도와 잘 맞음. 두 번째 페이지부터는 *primary 변형만* cursor 로 페이지네이션 — 이미 보인 row 를 다시 가져오지 않고, 페이지 사이즈 예측 가능. 변형·artwork match 가 풍성한 첫 페이지의 우위를 해치지 않으면서 무한 스크롤이 동작하는 합리적 단순화
+
+### 검증
+
+- `npx tsc --noEmit` — pass (clean)
+- `npm run test:feed-living-salon` — pass (회귀 없음)
+- `npm run test:people-reason` — pass (S10 신규)
+- `npm run build` — pass (라우트 셋 그대로)
+
+### 다음 단계
+
+- 묶음 3 (P2 섬세): C2 a11y / C5 loadMore retry / C6 focus refresh + S2 last_active_at + S3 dismiss / snooze + S5 follow undo + S8 키보드 / S9 skeleton (이번에 부분적 도입됨)
+- 묶음 4 (P3 옵션): S4 trending + S6 invite copy + S7 role hover + dead-code drop
+
+---
+
 ## 2026-05-01 — 사람 탭 v1.0 (P0: Recommendation Pool Integrity + Salon Tone)
 
 피드 v1.7 까지 살롱 톤이 안정되면서 사람 탭의 미감·로직 차이가 도드라졌다. 이번 패치는 사용자가 요청한 사람 탭 진단 리포트의 **묶음 1 (P0 핵심)** 항목 — 추천 풀 정합성 (A1·A2·S1) · 영문 literal leak (C1) · 살롱 비주얼 어셈블 (G1) — 다섯을 한 번에 묶어 시작 지점을 잡는다.
