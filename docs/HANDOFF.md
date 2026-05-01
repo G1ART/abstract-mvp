@@ -2,6 +2,96 @@
 
 Last updated: 2026-05-01
 
+## 2026-05-01 — Salon System v2 P1: 메인 5 페이지 디자인 통일 (DS primitive 도입 + 페이지 마이그레이션)
+
+플랫폼 5 메인 페이지 (Feed · People · Upload · My Studio · 공개 프로필) 의 디자인 어휘가 페이지마다 약간씩 어긋나 *같은 앱이라는 인상* 을 약화시키던 문제를 수리. 사용자가 People 의 "탐색 (DISCOVER)" kicker 를 노이즈로 느낀 것이 시발점이었지만, 코드 audit 에서 더 큰 구조적 어긋남이 드러남:
+
+- 페이지 폭 5 가지 (1200px / 3xl / 5xl / 2xl / 4xl 폴백)
+- 수평 패딩 2 가지 (px-4 / px-6)
+- H1 크기 3 가지 (xl / 2xl / lg-as-h2)
+- kicker 어휘가 5 곳에서 무차별 사용 — 같은 surface 안 *이중 kicker* 까지
+- 버튼 라운드 `rounded` / `rounded-lg` / `rounded-full` 혼재
+- 세그먼트/탭 4 가지 변형
+- floor-tint 불투명도 4 단계 (50/60/70)
+- 영문 literal leak (Loading feed... / An error occurred / Apply size / Imported … draft(s) / aria-label "Menu" / 호수 UI 한글 하드코드 등)
+
+P0 + P1 으로 *primitive 추가 후 5 메인 페이지 마이그레이션*. 톤 정렬 / 스켈레톤 통합 / kicker 카피 정리는 P2/P3 에 이어짐.
+
+### 사용자 합의
+
+- *SSOT primitive 우선* — 공통 컴포넌트를 먼저 만들고 페이지를 그 위로 이전 (사용자 선택)
+- *kicker 정책 = page or strip, 둘 중 하나* — 같은 surface 안 이중 사용 금지. People 페이지 헤더는 kicker 유지, 트렌딩 lane / role filter 라벨 / invite 페이지는 SectionLabel 또는 plain 톤으로 강등 (사용자 선택)
+
+### Supabase SQL — **돌려야 할 것 없음**
+
+이번 패치는 시각/카피/구조 변경. 새 마이그레이션 없음.
+
+### 환경 변수 — 변경 없음
+
+### 신규 DS primitive (P0)
+
+`src/components/ds/` 아래에 8 개 신규 / 1 개 변형:
+
+- [src/components/ds/PageShell.tsx](../src/components/ds/PageShell.tsx) — 페이지 폭 / 수평 패딩 / 세로 리듬 SSOT. variants `feed` (1200px) · `default` (3xl) · `narrow` (2xl) · `studio` (5xl) · `library` (6xl). 수평 패딩 `px-4 sm:px-6`. 세로 `py-8 sm:py-10 lg:py-14`. 옵션 `topAccessory` 슬롯 (TourHelpButton 행). `as="div"` 로 main 중첩 회피 가능. `PAGE_SHELL_TOKENS` export 로 secondary 스켈레톤도 같은 폭을 따름.
+- [src/components/ds/PageHeader.tsx](../src/components/ds/PageHeader.tsx) — 페이지 헤더 SSOT. `editorial` (kicker + h1 + lead) · `plain` (h1 + lead). `actions` 슬롯 (TourHelpButton). h1 `text-2xl font-semibold tracking-tight` 로 모든 페이지에서 동일.
+- [src/components/ds/SectionLabel.tsx](../src/components/ds/SectionLabel.tsx) — 페이지 안 "조용한 라벨". `text-[11px] font-medium uppercase tracking-wide text-zinc-500`, **2px accent 없음**. kicker 격을 보호하기 위한 한 단계 낮은 톤. 트렌딩 lane / role filter / 카루셀 하위 헤더가 사용.
+- [src/components/ds/FloorPanel.tsx](../src/components/ds/FloorPanel.tsx) — `rounded-2xl bg-zinc-50/70` 단일 불투명도. padding `sm` / `md` / `lg`. `as="section" | "div" | "aside"`. `bg-zinc-50/50` `bg-zinc-50/60` 흩어짐을 P2 에서 흡수.
+- [src/components/ds/LaneChips.tsx](../src/components/ds/LaneChips.tsx) — lane / 세그먼트 SSOT. `rounded-full` pill + `aria-pressed`. variants `lane` · `sort`. 옵션이 `href` 를 가지면 `<Link>` + `aria-current="page"` 로 렌더 (Upload 탭이 사용). 옵션이 button 이면 `onChange(id)`.
+- [src/components/ds/FilterChip.tsx](../src/components/ds/FilterChip.tsx) — multi-select toggle 칩. `rounded-full px-3 py-1 text-sm` + `aria-pressed`. People 의 role filter 가 사용.
+- [src/components/ds/PageShellSkeleton.tsx](../src/components/ds/PageShellSkeleton.tsx) — Suspense fallback / 첫 로드용 텍스트리스 스켈레톤. variant 별 (feed / default / narrow / studio / library) bodies. `PAGE_SHELL_TOKENS` 와 같은 폭을 따라가서 swap 이 시각적으로 invisible.
+- [src/components/ds/Chip.tsx](../src/components/ds/Chip.tsx) — `size="xs" | "sm"` variant 추가 (xs = `text-[10px] px-1.5 py-0.5`). FeedArtworkCard 의 인라인 역할 pill 흡수는 P2.
+- [src/components/ds/EmptyState.tsx](../src/components/ds/EmptyState.tsx) — CTA 라운드 `rounded-lg` → `rounded-full` 정렬.
+
+### 페이지 마이그레이션 (P1)
+
+#### Feed
+- [src/app/feed/FeedClient.tsx](../src/app/feed/FeedClient.tsx) — `<main mx-auto max-w-[1200px] ...>` → `<PageShell variant="feed">`
+- [src/components/feed/FeedHeader.tsx](../src/components/feed/FeedHeader.tsx) — h1+lead 부분을 `<PageHeader variant="plain" density="tight">` 으로 교체. h1 `text-xl` → `text-2xl tracking-tight` (모든 페이지 일관). 컨트롤 행은 그대로 아래에 mb-10 으로.
+- [src/app/feed/page.tsx](../src/app/feed/page.tsx) — Suspense `"Loading feed..."` 영문 literal → `<PageShellSkeleton variant="feed" />`
+
+#### People
+- [src/app/people/PeopleClient.tsx](../src/app/people/PeopleClient.tsx) — `<main mx-auto max-w-3xl px-6 ...>` → `<PageShell variant="default">`. 헤더 → `<PageHeader variant="editorial" kicker={t("people.kicker")} title={...} actions={<TourHelpButton/>}>`. **트렌딩 lane 의 두 번째 kicker (이중 사용) → `<SectionLabel>`** 강등. role filter 라벨 (이전 `tracking-[0.18em]`) → `<SectionLabel>`. lane 버튼 그룹 → `<LaneChips variant="lane">`. role filter 버튼 → `<FilterChip>`. floor-tint 패널들 (`rounded-2xl bg-zinc-50/70`) → `<FloorPanel padding="sm|lg">`.
+- [src/app/people/page.tsx](../src/app/people/page.tsx) — 인라인 `PeopleShellSkeleton` (max-w-3xl px-6 py-10) → `<PageShellSkeleton variant="default" />`
+- [src/app/people/invite/page.tsx](../src/app/people/invite/page.tsx) — kicker 제거 (페이지 정체성이 redundant), `<PageHeader variant="plain">` 로 교체. 인라인 `PeopleInviteSkeleton` → `<PageShellSkeleton variant="narrow">`. `<main mx-auto max-w-md>` → `<PageShell variant="narrow">`
+
+#### Upload
+- [src/app/upload/layout.tsx](../src/app/upload/layout.tsx) — `<div mx-auto max-w-2xl>` 에 세그먼트형 `rounded-lg` 탭 → `<PageShell variant="studio" topAccessory={<TourHelpButton/>}>` + `<LaneChips variant="lane">`. layout 폭은 자식 중 가장 넓은 페이지 (bulk) 에 맞춰 5xl.
+- [src/app/upload/page.tsx](../src/app/upload/page.tsx) — `<main mx-auto max-w-xl>` → 안쪽 `<div mx-auto max-w-xl>` (좁은 폼 의도 유지). 페이지 헤더 `<h1 text-xl>` → `<PageHeader variant="plain">`. Suspense 폴백 `"Loading..."` → `<PageShellSkeleton variant="narrow">`. 호수 UI 한글 하드코드 ("호수로 입력", "30", "적용") → `t("size.hosuLabel")` `t("size.hosuPlaceholder")` `t("size.hosuApply")`. catch 영문 `"An error occurred"` → `t("common.unknownError")`. primary CTA `rounded` → `rounded-full` (Next 버튼, 마지막 submit 버튼).
+- [src/app/upload/bulk/page.tsx](../src/app/upload/bulk/page.tsx) — `<main mx-auto max-w-5xl>` → `<div>` (외곽 PageShell.studio 가 폭 결정). h1 `text-xl` → `text-2xl tracking-tight`. 영문 literal 청소: `Back` `Next` (fallback `|| "Next"` 제거) `Clear` `Apply size` `Apply price` `Link to exhibition` `Unlink from exhibition` `— exhibition —` `title,year,medium` `Cancel` `Imported … draft(s)` 모두 i18n key 로 교체. attribution / clear / csv import / link/unlink / confirm 모달 버튼 라운드 `rounded` → `rounded-full`.
+- [src/app/upload/exhibition/page.tsx](../src/app/upload/exhibition/page.tsx) — `"Redirecting..."` → `t("common.redirecting")`
+
+#### My Studio
+- [src/app/my/page.tsx](../src/app/my/page.tsx) — `<main mx-auto max-w-5xl>` → `<PageShell variant="studio" topAccessory={<TourHelpButton/>}>`. **페이지 H1 부재 문제 해결** — `<PageHeader variant="plain" title={t("studio.title")} lead={t("studio.lead")}/>` 도입. 포트폴리오 헬퍼 패널 `rounded-xl border bg-zinc-50/60` → `<FloorPanel padding="sm">`. `showOwnerHeader` boolean 으로 acting-as 여부 한 번만 평가.
+- [src/components/studio/StudioHero.tsx](../src/components/studio/StudioHero.tsx) — public/private 배지 inline `<span rounded-full ...>` → `<Chip tone="success|neutral">`. role 칩 inline `<span>` → `<Chip tone="accent|neutral">`. People / 공개 프로필과 정렬.
+
+#### 공개 프로필
+- [src/components/UserProfileContent.tsx](../src/components/UserProfileContent.tsx) — `<main mx-auto max-w-2xl>` → `<PageShell variant="default">` (max-w-2xl → 3xl). h1 `text-xl` → `text-2xl tracking-tight`. 포트폴리오 탭 strip `rounded` 직사각형 → `<LaneChips variant="lane">` (옵션 id = `row.key`, 클릭 시 persona/custom 분기). reorder / save / cancel / exhibition reorder 모든 버튼 `rounded`/`rounded-lg` → `rounded-full px-4`.
+- [src/app/u/[username]/PrivateProfileShell.tsx](../src/app/u/[username]/PrivateProfileShell.tsx) — checking `<main>` → `<PageShellSkeleton variant="default">`. fallback `<main>` → `<PageShell variant="default">`. visitor card `<main mx-auto max-w-xl>` → `<PageShell variant="narrow">`. owner banner `rounded` → `rounded-2xl`, settings CTA `rounded` → `rounded-full`. 카드 `rounded-lg` → `rounded-2xl`.
+
+#### Header
+- [src/components/Header.tsx](../src/components/Header.tsx) — 모바일 햄버거 `aria-label="Menu"` → `aria-label={t("nav.menu")}`. KO 폴백 추가 (`messages.ts`).
+
+#### DS index
+- [src/components/ds/index.ts](../src/components/ds/index.ts) — 신규 primitive 들 모두 re-export.
+
+#### i18n
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `nav.menu`, `common.unknownError`, `common.redirecting`, `size.hosuLabel`, `size.hosuApply`, `size.hosuPlaceholder`, `bulk.clear`, `bulk.applySize`, `bulk.applyPrice`, `bulk.linkToExhibition`, `bulk.unlinkFromExhibition`, `bulk.exhibitionSelectorPlaceholder`, `bulk.csvPlaceholder`, `bulk.csvImported`, `bulk.confirmCancel`, `bulk.confirmContinue`, `studio.title`, `studio.lead` 키 추가 (KO/EN).
+
+### Verified
+
+- `npx tsc --noEmit` ✅ clean
+- `npm run build` ✅ 모든 라우트 prerendered
+- `npm run test:feed-living-salon` ✅
+- `npm run test:people-reason` ✅
+- ESLint pre-existing 경고/에러는 그대로 (Header `loadActiveAccountDelegations` hoisting, react-compiler memo 가드, 등 — 이번 패치와 무관)
+
+### 남은 작업 (P2/P3)
+
+- P2: 톤 정렬 — primary CTA 라운드 잔재 제거, `bg-zinc-50/60` → `/70` 통합, FeedArtworkCard 역할 pill → Chip xs, delegations 로컬 EmptyState → DS, Suspense fallback 전체 PageShellSkeleton 통일
+- P3: kicker 어휘 검토 (people.kicker = "탐색" 의 "탐색" 자체가 noisy 한지 카피 라운드), bulk 영문 literal 잔재, docs/HANDOFF 통합 + `docs/04_DESIGN_SYSTEM.md` 신규 (짧은 결정 가이드)
+
+---
+
 ## 2026-05-01 — 사람 탭 v1.3 (P3: Trending + Invite Salon Tone + Dead-Code Drop)
 
 진단 리포트의 묶음 4 (P3 옵션) 마지막 마무리. 검색 빈 상태에 *생기를 주는* trending row, invite 페이지 살롱 톤, 그리고 dead RPC/i18n 정리.

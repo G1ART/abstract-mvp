@@ -6,6 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import { AuthGate } from "@/components/AuthGate";
 import { sendArtistInviteEmailWithResult } from "@/lib/email/artistInvite";
+import { PageShell } from "@/components/ds/PageShell";
+import { PageHeader } from "@/components/ds/PageHeader";
+import { PageShellSkeleton } from "@/components/ds/PageShellSkeleton";
 
 /**
  * Invite-by-email entry surface, shipped as a salon-tone variant of
@@ -50,19 +53,12 @@ function PeopleInviteForm() {
 
   return (
     <AuthGate>
-      <main className="mx-auto max-w-md px-6 py-10 lg:py-14">
-        <header className="mb-8">
-          <p className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
-            <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
-            {t("people.kicker")}
-          </p>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-900">
-            {t("people.invitePage.title")}
-          </h1>
-          <p className="mt-2 text-sm leading-relaxed text-zinc-600">
-            {t("people.invitePage.hint")}
-          </p>
-        </header>
+      <PageShell variant="narrow">
+        <PageHeader
+          variant="plain"
+          title={t("people.invitePage.title")}
+          lead={t("people.invitePage.hint")}
+        />
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
@@ -124,34 +120,14 @@ function PeopleInviteForm() {
             </Link>
           </div>
         </form>
-      </main>
+      </PageShell>
     </AuthGate>
-  );
-}
-
-function PeopleInviteSkeleton() {
-  return (
-    <main aria-hidden="true" className="mx-auto max-w-md px-6 py-10 lg:py-14">
-      <div className="mb-8 space-y-3">
-        <div className="flex items-center gap-2.5">
-          <span className="h-3 w-[2px] bg-zinc-300" />
-          <span className="h-2 w-16 rounded bg-zinc-200" />
-        </div>
-        <div className="h-7 w-48 rounded bg-zinc-200" />
-        <div className="h-3 w-3/4 rounded bg-zinc-100" />
-      </div>
-      <div className="space-y-5">
-        <div className="h-12 w-full rounded-xl bg-zinc-100" />
-        <div className="h-12 w-full rounded-xl bg-zinc-100" />
-        <div className="h-9 w-32 rounded-full bg-zinc-200" />
-      </div>
-    </main>
   );
 }
 
 export default function PeopleInvitePage() {
   return (
-    <Suspense fallback={<PeopleInviteSkeleton />}>
+    <Suspense fallback={<PageShellSkeleton variant="narrow" />}>
       <PeopleInviteForm />
     </Suspense>
   );

@@ -21,6 +21,12 @@ import { AuthGate } from "@/components/AuthGate";
 import { hasPublicLinkableUsername } from "@/lib/identity/format";
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { SectionFrame } from "@/components/ds/SectionFrame";
+import { PageShell } from "@/components/ds/PageShell";
+import { PageHeader } from "@/components/ds/PageHeader";
+import { SectionLabel } from "@/components/ds/SectionLabel";
+import { FloorPanel } from "@/components/ds/FloorPanel";
+import { LaneChips } from "@/components/ds/LaneChips";
+import { FilterChip } from "@/components/ds/FilterChip";
 import { getMyProfile } from "@/lib/supabase/me";
 import { getProfileSurface } from "@/lib/profile/surface";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
@@ -479,22 +485,22 @@ export function PeopleClient() {
     !loading && !isSearchMode && profiles.length === 0;
   const emptySearch = !loading && isSearchMode && profiles.length === 0;
 
+  const laneOptions: ReadonlyArray<{ id: LaneKey; label: string }> = [
+    { id: "follow", label: t("people.lanes.followGraphTitle") },
+    { id: "likes", label: t("people.lanes.likesBasedTitle") },
+    { id: "expand", label: t("people.lanes.expandTitle") },
+  ];
+
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.people} />
-      <main className="mx-auto max-w-3xl px-6 py-10 lg:py-14">
-        <header className="mb-8">
-          <div className="flex items-center justify-between gap-3">
-            <p className="flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
-              <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
-              {t("people.kicker")}
-            </p>
-            <TourHelpButton tourId={TOUR_IDS.people} />
-          </div>
-          <h1 className="mt-3 text-2xl font-semibold tracking-tight text-zinc-900">
-            {t("people.title")}
-          </h1>
-        </header>
+      <PageShell variant="default">
+        <PageHeader
+          variant="editorial"
+          kicker={t("people.kicker")}
+          title={t("people.title")}
+          actions={<TourHelpButton tourId={TOUR_IDS.people} />}
+        />
 
         <div className="mb-8">
           <input
@@ -511,71 +517,45 @@ export function PeopleClient() {
         </div>
 
         {showTrending && (
-          <section className="mb-6 rounded-2xl bg-zinc-50/70 px-5 py-5 lg:px-6 lg:py-6">
-            <p className="mb-4 flex items-center gap-2.5 text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-700">
-              <span aria-hidden className="h-3 w-[2px] bg-zinc-900" />
+          <FloorPanel padding="sm" className="mb-6">
+            <SectionLabel className="mb-4">
               {t("people.trendingHeader")}
-            </p>
+            </SectionLabel>
             <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 lg:-mx-6 lg:px-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {trendingProfiles.map((profile) => (
                 <TrendingChip key={profile.id} profile={profile} />
               ))}
             </div>
-          </section>
+          </FloorPanel>
         )}
 
         {!isSearchMode && !showTrending && (
-          <section className="mb-6 rounded-2xl bg-zinc-50/70 px-5 py-5 lg:px-6 lg:py-6">
-            <div data-tour="people-lane-tabs" className="flex flex-wrap gap-2">
-              {(["follow", "likes", "expand"] as LaneKey[]).map((l) => {
-                const active = lane === l;
-                return (
-                  <button
-                    key={l}
-                    type="button"
-                    onClick={() => setLaneAndUpdate(l)}
-                    aria-pressed={active}
-                    className={`rounded-full px-4 py-1.5 text-sm transition-colors ${
-                      active
-                        ? "bg-zinc-900 text-white"
-                        : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100"
-                    }`}
-                  >
-                    {l === "follow" && t("people.lanes.followGraphTitle")}
-                    {l === "likes" && t("people.lanes.likesBasedTitle")}
-                    {l === "expand" && t("people.lanes.expandTitle")}
-                  </button>
-                );
-              })}
-            </div>
+          <FloorPanel padding="sm" className="mb-6">
+            <LaneChips
+              variant="lane"
+              options={laneOptions}
+              active={lane}
+              onChange={(id) => setLaneAndUpdate(id)}
+              ariaLabel={t("people.title")}
+              data-tour="people-lane-tabs"
+            />
             <p className="mt-3 text-xs leading-relaxed text-zinc-500">
               {t(LANE_SUBTITLE_KEY[lane])}
             </p>
-          </section>
+          </FloorPanel>
         )}
 
         <div data-tour="people-role-filters" className="mb-8 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
-            {t("people.filtersLabel")}
-          </span>
-          {ROLE_OPTIONS.map((role) => {
-            const active = selectedRoles.has(role);
-            return (
-              <button
-                key={role}
-                type="button"
-                onClick={() => toggleRole(role)}
-                aria-pressed={active}
-                className={`rounded-full px-3 py-1 text-sm transition-colors ${
-                  active
-                    ? "bg-zinc-900 text-white"
-                    : "bg-white text-zinc-700 ring-1 ring-zinc-200 hover:bg-zinc-100"
-                }`}
-              >
-                {t(`people.role.${role}`)}
-              </button>
-            );
-          })}
+          <SectionLabel as="span">{t("people.filtersLabel")}</SectionLabel>
+          {ROLE_OPTIONS.map((role) => (
+            <FilterChip
+              key={role}
+              active={selectedRoles.has(role)}
+              onClick={() => toggleRole(role)}
+            >
+              {t(`people.role.${role}`)}
+            </FilterChip>
+          ))}
           {selectedRoles.size > 0 && (
             <button
               type="button"
@@ -601,7 +581,7 @@ export function PeopleClient() {
             </button>
           </div>
         ) : emptyRecommendations ? (
-          <div className="rounded-2xl bg-zinc-50/70 px-6 py-12 text-center">
+          <FloorPanel padding="lg" className="text-center">
             <p className="mb-4 text-zinc-600">{t("people.noRecommendations")}</p>
             <div className="flex flex-wrap justify-center gap-3">
               <button
@@ -618,9 +598,9 @@ export function PeopleClient() {
                 {t("people.completeProfile")}
               </a>
             </div>
-          </div>
+          </FloorPanel>
         ) : emptySearch ? (
-          <div className="rounded-2xl bg-zinc-50/70 px-6 py-12 text-center">
+          <FloorPanel padding="lg" className="text-center">
             <p className="mb-4 text-zinc-600">{t("people.noSearchResults")}</p>
             {searchSuggestion && (
               <p className="mb-3 text-zinc-700">
@@ -659,7 +639,7 @@ export function PeopleClient() {
                 {t("people.inviteCtaButton")}
               </Link>
             </SectionFrame>
-          </div>
+          </FloorPanel>
         ) : (
           <>
             <div ref={cardsContainerRef} className="space-y-3">
@@ -734,7 +714,7 @@ export function PeopleClient() {
         )}
 
         <ToastStack toasts={toasts} onDismiss={dismissToast} />
-      </main>
+      </PageShell>
     </AuthGate>
   );
 }

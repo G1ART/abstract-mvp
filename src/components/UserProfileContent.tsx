@@ -40,7 +40,7 @@ import { ExhibitionSortDropdown } from "@/components/exhibitions/ExhibitionSortD
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { formatErrorMessage } from "@/lib/errors/format";
-import { Chip, EmptyState } from "@/components/ds";
+import { Chip, EmptyState, LaneChips, PageShell, type LaneOption } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
 import { ArtistStatementSection } from "@/components/profile/ArtistStatementSection";
@@ -470,7 +470,7 @@ export function UserProfileContent({
   return (
     <>
       <ProfileViewTracker profileId={profile.id} />
-      <main className="mx-auto max-w-2xl px-4 py-8">
+      <PageShell variant="default">
         {showUpdatedBanner && (
         <div
           role="status"
@@ -503,7 +503,9 @@ export function UserProfileContent({
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-semibold text-zinc-900">{displayName}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+              {displayName}
+            </h1>
             {usernameHandle && (
               <p className="text-sm text-zinc-500">{usernameHandle}</p>
             )}
@@ -594,32 +596,36 @@ export function UserProfileContent({
         </>
       )}
 
-      {stripPublic.length > 0 && (
-        <div
-          className="mb-4 flex flex-wrap gap-2 border-b border-zinc-200 pb-2"
-          data-tour="public-profile-tab-strip"
-        >
-          {stripPublic.map((row) => (
-            <button
-              key={row.key}
-              type="button"
-              onClick={() => {
-                if (row.kind === "persona") setActive({ kind: "persona", tab: row.personaTab! });
-                else setActive({ kind: "custom", id: row.customId! });
-              }}
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                row.kind === "persona" && active.kind === "persona" && active.tab === row.personaTab
-                  ? "bg-zinc-900 text-white"
-                  : row.kind === "custom" && active.kind === "custom" && active.id === row.customId
-                    ? "bg-zinc-900 text-white"
-                    : "bg-zinc-100 text-zinc-700 hover:bg-zinc-200"
-              }`}
-            >
-              {row.label} ({row.count})
-            </button>
-          ))}
-        </div>
-      )}
+      {stripPublic.length > 0 && (() => {
+        const activeStripKey =
+          stripPublic.find((row) =>
+            row.kind === "persona"
+              ? active.kind === "persona" && active.tab === row.personaTab
+              : active.kind === "custom" && active.id === row.customId
+          )?.key ?? stripPublic[0]?.key ?? "";
+        const stripOptions: LaneOption<string>[] = stripPublic.map((row) => ({
+          id: row.key,
+          label: `${row.label} (${row.count})`,
+        }));
+        return (
+          <LaneChips
+            variant="lane"
+            options={stripOptions}
+            active={activeStripKey}
+            onChange={(key) => {
+              const row = stripPublic.find((r) => r.key === key);
+              if (!row) return;
+              if (row.kind === "persona") {
+                setActive({ kind: "persona", tab: row.personaTab! });
+              } else {
+                setActive({ kind: "custom", id: row.customId! });
+              }
+            }}
+            className="mb-4 border-b border-zinc-200 pb-3"
+            data-tour="public-profile-tab-strip"
+          />
+        );
+      })()}
 
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-900">{worksHeading}</h2>
@@ -629,7 +635,7 @@ export function UserProfileContent({
             onClick={() => { setReorderMode(true); setSaveError(null); }}
             aria-label={t("profile.reorder")}
             data-tour="public-profile-reorder-button"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+            className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
           >
             <svg
               aria-hidden
@@ -653,7 +659,7 @@ export function UserProfileContent({
               type="button"
               onClick={handleSaveReorder}
               disabled={saving}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {t("profile.reorderSave")}
             </button>
@@ -661,7 +667,7 @@ export function UserProfileContent({
               type="button"
               onClick={handleCancelReorder}
               disabled={saving}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               {t("profile.reorderCancel")}
             </button>
@@ -682,7 +688,7 @@ export function UserProfileContent({
                 type="button"
                 onClick={handleExhibitionReorderStart}
                 aria-label={t("exhibition.reorder.start")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                className="inline-flex items-center gap-1.5 rounded-full border border-zinc-300 bg-white px-4 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
               >
                 <svg
                   aria-hidden
@@ -718,7 +724,7 @@ export function UserProfileContent({
               type="button"
               onClick={handleExhibitionReorderSave}
               disabled={exhibitionSaving}
-              className="rounded bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
             >
               {t("exhibition.reorder.save")}
             </button>
@@ -726,7 +732,7 @@ export function UserProfileContent({
               type="button"
               onClick={handleExhibitionReorderCancel}
               disabled={exhibitionSaving}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               {t("exhibition.reorder.cancel")}
             </button>
@@ -882,7 +888,7 @@ export function UserProfileContent({
           {savedToastMsg ?? t("common.saved")}
         </div>
       )}
-      </main>
+      </PageShell>
     </>
   );
 }

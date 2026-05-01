@@ -56,6 +56,8 @@ import {
 } from "@/lib/supabase/exhibitions";
 import { FollowButton } from "@/components/FollowButton";
 import { IntroMessageAssist } from "@/components/ai/IntroMessageAssist";
+import { PageShell } from "@/components/ds/PageShell";
+import { PageShellSkeleton } from "@/components/ds/PageShellSkeleton";
 
 type LoadState = "checking" | "owner" | "stranger" | "error";
 
@@ -156,11 +158,7 @@ export function PrivateProfileShell({
   }, [target]);
 
   if (state === "checking") {
-    return (
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <p className="text-zinc-500">{t("common.loading")}</p>
-      </main>
-    );
+    return <PageShellSkeleton variant="default" />;
   }
 
   if (state === "owner" && profile && artworks && exhibitions) {
@@ -189,7 +187,7 @@ export function PrivateProfileShell({
   // meta-card slice). Preserve the legacy dead-end-with-escape-hatch UI
   // just in case the RPC contract drifts.
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8 space-y-3">
+    <PageShell variant="default" className="space-y-3">
       <p className="text-zinc-600">{t("profile.private")}</p>
       <p className="text-sm">
         <Link
@@ -199,14 +197,14 @@ export function PrivateProfileShell({
           {t("profile.privateBackToMy")}
         </Link>
       </p>
-    </main>
+    </PageShell>
   );
 }
 
 function OwnerPrivateBanner({ t }: { t: (key: string) => string }) {
   return (
-    <div className="mx-auto max-w-3xl px-4 pt-4">
-      <div className="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+    <div className="mx-auto w-full max-w-3xl px-4 pt-4 sm:px-6">
+      <div className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
         <div className="flex items-start gap-3">
           <span aria-hidden="true" className="mt-0.5 text-amber-700">
             <LockIcon />
@@ -221,7 +219,7 @@ function OwnerPrivateBanner({ t }: { t: (key: string) => string }) {
             <p className="mt-2">
               <Link
                 href="/settings"
-                className="inline-flex items-center rounded border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
+                className="inline-flex items-center rounded-full border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-900 hover:bg-amber-100"
               >
                 {t("profile.private.ownerNotice.cta")}
               </Link>
@@ -288,8 +286,8 @@ function VisitorPrivateCard({
   };
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-10">
-      <div className="rounded-lg border border-zinc-200 bg-white p-6 shadow-sm">
+    <PageShell variant="narrow">
+      <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
         <div className="flex items-start gap-4">
           <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-full bg-zinc-100">
             {card.avatar_url ? (
@@ -414,7 +412,7 @@ function VisitorPrivateCard({
           </Link>
         </div>
       </div>
-    </main>
+    </PageShell>
   );
 }
 

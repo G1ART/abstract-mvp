@@ -25,6 +25,8 @@ import { formatSupabaseError } from "@/lib/errors/supabase";
 import { AuthGate } from "@/components/AuthGate";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
+import { PageHeader } from "@/components/ds/PageHeader";
+import { PageShellSkeleton } from "@/components/ds/PageShellSkeleton";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
@@ -412,14 +414,14 @@ function UploadPageContent() {
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(err instanceof Error ? err.message : t("common.unknownError"));
       setIsSubmitting(false);
     }
   }
 
   return (
     <AuthGate>
-      <main className="mx-auto max-w-xl px-4 py-8">
+      <div className="mx-auto max-w-xl">
         {inviteToast && (
           <div
             className={`fixed bottom-4 right-4 rounded-lg px-4 py-2 text-sm text-white shadow-lg ${
@@ -429,9 +431,7 @@ function UploadPageContent() {
             {inviteToast === "sent" ? t("upload.inviteSent") : t("upload.inviteSentFailed")}
           </div>
         )}
-        <div className="mb-6">
-          <h1 className="text-xl font-semibold">{t("upload.title")}</h1>
-        </div>
+        <PageHeader variant="plain" title={t("upload.title")} />
 
         <ActingAsChip mode="posting" />
 
@@ -549,7 +549,7 @@ function UploadPageContent() {
               <button
                 type="button"
                 onClick={handleAttributionNext}
-                className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800"
               >
                 {t("common.next")}
               </button>
@@ -624,12 +624,12 @@ function UploadPageContent() {
               <label className="mb-1 block text-sm font-medium">{t("upload.labelSize")}</label>
               {locale === "ko" && (
                 <div className="mb-2 flex flex-wrap items-center gap-3">
-                  <span className="text-xs text-zinc-500">호수로 입력</span>
+                  <span className="text-xs text-zinc-500">{t("size.hosuLabel")}</span>
                   <input
                     type="number"
                     min={0}
                     className="h-8 w-16 rounded border border-zinc-300 px-2 text-xs"
-                    placeholder="30"
+                    placeholder={t("size.hosuPlaceholder")}
                     value={hosuNumber}
                     onChange={(e) => setHosuNumber(e.target.value)}
                   />
@@ -662,9 +662,9 @@ function UploadPageContent() {
                       );
                       setHosuWarning(null);
                     }}
-                    className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                    className="rounded-full border border-zinc-300 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                   >
-                    적용
+                    {t("size.hosuApply")}
                   </button>
                   {hosuWarning && (
                     <p className="mt-1 text-xs text-amber-700">{hosuWarning}</p>
@@ -797,7 +797,7 @@ function UploadPageContent() {
               </button>
               <button
                 type="submit"
-                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800"
+                className="flex-1 rounded-full bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800"
               >
                 {t("upload.nextCheckDedup")}
               </button>
@@ -842,21 +842,21 @@ function UploadPageContent() {
                 type="button"
                 onClick={handleSubmit}
                 disabled={isSubmitting}
-                className="flex-1 rounded bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="flex-1 rounded-full bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
               >
                 {isSubmitting ? t("upload.uploading") : t("nav.upload")}
               </button>
             </div>
           </div>
         )}
-      </main>
+      </div>
     </AuthGate>
   );
 }
 
 export default function UploadPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-xl px-4 py-8 text-center text-zinc-500">Loading...</div>}>
+    <Suspense fallback={<PageShellSkeleton variant="narrow" />}>
       <UploadPageContent />
     </Suspense>
   );

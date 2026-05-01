@@ -1,17 +1,25 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useT } from "@/lib/i18n/useT";
 import { AuthGate } from "@/components/AuthGate";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
+import { PageShell } from "@/components/ds/PageShell";
+import { LaneChips, type LaneOption } from "@/components/ds/LaneChips";
 
-const TABS = [
-  { href: "/upload", labelKey: "upload.tabSingle" as const, anchor: "upload-tab-single" },
-  { href: "/upload/bulk", labelKey: "upload.tabBulk" as const, anchor: "upload-tab-bulk" },
-  { href: "/upload/exhibition", labelKey: "upload.tabExhibition" as const, anchor: "upload-tab-exhibition" },
-] as const;
+type TabKey = "single" | "bulk" | "exhibition";
+
+const TABS: ReadonlyArray<{
+  key: TabKey;
+  href: string;
+  labelKey: "upload.tabSingle" | "upload.tabBulk" | "upload.tabExhibition";
+  anchor: string;
+}> = [
+  { key: "single", href: "/upload", labelKey: "upload.tabSingle", anchor: "upload-tab-single" },
+  { key: "bulk", href: "/upload/bulk", labelKey: "upload.tabBulk", anchor: "upload-tab-bulk" },
+  { key: "exhibition", href: "/upload/exhibition", labelKey: "upload.tabExhibition", anchor: "upload-tab-exhibition" },
+];
 
 export default function UploadLayout({
   children,
@@ -21,40 +29,37 @@ export default function UploadLayout({
   const pathname = usePathname();
   const { t } = useT();
 
+  const activeKey: TabKey =
+    pathname.startsWith("/upload/bulk")
+      ? "bulk"
+      : pathname.startsWith("/upload/exhibition")
+        ? "exhibition"
+        : "single";
+
+  const options: ReadonlyArray<LaneOption<TabKey>> = TABS.map((tab) => ({
+    id: tab.key,
+    label: t(tab.labelKey),
+    href: tab.href,
+    "data-tour": tab.anchor,
+  }));
+
   return (
     <AuthGate>
       <TourTrigger tourId={TOUR_IDS.upload} />
-      <div className="mx-auto max-w-2xl px-4 py-6">
-        <div className="mb-2 flex items-center justify-end">
-          <TourHelpButton tourId={TOUR_IDS.upload} />
-        </div>
-        <nav
+      <PageShell
+        variant="studio"
+        topAccessory={<TourHelpButton tourId={TOUR_IDS.upload} />}
+      >
+        <LaneChips
+          variant="lane"
+          options={options}
+          active={activeKey}
+          ariaLabel={t("upload.tabSingle")}
           data-tour="upload-tabs"
-          className="mb-6 flex flex-nowrap gap-1 overflow-x-auto rounded-lg border border-zinc-200 bg-zinc-50/50 p-1 [-webkit-overflow-scrolling:touch]"
-        >
-          {TABS.map(({ href, labelKey, anchor }) => {
-            const active =
-              href === "/upload"
-                ? pathname === "/upload"
-                : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                data-tour={anchor}
-                className={`shrink-0 whitespace-nowrap rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                  active
-                    ? "bg-white text-zinc-900 shadow-sm"
-                    : "text-zinc-600 hover:text-zinc-900"
-                }`}
-              >
-                {t(labelKey)}
-              </Link>
-            );
-          })}
-        </nav>
+          className="mb-6"
+        />
         {children}
-      </div>
+      </PageShell>
     </AuthGate>
   );
 }

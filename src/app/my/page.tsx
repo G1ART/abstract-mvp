@@ -52,6 +52,9 @@ import { BetaFeedbackPrompt } from "@/components/beta";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
 import { hasAnyRole } from "@/lib/identity/roles";
 import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
+import { PageShell } from "@/components/ds/PageShell";
+import { PageHeader } from "@/components/ds/PageHeader";
+import { FloorPanel } from "@/components/ds/FloorPanel";
 
 type Profile = FullProfile;
 
@@ -398,16 +401,25 @@ export default function MyPage() {
   // reachable in 1–2 clicks from the top nav, the hero card, or the
   // 4×2 operation grid — see HANDOFF.md for the audit.)
 
+  const showOwnerHeader = !!profile && !actingAsProfileId;
+
   return (
     <AuthGate>
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        {profile && !actingAsProfileId ? <TourTrigger tourId={TOUR_IDS.studio} /> : null}
-        {profile && !actingAsProfileId ? (
-          <div className="mb-3 flex items-center justify-end">
-            <TourHelpButton tourId={TOUR_IDS.studio} />
-          </div>
-        ) : null}
-        {profile && !actingAsProfileId && (
+      <PageShell
+        variant="studio"
+        topAccessory={
+          showOwnerHeader ? <TourHelpButton tourId={TOUR_IDS.studio} /> : null
+        }
+      >
+        {showOwnerHeader ? <TourTrigger tourId={TOUR_IDS.studio} /> : null}
+        {showOwnerHeader && (
+          <PageHeader
+            variant="plain"
+            title={t("studio.title")}
+            lead={t("studio.lead")}
+          />
+        )}
+        {showOwnerHeader && (
           <>
             <StudioHeroPanel
               hero={
@@ -426,12 +438,13 @@ export default function MyPage() {
           </>
         )}
 
-        {profile && !actingAsProfileId && (
-          <div
-            data-tour="studio-public-works"
-            className="mb-3 flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-zinc-100 bg-zinc-50/60 px-4 py-3"
+        {showOwnerHeader && (
+          <FloorPanel
+            as="div"
+            padding="sm"
+            className="mb-3 flex flex-wrap items-baseline justify-between gap-2"
           >
-            <div className="min-w-0">
+            <div data-tour="studio-public-works" className="min-w-0">
               <p className="text-sm font-medium text-zinc-800">
                 {t("studio.portfolioHelper.title")}
               </p>
@@ -445,7 +458,7 @@ export default function MyPage() {
             >
               {t("studio.portfolioHelper.workshopLink")}
             </a>
-          </div>
+          </FloorPanel>
         )}
 
         {profile && actingAsProfileId && (
@@ -488,7 +501,7 @@ export default function MyPage() {
             {toast}
           </div>
         )}
-      </main>
+      </PageShell>
     </AuthGate>
   );
 }

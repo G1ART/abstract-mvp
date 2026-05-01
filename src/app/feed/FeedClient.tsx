@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getSession } from "@/lib/supabase/auth";
 import { FeedContent } from "@/components/FeedContent";
+import { PageShell } from "@/components/ds/PageShell";
 
 export function FeedClient() {
   const router = useRouter();
@@ -30,7 +31,7 @@ export function FeedClient() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1200px] px-4 py-6 sm:py-8">
+    <PageShell variant="feed">
       <FeedContent
         tab={tab}
         sort={sortValue}
@@ -38,6 +39,6 @@ export function FeedClient() {
         onTabChange={handleTabChange}
         onSortChange={handleSortChange}
       />
-    </main>
+    </PageShell>
   );
 }

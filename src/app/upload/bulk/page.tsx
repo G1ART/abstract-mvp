@@ -555,7 +555,7 @@ export default function BulkUploadPage() {
       }
       setCsvText("");
       await fetchDrafts();
-      setToast(`Imported ${ok} draft(s)`);
+      setToast(t("bulk.csvImported").replace("{n}", String(ok)));
       setTimeout(() => setToast(null), 3000);
     } finally {
       setCsvBusy(false);
@@ -712,9 +712,9 @@ export default function BulkUploadPage() {
 
   return (
     <AuthGate>
-      <main className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">{t("bulk.title")}</h1>
+      <div>
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">{t("bulk.title")}</h1>
           <div className="flex items-center gap-4">
             {addToExhibitionId && (
               <Link
@@ -855,9 +855,9 @@ export default function BulkUploadPage() {
                   setArtistSearch("");
                   setArtistResults([]);
                 }}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm"
               >
-                Back
+                {t("common.back")}
               </button>
               <button
                 type="button"
@@ -867,9 +867,9 @@ export default function BulkUploadPage() {
                   if (useExternalArtist && externalArtistName.trim().length < 2) return;
                   setAttributionStepDone(true);
                 }}
-                className="rounded bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-full bg-zinc-900 px-4 py-2 text-sm text-white hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {t("common.next") || "Next"}
+                {t("common.next")}
               </button>
             </div>
           </div>
@@ -976,9 +976,9 @@ export default function BulkUploadPage() {
               <button
                 type="button"
                 onClick={clearPendingFiles}
-                className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
+                className="rounded-full border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-100"
               >
-                Clear
+                {t("bulk.clear")}
               </button>
             </div>
           </div>
@@ -1151,9 +1151,9 @@ export default function BulkUploadPage() {
                     applySizeBulk
                   )
                 }
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                className="rounded-full border border-zinc-300 px-3 py-1 text-sm"
               >
-                Apply size
+                {t("bulk.applySize")}
               </button>
             </div>
             <div className="mt-4 flex flex-wrap gap-2 border-t border-zinc-200 pt-3">
@@ -1186,9 +1186,9 @@ export default function BulkUploadPage() {
                     applyPriceBulk
                   )
                 }
-                className="rounded border border-zinc-300 px-2 py-1 text-sm"
+                className="rounded-full border border-zinc-300 px-3 py-1 text-sm"
               >
-                Apply price
+                {t("bulk.applyPrice")}
               </button>
             </div>
             {myExhibitions.length > 0 && (
@@ -1198,7 +1198,7 @@ export default function BulkUploadPage() {
                   onChange={(e) => setLinkExhibitionId(e.target.value)}
                   className="rounded border border-zinc-300 px-2 py-1 text-sm"
                 >
-                  <option value="">— exhibition —</option>
+                  <option value="">{t("bulk.exhibitionSelectorPlaceholder")}</option>
                   {myExhibitions.map((ex) => (
                     <option key={ex.id} value={ex.id}>
                       {ex.title}
@@ -1214,9 +1214,9 @@ export default function BulkUploadPage() {
                       linkSelectedToExhibition
                     )
                   }
-                  className="rounded bg-zinc-800 px-2 py-1 text-sm text-white disabled:opacity-50"
+                  className="rounded-full bg-zinc-800 px-3 py-1 text-sm text-white disabled:opacity-50"
                 >
-                  Link to exhibition
+                  {t("bulk.linkToExhibition")}
                 </button>
                 <button
                   type="button"
@@ -1227,9 +1227,9 @@ export default function BulkUploadPage() {
                       unlinkSelectedFromExhibition
                     )
                   }
-                  className="rounded border border-red-200 px-2 py-1 text-sm text-red-800 disabled:opacity-50"
+                  className="rounded-full border border-red-200 px-3 py-1 text-sm text-red-800 disabled:opacity-50"
                 >
-                  Unlink from exhibition
+                  {t("bulk.unlinkFromExhibition")}
                 </button>
               </div>
             )}
@@ -1239,7 +1239,7 @@ export default function BulkUploadPage() {
               <textarea
                 value={csvText}
                 onChange={(e) => setCsvText(e.target.value)}
-                placeholder="title,year,medium"
+                placeholder={t("bulk.csvPlaceholder")}
                 rows={5}
                 className="mb-2 w-full rounded border border-zinc-300 px-2 py-1 font-mono text-xs"
               />
@@ -1247,7 +1247,7 @@ export default function BulkUploadPage() {
                 type="button"
                 disabled={csvBusy}
                 onClick={() => void importCsvDrafts()}
-                className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+                className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm text-white disabled:opacity-50"
               >
                 {csvBusy ? "…" : t("bulk.csvImport")}
               </button>
@@ -1263,14 +1263,14 @@ export default function BulkUploadPage() {
                 <button
                   type="button"
                   onClick={() => setPendingBulk(null)}
-                  className="rounded border border-zinc-300 px-3 py-1.5 text-sm"
+                  className="rounded-full border border-zinc-300 px-4 py-1.5 text-sm"
                 >
-                  Cancel
+                  {t("bulk.confirmCancel")}
                 </button>
                 <button
                   type="button"
                   onClick={() => void pendingBulk.run()}
-                  className="rounded bg-zinc-900 px-3 py-1.5 text-sm text-white"
+                  className="rounded-full bg-zinc-900 px-4 py-1.5 text-sm text-white"
                 >
                   {t("bulk.confirmOk")}
                 </button>
@@ -1439,7 +1439,7 @@ export default function BulkUploadPage() {
           </>
         )}
         <BetaFeedbackPrompt pageKey="bulk_upload" />
-      </main>
+      </div>
     </AuthGate>
   );
 }

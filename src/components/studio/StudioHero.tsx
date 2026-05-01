@@ -9,6 +9,7 @@ import {
   type IdentityInput,
 } from "@/lib/identity/format";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import { Chip } from "@/components/ds/Chip";
 
 type Props = {
   profile: IdentityInput & {
@@ -89,24 +90,19 @@ export function StudioHero({
             {identity.secondary && (
               <span className="text-sm text-zinc-500">{identity.secondary}</span>
             )}
-            <span
-              className={`rounded-full px-2 py-0.5 text-[11px] ${isPublic ? "bg-emerald-100 text-emerald-800" : "bg-zinc-200 text-zinc-700"}`}
-            >
+            <Chip tone={isPublic ? "success" : "neutral"}>
               {isPublic ? t("studio.hero.public") : t("studio.hero.private")}
-            </span>
+            </Chip>
           </div>
           {roleChips.length > 0 && (
             <p className="mt-1 flex flex-wrap gap-1">
               {roleChips.map((chip) => (
-                <span
-                  key={chip.key}
-                  className={`rounded-full px-2 py-0.5 text-xs ${chip.isPrimary ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
-                >
+                <Chip key={chip.key} tone={chip.isPrimary ? "accent" : "neutral"}>
                   {chip.label}
                   {chip.isPrimary && (
                     <span className="ml-1 opacity-70">· {t("role.primarySuffix")}</span>
                   )}
-                </span>
+                </Chip>
               ))}
             </p>
           )}

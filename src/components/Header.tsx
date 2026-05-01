@@ -503,7 +503,7 @@ export function Header() {
               onClick={() => setMobileOpen((o) => !o)}
               className="rounded p-2 text-zinc-600 hover:bg-zinc-100"
               aria-expanded={mobileOpen}
-              aria-label="Menu"
+              aria-label={t("nav.menu")}
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 {mobileOpen ? (
