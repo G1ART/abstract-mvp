@@ -40,6 +40,7 @@ import { listMyDelegations } from "@/lib/supabase/delegations";
 import {
   StudioHero,
   StudioHeroPanel,
+  StudioMaterialsPanel,
   StudioNextStepsRail,
   StudioOperationGrid,
   StudioPortfolioPanel,
@@ -50,7 +51,7 @@ import { computeStudioNextActions } from "@/lib/studio/priority";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { BetaFeedbackPrompt } from "@/components/beta";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
-import { hasAnyRole } from "@/lib/identity/roles";
+import { hasAnyRole, isArtistRole } from "@/lib/identity/roles";
 import { DelegationBriefPanel } from "@/components/delegation/DelegationBriefPanel";
 import { PageShell } from "@/components/ds/PageShell";
 import { PageHeader } from "@/components/ds/PageHeader";
@@ -435,6 +436,21 @@ export default function MyPage() {
               rail={<StudioNextStepsRail actions={studioActions} />}
             />
             <StudioOperationGrid tiles={operationTiles} />
+            {/* Profile materials — Statement + CV. Artist persona only;
+                non-artist studios stay calm without the panel. The two
+                cards back the public-profile surface modals (P5). */}
+            {isArtistRole({ main_role: profile.main_role ?? null, roles: profile.roles ?? null }) && (
+              <StudioMaterialsPanel
+                hasStatement={(profile.artist_statement ?? "").trim().length > 0}
+                statementCharCount={(profile.artist_statement ?? "").trim().length}
+                cvEntryCount={
+                  (Array.isArray(profile.education) ? profile.education.length : 0) +
+                  (Array.isArray(profile.exhibitions) ? (profile.exhibitions as unknown[]).length : 0) +
+                  (Array.isArray(profile.awards) ? (profile.awards as unknown[]).length : 0) +
+                  (Array.isArray(profile.residencies) ? (profile.residencies as unknown[]).length : 0)
+                }
+              />
+            )}
           </>
         )}
 

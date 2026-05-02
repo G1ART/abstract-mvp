@@ -2,6 +2,54 @@
 
 Last updated: 2026-05-02
 
+## 2026-05-02 — Salon System v2 P6.1: Profile Materials 카드 + CV 수동 editor
+
+P5 의 공개 프로필 Statement / CV 모달이 *데이터를 보여줄 surface* 라면, P6.1 은 작가가 *데이터를 채울 surface*. P6.2 (자동 import wizard) 는 후속 PR.
+
+### 사용자 결정
+
+- 편집 surface 위치: **B** — `/my` 메인에 Profile Materials 카드 + 신규 `/my/profile/cv` 라우트 (전용 편집 surface).
+- (P6.2) 자동 import 입력 소스: **γ** — URL + 이력서 파일 둘 다.
+- (P6.2) 결과 review UX: **iii** — Preview + 수정 + 추가/대체 모드 선택.
+
+### Audit 결과 (P6.1 진행 전)
+
+- Artist Statement 입력은 이미 `/settings#statement` 에 풍부하게 구축되어 있음 (4000자 textarea + on-blur autosave + ProfileMediaUploader hero + StatementDraftAssist AI 초안 + isArtistRole 가드).
+- CV 4 개 jsonb 컬럼 (education / exhibitions / awards / residencies) 은 *DB 에 존재* 하지만 settings 에 **education 만** fragmented row UI. 나머지 3 개는 *입력 surface 가 0*.
+
+### Supabase SQL — **돌려야 함**
+
+- [supabase/migrations/20260601500000_update_my_profile_cv.sql](../supabase/migrations/20260601500000_update_my_profile_cv.sql) — 신규 RPC `public.update_my_profile_cv(p_education, p_exhibitions, p_awards, p_residencies jsonb)`. 4 컬럼 동시 upsert + auth.uid() RLS 가드. omitted 컬럼은 untouched, `'[]'::jsonb` 는 명시적 clear. authenticated 에만 execute grant. Supabase SQL Editor 에서 실행 필요.
+
+### 환경 변수 — 변경 없음
+
+### 새 / 수정 파일
+
+- [supabase/migrations/20260601500000_update_my_profile_cv.sql](../supabase/migrations/20260601500000_update_my_profile_cv.sql) — **신규**.
+- [src/lib/supabase/profileCv.ts](../src/lib/supabase/profileCv.ts) — **신규**. `getMyProfileCv()` / `updateMyProfileCv(payload)` / `ProfileCvSlice` / `UpdateProfileCvPayload`. 잘못된 jsonb 형태는 `asArray()` 로 안전하게 빈 배열로 폴백.
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `studio.materials.*` (10 키) + `cv.editor.*` (필드 라벨 12 + 액션/상태 9 키) KO/EN 추가.
+- [src/components/studio/StudioMaterialsPanel.tsx](../src/components/studio/StudioMaterialsPanel.tsx) — **신규**. `/my` 안에서 Statement / CV 두 카드 (filled vs dashed empty 분기, 각각 진입 CTA → `/settings#statement` / `/my/profile/cv`).
+- [src/components/studio/index.ts](../src/components/studio/index.ts) — `StudioMaterialsPanel` re-export.
+- [src/app/my/page.tsx](../src/app/my/page.tsx) — `StudioOperationGrid` 다음, `FloorPanel` (portfolio helper) 앞에 `<StudioMaterialsPanel>` 끼워 넣음. `isArtistRole` 가드. profile 의 `artist_statement` 길이와 4 jsonb 길이 합으로 카드 상태 결정.
+- [src/app/my/profile/cv/page.tsx](../src/app/my/profile/cv/page.tsx) — **신규**. AuthGate + PageShell.narrow + PageHeader (제목 + lead) + 상단 작은 "스튜디오로" back 링크. 페이지 자체는 얇은 shell 이고 모든 상태/RPC 는 클라이언트로 위임.
+- [src/app/my/profile/cv/CvEditorClient.tsx](../src/app/my/profile/cv/CvEditorClient.tsx) — **신규**. 4 카테고리 (학력 / 전시 / 수상 / 레지던시) inline CRUD editor:
+  - 로딩 시 baseline 캐시 → dirty diff 로 save 버튼 활성화.
+  - 각 항목은 카드 (`rounded-2xl border bg-white p-3`) 안에 정규화 필드 inputs (school/program/year/type, title/venue/city/year, name/organization/year, name/location/year_from/year_to). 추가 / 제거 / 인라인 수정.
+  - sticky bottom save bar — `cv.editor.unsaved` / `saving` / `saved` / `error` 상태 표시 + Discard / Save.
+  - sanitize() — fully-empty 항목은 저장 시 자동 drop. 정규화되지 않은 키 (P6.2 import 가 추가하는) 는 그대로 보존.
+  - 상단에 *조용한 import 콜아웃* (`cv.editor.importHint` — "곧 추가됩니다") — P6.2 의 wizard 가 들어갈 자리 표식.
+
+### Verified
+
+- `npx tsc --noEmit` → 0 error
+- `npm run build` → success (`/my/profile/cv` static prerender 확인)
+- Lint — 변경 파일 모두 clean.
+
+### 다음 사이클 (P6.2)
+
+- 신규 라우트 `POST /api/ai/cv-import` (handleAiRoute SSOT 위에 얹음). body: `{ url? | file? }`. 서버 처리: URL → fetch + readability/cheerio / PDF → pdf-parse / DOCX → mammoth / 이미지·스캔 PDF → vision LLM. 출력: 4 카테고리 분류된 정규화 entry 배열.
+- CvEditorClient 의 import hint 자리에 wizard panel — Step 1 (URL/파일 입력) → Step 2 (loading + 진행 안내) → Step 3 (Preview, 카테고리 toggle, 인라인 수정, 추가 vs 대체 모드 선택) → Step 4 (저장 후 editor 메인으로).
+
 ## 2026-05-02 — Salon System v2 P5: 공개 프로필 Surface Cards (Statement / CV 모달)
 
 사용자 피드백 — 공개 프로필 메인 페이지에서 *짧은 소개 아래 박혀 있던* `ArtistStatementSection` 풀 카드가 statement 가 길거나 hero image 가 있을 때 작품 탭을 첫 화면 아래로 밀어냄. UI/UX 와 미감 모두 저하. 옵션 4 개를 mockup 과 함께 제시 → 사용자가 **A (모달) + 단순 버튼 두 개 (Artist Statement / CV)** 채택.

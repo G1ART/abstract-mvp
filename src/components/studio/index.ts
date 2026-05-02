@@ -12,3 +12,4 @@ export {
 export { StudioViewsInsights } from "./StudioViewsInsights";
 export { StudioPortfolioPanel } from "./StudioPortfolioPanel";
 export { StudioIntelligenceSurface } from "./StudioIntelligenceSurface";
+export { StudioMaterialsPanel } from "./StudioMaterialsPanel";
