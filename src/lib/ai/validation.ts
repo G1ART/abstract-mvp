@@ -635,3 +635,62 @@ export function parseDelegationBriefBody(raw: unknown): ValidationResult<Delegat
     },
   };
 }
+
+/**
+ * P6.2 — CV Import body. Either a URL OR a file (one of pdf / docx)
+ * is required. The route validates the request shape here and the
+ * server-side extractor (`src/lib/cv/extract.ts`) takes over after the
+ * AI route's auth + cap gates pass.
+ *
+ * File payload is base64. Cap at ~6MB encoded (~4.5MB raw) — the
+ * extractor still rejects oversized PDFs, this is just the request
+ * gate. Image / scan support is intentionally deferred (P6.3).
+ */
+export type CvImportFileKind = "pdf" | "docx";
+
+export type CvImportBody = {
+  url: string | null;
+  file: { kind: CvImportFileKind; name: string; base64: string } | null;
+  locale: AiLocale;
+};
+
+const CV_IMPORT_FILE_BASE64_MAX = 6 * 1024 * 1024; // 6MB
+
+export function parseCvImportBody(raw: unknown): ValidationResult<CvImportBody> {
+  if (!isRecord(raw)) return { ok: false, reason: "missing_body" };
+
+  const urlIn = trimOrNull(raw.url, 1024);
+  let url: string | null = null;
+  if (urlIn) {
+    if (!/^https?:\/\//i.test(urlIn)) {
+      return { ok: false, reason: "invalid_url_scheme" };
+    }
+    url = urlIn;
+  }
+
+  let file: CvImportBody["file"] = null;
+  if (isRecord(raw.file)) {
+    const kindIn = typeof raw.file.kind === "string" ? raw.file.kind.toLowerCase() : "";
+    if (kindIn !== "pdf" && kindIn !== "docx") {
+      return { ok: false, reason: "invalid_file_kind" };
+    }
+    const b64 = typeof raw.file.base64 === "string" ? raw.file.base64 : "";
+    if (!b64) return { ok: false, reason: "missing_file_data" };
+    if (b64.length > CV_IMPORT_FILE_BASE64_MAX) {
+      return { ok: false, reason: "file_too_large" };
+    }
+    const name = trimOrNull(raw.file.name, 240) ?? "resume";
+    file = { kind: kindIn, name, base64: b64 };
+  }
+
+  if (!url && !file) return { ok: false, reason: "missing_url_and_file" };
+
+  return {
+    ok: true,
+    value: {
+      url,
+      file,
+      locale: parseLocale(raw.locale),
+    },
+  };
+}

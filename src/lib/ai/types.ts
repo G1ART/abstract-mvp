@@ -220,7 +220,33 @@ export type AiFeatureKey =
   | "matchmaker_rationales"
   | "board_pitch_pack"
   | "exhibition_review"
-  | "delegation_brief";
+  | "delegation_brief"
+  | "cv_import";
+
+/**
+ * CV Import (P6.2) — structured CV extraction from a homepage URL or
+ * an uploaded resume file (PDF / DOCX). The extractor lives server-side
+ * (see `src/lib/cv/extract.ts`); the LLM step normalizes the raw text
+ * into typed entries the editor can render. Each entry's `fields` map
+ * carries the same keys our manual editor uses (school / program /
+ * year / type, title / venue / city / year, name / organization /
+ * year, name / location / year_from / year_to) so import results drop
+ * straight into the existing CRUD UI.
+ */
+export type CvImportCategory = "education" | "exhibitions" | "awards" | "residencies";
+
+export type CvImportEntry = {
+  category: CvImportCategory;
+  fields: Record<string, string>;
+};
+
+export type CvImportResult = AiDegradation & {
+  entries: CvImportEntry[];
+  /** Self-reported model confidence in the structuring (0..1). */
+  confidence?: number;
+  /** Optional: short note from the model when the input was thin. */
+  note?: string | null;
+};
 
 /**
  * P1-A — Board Pitch Pack: a small "press kit" for an existing board so

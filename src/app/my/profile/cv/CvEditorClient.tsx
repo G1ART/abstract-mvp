@@ -34,6 +34,7 @@ import {
 } from "@/lib/supabase/profileCv";
 import type { CvEntry } from "@/lib/supabase/profiles";
 import { FloorPanel } from "@/components/ds/FloorPanel";
+import { CvImportWizard } from "./CvImportWizard";
 
 type SectionKind = "education" | "exhibitions" | "awards" | "residencies";
 
@@ -47,7 +48,7 @@ const SECTION_ORDER: SectionKind[] = [
 /* -------------------------------------------------------------------------- */
 
 export function CvEditorClient() {
-  const { t } = useT();
+  const { t, locale } = useT();
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [baseline, setBaseline] = useState<ProfileCvSlice | null>(null);
@@ -60,6 +61,7 @@ export function CvEditorClient() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [importToast, setImportToast] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -150,6 +152,36 @@ export function CvEditorClient() {
     setSaveError(null);
   }, [baseline]);
 
+  /**
+   * Wizard confirm. The user already approved the preview, so we (a)
+   * persist immediately via the same RPC and (b) update both baseline
+   * and draft so the editor's save bar stays clean. Failures surface
+   * inline through the editor's standard error path.
+   */
+  const handleImportApply = useCallback(
+    async (next: ProfileCvSlice, meta: { mode: "add" | "replace"; appliedCount: number }) => {
+      const sanitized: ProfileCvSlice = {
+        education: sanitize(next.education),
+        exhibitions: sanitize(next.exhibitions),
+        awards: sanitize(next.awards),
+        residencies: sanitize(next.residencies),
+      };
+      const r = await updateMyProfileCv(sanitized);
+      if (!r.ok) {
+        setSaveError(t("cv.editor.error"));
+        return;
+      }
+      setBaseline(sanitized);
+      setDraft(sanitized);
+      setSavedAt(Date.now());
+      setImportToast(
+        t("cv.import.successApplied").replace("{count}", String(meta.appliedCount)),
+      );
+      window.setTimeout(() => setImportToast(null), 4000);
+    },
+    [t],
+  );
+
   if (loading) {
     return (
       <FloorPanel padding="md" className="text-sm text-zinc-500">
@@ -166,11 +198,20 @@ export function CvEditorClient() {
         </p>
       )}
 
-      {/* P6.2 import flow lands here — kept as a quiet hint for now so
-          users see the surface is being expanded soon. */}
-      <FloorPanel padding="sm" className="text-xs text-zinc-500">
-        {t("cv.editor.importHint")}
-      </FloorPanel>
+      {/* CV Import wizard — collapsed teaser by default. Expanding it
+          opens the URL/file inputs; confirming a preview persists
+          immediately via the editor's own RPC path so the baseline
+          stays in sync. */}
+      <CvImportWizard
+        baseline={baseline ?? { education: [], exhibitions: [], awards: [], residencies: [] }}
+        locale={locale === "ko" ? "ko" : "en"}
+        onApply={handleImportApply}
+      />
+      {importToast && (
+        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+          {importToast}
+        </p>
+      )}
 
       {SECTION_ORDER.map((kind) => (
         <CvSection

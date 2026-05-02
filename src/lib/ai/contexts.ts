@@ -514,3 +514,36 @@ export function buildDelegationBriefContext(input: DelegationBriefInput): string
     `profile_is_public: ${input.profileIsPublic ? "true" : "false"}`,
   ].join("\n");
 }
+
+/**
+ * P6.2 — CV Import context. The route extracts plain text from the URL
+ * or file upload server-side (see `src/lib/cv/extract.ts`) and passes
+ * it here. We cap the text at ~24KB so the prompt stays well below
+ * the model's context window — anything past the cap is truncated
+ * with a marker so the model knows the source was longer.
+ */
+export type CvImportContextInput = {
+  locale: AiLocale | string | null;
+  /** Where the text came from — included in the prompt so the model
+   *  can lean toward formats typical to that source. */
+  sourceKind: "url" | "pdf" | "docx" | "text";
+  sourceLabel?: string | null;
+  text: string;
+};
+
+const CV_IMPORT_TEXT_CAP = 24_000;
+
+export function buildCvImportContext(input: CvImportContextInput): string {
+  const raw = (input.text ?? "").trim();
+  const truncated = raw.length > CV_IMPORT_TEXT_CAP;
+  const text = truncated ? `${raw.slice(0, CV_IMPORT_TEXT_CAP)}\n\n[...truncated]` : raw;
+  return [
+    `locale: ${input.locale ?? "ko"}`,
+    `source_kind: ${input.sourceKind}`,
+    `source_label: ${(input.sourceLabel ?? "").slice(0, 200)}`,
+    `text_length: ${raw.length}`,
+    `text_truncated: ${truncated ? "true" : "false"}`,
+    "---",
+    text,
+  ].join("\n");
+}

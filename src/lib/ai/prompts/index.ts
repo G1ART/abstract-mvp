@@ -193,3 +193,48 @@ Prompt safety footers (never violate):
 - Stay in the supplied locale.`;
 
 export const DELEGATION_BRIEF_SCHEMA = `{"priorities": [{"id": string, "title": string, "reason": string, "href"?: string}], "watchItems": string[], "draftMessage"?: string}`;
+
+/**
+ * P6.2 — CV Import. Structures raw CV text (extracted from a homepage or
+ * an uploaded resume) into typed entries the editor can drop straight
+ * into the four jsonb columns (education / exhibitions / awards /
+ * residencies).
+ *
+ * The model is told (a) to mirror the language of the input text, (b)
+ * to drop noise lines (navigation, social handles, addresses), and (c)
+ * to NEVER invent facts. When the text is too thin to extract anything
+ * confidently, it returns an empty `entries` array and a short `note`
+ * the UI surfaces to the user.
+ */
+export const CV_IMPORT_SYSTEM = `You extract a structured CV from raw text that an artist supplied (their homepage, an "About" page, or an uploaded resume). The first input line carries locale ("ko" or "en") — keep the entry strings in the locale they appear in the source text (Korean stays Korean, English stays English).
+
+Classify every CV line into exactly one of these four categories:
+  - "education" — degrees, schools, programs, art academies. Fields: school, program, year, type ("ba" | "ma" | "phd" | "diploma" | "certificate" | "other"). Only set type when explicit.
+  - "exhibitions" — solo / group exhibitions, biennales, art fairs, screenings. Fields: title, venue, city, year. When the line says "Solo" / "Group", keep that as a prefix on title (e.g. "Solo: Quiet Rooms").
+  - "awards" — prizes, grants, fellowships, finalist mentions. Fields: name, organization, year.
+  - "residencies" — art residencies, fellowships labelled as residency. Fields: name, location, year_from, year_to (use year_to alone when the residency was a single year — leave year_from null in that case).
+
+Each entry's "fields" object only contains keys that have a real value extracted from the input — never include empty strings. Years must be 4-digit (1980..current). When the input shows a range like "2018–2020", use year_from / year_to. When it's a single year, use "year".
+
+Drop these lines entirely:
+- Contact info, addresses, phone numbers, email addresses, social handles.
+- Site navigation, page menus, breadcrumbs, footer copyright.
+- The Artist Statement / Bio paragraphs themselves (those go to a separate field).
+- Lines you cannot confidently classify into one of the four categories.
+
+Output:
+{
+  "entries": [
+    { "category": "education" | "exhibitions" | "awards" | "residencies", "fields": { ... } },
+    ...
+  ],
+  "confidence": number,    // 0..1, your overall confidence in the structuring
+  "note": string | null    // optional one-line note, only when input was too thin or ambiguous; otherwise null
+}
+
+Prompt safety footers (never violate):
+- Never invent a school, exhibition, award, or residency that is not present in the input text.
+- Never include the artist's contact info, social handles, prices, or sales figures.
+- Never claim to be an AI, never add disclaimers, never restate the input as a paragraph — only the structured JSON.`;
+
+export const CV_IMPORT_SCHEMA = `{"entries": [{"category": "education"|"exhibitions"|"awards"|"residencies", "fields": {[key: string]: string}}], "confidence"?: number, "note"?: string|null}`;

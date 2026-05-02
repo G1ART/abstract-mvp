@@ -2,6 +2,72 @@
 
 Last updated: 2026-05-02
 
+## 2026-05-02 — Salon System v2 P6.2: CV 자동 import wizard (URL / 이력서 → AI 정리)
+
+P6.1 의 `/my/profile/cv` 수동 editor 위에 *URL 또는 이력서 파일에서 CV 를 자동으로 가져오는 4 단계 wizard* 를 얹음. 작가가 본인 홈페이지 주소 한 줄 또는 PDF/DOCX 한 파일로 *3 클릭 안에* 5 년치 CV 를 정리하는 동선.
+
+### Pipeline
+
+1. **클라이언트 (Wizard Step 1)** — URL 또는 파일 (PDF / DOCX, ≤ 5MB) 입력. base64 인코딩 후 `POST /api/ai/cv-import` 로 전송.
+2. **서버 추출 단계** — `src/lib/cv/extract.ts`:
+   - URL → fetch (8s timeout, 2MB cap, polite UA) + cheerio 로 script/style/nav/header/footer/aside 제거 후 body 텍스트.
+   - PDF → `pdf-parse` (5MB raw cap).
+   - DOCX → `mammoth.extractRawText`.
+   - 추출 실패는 stable enum (`url_fetch_failed` / `pdf_empty` / ...) 으로 반환 → wizard 에서 i18n 매핑된 친절한 오류로 표시.
+3. **LLM 정리 (Wizard Step 2)** — `handleAiRoute` SSOT 위에 `feature: "cv_import"` 로 얹음. `CV_IMPORT_SYSTEM` prompt 가 4 카테고리 (education / exhibitions / awards / residencies) 로 분류 + 정규화 키 (school/program/year/type, title/venue/city/year, name/organization/year, name/location/year_from/year_to) 로 출력. 텍스트 ≤ 24KB 캡 (모델 컨텍스트 안전), `truncated` 플래그로 모델 안내.
+4. **Preview (Wizard Step 3)** — 항목별 카테고리 dropdown + 인라인 필드 편집 + 제거. 푸터에 *추가 / 대체* 라디오 토글 (기본 "추가"); "대체" 선택 시 *기존 N개 entry 삭제* 콜아웃. 빈 결과면 "이력서 파일을 첨부해 보세요" 권유.
+5. **저장 (Wizard Step 4)** — 사용자 confirm → 같은 `update_my_profile_cv` RPC 로 즉시 persist. baseline 갱신 → editor save bar `saved` 상태로 정리. 4 초 토스트 "{count}개 가져옴".
+
+### 안전 / 장벽
+
+- **Soft-cap 만 적용** (별도 entitlement 매핑 없음) — 모든 작가가 첫 도입에서 부담 없이 한 번 쓸 수 있도록. 일일 AI 소프트캡 (`AI_USER_DAILY_SOFT_CAP`) 은 그대로 적용됨.
+- **Forbidden actions** — 이미지 / 스캔 PDF (vision LLM) 는 P6.3 fast-follow 로 미룸. 콘택트 / 가격 / 소셜 핸들은 prompt-level 에서 제거 강제.
+- **Preview 단계 강제** — LLM 출력은 사용자가 *명시적으로 confirm* 하기 전엔 절대 DB 에 쓰이지 않음. Wave 1 안전 정책 (`SAFETY_FOOTER`, `assertSafePrompt`) 그대로.
+- **Loose-key 보존** — preview 의 항목이 정규화 외 키 (P6.3 import 가 도입할 수 있는) 를 들고 있을 때 editor 가 그대로 보존 (silent drop 없음).
+
+### Supabase SQL — **돌릴 것 없음**
+
+(P5 / P6.1 마이그레이션이 기 적용되었다면 P6.2 는 SQL 변경 없음.)
+
+### 환경 변수 — 변경 없음
+
+기존 `OPENAI_API_KEY` 와 `AI_USER_DAILY_SOFT_CAP` 그대로 재사용.
+
+### 새 / 수정 파일
+
+**런타임**
+- [supabase/migrations/...] — 변경 없음.
+- **신규** [src/app/api/ai/cv-import/route.ts](../src/app/api/ai/cv-import/route.ts) — `handleAiRoute` 위에 추출 단계 + LLM 호출 + 결과 normalizer (`normalizeResult`) + extract 실패 시 stable HTTP 코드.
+- **신규** [src/lib/cv/extract.ts](../src/lib/cv/extract.ts) — URL / PDF / DOCX 추출 헬퍼 (서버 전용, dynamic import 로 edge bundle 분리).
+- [src/lib/ai/types.ts](../src/lib/ai/types.ts) — `AiFeatureKey` 에 `"cv_import"` 추가. `CvImportCategory` / `CvImportEntry` / `CvImportResult` 타입 export.
+- [src/lib/ai/safety.ts](../src/lib/ai/safety.ts) — `ALLOWED_FEATURES.cv_import = true`.
+- [src/lib/metering/usageKeys.ts](../src/lib/metering/usageKeys.ts) — `AI_CV_IMPORT_GENERATED` + `AI_FEATURE_TO_METER_KEY.cv_import`. (entitlement 매핑은 의도적으로 미설정 → soft-cap 만 적용.)
+- [src/lib/ai/prompts/index.ts](../src/lib/ai/prompts/index.ts) — `CV_IMPORT_SYSTEM` + `CV_IMPORT_SCHEMA` (4 카테고리 분류 룰, 노이즈 라인 drop, 가짜 사실 금지, 출처 언어 보존).
+- [src/lib/ai/contexts.ts](../src/lib/ai/contexts.ts) — `buildCvImportContext` (24KB cap, source kind + label 라벨링).
+- [src/lib/ai/validation.ts](../src/lib/ai/validation.ts) — `parseCvImportBody` (URL 스킴 가드 / 파일 kind 가드 / base64 6MB 캡 / URL or 파일 중 하나 필수).
+- [src/lib/ai/browser.ts](../src/lib/ai/browser.ts) — `FEATURE_TO_PATH.cv_import` + `aiApi.cvImport()` 단축.
+
+**UI**
+- **신규** [src/app/my/profile/cv/CvImportWizard.tsx](../src/app/my/profile/cv/CvImportWizard.tsx) — 4 단계 (idle / running / preview / saving) wizard. URL+파일 입력, 진행 상태 회전 카피, preview 인라인 편집, 추가/대체 모드, ESC/취소 처리, browser-safe base64 인코더 (chunked).
+- [src/app/my/profile/cv/CvEditorClient.tsx](../src/app/my/profile/cv/CvEditorClient.tsx) — `cv.editor.importHint` FloorPanel 자리를 `<CvImportWizard>` 로 교체. wizard confirm → `updateMyProfileCv` 즉시 persist + baseline 동기화 + 4 초 success toast.
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `cv.import.*` 36 개 키 KO/EN (입력 / 진행 / 미리보기 / 모드 / 에러 매핑 / confidence / note).
+
+**의존**
+- 신규 패키지: `pdf-parse@^1.1.4` + `mammoth@^1.12.0` (서버 dynamic import 로만 사용).
+- 신규 dev 패키지: `@types/pdf-parse`.
+
+### Verified
+
+- `npx tsc --noEmit` → 0 error
+- `npm run build` → success (`/api/ai/cv-import` 라우트 + `/my/profile/cv` static prerender 모두 정상)
+- Lint — 변경 파일 모두 clean.
+
+### 다음 사이클 (P6.3 후보)
+
+- 이미지 / 스캔 PDF 지원 (vision LLM) — `extractFromImage(base64)`.
+- "이미 등록된 동일 항목" detection — preview 단계에서 baseline 과 string-similar entry 가 있으면 `(이미 등록된 항목과 유사)` 회색 라벨로 안내, 사용자가 토글로 제외 가능.
+- Education `type` (BA / MA / PhD / ...) 자동 추론 — 프롬프트 레벨에서 enum 강제 + Settings 의 `educationTypeOptions` 와 동기화.
+
 ## 2026-05-02 — Salon System v2 P6.1: Profile Materials 카드 + CV 수동 editor
 
 P5 의 공개 프로필 Statement / CV 모달이 *데이터를 보여줄 surface* 라면, P6.1 은 작가가 *데이터를 채울 surface*. P6.2 (자동 import wizard) 는 후속 PR.

@@ -6,6 +6,7 @@ import type {
   AiFeatureKey,
   BioDraftResult,
   BoardPitchPackResult,
+  CvImportResult,
   DelegationBriefResult,
   ExhibitionDraftResult,
   ExhibitionReviewResult,
@@ -29,6 +30,7 @@ const FEATURE_TO_PATH: Record<AiFeatureKey, string> = {
   board_pitch_pack: "/api/ai/board-pitch-pack",
   exhibition_review: "/api/ai/exhibition-review",
   delegation_brief: "/api/ai/delegation-brief",
+  cv_import: "/api/ai/cv-import",
 };
 
 export type CallAiOptions = {
@@ -227,6 +229,13 @@ export const aiApi = {
       "delegation_brief",
       body,
       { priorities: [], watchItems: [] },
+      opts,
+    ),
+  cvImport: (body: Record<string, unknown>, opts?: CallAiOptions) =>
+    callAi<CvImportResult>(
+      "cv_import",
+      body,
+      { entries: [], confidence: 0, note: null },
       opts,
     ),
 };

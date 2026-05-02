@@ -32,6 +32,7 @@ const ALLOWED_FEATURES: Readonly<Record<AiFeatureKey, true>> = Object.freeze({
   board_pitch_pack: true,
   exhibition_review: true,
   delegation_brief: true,
+  cv_import: true,
 });
 
 export function assertSafePrompt(feature: AiFeatureKey): void {

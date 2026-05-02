@@ -18,6 +18,7 @@ export const USAGE_KEYS = {
   AI_BOARD_PITCH_PACK_GENERATED: "ai.board_pitch_pack.generated",
   AI_EXHIBITION_REVIEW_GENERATED: "ai.exhibition_review.generated",
   AI_DELEGATION_BRIEF_GENERATED: "ai.delegation_brief.generated",
+  AI_CV_IMPORT_GENERATED: "ai.cv_import.generated",
   AI_ACCEPTED: "ai.accepted",
   // Boards
   BOARD_CREATED: "board.created",
@@ -61,6 +62,7 @@ export const AI_FEATURE_TO_METER_KEY: Record<string, string> = {
   board_pitch_pack: USAGE_KEYS.AI_BOARD_PITCH_PACK_GENERATED,
   exhibition_review: USAGE_KEYS.AI_EXHIBITION_REVIEW_GENERATED,
   delegation_brief: USAGE_KEYS.AI_DELEGATION_BRIEF_GENERATED,
+  cv_import: USAGE_KEYS.AI_CV_IMPORT_GENERATED,
 };
 
 /** Maps a canonical AI feature key to the entitlement feature key that
