@@ -43,7 +43,7 @@ import { formatErrorMessage } from "@/lib/errors/format";
 import { Chip, EmptyState, LaneChips, PageShell, type LaneOption } from "@/components/ds";
 import { formatIdentityPair, formatRoleChips } from "@/lib/identity/format";
 import { ProfileCoverBand } from "@/components/profile/ProfileCoverBand";
-import { ArtistStatementSection } from "@/components/profile/ArtistStatementSection";
+import { ProfileSurfaceCards } from "@/components/profile/ProfileSurfaceCards";
 import { isArtistRole } from "@/lib/identity/roles";
 
 const PROFILE_UPDATED_KEY = "profile_updated";
@@ -557,13 +557,22 @@ export function UserProfileContent({
         )}
       </div>
 
-      {/* Statement section is artist-only (incl. hybrid). For non-artist
-          profiles (curator / collector / gallerist) we suppress the surface
-          entirely — both the visible read view and the owner write-prompt. */}
+      {/* Profile Surface Cards — Artist Statement + CV. Both surfaces
+          stay artist-only (incl. hybrid); for non-artist personas
+          (curator / collector / gallerist) the entire row is suppressed.
+          Replaces the legacy `ArtistStatementSection` full-section card,
+          which was pushing the artworks tab off the first viewport
+          whenever the statement ran long. The two trigger buttons keep
+          the surface compact and open in-page modals — see
+          `ProfileSurfaceCards.tsx` for the layout decision. */}
       {isArtistRole({ main_role: profile.main_role ?? null, roles }) && (
-        <ArtistStatementSection
+        <ProfileSurfaceCards
           statement={profile.artist_statement ?? null}
           heroImagePath={profile.artist_statement_hero_image_url ?? null}
+          education={profile.education ?? null}
+          exhibitionsCv={profile.exhibitions_cv ?? null}
+          awards={profile.awards ?? null}
+          residencies={profile.residencies ?? null}
           isOwner={isOwner}
         />
       )}

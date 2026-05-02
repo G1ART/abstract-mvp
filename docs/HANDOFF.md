@@ -1,6 +1,52 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-05-01
+Last updated: 2026-05-02
+
+## 2026-05-02 — Salon System v2 P5: 공개 프로필 Surface Cards (Statement / CV 모달)
+
+사용자 피드백 — 공개 프로필 메인 페이지에서 *짧은 소개 아래 박혀 있던* `ArtistStatementSection` 풀 카드가 statement 가 길거나 hero image 가 있을 때 작품 탭을 첫 화면 아래로 밀어냄. UI/UX 와 미감 모두 저하. 옵션 4 개를 mockup 과 함께 제시 → 사용자가 **A (모달) + 단순 버튼 두 개 (Artist Statement / CV)** 채택.
+
+### 디자인 결정
+
+- 큰 풀 카드 (썸네일 + 미리보기 + read-more) 대신 **두 개의 컴팩트 trigger 버튼** 만 노출:
+  - `Artist statement / 작가의 말`
+  - `CV / 이력 (CV)`
+- 두 버튼은 `grid grid-cols-1 sm:grid-cols-2 gap-2` 로 모바일은 stack, sm+ 에선 2 컬. 각각 `rounded-2xl` border + 아이콘 (zinc-900 round badge) + 라벨 + hint + chevron. 살짝 invitation 있는 결, 평이한 outline pill 보다 *한 단계 진하게*.
+- 클릭 시 in-page 모달 (centered overlay, `rounded-3xl bg-white shadow-xl max-w-2xl`). ESC / 백드롭 클릭으로 닫힘. focus 는 close 버튼으로 이동, 닫힐 때 trigger 로 복귀. body scroll lock.
+- 작품 그리드는 *밀려나지 않음* — 어떤 길이의 statement 도, CV 가 몇 개여도 트리거 자체는 두 줄짜리 행 하나로 고정.
+
+### 페르소나 / Empty 상태
+
+- Statement / CV 둘 다 **artist 페르소나 only** (curator / collector / gallerist 는 행 자체 미노출). 기존 `isArtistRole` 가드를 그대로 부모에서 적용.
+- 방문자 + 양쪽 비어있음 → 행 자체 렌더 안 함.
+- 방문자 + 한쪽만 채워짐 → 채워진 버튼만 노출.
+- 오너 + 비어있음 → 점선 border 의 빈 상태 버튼 ("작가의 말 쓰기" / "이력 작성하기"), 모달 안에 prompt + `/settings#statement` 또는 `/settings#cv` CTA.
+
+### CV 데이터 모델
+
+- 기존 `profiles.education / exhibitions / awards / residencies` jsonb 컬럼 (이미 존재) 을 *그대로* 재사용. **신규 컬럼 없음**.
+- 공개 RPC `lookup_profile_by_username(p_username)` 를 마이그레이션으로 확장 — 위 4 개 jsonb 를 응답에 포함. `profiles.exhibitions` 는 클라이언트의 *전시 탭 데이터 (구조화된 exhibitions 테이블 결과)* 와 충돌하지 않도록 RPC 응답에선 `exhibitions_cv` 키로 노출.
+- CV 항목 렌더링은 loose schema 대응 — `formatEntry()` 가 (school/program/year, title/venue/city, name/organization, name/location 등) 흔한 키를 시도하고 fallback. 알 수 없는 키만 있는 항목은 row 가 비어 보이지 않도록 자동 skip.
+
+### Supabase SQL — **돌려야 함**
+
+- [supabase/migrations/20260601400000_lookup_profile_cv.sql](../supabase/migrations/20260601400000_lookup_profile_cv.sql) — `lookup_profile_by_username` RPC 재생성 (이전 버전과 동일 동작 보존, 응답에 education / exhibitions_cv / awards / residencies 4 키 추가). Supabase SQL Editor 에서 실행 필요.
+
+### 환경 변수 — 변경 없음
+
+### 수정 파일
+
+- [src/lib/supabase/profiles.ts](../src/lib/supabase/profiles.ts) — `ProfilePublic` 타입에 `education / exhibitions_cv / awards / residencies` 추가. `CvEntry` 타입 export. parser 에 `cvArrayOrNull()` 헬퍼 추가.
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `profile.surface.*` (버튼 라벨/힌트), `profile.cv.*` (모달 섹션 라벨, owner empty prompt) KO/EN 키 추가.
+- [src/components/profile/ProfileSurfaceCards.tsx](../src/components/profile/ProfileSurfaceCards.tsx) — **신규**. 트리거 버튼 2 개 + Statement 모달 + CV 모달 + `formatEntry()` 정규화 헬퍼 + `SurfaceModal` (ESC / backdrop / focus / scroll lock).
+- [src/components/UserProfileContent.tsx](../src/components/UserProfileContent.tsx) — `ArtistStatementSection` import → `ProfileSurfaceCards` 로 교체. profile prop 에서 CV jsonb 4 개 전달.
+- [src/components/profile/ArtistStatementSection.tsx](../src/components/profile/ArtistStatementSection.tsx) — **삭제**. `ProfileSurfaceCards` 가 모든 책임을 흡수.
+
+### Verified
+
+- `npx tsc --noEmit` → 0 error
+- `npm run build` → success (모든 라우트 정상)
+- Lint — 변경 파일에 신규 에러 없음 (UserProfileContent.tsx 의 unused import 2 개는 P5 이전부터 존재).
 
 ## 2026-05-01 — Salon System v2 P4.1: 업로드 헤더 순서 정렬 (페이지 정체성 단일화)
 

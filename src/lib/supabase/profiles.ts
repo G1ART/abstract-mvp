@@ -42,6 +42,17 @@ export type Profile = {
   artist_statement_updated_at?: string | null;
 };
 
+/**
+ * Loosely-typed CV entries. The underlying `profiles.education /
+ * exhibitions / awards / residencies` jsonb columns are user-authored
+ * arrays; the public lookup RPC (`lookup_profile_by_username`) coalesces
+ * `null` to `[]`. Each entry is a free-form record — the UI normalizes
+ * fields it knows about (school / program / year / type for education,
+ * title / venue / city / year for exhibitions, etc.) and shows the rest
+ * as a short fallback line.
+ */
+export type CvEntry = Record<string, unknown>;
+
 export type ProfilePublic = {
   id: string;
   username: string | null;
@@ -61,6 +72,13 @@ export type ProfilePublic = {
   artist_statement?: string | null;
   artist_statement_hero_image_url?: string | null;
   artist_statement_updated_at?: string | null;
+  // Public CV slice (lookup_profile_cv migration)
+  education?: CvEntry[] | null;
+  /** Free-form text exhibition history kept on the profile (distinct from
+   * the structured exhibitions table — see `ExhibitionWithCredits`). */
+  exhibitions_cv?: CvEntry[] | null;
+  awards?: CvEntry[] | null;
+  residencies?: CvEntry[] | null;
 };
 
 /**
@@ -162,6 +180,10 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     artist_statement: stringFieldOrNull(raw?.artist_statement),
     artist_statement_hero_image_url: stringFieldOrNull(raw?.artist_statement_hero_image_url),
     artist_statement_updated_at: stringFieldOrNull(raw?.artist_statement_updated_at),
+    education: cvArrayOrNull(raw?.education),
+    exhibitions_cv: cvArrayOrNull(raw?.exhibitions_cv),
+    awards: cvArrayOrNull(raw?.awards),
+    residencies: cvArrayOrNull(raw?.residencies),
   };
 
   return {
@@ -177,6 +199,17 @@ function stringFieldOrNull(v: unknown): string | null {
   if (typeof v !== "string") return null;
   const trimmed = v.trim();
   return trimmed.length ? trimmed : null;
+}
+
+function cvArrayOrNull(v: unknown): CvEntry[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: CvEntry[] = [];
+  for (const item of v) {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      out.push(item as CvEntry);
+    }
+  }
+  return out.length ? out : null;
 }
 
 function numberFieldOrNull(v: unknown): number | null {
