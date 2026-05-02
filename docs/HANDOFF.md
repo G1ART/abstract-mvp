@@ -2,6 +2,45 @@
 
 Last updated: 2026-05-02
 
+## 2026-05-02 — Salon System v2 P6.3: CV import 정확도 ─ 중복 회피 + education enum 정규화
+
+P6.2 의 import wizard 가 *결과물의 품질* 면에서 가장 자주 부딪힐 두 friction 을 잡아냄.
+
+### 1. 중복 회피 (preview 단계)
+
+- **신규** [src/lib/cv/normalize.ts](../src/lib/cv/normalize.ts) — `signatureForEntry` / `entriesAreSimilar` / `findSimilarIndex`. category 별로 *primary key* (education: school + program + year, exhibitions: title − solo/group prefix + venue + year, awards: name + organization + year, residencies: name + location + year_from/year_to/year) 를 normalize 후 비교. 정확 매치 + "primary 텍스트 + year" 의 looser 매치 두 단계.
+- Wizard 가 preview 진입 시 baseline 의 동일 카테고리 항목과 비교해 *유사 항목은 자동으로 skip 으로 시작*. 항목 카드에 `이미 등록된 항목과 유사` 호박색 라벨, "유사 항목 모두 제외 / 모두 포함" 헤더 토글, 항목별 "포함 / 제외" 토글, dim + disabled 시각화.
+- save 시 skip 된 항목은 grouped 결과에 빠짐 → 같은 history 가 두 줄로 들어가는 사고 차단. confirm 버튼은 included 가 0 일 때 disable.
+
+### 2. Education `type` enum 정규화
+
+- 기존: prompt 에 `"ba" | "ma" | "phd" | "diploma" | "certificate" | "other"` 였는데 settings taxonomy (`hs_art | ba | bfa | ma | mfa | phd | other`) 와 mismatch → 제출 후 manual editor 에서 `<select>` 가 빈 값으로 보이는 사고.
+- **prompt** ([src/lib/ai/prompts/index.ts](../src/lib/ai/prompts/index.ts)) 가 settings 의 7-slug enum 그대로 사용하도록 갱신. 한국어/영어 표기 매핑 예시도 인라인 (학사→ba / BFA→bfa / 석사→ma / MFA→mfa / 박사→phd / 예술고→hs_art / 수료·certificate→other). "BFA → bfa, never ba" 같이 *strict-to-loose* 우선순위 명시.
+- **route normalizer** ([src/app/api/ai/cv-import/route.ts](../src/app/api/ai/cv-import/route.ts)) 가 `normalizeEducationType` 으로 모델이 "Bachelor of Fine Arts" / "B.A." / "박사" 같은 free-text 를 뱉어도 다시 슬러그로 snap. unknown 은 `delete fields.type` 으로 drop (junk 라벨 보존하지 않음).
+- normalizer 자체는 [src/lib/cv/normalize.ts](../src/lib/cv/normalize.ts) 에 위치 — 추후 manual editor 의 자동 보정 / website-import 에도 재사용 가능하도록 SSOT.
+
+### Supabase SQL — 변경 없음
+### 환경 변수 — 변경 없음
+
+### 새 / 수정 파일
+
+- **신규** [src/lib/cv/normalize.ts](../src/lib/cv/normalize.ts) — `EDUCATION_TYPE_VALUES`, `normalizeEducationType`, `signatureForEntry`, `entriesAreSimilar`, `findSimilarIndex`.
+- [src/app/api/ai/cv-import/route.ts](../src/app/api/ai/cv-import/route.ts) — `normalizeEducationType` 호출 추가.
+- [src/lib/ai/prompts/index.ts](../src/lib/ai/prompts/index.ts) — `CV_IMPORT_SYSTEM` education.type enum settings 동기화 + 표기 매핑 예시.
+- [src/app/my/profile/cv/CvImportWizard.tsx](../src/app/my/profile/cv/CvImportWizard.tsx) — `skip` 셋 상태, duplicate 자동 skip, 일괄 토글, 항목별 라벨 + 토글, dim 처리, save 시 skip 제외 로직.
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `cv.import.duplicate*` / `cv.import.entrySkipped|Include|Exclude` KO/EN.
+
+### Verified
+
+- `npx tsc --noEmit` → 0 error
+- `npm run build` → success
+- 변경 파일 lint clean (사전 존재 warning 은 P6.2 와 동일).
+
+### 다음 사이클 (P6.4 후보)
+
+- **이미지 / 스캔 PDF (vision LLM)** — `generateJSON` 이 현재 text-only chat completion 기반이므로 별도 `generateJSONWithVision` SSOT 가 필요. base64 image 를 multimodal user message 로 보내고, 스캔 PDF 는 `pdf-poppler` 같은 라이브러리로 페이지를 PNG 화 후 vision. Vercel 환경 의존성 점검 동반.
+- **website-import / claim 플로우와 normalize 재사용** — 같은 `normalizeEducationType` + `entriesAreSimilar` 를 manual editor 와 website-import 의 dedup pass 에도 적용해 한 입력 경로를 통한 dirty data 가 다른 경로로 새지 않도록.
+
 ## 2026-05-02 — Salon System v2 P6.2: CV 자동 import wizard (URL / 이력서 → AI 정리)
 
 P6.1 의 `/my/profile/cv` 수동 editor 위에 *URL 또는 이력서 파일에서 CV 를 자동으로 가져오는 4 단계 wizard* 를 얹음. 작가가 본인 홈페이지 주소 한 줄 또는 PDF/DOCX 한 파일로 *3 클릭 안에* 5 년치 CV 를 정리하는 동선.

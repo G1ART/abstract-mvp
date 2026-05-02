@@ -15,6 +15,7 @@ import {
   type CvExtractFailure,
   type CvExtractResult,
 } from "@/lib/cv/extract";
+import { normalizeEducationType } from "@/lib/cv/normalize";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -86,6 +87,16 @@ function normalizeResult(raw: unknown): CvImportResult {
       } else if (typeof v === "number" && Number.isFinite(v)) {
         fields[k] = String(v);
       }
+    }
+    // Education type enum: model often emits "Bachelor of Fine Arts"
+    // or "BFA" instead of the slug. We snap to the canonical slug
+    // here so the manual editor's <select> renders the right label
+    // without a follow-up edit. Unknown values drop out so the field
+    // doesn't carry a junk display string.
+    if (cat === "education" && typeof fields.type === "string") {
+      const slug = normalizeEducationType(fields.type);
+      if (slug) fields.type = slug;
+      else delete fields.type;
     }
     if (Object.keys(fields).length === 0) continue;
     entries.push({ category: cat as CvImportCategory, fields });

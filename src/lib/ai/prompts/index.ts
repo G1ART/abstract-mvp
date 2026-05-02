@@ -209,7 +209,7 @@ export const DELEGATION_BRIEF_SCHEMA = `{"priorities": [{"id": string, "title": 
 export const CV_IMPORT_SYSTEM = `You extract a structured CV from raw text that an artist supplied (their homepage, an "About" page, or an uploaded resume). The first input line carries locale ("ko" or "en") — keep the entry strings in the locale they appear in the source text (Korean stays Korean, English stays English).
 
 Classify every CV line into exactly one of these four categories:
-  - "education" — degrees, schools, programs, art academies. Fields: school, program, year, type ("ba" | "ma" | "phd" | "diploma" | "certificate" | "other"). Only set type when explicit.
+  - "education" — degrees, schools, programs, art academies. Fields: school, program, year, type. The "type" enum is exactly: "hs_art" (art high school / 예술고 / 미술고), "ba" (Bachelor / 학사 / B.A.), "bfa" (Bachelor of Fine Arts / BFA), "ma" (Master / 석사 / M.A.), "mfa" (Master of Fine Arts / MFA), "phd" (Doctorate / 박사 / Ph.D.), "other" (diploma / certificate / 수료). Only set type when the source clearly indicates it; pick the most specific slug (e.g. "BFA" → "bfa", never "ba"). Omit the field when the level is ambiguous.
   - "exhibitions" — solo / group exhibitions, biennales, art fairs, screenings. Fields: title, venue, city, year. When the line says "Solo" / "Group", keep that as a prefix on title (e.g. "Solo: Quiet Rooms").
   - "awards" — prizes, grants, fellowships, finalist mentions. Fields: name, organization, year.
   - "residencies" — art residencies, fellowships labelled as residency. Fields: name, location, year_from, year_to (use year_to alone when the residency was a single year — leave year_from null in that case).

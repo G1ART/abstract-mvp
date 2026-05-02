@@ -28,6 +28,7 @@ import { aiApi } from "@/lib/ai/browser";
 import type { CvImportCategory, CvImportEntry, CvImportResult } from "@/lib/ai/types";
 import type { CvEntry } from "@/lib/supabase/profiles";
 import type { ProfileCvSlice } from "@/lib/supabase/profileCv";
+import { findSimilarIndex } from "@/lib/cv/normalize";
 
 type WizardState = "idle" | "running" | "preview" | "saving";
 type MergeMode = "add" | "replace";
@@ -76,6 +77,7 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
 
   // Result state
   const [entries, setEntries] = useState<CvImportEntry[]>([]);
+  const [skip, setSkip] = useState<Set<number>>(() => new Set());
   const [confidence, setConfidence] = useState<number | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [mode, setMode] = useState<MergeMode>("add");
@@ -149,11 +151,22 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
       setError(degradedKeyFor(result));
       return;
     }
-    setEntries(result.entries ?? []);
+    const incoming = result.entries ?? [];
+    setEntries(incoming);
+    // Default: every entry that is "similar to" an existing CV row is
+    // skipped so we never silently double-write history. The user can
+    // bring any of them back individually or via "include all".
+    const auto = new Set<number>();
+    for (let i = 0; i < incoming.length; i += 1) {
+      const e = incoming[i];
+      const baselineSlice = baseline[e.category as keyof ProfileCvSlice] ?? [];
+      if (findSimilarIndex(e.category, e.fields, baselineSlice) >= 0) auto.add(i);
+    }
+    setSkip(auto);
     setConfidence(typeof result.confidence === "number" ? result.confidence : null);
     setNote(result.note ?? null);
     setState("preview");
-  }, [state, url, file, locale]);
+  }, [state, url, file, locale, baseline]);
 
   /* ------------------------------ preview edit ---------------------------- */
 
@@ -173,6 +186,23 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
   }, []);
   const removeEntry = useCallback((idx: number) => {
     setEntries((list) => list.filter((_, i) => i !== idx));
+    // Re-base the skip set: every index strictly above `idx` shifts down by one.
+    setSkip((prev) => {
+      const next = new Set<number>();
+      for (const i of prev) {
+        if (i === idx) continue;
+        next.add(i > idx ? i - 1 : i);
+      }
+      return next;
+    });
+  }, []);
+  const toggleSkip = useCallback((idx: number) => {
+    setSkip((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   }, []);
 
   /* ----------------------------------- save ------------------------------- */
@@ -185,7 +215,9 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
       awards: [],
       residencies: [],
     };
-    for (const e of entries) {
+    for (let i = 0; i < entries.length; i += 1) {
+      if (skip.has(i)) continue;
+      const e = entries[i];
       if (Object.keys(e.fields).length === 0) continue;
       const entry: CvEntry = { ...e.fields };
       grouped[e.category].push(entry);
@@ -207,6 +239,7 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
     onApply(merged, { mode, appliedCount });
     // Close the wizard back to its idle, collapsed shell.
     setEntries([]);
+    setSkip(new Set());
     setConfidence(null);
     setNote(null);
     setUrl("");
@@ -214,10 +247,11 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
     setMode("add");
     setOpen(false);
     setState("idle");
-  }, [entries, mode, baseline, onApply]);
+  }, [entries, skip, mode, baseline, onApply]);
 
   const discard = useCallback(() => {
     setEntries([]);
+    setSkip(new Set());
     setConfidence(null);
     setNote(null);
     setState("idle");
@@ -299,6 +333,8 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
       {state === "preview" && (
         <PreviewStep
           entries={entries}
+          skip={skip}
+          baseline={baseline}
           confidence={confidence}
           note={note}
           mode={mode}
@@ -307,6 +343,29 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
           onUpdateFields={updateEntryFields}
           onUpdateCategory={updateEntryCategory}
           onRemove={removeEntry}
+          onToggleSkip={toggleSkip}
+          onSkipAllDuplicates={() => {
+            setSkip((prev) => {
+              const next = new Set(prev);
+              for (let i = 0; i < entries.length; i += 1) {
+                const e = entries[i];
+                const slice = baseline[e.category as keyof ProfileCvSlice] ?? [];
+                if (findSimilarIndex(e.category, e.fields, slice) >= 0) next.add(i);
+              }
+              return next;
+            });
+          }}
+          onIncludeAllDuplicates={() => {
+            setSkip((prev) => {
+              const next = new Set(prev);
+              for (let i = 0; i < entries.length; i += 1) {
+                const e = entries[i];
+                const slice = baseline[e.category as keyof ProfileCvSlice] ?? [];
+                if (findSimilarIndex(e.category, e.fields, slice) >= 0) next.delete(i);
+              }
+              return next;
+            });
+          }}
           onConfirm={confirm}
           onDiscard={discard}
         />
@@ -441,6 +500,8 @@ function RunningStep({ message }: { message: string }) {
 
 function PreviewStep({
   entries,
+  skip,
+  baseline,
   confidence,
   note,
   mode,
@@ -449,10 +510,15 @@ function PreviewStep({
   onUpdateFields,
   onUpdateCategory,
   onRemove,
+  onToggleSkip,
+  onSkipAllDuplicates,
+  onIncludeAllDuplicates,
   onConfirm,
   onDiscard,
 }: {
   entries: CvImportEntry[];
+  skip: Set<number>;
+  baseline: ProfileCvSlice;
   confidence: number | null;
   note: string | null;
   mode: MergeMode;
@@ -461,10 +527,28 @@ function PreviewStep({
   onUpdateFields: (idx: number, fields: Record<string, string>) => void;
   onUpdateCategory: (idx: number, cat: CvImportCategory) => void;
   onRemove: (idx: number) => void;
+  onToggleSkip: (idx: number) => void;
+  onSkipAllDuplicates: () => void;
+  onIncludeAllDuplicates: () => void;
   onConfirm: () => void;
   onDiscard: () => void;
 }) {
   const { t } = useT();
+  const duplicateFlags = useMemo(
+    () =>
+      entries.map((e) => {
+        const slice = baseline[e.category as keyof ProfileCvSlice] ?? [];
+        return findSimilarIndex(e.category, e.fields, slice) >= 0;
+      }),
+    [entries, baseline],
+  );
+  const duplicateCount = duplicateFlags.filter(Boolean).length;
+  const allDuplicatesSkipped =
+    duplicateCount > 0 && duplicateFlags.every((d, i) => !d || skip.has(i));
+  const includedCount = entries.reduce(
+    (acc, _, i) => (skip.has(i) ? acc : acc + 1),
+    0,
+  );
 
   if (entries.length === 0) {
     return (
@@ -508,6 +592,30 @@ function PreviewStep({
             )}
           </p>
         )}
+        {duplicateCount > 0 && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-800">
+            <span>
+              {t("cv.import.duplicateCount").replace("{count}", String(duplicateCount))}
+            </span>
+            {allDuplicatesSkipped ? (
+              <button
+                type="button"
+                onClick={onIncludeAllDuplicates}
+                className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:border-amber-400"
+              >
+                {t("cv.import.includeAllDuplicates")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onSkipAllDuplicates}
+                className="rounded-full border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:border-amber-400"
+              >
+                {t("cv.import.excludeAllDuplicates")}
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       <ul className="space-y-2">
@@ -515,9 +623,12 @@ function PreviewStep({
           <li key={i}>
             <PreviewEntry
               entry={e}
+              isDuplicate={duplicateFlags[i]}
+              isSkipped={skip.has(i)}
               onCategory={(c) => onUpdateCategory(i, c)}
               onFields={(fields) => onUpdateFields(i, fields)}
               onRemove={() => onRemove(i)}
+              onToggleSkip={() => onToggleSkip(i)}
             />
           </li>
         ))}
@@ -555,7 +666,8 @@ function PreviewStep({
         <button
           type="button"
           onClick={onConfirm}
-          className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800"
+          disabled={includedCount === 0}
+          className="inline-flex items-center gap-2 rounded-full bg-zinc-900 px-4 py-1.5 text-xs font-semibold text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t("cv.import.confirmCta")}
         </button>
@@ -566,37 +678,72 @@ function PreviewStep({
 
 function PreviewEntry({
   entry,
+  isDuplicate,
+  isSkipped,
   onCategory,
   onFields,
   onRemove,
+  onToggleSkip,
 }: {
   entry: CvImportEntry;
+  isDuplicate: boolean;
+  isSkipped: boolean;
   onCategory: (c: CvImportCategory) => void;
   onFields: (f: Record<string, string>) => void;
   onRemove: () => void;
+  onToggleSkip: () => void;
 }) {
   const { t } = useT();
   const orderedKeys = useMemo(() => orderKeysFor(entry.category, entry.fields), [entry]);
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <select
-          value={entry.category}
-          onChange={(e) => onCategory(e.target.value as CvImportCategory)}
-          className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-700 hover:border-zinc-300 focus:border-zinc-400 focus:outline-none"
-        >
-          <option value="education">{t(CATEGORY_LABEL_KEY.education)}</option>
-          <option value="exhibitions">{t(CATEGORY_LABEL_KEY.exhibitions)}</option>
-          <option value="awards">{t(CATEGORY_LABEL_KEY.awards)}</option>
-          <option value="residencies">{t(CATEGORY_LABEL_KEY.residencies)}</option>
-        </select>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-[11px] text-zinc-500 hover:text-zinc-900"
-        >
-          {t("cv.import.removeEntry")}
-        </button>
+    <div
+      className={`rounded-2xl border bg-white p-3 transition ${
+        isSkipped ? "border-zinc-200 opacity-60" : "border-zinc-200"
+      }`}
+    >
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <select
+            value={entry.category}
+            onChange={(e) => onCategory(e.target.value as CvImportCategory)}
+            disabled={isSkipped}
+            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-zinc-700 hover:border-zinc-300 focus:border-zinc-400 focus:outline-none disabled:cursor-not-allowed"
+          >
+            <option value="education">{t(CATEGORY_LABEL_KEY.education)}</option>
+            <option value="exhibitions">{t(CATEGORY_LABEL_KEY.exhibitions)}</option>
+            <option value="awards">{t(CATEGORY_LABEL_KEY.awards)}</option>
+            <option value="residencies">{t(CATEGORY_LABEL_KEY.residencies)}</option>
+          </select>
+          {isDuplicate && (
+            <span
+              title={t("cv.import.duplicateTooltip")}
+              className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700"
+            >
+              {t("cv.import.duplicateBadge")}
+            </span>
+          )}
+          {isSkipped && (
+            <span className="text-[10px] uppercase tracking-wide text-zinc-500">
+              {t("cv.import.entrySkipped")}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          <button
+            type="button"
+            onClick={onToggleSkip}
+            className="text-zinc-500 hover:text-zinc-900"
+          >
+            {isSkipped ? t("cv.import.entryInclude") : t("cv.import.entryExclude")}
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-zinc-500 hover:text-zinc-900"
+          >
+            {t("cv.import.removeEntry")}
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
         {orderedKeys.map((k) => (
@@ -611,6 +758,7 @@ function PreviewEntry({
               onFields(next);
             }}
             colSpan={colSpanFor(entry.category, k)}
+            disabled={isSkipped}
           />
         ))}
       </div>
@@ -623,11 +771,13 @@ function FieldRow({
   value,
   onChange,
   colSpan,
+  disabled,
 }: {
   fieldKey: string;
   value: string;
   onChange: (v: string) => void;
   colSpan: string;
+  disabled?: boolean;
 }) {
   const { t } = useT();
   const labelKey = LABEL_BY_FIELD[fieldKey];
@@ -640,7 +790,8 @@ function FieldRow({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+        disabled={disabled}
+        className="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300 disabled:bg-zinc-50 disabled:text-zinc-500"
       />
     </label>
   );
