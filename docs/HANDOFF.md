@@ -2,6 +2,62 @@
 
 Last updated: 2026-05-02
 
+## 2026-05-02 — Salon System v2 P6.4: CV import vision (이미지 + 스캔 PDF 자동 폴백)
+
+P6.3 의 "다음 사이클 후보" 로 미뤄뒀던 vision multimodal 을 같은 사이클 안에 끌어당김. 사용자가 이력서를 *사진으로 찍어* 올리거나 *스캔 본 PDF* 를 올려도 파이프라인이 자동으로 처리.
+
+### 두 진입 경로
+
+1. **이미지 직접 업로드** — JPG / PNG / WEBP. Wizard 의 file picker 가 image MIME 도 허용. 이미지면 서버 텍스트 추출을 *완전히 스킵* 하고 vision 분기로 직행.
+2. **스캔 PDF 자동 폴백** — 일반 PDF 업로드 → 서버 `pdf-parse` 실행 → 텍스트가 비면 (`pdf_empty`) 라우트가 `visionFallback: true` 로 응답 → wizard 가 *클라이언트에서* `pdfjs-dist` 로 페이지를 PNG 로 렌더 → `images: [...]` 로 재요청. 사용자에게는 호박색 배너로 "스캔 PDF 같아요 — 이미지 모드로 다시 분석할게요" + 처리 페이지 수 안내.
+
+### Vision 통합
+
+- **`generateJSON` SSOT 확장** — `imageInputs?: ImageInput[]` 옵션 추가. 비어있으면 기존 text-only 동작 그대로. 있으면 user message 가 multimodal `[{type:"text"}, {type:"image_url"} ...]` 배열로 전환. 이미지는 inline `data:` URL (외부 file API 업로드 불요), `detail: "low"` 로 토큰 비용 bounded.
+- **`PreparedPrompt` 에 `imageInputs?` 추가** — 모든 AI route 가 동일한 SSOT 위에서 vision 옵션 사용 가능 (현재는 cv_import 만 사용).
+- **모델 동일** — `gpt-4o-mini` 가 vision 지원하므로 별도 모델 환경 변수 불필요.
+
+### 클라이언트 PDF 렌더링 (vision fallback)
+
+- **`src/lib/cv/pdfImages.client.ts` 신규** — `renderPdfPagesToPng(base64)` 가 `pdfjs-dist` 의 v4 ESM worker 로 페이지를 canvas → PNG 로 렌더. 캡: 최대 6 페이지, 1240px wide, 단일 페이지 base64 가 2.5 MB 초과 시 JPEG (q=0.85) 로 자동 재인코딩. 메모리 회수 (canvas 0×0, doc.cleanup/destroy).
+- **서버 의존성 없음** — Vercel serverless 에 native `canvas` 안 깔아도 됨. 모든 변환은 사용자 브라우저에서.
+
+### 검증 + 캡
+
+- **Validation** ([src/lib/ai/validation.ts](../src/lib/ai/validation.ts)) — `images[]` 가드. MIME `image/png|jpeg|webp` 만, base64 ≤ 3MB / 이미지, 배열 ≤ 8 개. URL / file / images 셋 중 정확히 하나 필수.
+- **Vision context** ([src/lib/ai/contexts.ts](../src/lib/ai/contexts.ts)) — `buildCvImportVisionContext` 가 짧은 텍스트 ("Read the attached image(s) and extract per the schema. Do not describe the image; emit JSON only.") 만 전달, 무거운 일은 첨부 이미지로.
+- **Source-kind 자동 분기** — 단일 이미지 = `image`, 복수 페이지 = `scanned_pdf`. 모델은 후자에서 "Each attached image is one page in reading order" 가이드를 받음.
+
+### Supabase SQL — 변경 없음
+### 환경 변수 — 변경 없음 (기존 `OPENAI_API_KEY` 그대로)
+
+### 새 / 수정 파일
+
+- **신규** [src/lib/cv/pdfImages.client.ts](../src/lib/cv/pdfImages.client.ts) — 클라 전용 PDF → PNG 렌더러 + `fileToBase64` 헬퍼.
+- [src/lib/ai/client.ts](../src/lib/ai/client.ts) — `ImageInput` 타입 + `imageInputs?` 옵션 + multimodal user message 빌드.
+- [src/lib/ai/route.ts](../src/lib/ai/route.ts) — `PreparedPrompt.imageInputs?` + `generateJSON` 에 전달.
+- [src/lib/ai/contexts.ts](../src/lib/ai/contexts.ts) — `buildCvImportVisionContext` 신규.
+- [src/lib/ai/validation.ts](../src/lib/ai/validation.ts) — `parseCvImportBody` 가 `images[]` + `imageSourceLabel` 도 검증.
+- [src/app/api/ai/cv-import/route.ts](../src/app/api/ai/cv-import/route.ts) — vision 분기, `looksLikeScannedPdfFailure`, `visionFallback` 신호.
+- [src/app/my/profile/cv/CvImportWizard.tsx](../src/app/my/profile/cv/CvImportWizard.tsx) — image picker 지원, 자동 폴백 흐름, scanFallback 배너, image-friendly 진행 카피, `arrayBufferToBase64` 제거 (`fileToBase64` 로 일원화).
+- [src/lib/i18n/messages.ts](../src/lib/i18n/messages.ts) — `cv.import.fileHintWithImages` / `statusReadingImage` / `statusRenderingPages` / `statusVisionExtracting` / `scanFallbackBanner` / `scanFallbackMaxPages` / `errorRender` / `errorImage` KO/EN.
+
+### 의존
+
+- 신규: `pdfjs-dist@^4.10.38`. 클라 전용으로 사용 (서버 번들에 안 들어감 — `pdfImages.client.ts` 의 dynamic import 와 `"client"` directive 로 분리).
+
+### Verified
+
+- `npx tsc --noEmit` → 0 error
+- `npm run build` → success
+- 변경 파일 lint clean
+
+### 다음 사이클 후보 (P6.5)
+
+- 이미지 모드 *opt-in 토글* — 텍스트 추출이 가능한 PDF 라도 사용자가 명시적으로 "이미지 모드로 분석" 선택할 수 있게 (예: 텍스트 레이어가 망가진 OCR PDF).
+- 페이지 미리보기 strip — vision 분기 진입 전에 렌더된 페이지 썸네일을 보여주고, 사용자가 *건너뛸 페이지를 드롭* 하게.
+- normalizer (`normalizeEducationType` / `entriesAreSimilar`) 의 manual editor / website-import 재사용 (P6.3 에서 미뤄둔 항목).
+
 ## 2026-05-02 — Salon System v2 P6.3: CV import 정확도 ─ 중복 회피 + education enum 정규화
 
 P6.2 의 import wizard 가 *결과물의 품질* 면에서 가장 자주 부딪힐 두 friction 을 잡아냄.

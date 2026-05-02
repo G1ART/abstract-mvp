@@ -637,24 +637,39 @@ export function parseDelegationBriefBody(raw: unknown): ValidationResult<Delegat
 }
 
 /**
- * P6.2 — CV Import body. Either a URL OR a file (one of pdf / docx)
- * is required. The route validates the request shape here and the
- * server-side extractor (`src/lib/cv/extract.ts`) takes over after the
- * AI route's auth + cap gates pass.
+ * P6.2 / P6.4 — CV Import body. One of three input shapes is required:
+ *   - `url`            → server fetches HTML and extracts plain text.
+ *   - `file (pdf/docx)`→ server runs pdf-parse / mammoth.
+ *   - `images[]`       → vision multimodal (jpg/png/webp). Used for
+ *                        photographed resumes and for client-rendered
+ *                        scanned-PDF page bitmaps when `pdf-parse`
+ *                        produces no usable text.
  *
- * File payload is base64. Cap at ~6MB encoded (~4.5MB raw) — the
- * extractor still rejects oversized PDFs, this is just the request
- * gate. Image / scan support is intentionally deferred (P6.3).
+ * Cap each image at ~3MB base64 (~2.2MB raw) and the array at 8 pages
+ * to keep the prompt + cost predictable. Bigger pages should be
+ * downsampled client-side before posting.
  */
 export type CvImportFileKind = "pdf" | "docx";
+
+export type CvImportImage = {
+  /** image/png, image/jpeg, image/webp */
+  mime: string;
+  base64: string;
+};
 
 export type CvImportBody = {
   url: string | null;
   file: { kind: CvImportFileKind; name: string; base64: string } | null;
+  images: CvImportImage[] | null;
+  /** Optional label for telemetry / preview ("resume.pdf, p1-3"). */
+  imageSourceLabel: string | null;
   locale: AiLocale;
 };
 
 const CV_IMPORT_FILE_BASE64_MAX = 6 * 1024 * 1024; // 6MB
+const CV_IMPORT_IMAGE_BASE64_MAX = 3 * 1024 * 1024; // 3MB / image
+const CV_IMPORT_IMAGE_MAX_COUNT = 8;
+const CV_IMPORT_IMAGE_MIMES = new Set(["image/png", "image/jpeg", "image/webp"]);
 
 export function parseCvImportBody(raw: unknown): ValidationResult<CvImportBody> {
   if (!isRecord(raw)) return { ok: false, reason: "missing_body" };
@@ -683,13 +698,40 @@ export function parseCvImportBody(raw: unknown): ValidationResult<CvImportBody> 
     file = { kind: kindIn, name, base64: b64 };
   }
 
-  if (!url && !file) return { ok: false, reason: "missing_url_and_file" };
+  let images: CvImportImage[] | null = null;
+  if (Array.isArray(raw.images) && raw.images.length > 0) {
+    if (raw.images.length > CV_IMPORT_IMAGE_MAX_COUNT) {
+      return { ok: false, reason: "too_many_images" };
+    }
+    const out: CvImportImage[] = [];
+    for (const item of raw.images) {
+      if (!isRecord(item)) return { ok: false, reason: "invalid_image" };
+      const mimeIn =
+        typeof item.mime === "string" ? item.mime.toLowerCase() : "image/png";
+      if (!CV_IMPORT_IMAGE_MIMES.has(mimeIn)) {
+        return { ok: false, reason: "invalid_image_mime" };
+      }
+      const b64 = typeof item.base64 === "string" ? item.base64 : "";
+      if (!b64) return { ok: false, reason: "missing_image_data" };
+      if (b64.length > CV_IMPORT_IMAGE_BASE64_MAX) {
+        return { ok: false, reason: "image_too_large" };
+      }
+      out.push({ mime: mimeIn, base64: b64 });
+    }
+    images = out;
+  }
+
+  const imageSourceLabel = trimOrNull(raw.imageSourceLabel, 240);
+
+  if (!url && !file && !images) return { ok: false, reason: "missing_url_and_file" };
 
   return {
     ok: true,
     value: {
       url,
       file,
+      images,
+      imageSourceLabel,
       locale: parseLocale(raw.locale),
     },
   };

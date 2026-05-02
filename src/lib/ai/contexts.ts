@@ -547,3 +547,34 @@ export function buildCvImportContext(input: CvImportContextInput): string {
     text,
   ].join("\n");
 }
+
+/**
+ * P6.4 — Vision context. The user message text is short because the
+ * heavy lifting is the attached images. We tell the model how many
+ * pages we sent and which language the artist's locale is so it
+ * mirrors the on-page language in its output.
+ */
+export type CvImportVisionContextInput = {
+  locale: AiLocale | string | null;
+  /** "image" for a photographed resume or "scanned_pdf" for client-rendered pages. */
+  sourceKind: "image" | "scanned_pdf";
+  sourceLabel?: string | null;
+  /** Number of images attached. The route already enforces the 8-image cap. */
+  imageCount: number;
+};
+
+export function buildCvImportVisionContext(input: CvImportVisionContextInput): string {
+  return [
+    `locale: ${input.locale ?? "ko"}`,
+    `source_kind: ${input.sourceKind}`,
+    `source_label: ${(input.sourceLabel ?? "").slice(0, 200)}`,
+    `image_count: ${input.imageCount}`,
+    `note: ${
+      input.sourceKind === "scanned_pdf"
+        ? "Each attached image is one page of a scanned CV PDF, in reading order."
+        : "Each attached image is a CV page; read all visible text and ignore decorative elements."
+    }`,
+    "---",
+    "Read the attached image(s) and extract the structured CV per the schema. Do not describe the image; emit JSON only.",
+  ].join("\n");
+}

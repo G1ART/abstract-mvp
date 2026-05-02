@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleAiRoute } from "@/lib/ai/route";
-import { buildCvImportContext } from "@/lib/ai/contexts";
+import { buildCvImportContext, buildCvImportVisionContext } from "@/lib/ai/contexts";
 import { CV_IMPORT_SCHEMA, CV_IMPORT_SYSTEM } from "@/lib/ai/prompts";
 import type {
   CvImportCategory,
@@ -136,6 +136,20 @@ async function runExtract(body: CvImportBody): Promise<CvExtractResult> {
   return { ok: false, reason: "decode_failed" };
 }
 
+/**
+ * Treat a PDF that yielded only whitespace / a handful of letters as a
+ * scanned PDF. The client wizard catches the `vision_fallback` hint
+ * below and re-submits the same file as page bitmaps.
+ */
+function looksLikeScannedPdfFailure(
+  body: CvImportBody,
+  reason: CvExtractFailure,
+): boolean {
+  if (!body.file) return false;
+  if (body.file.kind !== "pdf") return false;
+  return reason === "pdf_empty";
+}
+
 export async function POST(req: Request) {
   return handleAiRoute<CvImportBody, CvImportResult>(req, {
     feature: "cv_import",
@@ -144,17 +158,53 @@ export async function POST(req: Request) {
       return r.ok ? { ok: true, value: r.value } : { ok: false, reason: r.reason };
     },
     async buildPromptInput({ body }) {
+      // ── Vision branch (image inputs) ──
+      // Photographed resume or client-rendered scanned-PDF page bitmaps.
+      // We skip the text extractor entirely and hand images straight
+      // to the multimodal call.
+      if (body.images && body.images.length > 0) {
+        const sourceKind: "image" | "scanned_pdf" =
+          body.images.length > 1 ? "scanned_pdf" : "image";
+        return {
+          system: CV_IMPORT_SYSTEM,
+          user: buildCvImportVisionContext({
+            locale: body.locale,
+            sourceKind,
+            sourceLabel: body.imageSourceLabel,
+            imageCount: body.images.length,
+          }),
+          schemaHint: CV_IMPORT_SCHEMA,
+          fallback: fallbackResult,
+          imageInputs: body.images.map((img) => ({
+            mime: img.mime,
+            base64: img.base64,
+            // "low" detail keeps token cost bounded — CV pages don't
+            // need pixel-level resolution to be readable.
+            detail: "low" as const,
+          })),
+        };
+      }
+
+      // ── Text branch (URL / PDF / DOCX) ──
       const extracted = await runExtract(body);
       if (!extracted.ok) {
+        const isScanFallback = looksLikeScannedPdfFailure(body, extracted.reason);
         return NextResponse.json(
           {
             degraded: true,
             reason: "invalid_input",
             extractError: extracted.reason,
+            // The wizard checks `visionFallback === true` and, when
+            // set, re-renders the same PDF as page bitmaps client-side
+            // and POSTs again with `images[]` instead of `file`.
+            visionFallback: isScanFallback,
             entries: [],
             confidence: 0,
             note: null,
-          } satisfies CvImportResult & { extractError: CvExtractFailure },
+          } satisfies CvImportResult & {
+            extractError: CvExtractFailure;
+            visionFallback?: boolean;
+          },
           { status: EXTRACT_FAILURE_HTTP[extracted.reason] ?? 422 },
         );
       }

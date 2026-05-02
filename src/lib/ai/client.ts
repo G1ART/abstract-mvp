@@ -38,6 +38,26 @@ export function getOpenAiClient(): OpenAI | null {
   return client;
 }
 
+/**
+ * P6.4 — Vision support. When `imageInputs` is non-empty the user
+ * message is built as a multimodal content array
+ * (`[{type: "text"}, {type: "image_url"}, ...]`). Each image is passed
+ * inline via a `data:` URL so callers don't have to upload to OpenAI's
+ * file API. The model field stays the same — gpt-4o-mini already
+ * supports vision and matches our default budget. Callers should
+ * pre-resize and JPEG-encode large originals before getting here; this
+ * client does not transcode.
+ */
+export type ImageInput = {
+  /** Either an image MIME (image/png, image/jpeg, image/webp) or "image" as a generic. */
+  mime: string;
+  /** Raw base64 (no data URL prefix). */
+  base64: string;
+  /** OpenAI vision detail flag — "low" is cheaper and adequate for CV
+   *  pages where layout is more important than fine pixels. */
+  detail?: "low" | "high" | "auto";
+};
+
 export type GenerateJsonOptions<T> = {
   feature: AiFeatureKey;
   system: string;
@@ -47,6 +67,8 @@ export type GenerateJsonOptions<T> = {
   /** Client-side fallback when the key is missing, timeout hits, or parsing fails. */
   fallback: () => T;
   signal?: AbortSignal;
+  /** Optional vision inputs. Caller is responsible for size + format. */
+  imageInputs?: ImageInput[];
 };
 
 export type GenerateJsonResponse<T> = {
@@ -108,6 +130,29 @@ export async function generateJSON<T extends object>(
 
   const systemMessage = `${SAFETY_FOOTER}\n\n${opts.system}\n\nRespond with a single JSON object matching this shape (no code fences, no prose): ${opts.schemaHint}`;
 
+  const hasImages = !!opts.imageInputs && opts.imageInputs.length > 0;
+
+  // Build the user message: text-only or multimodal depending on
+  // `imageInputs`. The OpenAI SDK accepts `string | ContentPart[]` for
+  // `messages[].content`, and ContentPart unions text + image_url.
+  // We construct the typed user message in two arms so the SDK
+  // overload picker doesn't have to widen `content` to a union.
+  const userMessage = hasImages
+    ? {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: opts.user },
+          ...opts.imageInputs!.map((img) => ({
+            type: "image_url" as const,
+            image_url: {
+              url: `data:${img.mime || "image/png"};base64,${img.base64}`,
+              detail: img.detail ?? "low",
+            },
+          })),
+        ],
+      }
+    : { role: "user" as const, content: opts.user };
+
   const run = async () => {
     return ai.chat.completions.create(
       {
@@ -117,8 +162,8 @@ export async function generateJSON<T extends object>(
         max_completion_tokens: 2048,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: systemMessage },
-          { role: "user", content: opts.user },
+          { role: "system" as const, content: systemMessage },
+          userMessage,
         ],
       },
       { signal: opts.signal },

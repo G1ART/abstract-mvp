@@ -29,6 +29,7 @@ import type { CvImportCategory, CvImportEntry, CvImportResult } from "@/lib/ai/t
 import type { CvEntry } from "@/lib/supabase/profiles";
 import type { ProfileCvSlice } from "@/lib/supabase/profileCv";
 import { findSimilarIndex } from "@/lib/cv/normalize";
+import { fileToBase64, renderPdfPagesToPng } from "@/lib/cv/pdfImages.client";
 
 type WizardState = "idle" | "running" | "preview" | "saving";
 type MergeMode = "add" | "replace";
@@ -70,10 +71,20 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
 
   // Inputs
   const [url, setUrl] = useState("");
-  const [file, setFile] = useState<{ name: string; kind: "pdf" | "docx"; base64: string } | null>(
-    null,
-  );
+  const [file, setFile] = useState<{
+    name: string;
+    /** "pdf" / "docx" → text extractor on server.
+     *  "image" → vision branch directly (jpg/png/webp resume photo). */
+    kind: "pdf" | "docx" | "image";
+    /** When kind === "image" we need the MIME so the multimodal call
+     *  can build the right `data:` URL. */
+    imageMime?: string;
+    base64: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [scanFallbackBanner, setScanFallbackBanner] = useState<{
+    pageCount: number;
+  } | null>(null);
 
   // Result state
   const [entries, setEntries] = useState<CvImportEntry[]>([]);
@@ -95,15 +106,36 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
 
   const onPickFile = useCallback(async (f: File) => {
     setError(null);
+    setScanFallbackBanner(null);
     const lower = f.name.toLowerCase();
-    let kind: "pdf" | "docx" | null = null;
-    if (lower.endsWith(".pdf") || f.type === "application/pdf") kind = "pdf";
-    else if (
+    let kind: "pdf" | "docx" | "image" | null = null;
+    let imageMime: string | undefined;
+    if (lower.endsWith(".pdf") || f.type === "application/pdf") {
+      kind = "pdf";
+    } else if (
       lower.endsWith(".docx") ||
       f.type ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ) {
       kind = "docx";
+    } else if (
+      f.type === "image/png" ||
+      f.type === "image/jpeg" ||
+      f.type === "image/webp" ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".webp")
+    ) {
+      kind = "image";
+      imageMime =
+        f.type === "image/png" || f.type === "image/jpeg" || f.type === "image/webp"
+          ? f.type
+          : lower.endsWith(".png")
+            ? "image/png"
+            : lower.endsWith(".webp")
+              ? "image/webp"
+              : "image/jpeg";
     }
     if (!kind) {
       setError("cv.import.errorGeneric");
@@ -113,9 +145,8 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
       setError("cv.import.errorTooLarge");
       return;
     }
-    const buf = await f.arrayBuffer();
-    const base64 = arrayBufferToBase64(buf);
-    setFile({ name: f.name, kind, base64 });
+    const base64 = await fileToBase64(f);
+    setFile({ name: f.name, kind, imageMime, base64 });
     setUrl("");
   }, []);
 
@@ -130,18 +161,66 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
     if (state === "running") return;
     if (!url && !file) return;
     setError(null);
+    setScanFallbackBanner(null);
     setState("running");
     setStatusIdx(0);
     const tickId = window.setInterval(() => {
       setStatusIdx((i) => Math.min(i + 1, RUNNING_STATUS_KEYS.length - 1));
     }, 1500);
-    let result: CvImportResult;
+
+    // First call: dispatch by file kind. Image goes straight to the
+    // vision branch; pdf/docx/url use the text branch and may fall
+    // back to vision client-side.
+    let result: CvImportResult & { extractError?: string; visionFallback?: boolean };
     try {
-      result = await aiApi.cvImport({
-        url: file ? null : url,
-        file: file ? { kind: file.kind, name: file.name, base64: file.base64 } : null,
-        locale,
-      });
+      if (file?.kind === "image") {
+        result = (await aiApi.cvImport({
+          url: null,
+          file: null,
+          images: [{ mime: file.imageMime ?? "image/png", base64: file.base64 }],
+          imageSourceLabel: file.name,
+          locale,
+        })) as CvImportResult & { extractError?: string; visionFallback?: boolean };
+      } else {
+        // In this branch the discriminant above already narrowed `file`
+        // away from `"image"`, so `file.kind` is `"pdf" | "docx"`.
+        result = (await aiApi.cvImport({
+          url: file ? null : url,
+          file: file
+            ? { kind: file.kind as "pdf" | "docx", name: file.name, base64: file.base64 }
+            : null,
+          locale,
+        })) as CvImportResult & { extractError?: string; visionFallback?: boolean };
+      }
+
+      // Vision fallback: server told us this PDF has no extractable
+      // text, so we re-render the same file as page bitmaps and POST
+      // again with `images[]`.
+      if (
+        result.degraded &&
+        result.visionFallback === true &&
+        file?.kind === "pdf"
+      ) {
+        try {
+          const rendered = await renderPdfPagesToPng(file.base64, { maxPages: 6 });
+          if (rendered.pages.length === 0) {
+            throw new Error("no_pages");
+          }
+          setScanFallbackBanner({ pageCount: rendered.pages.length });
+          result = (await aiApi.cvImport({
+            url: null,
+            file: null,
+            images: rendered.pages,
+            imageSourceLabel: `${file.name} (p1–${rendered.pages.length})`,
+            locale,
+          })) as CvImportResult & { extractError?: string; visionFallback?: boolean };
+        } catch {
+          window.clearInterval(tickId);
+          setState("idle");
+          setError("cv.import.errorRender");
+          return;
+        }
+      }
     } finally {
       window.clearInterval(tickId);
     }
@@ -167,6 +246,11 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
     setNote(result.note ?? null);
     setState("preview");
   }, [state, url, file, locale, baseline]);
+
+  // arrayBufferToBase64 is no longer needed — `fileToBase64` handles
+  // the chunked browser-safe encoding for both pdf/docx and image
+  // pickers. The helper sits in `pdfImages.client.ts` so it can be
+  // shared between the wizard and the PDF page renderer.
 
   /* ------------------------------ preview edit ---------------------------- */
 
@@ -325,9 +409,28 @@ export function CvImportWizard({ baseline, locale, onApply }: Props) {
       )}
 
       {state === "running" && (
-        <RunningStep
-          message={t(RUNNING_STATUS_KEYS[statusIdx])}
-        />
+        <div className="space-y-2">
+          {scanFallbackBanner && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2 text-[11px] text-amber-800">
+              <p>{t("cv.import.scanFallbackBanner")}</p>
+              <p className="mt-0.5 text-amber-700">
+                {t("cv.import.scanFallbackMaxPages").replace(
+                  "{count}",
+                  String(scanFallbackBanner.pageCount),
+                )}
+              </p>
+            </div>
+          )}
+          <RunningStep
+            message={
+              scanFallbackBanner
+                ? t("cv.import.statusVisionExtracting")
+                : file?.kind === "image"
+                  ? t("cv.import.statusReadingImage")
+                  : t(RUNNING_STATUS_KEYS[statusIdx])
+            }
+          />
+        </div>
       )}
 
       {state === "preview" && (
@@ -449,21 +552,21 @@ function IdleStep({
             className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-dashed border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-600 hover:border-zinc-400"
           >
             <span>{t("cv.import.fileChoose")}</span>
-            <span className="text-[11px] text-zinc-400">PDF · DOCX · ≤ 5MB</span>
+            <span className="text-[11px] text-zinc-400">PDF · DOCX · IMG · ≤ 5MB</span>
           </label>
         )}
         <input
           ref={fileInputRef}
           id={fileId}
           type="file"
-          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.docx"
+          accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/webp,.pdf,.docx,.png,.jpg,.jpeg,.webp"
           className="sr-only"
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (f) onPickFile(f);
           }}
         />
-        <p className="mt-1 text-[11px] text-zinc-500">{t("cv.import.fileHint")}</p>
+        <p className="mt-1 text-[11px] text-zinc-500">{t("cv.import.fileHintWithImages")}</p>
       </div>
 
       {error && (
@@ -821,18 +924,6 @@ function RadioPill({
 
 /* ---------------------------------- utils --------------------------------- */
 
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  // Browser-safe base64 encoder for arbitrary binary buffers. We chunk
-  // through fromCharCode to avoid stack overflows on large files.
-  const bytes = new Uint8Array(buf);
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(binary);
-}
-
 const FIELD_ORDER: Record<CvImportCategory, string[]> = {
   education: ["school", "program", "year", "type"],
   exhibitions: ["title", "venue", "city", "year"],
@@ -905,6 +996,21 @@ function degradedKeyFor(r: CvImportResult & { extractError?: string }): string {
     if (extract.startsWith("pdf_")) return "cv.import.errorPdf";
     if (extract.startsWith("docx_")) return "cv.import.errorDocx";
     if (extract.includes("too_large")) return "cv.import.errorTooLarge";
+  }
+  // Some validation reasons surface as `validation` strings (set by
+  // `handleAiRoute` when the body parser rejects the request); map
+  // image-specific ones to the image error copy.
+  const validation = (r as { validation?: string }).validation;
+  if (validation) {
+    if (
+      validation === "invalid_image" ||
+      validation === "invalid_image_mime" ||
+      validation === "missing_image_data" ||
+      validation === "image_too_large" ||
+      validation === "too_many_images"
+    ) {
+      return validation === "image_too_large" ? "cv.import.errorTooLarge" : "cv.import.errorImage";
+    }
   }
   if (reason === "unauthorized") return "cv.import.errorUnauthorized";
   if (reason === "cap" || reason === "rate_limit") return "cv.import.errorCap";

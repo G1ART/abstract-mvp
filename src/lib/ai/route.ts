@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { generateJSON, GENERATE_TIMEOUT_MS } from "./client";
+import { generateJSON, GENERATE_TIMEOUT_MS, type ImageInput } from "./client";
 import { AiSoftCapError, checkDailySoftCap } from "./softCap";
 import { logAiEvent } from "./events";
 import { assertSafePrompt } from "./safety";
@@ -26,6 +26,9 @@ export type PreparedPrompt<TResult extends AiDegradation> = {
   user: string;
   schemaHint: string;
   fallback: () => TResult;
+  /** P6.4 — vision multimodal inputs. When non-empty the route's
+   *  generateJSON call switches to a multimodal user message. */
+  imageInputs?: ImageInput[];
 };
 
 export type RouteHandlerDefinition<TBody, TResult extends AiDegradation> = {
@@ -192,6 +195,7 @@ export async function handleAiRoute<TBody, TResult extends AiDegradation>(
         schemaHint: prepared.schemaHint,
         fallback: prepared.fallback,
         signal: controller.signal,
+        imageInputs: prepared.imageInputs,
       });
     } finally {
       clearTimeout(timeout);
