@@ -2,6 +2,53 @@
 
 Last updated: 2026-05-02
 
+## 2026-05-02 — Design Spine 최신화 (cornerstone 박기)
+
+`docs/DESIGN.md` 와 `docs/04_DESIGN_SYSTEM.md` 를 *그동안 사용자가 강조해온 가치 / 톤 / 안티패턴 / 운영 룰* 이 모두 cornerstone 으로 박힌 형태로 재구성. 새 기능 / 화면을 칠 때 매번 가치를 새로 창출할 필요가 없도록.
+
+### `DESIGN.md` 재구성
+
+기존 디자인 spine (shell / identity / cards / copy / spacing / a11y / deviations) 위에 다음을 보강:
+
+- **§0. Cornerstone** — 신규. 8 개의 "ship 가능한가" 체크리스트 가치:
+  - **0.1 Tone — quiet confidence over decoration** ("진중하고 단정하되 사려깊을 것", Pinterest/Instagram/LinkedIn 벤치, Saatchi/Artsy 안티벤치, "와, 정말 섬세하고 빈틈없다" 감탄 유발 목표).
+  - **0.2 Red flags** — 한–영 직역체, raw 에러 코드 leak, 두 번째 H1, kicker + H1 중복, modal 안 쓰는 long body, silent failure.
+  - **0.3 Primitives-first (SSOT)** — `src/components/ds/*` 외 hand-rolled `<main>` / `<header>` / `bg-zinc-50/...` panel 은 code smell.
+  - **0.4 Persona-aware exposure** — 갤러리스트는 "갤러리스트를 소개합니다" 클러스터, 작가의 세계 row 가 아님. 비-아티스트 페이지에 빈 Statement 버튼 안 띄움.
+  - **0.5 Quality-gated visibility** — 썸네일 1 개 전시는 살롱 미노출, 익명 프로필은 People 전용 lane 만, 모델이 추측 못한 unit 은 *없음* (→ no pill).
+  - **0.6 Preview-first** — `FORBIDDEN_ACTIONS` enumerate 한 trust boundary. CV import wizard 가 canonical 예시.
+  - **0.7 Loose-key preservation** — silent drop 금지, drop 은 empty / known-junk 한정.
+  - **0.8 Concept naming over generic labels** — "오늘의 살롱", "작가의 세계", "큐레이터를 만나보세요", "이력 자동 가져오기" 같이 *이름 있는 컨셉* 만.
+- **§3 Cards 확장** — Size pill (호수 → cm 추정 시에만, 절대 가짜 단위 부여 금지), People cluster (LinkedIn-style 가로 캐러셀), Modal trigger (Statement / CV).
+- **§5 Spacing and color** — 단일 floor-tint `bg-zinc-50/70`, status semantic (amber 행동 필요, emerald 공개/활성, rose 강조, red 에러, zinc neutral).
+- **§6. Surface composition rules** — 신규. 9 개 운영 룰:
+  - 6.1 One H1 per surface (P4.1 lesson)
+  - 6.2 Header order: H1 → lead → LaneChips
+  - 6.3 Kicker page_or_strip
+  - 6.4 Single floor-tint opacity
+  - 6.5 Modal lightbox for long bodies
+  - 6.6 Persona-gated sections
+  - 6.7 Quality-gated rails
+  - 6.8 Skeletons match the shell (geometrically invisible swap)
+  - 6.9 Single ActingAsBanner
+- **§8 Information accuracy** — 신규. Identity formatter SSOT, size pill 가짜 단위 금지, persona / role chip 추측 금지, loose-key 보존, AI normalizer post-process (enum slug snap or drop), 중복 detection default-skip.
+- **§9 Workflow patterns** — 신규. 4 패턴 (Wizard 4-step, Bulk preview-edit grid, Confirm-before-destructive, Server → server-vision automatic fallback) 을 reusable shape 로 명시.
+
+### `04_DESIGN_SYSTEM.md` 보강
+
+상단에 *DESIGN.md 와의 분업* 한 줄 정리 (DESIGN = why/what, 04 = how). 하단에 **Patterns 카탈로그 7 개** 신규:
+
+- **P1. Modal trigger for long bodies** (P5 — Statement / CV)
+- **P2. Materials cards on /my** (P6.1 — Profile Materials)
+- **P3. Wizard (4-step preview-and-apply)** (P6.2 — `CvImportWizard`)
+- **P4. Server → vision automatic fallback** (P6.4 — `visionFallback: true`)
+- **P5. Editor + sticky save bar** (P6.1 — `CvEditorClient`)
+- **P6. Persona-gated surfaces** (P5–P6)
+- **P7. Quality-gated rails** (P3 — 살롱 v1.5–v1.7.1)
+
+### Supabase SQL — 변경 없음 / 환경 변수 — 변경 없음
+### Verified: 문서만 갱신, 빌드 영향 없음.
+
 ## 2026-05-02 — Salon System v2 P6.4: CV import vision (이미지 + 스캔 PDF 자동 폴백)
 
 P6.3 의 "다음 사이클 후보" 로 미뤄뒀던 vision multimodal 을 같은 사이클 안에 끌어당김. 사용자가 이력서를 *사진으로 찍어* 올리거나 *스캔 본 PDF* 를 올려도 파이프라인이 자동으로 처리.
