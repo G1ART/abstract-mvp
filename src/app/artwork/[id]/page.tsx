@@ -52,6 +52,7 @@ import { listExhibitionsForWork } from "@/lib/supabase/exhibitions";
 import { logSupabaseError } from "@/lib/supabase/errors";
 import { formatSupabaseError } from "@/lib/errors/supabase";
 import { useT } from "@/lib/i18n/useT";
+import { logFeedEvent, peekFeedSource } from "@/lib/feed/telemetry";
 import { ownershipStatusLabel } from "@/lib/artworks/labels";
 import { formatSizeForLocale } from "@/lib/size/format";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
@@ -723,7 +724,28 @@ function ArtworkDetailContent() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setShowInquiryForm(true)}
+                    onClick={() => {
+                      // Attribute the click back to feed when the visit
+                      // originated there. peek (not consume) so that a
+                      // later `inquiry_created` can still consult source
+                      // — single click → single feed_item_inquiry_click.
+                      const source = peekFeedSource();
+                      if (
+                        source &&
+                        source.item_kind === "artwork" &&
+                        source.item_id === id
+                      ) {
+                        logFeedEvent("feed_item_inquiry_click", {
+                          tab: source.tab,
+                          sort: source.sort,
+                          item_kind: "artwork",
+                          item_id: id,
+                          position: source.position,
+                          stage: "open_form",
+                        });
+                      }
+                      setShowInquiryForm(true);
+                    }}
                     className="rounded border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
                   >
                     {t("priceInquiry.ask")}

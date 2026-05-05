@@ -694,6 +694,8 @@ export function FeedContent({
           followingIds={followingIds}
           userId={userId}
           onLikeUpdate={handleLikeUpdate}
+          tab={tab}
+          sort={sort}
         />
       )}
 

@@ -8,9 +8,21 @@ import {
   getExhibitionHostCuratorLabel,
 } from "@/lib/exhibitionCredits";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
+import {
+  logFeedEvent,
+  setFeedSource,
+  type FeedSort,
+  type FeedTab,
+} from "@/lib/feed/telemetry";
 
 type Props = {
   exhibition: ExhibitionWithCredits;
+  /** When provided, click activations log feed-attributed telemetry. */
+  feedContext?: {
+    tab: FeedTab;
+    sort?: FeedSort;
+    position: number;
+  };
 };
 
 /**
@@ -25,7 +37,7 @@ type Props = {
  * >= 2`, so this component never has to render a single floating thumb
  * or an empty placeholder grid.
  */
-export function ExhibitionMemoryStrip({ exhibition }: Props) {
+export function ExhibitionMemoryStrip({ exhibition, feedContext }: Props) {
   const { t } = useT();
   const period =
     exhibition.start_date && exhibition.end_date
@@ -35,9 +47,35 @@ export function ExhibitionMemoryStrip({ exhibition }: Props) {
   const thumbs = (exhibition.cover_image_paths ?? []).slice(0, 3);
   const thumbGridCols = thumbs.length === 2 ? "grid-cols-2" : "grid-cols-3";
 
+  function handleClick() {
+    if (!feedContext) return;
+    logFeedEvent("feed_item_click", {
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "exhibition",
+      item_id: exhibition.id,
+      position: feedContext.position,
+    });
+    logFeedEvent("exhibition_view_from_feed", {
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "exhibition",
+      item_id: exhibition.id,
+      position: feedContext.position,
+    });
+    setFeedSource({
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "exhibition",
+      item_id: exhibition.id,
+      position: feedContext.position,
+    });
+  }
+
   return (
     <Link
       href={`/e/${exhibition.id}`}
+      onClick={handleClick}
       // Same floor-tint treatment as PeopleCarouselStrip so any non-artwork
       // module reads as a single category in the eye's vocabulary —
       // editorial paragraph break, not a thin hairline.

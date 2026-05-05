@@ -1,6 +1,154 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-05-02
+Last updated: 2026-05-05
+
+## 2026-05-05 — Sprint 1: Feed Face & Measurement Foundation
+
+Opus Sprint Pack 의 첫 번째 스프린트. **Living Salon 피드의 시각 안정화 + 측정 토대 구축.** Sprint 2 (Personalized Salon Mixer) 가 사용할 신호 파이프라인을 깔되, 이번 패치에서는 personalization / ranking / AI 호출 *모두 미터치*.
+
+베이스라인: `50f6f91c30e61972c41b9a476192b744a40346af`.
+
+### 변경 요약
+
+1. **Visual Refinement (surgical)** — 모바일 2-column 카드의 메타 절제. work order §A2 의 "two-column artwork tiles should show minimal metadata only" 를 정직하게 반영해, `md:` 미만에서는 `year · medium` 라인을 숨김. tablet+ 부터 다시 노출되어 살롱 톤은 그대로. 다른 시각 요소 (anchor 2x2 lg+ fold, exhibition strip floor-tint, people carousel scroll-snap) 는 v1.7 베이스라인이 이미 work order 의 "no full-screen hero / 작품 무결성 / 절제된 메타" 를 충족해 무리한 churn 없이 유지.
+
+2. **`src/lib/feed/telemetry.ts` 신설 (이번 스프린트의 척추)** — 단일 헬퍼가 다음을 모두 처리:
+   - `logFeedEvent(name, base)` — 모든 feed-surface 이벤트에 자동으로 `surface: "feed"` / `session_id` / `layout_version` 첨부.
+   - `createImpressionTracker({ tab, sort })` — IntersectionObserver + 350ms dwell + sessionStorage-backed 세션 dedup. `(tab, sort, item_key)` 단위로 한 세션 안에서 한 번만 fire.
+   - `setFeedSource / peekFeedSource / consumeFeedSource` — 클릭이 시작된 피드 컨텍스트를 sessionStorage 에 30분 TTL 로 저장. artwork detail 의 inquiry click 같은 다운스트림 액션을 피드로 attribution.
+   - 모두 SSR-safe / fire-and-forget. IntersectionObserver 미지원 환경에서는 no-op 객체 반환.
+
+3. **신규 텔레메트리 이벤트 (Sprint 1 work order §B 전부)** — `src/lib/beta/logEvent.ts` 의 `BetaEventName` 에 추가:
+   - `feed_item_impression` — IntersectionObserver dwell 후 fire.
+   - `feed_item_click` — 작품/전시/인물 카드 클릭 시.
+   - `feed_item_like_or_save` — `LikeButton` 의 `surface="feed"` 컨텍스트에서 추가 fire (기존 `artwork_liked` 도 그대로 fire 되어 비-피드 surface 와의 비교 가능).
+   - `feed_item_follow` — `FollowButton` 의 `surface="feed"` 컨텍스트에서 추가 fire.
+   - `profile_view_from_feed` / `exhibition_view_from_feed` — 인물/전시 카드 클릭과 함께 즉시 fire.
+   - `feed_item_inquiry_click` — artwork detail 의 "Ask price" CTA 클릭 시 `peekFeedSource()` 가 일치하면 fire (피드 → 작품 → inquiry intent 의 funnel 측정).
+
+   기존 `feed_loaded` / `feed_first_paint` / `feed_load_more` 도 동일 helper 로 마이그레이션 가능하지만, 이번 패치는 `surface` / `layout_version` 의 envelope 호환만 점검하고 코드는 미수정 (regression 위험 최소화).
+
+4. **`LikeButton` / `FollowButton`** — `surface?: "feed" | "artwork_detail" | …` + `feedContext?: { tab, sort, position }` 옵션 prop 추가. 비피드 호출자는 prop 없이 그대로 동작 (기본 surface는 `"other"`). 피드 카드 / people carousel 만 `surface="feed"` + feedContext 전달. `artwork_liked` / `profile_followed` payload 에도 surface 메타 추가됨 — 기존 dashboard 가 깨지지 않도록 키 이름은 그대로.
+
+5. **`/my/diagnostics` 활성화 readout 보강** — RLS 가 본인 row 만 노출하므로 *본인용 진단*에 가장 의미 있는 단면을 추가:
+   - **Activation events** — `signup_completed` / `profile_completed` / `upload_completed` / `bulk_publish_completed` / `exhibition_created` / `exhibition_artwork_added` / `inquiry_created` 의 본인 카운트.
+   - **Feed surface events** — feed-surface 이벤트만 분리 카운트.
+   - **Clicks by tab / by item kind** — `feed_item_click` payload 의 `tab` 과 `item_kind` 분포로, 피드의 어떤 모듈이 본인에게 가장 잘 작동했는지 즉시 확인.
+   - i18n 키 추가: `diagnostics.activation.title`, `diagnostics.feedSurface.title`, `diagnostics.feedSurface.byTab`, `diagnostics.feedSurface.byKind`.
+   - 같은 page 의 sample window 를 80 → 400 row 로 확장 (RLS limit 영향 없음).
+
+6. **운영자용 활성화 SQL 런북** — `/my/diagnostics` 는 본인 row 만 보여주므로, 팀이 *오픈베타 전체* 활성화 funnel 을 보려면 Supabase SQL Editor 에서 service role 로 실행:
+
+   ```sql
+   -- 가입 → 첫 업로드 → 3+ → 10+ → 전시 publish funnel
+   with users_with_event as (
+     select user_id, event_name, count(*) as n
+     from public.beta_analytics_events
+     where created_at >= now() - interval '30 days'
+     group by user_id, event_name
+   )
+   select
+     count(distinct user_id) filter (where event_name = 'signup_completed')        as signups,
+     count(distinct user_id) filter (where event_name = 'upload_completed' and n >= 1)  as uploaded_1,
+     count(distinct user_id) filter (where event_name = 'upload_completed' and n >= 3)  as uploaded_3,
+     count(distinct user_id) filter (where event_name = 'upload_completed' and n >= 10) as uploaded_10,
+     count(distinct user_id) filter (where event_name = 'exhibition_created')      as exhibition_created
+   from users_with_event;
+
+   -- 피드 모듈 클릭 분포 (어떤 모듈이 효과적인가)
+   select
+     payload->>'item_kind' as item_kind,
+     payload->>'tab'       as tab,
+     count(*)              as clicks,
+     count(distinct user_id) as uniq_users
+   from public.beta_analytics_events
+   where event_name = 'feed_item_click'
+     and created_at >= now() - interval '30 days'
+   group by 1, 2
+   order by clicks desc;
+
+   -- 피드 → inquiry intent funnel
+   select
+     date_trunc('day', created_at) as day,
+     count(*) filter (where event_name = 'feed_item_impression')   as impressions,
+     count(*) filter (where event_name = 'feed_item_click')        as clicks,
+     count(*) filter (where event_name = 'feed_item_inquiry_click') as inquiry_intent,
+     count(*) filter (where event_name = 'inquiry_created')        as inquiries_created
+   from public.beta_analytics_events
+   where created_at >= now() - interval '14 days'
+   group by 1
+   order by 1 desc;
+   ```
+
+7. **테스트 보강** — `tests/feed-living-salon.test.ts` 에 *opening-region anchor coexistence* invariant 추가 (anchor 가 있으면 첫 8타일 안에 standard artwork 가 ≥4개 있어야 함 = "single artwork 가 viewport 를 잡아먹지 않음"의 builder-side guard). `tests/feed-telemetry.test.ts` 신규 — sessionStorage 라이프사이클, 30분 TTL eviction, IntersectionObserver 미지원 환경에서의 no-op 동작 검증. `package.json` 에 `test:feed-telemetry` 스크립트 등록.
+
+### 변경된 파일
+
+- `src/lib/feed/telemetry.ts` *(신규)*
+- `src/lib/beta/logEvent.ts` — `BetaEventName` 에 7개 신규 이벤트 추가
+- `src/components/feed/LivingSalonGrid.tsx` — `tab`/`sort` prop + ImpressionTracker 통합 + 하위 카드에 `feedContext` 전파
+- `src/components/feed/ExhibitionMemoryStrip.tsx` — `feedContext` prop, click 시 `feed_item_click` + `exhibition_view_from_feed` + setFeedSource
+- `src/components/feed/PeopleCarouselStrip.tsx` — `feedContext` prop, person card click 시 `feed_item_click` + `profile_view_from_feed` + setFeedSource, FollowButton 에 surface/feedContext 전달
+- `src/components/FeedArtworkCard.tsx` — `feedContext` prop, click 시 `feed_item_click` + setFeedSource, **모바일 `year·medium` 라인 `md:` 이상에서만 노출**, LikeButton 에 surface/feedContext 전달
+- `src/components/LikeButton.tsx` — `surface` / `feedContext` prop, surface=='feed' 시 `feed_item_like_or_save` 추가 fire
+- `src/components/FollowButton.tsx` — `surface` / `feedContext` prop, surface=='feed' 시 `feed_item_follow` 추가 fire
+- `src/components/FeedContent.tsx` — `LivingSalonGrid` 에 tab/sort 전달
+- `src/app/artwork/[id]/page.tsx` — Ask Price CTA click 시 `peekFeedSource()` 일치하면 `feed_item_inquiry_click` fire
+- `src/app/my/diagnostics/page.tsx` — Activation / Feed surface readout, by-tab / by-kind 분포
+- `src/lib/i18n/messages.ts` — diagnostics 신규 i18n 키 4개 (en/ko)
+- `tests/feed-living-salon.test.ts` — opening-region anchor coexistence invariant
+- `tests/feed-telemetry.test.ts` *(신규)*
+- `package.json` — `test:feed-telemetry` script
+- `docs/HANDOFF.md` (이 문서)
+
+### 제품 동작 변화
+
+- **데스크톱 피드** — 시각 변화 없음 (베이스라인 v1.7 의 매트/contain · anchor lg+ 2x2 · floor-tint 그대로). 이벤트만 조용히 흐름.
+- **모바일 피드** — 2-column artwork 타일이 `artist + title` 두 줄로 단순해짐 (기존: `artist + title + year·medium`). work order 의 명시 요구 반영.
+- **카드 클릭** — 동일하게 artwork/exhibition/profile 페이지로 이동. 추가로 fire-and-forget 텔레메트리 이벤트 발생, source 가 sessionStorage 에 저장됨.
+- **좋아요 / 팔로우** — 동작 동일. 피드에서 시작된 액션이면 추가 이벤트 한 개 더 fire.
+- **Inquiry** — 피드에서 진입한 작품의 "Ask price" 클릭 시 `feed_item_inquiry_click` 추가 fire. inquiry 자체 동작은 변화 없음.
+- **/my/diagnostics** — 새 섹션 두 개 (Activation / Feed surface) 가 본인 row 기준으로 표시.
+
+### 보안 / 개인정보 / RLS
+
+- `beta_analytics_events` RLS 그대로 — 사용자는 *본인 row 만* insert/select. 신규 이벤트 페이로드는 ID + 카드 위치 + tab/sort 등 attribution 메타만 담음 (작품 제목 / 이미지 URL / 자유 텍스트 등 PII 없음).
+- 피드 visibility/RLS 가드 (`isPublicSurfaceVisible`, RPC 단의 follower 가드) 미수정.
+- `setFeedSource` 의 sessionStorage 키 (`ab_feed_click_source`) 는 30분 TTL + 단일 origin 안에 머묾.
+- AI 호출 변경 없음, runtime AI feed generation 도입 없음.
+
+### Supabase SQL 적용 필요
+
+**없음.** `beta_analytics_events` 테이블·RLS·인덱스는 이미 `supabase/migrations/p0_beta_hardening_wave1.sql` 로 적용된 상태.
+
+### 환경 변수
+
+**없음.** 새/변경된 환경 변수 없음.
+
+### 테스트 결과
+
+| 명령 | 결과 |
+|---|---|
+| `npm run build` | ✅ pass |
+| `npm run test:feed-living-salon` | ✅ pass (invariant 1개 신규 추가) |
+| `npm run test:feed-telemetry` | ✅ pass (신규) |
+| `npm run test:people-reason` | ✅ pass |
+| `npm run test:onboarding-runtime` | ✅ pass |
+| `npm run test:website-import` | ✅ pass |
+| `npm run test:ai-safety` | ⚠️ pre-existing failure (베이스라인 50f6f91 동일, 본 패치 무관) |
+| `npm run test:onboarding-smoke` | ⚠️ pre-existing failure (베이스라인 동일, `src/app/page.tsx` 가 onboarding 으로 리다이렉트하지 않는 P-existing 상태) |
+| `npm run lint` | ⚠️ pre-existing 34 errors / 49 warnings (베이스라인 동일, 본 패치는 신규 lint 회귀 0건) |
+
+### 알려진 제한 / Deferred
+
+- `feed_loaded` / `feed_first_paint` / `feed_load_more` 는 기존 `logBetaEvent` 직접 호출을 유지 (이미 안정 동작). 다음 패치에서 `logFeedEvent` envelope 으로 일원화 가능.
+- `feed_item_inquiry_click` 은 click 시점만 잡음. inquiry submit (`inquiry_created`) 시점의 attribution 은 기존 `inquiry_created` payload 에 surface 메타 추가하는 별도 패치로 분리 가능.
+- Sprint 1 work order 가 언급한 `cv_import_completed` / `profile_materials_updated` / `delegation_created_or_accepted` / `room_created_or_shared` 는 이번 스프린트의 *피드 face* 범위에서 제외. 각 surface 의 후속 패치에서 동일 패턴 (`logFeedEvent` 가 아닌 일반 `logBetaEvent`) 으로 추가하면 됨.
+- 운영자 dashboard UI 는 만들지 않음. 위 SQL 런북으로 SQL Editor 에서 query.
+
+### 다음 권장 Sprint
+
+**Sprint 2 — Personalized Salon Mixer & Taste Signals.** 이번 스프린트가 깔아둔 `feed_item_impression` / `feed_item_click` / `(profile|exhibition)_view_from_feed` / `(tab, sort, position)` 메타가 그대로 ranking 입력으로 들어감. `livingSalon.ts` 의 deterministic builder 위에 user-seeded score 레이어를 얹으면 됨. `layout_version` 을 bumping 하면 새 mix 가 dashboards 에서 분리 측정.
 
 ## 2026-05-02 — Design Spine 최신화 (cornerstone 박기)
 

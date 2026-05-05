@@ -554,4 +554,34 @@ function makeArtistDiscovery(count: number, prefix = "rec_artist"): DiscoveryDat
   assert.ok(fv.anchors >= 0 && fv.context_modules >= 0);
 }
 
+// ── First-viewport invariant: opening region never anchor-only ───────
+// The work order forbids "single artwork dominating the entire viewport".
+// Concretely: in the first 8-tile viewport sample, an anchor — when it
+// exists — must coexist with at least 4 other artworks. Otherwise the
+// salon visually collapses into hero + sidebar on desktop. This test
+// pins that contract on the deterministic builder so future tweaks
+// cannot silently regress it.
+{
+  const arts = Array.from({ length: 30 }, (_, i) =>
+    makeArtworkEntry(makeArtwork(`a${i}`, `artist${i % 6}`), i)
+  );
+  const items = buildLivingSalonItems({
+    entries: arts,
+    discoveryData: makeArtistDiscovery(2),
+  });
+  const opening = items.slice(0, 8);
+  const anchorCount = opening.filter(
+    (i) => i.kind === "artwork" && i.variant === "anchor"
+  ).length;
+  const standardCount = opening.filter(
+    (i) => i.kind === "artwork" && i.variant !== "anchor"
+  ).length;
+  if (anchorCount > 0) {
+    assert.ok(
+      standardCount >= 4,
+      `opening anchor must coexist with ≥4 standard artworks, saw ${standardCount}`
+    );
+  }
+}
+
 console.log("feed-living-salon.test.ts: ok");

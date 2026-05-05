@@ -11,14 +11,28 @@ import {
 import { reasonTagToI18n } from "@/lib/people/reason";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import type { LivingSalonPersona } from "@/lib/feed/livingSalon";
+import {
+  logFeedEvent,
+  setFeedSource,
+  type FeedSort,
+  type FeedTab,
+} from "@/lib/feed/telemetry";
 import type { PeopleRec } from "@/lib/supabase/peopleRecs";
 import { FollowButton } from "@/components/FollowButton";
+
+type FeedContext = {
+  tab: FeedTab;
+  sort?: FeedSort;
+  position: number;
+};
 
 type Props = {
   persona: LivingSalonPersona;
   profiles: PeopleRec[];
   followingIds: Set<string>;
   userId: string | null;
+  /** When provided, person interactions log feed-attributed telemetry. */
+  feedContext?: FeedContext;
 };
 
 const PERSONA_HEADER_KEY: Record<LivingSalonPersona, string> = {
@@ -55,6 +69,7 @@ export function PeopleCarouselStrip({
   profiles,
   followingIds,
   userId,
+  feedContext,
 }: Props) {
   const { t } = useT();
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -120,7 +135,7 @@ export function PeopleCarouselStrip({
         ref={scrollerRef}
         className="-mx-6 flex snap-x snap-mandatory gap-4 overflow-x-auto scroll-smooth px-6 pb-1 lg:-mx-8 lg:px-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        {profiles.map((profile) => (
+        {profiles.map((profile, idx) => (
           <div
             key={profile.id}
             className="w-[260px] shrink-0 snap-start sm:w-[280px]"
@@ -129,6 +144,9 @@ export function PeopleCarouselStrip({
               profile={profile}
               initialFollowing={followingIds.has(profile.id)}
               userId={userId}
+              persona={persona}
+              feedContext={feedContext}
+              cardIndex={idx}
             />
           </div>
         ))}
@@ -180,10 +198,16 @@ function PersonCard({
   profile,
   initialFollowing,
   userId,
+  persona,
+  feedContext,
+  cardIndex,
 }: {
   profile: PeopleRec;
   initialFollowing: boolean;
   userId: string | null;
+  persona: LivingSalonPersona;
+  feedContext?: FeedContext;
+  cardIndex: number;
 }) {
   const { t } = useT();
   const username = profile.username ?? "";
@@ -194,10 +218,39 @@ function PersonCard({
   const reasonLine = reasonTagToI18n(profile.reason_tags ?? [], t);
   const isOwnCard = userId !== null && userId === profile.id;
 
+  function handleCardClick() {
+    if (!feedContext || !username) return;
+    logFeedEvent("feed_item_click", {
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "people",
+      item_id: profile.id,
+      position: feedContext.position,
+      persona,
+      card_index: cardIndex,
+    });
+    logFeedEvent("profile_view_from_feed", {
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "people",
+      item_id: profile.id,
+      position: feedContext.position,
+      persona,
+    });
+    setFeedSource({
+      tab: feedContext.tab,
+      sort: feedContext.sort,
+      item_kind: "people",
+      item_id: profile.id,
+      position: feedContext.position,
+    });
+  }
+
   return (
     <article className="flex h-full flex-col rounded-2xl border border-zinc-200 bg-white p-5 transition-colors hover:bg-zinc-50/40">
       <Link
         href={username ? `/u/${username}` : "#"}
+        onClick={handleCardClick}
         className="flex min-w-0 items-start gap-3 focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-300 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
       >
         <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-zinc-100">
@@ -245,6 +298,8 @@ function PersonCard({
             initialFollowing={initialFollowing}
             isPrivateTarget={profile.is_public === false}
             size="sm"
+            surface={feedContext ? "feed" : undefined}
+            feedContext={feedContext}
           />
         </div>
       )}

@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
+import { logFeedEvent, type FeedSort, type FeedTab } from "@/lib/feed/telemetry";
 import { like, unlike } from "@/lib/supabase/likes";
+
+/**
+ * Surface attribution for telemetry. When set to `feed`, a successful like
+ * additionally emits `feed_item_like_or_save` with the active tab/sort/
+ * position so dashboards can split feed-driven likes from profile-page
+ * likes without changing the existing `artwork_liked` event.
+ */
+export type LikeSurface = "feed" | "artwork_detail" | "profile" | "other";
 
 type Props = {
   artworkId: string;
@@ -13,6 +22,14 @@ type Props = {
   /** When true, show "Login to like" instead of like button */
   showLoginCta?: boolean;
   size?: "sm" | "md";
+  /** Optional surface tag for telemetry attribution. */
+  surface?: LikeSurface;
+  /** Required when surface === "feed" so we can log feed-side context. */
+  feedContext?: {
+    tab: FeedTab;
+    sort?: FeedSort;
+    position: number;
+  };
 };
 
 export function LikeButton({
@@ -22,6 +39,8 @@ export function LikeButton({
   onUpdate,
   showLoginCta = false,
   size = "md",
+  surface,
+  feedContext,
 }: Props) {
   const [liked, setLiked] = useState(initialLiked);
   const [count, setCount] = useState(initialCount);
@@ -46,10 +65,25 @@ export function LikeButton({
         setCount(count);
         return;
       }
-      if (nextLiked) logBetaEventSync("artwork_liked", { artwork_id: artworkId });
+      if (nextLiked) {
+        logBetaEventSync("artwork_liked", {
+          artwork_id: artworkId,
+          surface: surface ?? "other",
+        });
+        if (surface === "feed" && feedContext) {
+          logFeedEvent("feed_item_like_or_save", {
+            tab: feedContext.tab,
+            sort: feedContext.sort,
+            item_kind: "artwork",
+            item_id: artworkId,
+            position: feedContext.position,
+            action: "like",
+          });
+        }
+      }
       onUpdate?.(nextLiked, nextCount);
     },
-    [artworkId, liked, count, loading, showLoginCta, onUpdate]
+    [artworkId, liked, count, loading, showLoginCta, onUpdate, surface, feedContext]
   );
 
   if (showLoginCta) {

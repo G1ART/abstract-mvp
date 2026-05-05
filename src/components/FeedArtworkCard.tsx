@@ -12,6 +12,12 @@ import {
 } from "@/lib/supabase/artworks";
 import { useT } from "@/lib/i18n/useT";
 import {
+  logFeedEvent,
+  setFeedSource,
+  type FeedSort,
+  type FeedTab,
+} from "@/lib/feed/telemetry";
+import {
   formatDisplayName,
   formatIdentityPair,
   formatRoleChips,
@@ -98,6 +104,18 @@ type ArtistProfileLite = {
  */
 export type FeedArtworkCardVariant = "feedTile" | "feedAnchor" | "discoveryMini";
 
+/**
+ * Lightweight surface context that lets the card emit feed-attributed
+ * telemetry. Optional — when absent the card stays a generic artwork card
+ * for non-feed surfaces (e.g. profile grids).
+ */
+export type FeedArtworkCardFeedContext = {
+  tab: FeedTab;
+  sort?: FeedSort;
+  /** 1-based index of the card in the rendered presentation list. */
+  position: number;
+};
+
 type Props = {
   artwork: ArtworkWithLikes;
   likedIds: Set<string>;
@@ -109,6 +127,12 @@ type Props = {
   showRoleChip?: boolean;
   /** When true, render the small claim/multi-claim summary line. */
   showClaimLine?: boolean;
+  /**
+   * When provided, click activations log a `feed_item_click` event and
+   * stash a feed-source breadcrumb in sessionStorage so downstream
+   * surfaces (e.g. artwork detail → inquiry) can attribute back to feed.
+   */
+  feedContext?: FeedArtworkCardFeedContext;
 };
 
 export function FeedArtworkCard({
@@ -120,6 +144,7 @@ export function FeedArtworkCard({
   variant = "feedTile",
   showRoleChip = false,
   showClaimLine = false,
+  feedContext,
 }: Props) {
   const router = useRouter();
   const pathname = usePathname();
@@ -178,6 +203,23 @@ export function FeedArtworkCard({
 
   function handleClick() {
     setArtworkBack(pathname ?? "/feed");
+    if (feedContext) {
+      logFeedEvent("feed_item_click", {
+        tab: feedContext.tab,
+        sort: feedContext.sort,
+        item_kind: "artwork",
+        item_id: artwork.id,
+        position: feedContext.position,
+        artwork_variant: variant,
+      });
+      setFeedSource({
+        tab: feedContext.tab,
+        sort: feedContext.sort,
+        item_kind: "artwork",
+        item_id: artwork.id,
+        position: feedContext.position,
+      });
+    }
     router.push(`/artwork/${artwork.id}`);
   }
 
@@ -237,6 +279,8 @@ export function FeedArtworkCard({
                 onLikeUpdate?.(artwork.id, newLiked, newCount)
               }
               size="sm"
+              surface={feedContext ? "feed" : undefined}
+              feedContext={feedContext}
             />
           </div>
         )}
@@ -281,7 +325,11 @@ export function FeedArtworkCard({
           </h3>
 
           {(artwork.year || artwork.medium) && (
-            <p className="truncate text-xs tracking-tight text-zinc-500">
+            // Two-column mobile tiles must read as restrained thumbnails — the
+            // Sprint 1 work order calls for "minimal metadata only" there. We
+            // hide year·medium below `md:` so a phone shows artist + title and
+            // nothing else; tablet+ regains the full caption.
+            <p className="hidden truncate text-xs tracking-tight text-zinc-500 md:block">
               {[artwork.year, artwork.medium].filter(Boolean).join(" · ")}
             </p>
           )}

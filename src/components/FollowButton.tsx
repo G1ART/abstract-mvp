@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
+import { logFeedEvent, type FeedSort, type FeedTab } from "@/lib/feed/telemetry";
 import {
   follow,
   unfollow,
@@ -9,6 +10,9 @@ import {
   type FollowStatus,
 } from "@/lib/supabase/follows";
 import { useT } from "@/lib/i18n/useT";
+
+/** Surface attribution for telemetry. See `LikeButton` for the same pattern. */
+export type FollowSurface = "feed" | "profile" | "people_page" | "other";
 
 type Props = {
   targetProfileId: string;
@@ -53,6 +57,14 @@ type Props = {
    * so the parent doesn't have to know about that branch.
    */
   interceptFollow?: () => void;
+  /** Optional surface tag so telemetry can split feed-driven follows. */
+  surface?: FollowSurface;
+  /** Required when surface === "feed" so we can log feed-side context. */
+  feedContext?: {
+    tab: FeedTab;
+    sort?: FeedSort;
+    position: number;
+  };
 };
 
 function getIsTouch(): boolean {
@@ -80,6 +92,8 @@ export function FollowButton({
   size = "md",
   onFollowed,
   interceptFollow,
+  surface,
+  feedContext,
 }: Props) {
   const { t } = useT();
   const [status, setStatus] = useState<FollowStatus>(() =>
@@ -121,12 +135,36 @@ export function FollowButton({
       const resolved: FollowStatus = nextStatus ?? "accepted";
       setStatus(resolved);
       if (resolved === "accepted") {
-        logBetaEventSync("profile_followed", { profile_id: targetProfileId });
+        logBetaEventSync("profile_followed", {
+          profile_id: targetProfileId,
+          surface: surface ?? "other",
+        });
+        if (surface === "feed" && feedContext) {
+          logFeedEvent("feed_item_follow", {
+            tab: feedContext.tab,
+            sort: feedContext.sort,
+            item_kind: "people",
+            item_id: targetProfileId,
+            position: feedContext.position,
+            action: "follow",
+          });
+        }
         onFollowed?.();
       } else {
         logBetaEventSync("profile_follow_requested", {
           profile_id: targetProfileId,
+          surface: surface ?? "other",
         });
+        if (surface === "feed" && feedContext) {
+          logFeedEvent("feed_item_follow", {
+            tab: feedContext.tab,
+            sort: feedContext.sort,
+            item_kind: "people",
+            item_id: targetProfileId,
+            position: feedContext.position,
+            action: "follow_request",
+          });
+        }
       }
       return;
     }
@@ -163,6 +201,8 @@ export function FollowButton({
     isTouch,
     hovered,
     onFollowed,
+    surface,
+    feedContext,
     t,
   ]);
 
