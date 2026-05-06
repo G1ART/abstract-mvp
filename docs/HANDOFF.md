@@ -2,6 +2,160 @@
 
 Last updated: 2026-05-05
 
+## 2026-05-05 — Sprint 4: Minimalist Consolidation, Privacy Hardening, Official Records Readiness
+
+Sprint 1–3 가 만든 가치 루프 (Feed → Passport → Room/Inquiry → 후속) 위에, 새 surface 추가 없이 **시각 안정화 + 프라이버시 하드닝**. 새 영역 빌드 0개, 기존 영역 더 trustworthy / calmer / inevitable 하게.
+
+베이스라인: Sprint 3 commit `20623da` (= `release: Sprint 3 — Artwork Passport + Private Room + Inquiry attribution loop`).
+
+### Preflight audit 요약
+
+`docs/04_DESIGN_SYSTEM.md`, `src/app/room/[token]/page.tsx`, `src/app/artwork/[id]/page.tsx`, `src/app/my/inquiries/page.tsx`, `src/lib/room/source.ts`, `src/lib/supabase/priceInquiries.ts`, `src/lib/feed/personalizedSalon.ts`, `src/components/ds/*`, `package.json`, `tests/inquiry-source.test.ts`, `supabase/migrations/20260605000000_*.sql` 점검:
+
+- DS primitives (PageShell, PageHeader, FloorPanel, FilterChip, LaneChips, EmptyState, SectionLabel) 풍부 — hand-rolled UI 정리 가능.
+- **P0 누출 1건 발견**: `room/[token]/page.tsx` 의 `logBetaEventSync("room_viewed", { ..., token })` 가 share-token 을 분석에 흘리고 있었음 (Sprint 4 P0-A 에서 차단).
+- 나머지 telemetry 호출은 token-shaped 누출 없음.
+- `test:inquiry-source` script 는 Sprint 3 에서 이미 wired (P0-B 통과).
+
+### A. P0 Fixes (보안 + 운영 안전)
+
+1. **P0-A — Room token 누출 차단 + grep regression test.**
+   - `src/app/room/[token]/page.tsx` 의 `room_viewed` payload 에서 `token` 제거. 대신 `item_count`, `has_description` 만 (둘 다 비-비밀, 운영 metric 으로 유용).
+   - **신규 `tests/privacy-token-audit.test.ts`** — `src/**` 전체에서 `logBetaEventSync` / `logBetaEvent` / `logFeedEvent` 호출 site 51개를 정적 스캔, 페이로드 객체 리터럴에 `token / password / secret / apikey / authorization / cookie / bearer / magic` 키 (case-insensitive substring) 발견 시 fail.
+     - line/block comment, string literal, template literal, spread (`...`) 모두 정확히 skip 하는 brace-balanced scanner 구현.
+     - allowlist: `feed_session_id`, `source_feed_session_id` (telemetry session id, auth session 아님).
+     - 향후 발견 시 regex 를 *넓히지 말고* 호출 site 를 고치는 것이 정책.
+   - `package.json` 에 `test:privacy-token-audit` script 추가.
+
+2. **P0-B — `test:inquiry-source` script 확인.** Sprint 3 에서 이미 wired (`package.json` line 19). 추가 작업 없음.
+
+3. **P0-C — Production migration guard.**
+   - **`docs/QA_SMOKE.md` 최상단에 신규 "Pre-deploy SQL checklist" 섹션** — `20260605000000_price_inquiry_source_attribution.sql` 가 미적용일 때의 fail mode (`PostgREST 42703 — unknown column source_surface` → "Ask about this work" silent break) 와 검증 SQL 3개 + 5단계 smoke flow.
+   - `/my/diagnostics` 의 column-existence probe 는 service-role 코드 회피로 보류 — work order 도 "Consider, optional".
+
+### B. UI/UX 정리 (calm the surfaces)
+
+4. **Room v1.1 — `PageShell` + editorial kicker + line-clamp.**
+   - `mx-auto max-w-5xl px-4` → `<PageShell variant="studio">` (DS 톤 일관).
+   - 헤더 hand-rolled → `<PageHeader variant="editorial" kicker={t("room.privateRoom")}>`. 한 surface 에 kicker 1개 원칙 준수.
+   - artwork tile 의 `note` 를 `WebkitLineClamp: 2` 로 clamp — 긴 큐레이터 노트가 그리드 시각 리듬을 지배 못 함.
+   - exhibition placeholder: gray block → `border-dashed border-zinc-200 bg-zinc-50/40` calm dashed frame. broken-card 느낌 제거.
+   - i18n: `room.privateRoom` (en/ko) 신규.
+
+5. **Inquiry Inbox v1.1 — progressive disclosure + DS primitives + source filter.**
+   - `<PageShell variant="narrow"> + <PageHeader>` 적용.
+   - **기본 row 단순화** — 제목 / inquirer / 마지막 활동 + **status summary `Chip`** (tone: `success` for replied, `muted` for closed, `neutral` else). 4-way pipeline / assignee / next-action / notes 가 항상 보이던 dense layout 제거.
+   - **expanded "Manage" panel** — pipeline / assignee / next-action 을 `<FloorPanel padding="sm">` + `<SectionLabel>` 에 묶음. 조작 가능성은 100% 보존, 시각 부하만 절제.
+   - **Filter rail** — search input + status `LaneChips variant="sort"` (5 옵션) + **신규 source filter `LaneChips`** (6 옵션: All / Feed / Room / Artwork / Exhibition / Profile). pipeline 은 native select 유지 (7 옵션 → chip rail 시 모바일 폭 압박).
+   - source filter 는 **client-side mask** (server-side 리스트 그대로). 빈 상태에서도 EmptyState 정상.
+   - reply / load-more / note add 의 primary CTA 들 `rounded` → `rounded-full` (DS 일관). search input / select 도 `rounded-full` 톤 통일.
+   - i18n: `inquiry.source.filter*` (6키), `priceInquiry.manageTitle`, `priceInquiry.statusSummary*` (4키) — en/ko 양쪽.
+   - **기능 보존** verify: status filter, pipeline filter, search, message thread, notes, next action date, assignee, AI reply assist (preview-only), acting-as chip 위치, 작성자 시점 분리, markPriceInquiryRead, listPriceInquiriesForArtist 의 keyset 페이지네이션 — 전부 무수정.
+
+6. **Artwork Passport v1.1 — surgical component split (2개만).**
+   - 1160줄 monolith 에서 **pure-presentation 2 components 만** 추출:
+     - `src/components/artwork/ArtworkPassportHeader.tsx` — breadcrumb + ARTWORK RECORD kicker + `?fromRoom` 우선순위.
+     - `src/components/artwork/ArtworkImageStage.tsx` — image + full-size desktop modal.
+   - `page.tsx` 에서 `Image`, `getArtworkImageUrl` import 제거 (양 component 가 흡수).
+   - 나머지 (action rail / inquiry panel / owner panel) 는 state/effects 의존이 깊어 *risky split* 으로 판단, **Sprint 5 후보**로 보류 (work order §3.2 도 "Extract only where it reduces complexity without behavior changes" 명시).
+
+### C. Privacy hardening (sanitizer 강화)
+
+7. **`sanitizeInquirySource` 의 SECRET_KEY_RE 확장.**
+   - 기존: `(token|password|secret)$|_(token|password|secret)$/i`
+   - 신규: `(token|password|secret|apikey|authorization|cookie|bearer|magic)/i` (substring + case-insensitive).
+   - snake_case (`api_token`, `share_token`) 와 camelCase (`apiKey`, `authorization`, `cookie`) 모두 잡음. defense-in-depth — 호출 site 는 절대 안 보낸다는 contract 위에 있는 안전망.
+
+8. **`tests/inquiry-source.test.ts` 확장.**
+   - `apiKey`, `authorization`, `cookie` strip 케이스 추가.
+   - `direct` surface round-trip + legacy null surface chipless rendering invariant.
+   - 미값 객체에서 secret-shaped key 가 들어와도 strip 되는지 sanity case.
+
+### 변경 파일
+
+```
+신규 (3)
+  src/components/artwork/ArtworkPassportHeader.tsx
+  src/components/artwork/ArtworkImageStage.tsx
+  tests/privacy-token-audit.test.ts
+
+수정 (8)
+  src/app/room/[token]/page.tsx
+  src/app/artwork/[id]/page.tsx
+  src/app/my/inquiries/page.tsx
+  src/lib/supabase/priceInquiries.ts
+  src/lib/i18n/messages.ts
+  package.json
+  docs/QA_SMOKE.md
+  tests/inquiry-source.test.ts
+```
+
+### 검증 결과
+
+| 명령 | 결과 | 비고 |
+|---|---|---|
+| `npm run test:feed-personalization` | **PASS** | 13 invariants |
+| `npm run test:feed-living-salon` | **PASS** | |
+| `npm run test:feed-telemetry` | **PASS** | |
+| `npm run test:people-reason` | **PASS** | |
+| `npm run test:inquiry-source` | **PASS** | 9 cases (Sprint 3 7 → Sprint 4 9) |
+| `npm run test:privacy-token-audit` | **PASS** | 51 telemetry call sites scanned across 310 files |
+| `npm run build` | **PASS** | Next.js production build, type-checks pass |
+| `npm run lint` | **83 problems (34 err / 49 warn)** — Sprint 3 baseline 84 (34/50) 대비 1 warning 감소, **신규 회귀 0** |
+| `npm run test:ai-safety` | baseline 동일, **신규 회귀 0** (`IntroMessageAssist` auto-fire / hardcoded "ko" 는 별도 영역) |
+| `npm run test:onboarding-smoke` | baseline 동일, **신규 회귀 0** |
+
+### Privacy / RLS 영향
+
+- **RLS 무수정.**
+- **room TOKEN** 이 분석 payload 에서 완전히 제거됨 — 51개 telemetry call site 정적 스캔으로 영구 보장.
+- **inquiry source attribution** 의 sanitizer 가 6 → 8개 secret-shape 패턴까지 차단 (snake/camel 양형).
+- `setRoomSource` / `peekRoomSource` 의 token 미저장 invariant 그대로.
+
+### Manual QA 권장
+
+#### Feed
+- `/feed?tab=all&sort=latest` — load-more 시 상단 tile freeze 무회귀.
+- `/feed?tab=all&sort=popular`, `/feed?tab=following`.
+- diagnostics personalization 줄 정상.
+
+#### Room
+- 유효 token / 만료 token / empty / 작품 있는 룸.
+- room → artwork → "Back to room" 동작.
+- room → artwork → inquiry → `/my/inquiries` 의 "From room" chip + source filter "Room" 적용 시 해당 row 만 노출.
+- **분석 페이로드 검사 (브라우저 DevTools Network → `beta_events.insert`):** `room_viewed` payload 에 `token` 키가 없는지 확인.
+
+#### Artwork Passport
+- 이미지 있음 / 없음 / 다중 이미지 / 데스크탑 클릭 → full-size modal / Escape 닫힘.
+- owner / delegate / non-owner / logged-out 모든 시점에서 ActionRail / InquiryPanel / OwnerPanel 무회귀.
+- `?fromRoom=` 진입 시 "Back to room" primary, generic back secondary.
+
+#### Inquiry inbox
+- 기본 row: title / inquirer / last activity / status chip 만 보임.
+- 클릭 → expanded → Manage panel + thread + reply textarea + AI reply assist + notes 모두 정상.
+- source filter chip rail 클릭 → 해당 surface row 만 표시. legacy/null row 는 "All" 에서만.
+- pipeline native select / status LaneChips / search / acting-as chip 모두 정상.
+
+#### Mobile
+- room / passport / inbox 모두 cramped 하지 않음, metadata wrap 깨지지 않음.
+
+### 알려진 제약 (Sprint 5 후보)
+
+- **Artwork Passport 의 큰 split** — Sprint 4 에서 2개만. ActionRail, InquiryPanel, OwnerPanel, ProvenancePanel 등은 state/effects 의존이 깊어 별도 sprint.
+- **Liked-artist viewer-level cached read model** — Sprint 2 audit §2.2 그대로.
+- **Inquiry inbox 의 server-side source filter** — 현재 client-side mask. row 가 많아지면 filter chip 클릭 후 페이지네이션 깊이가 비대칭.
+- **Viewer role SSR inject** — 시각 영향 미미, defer.
+
+### 환경 변수
+
+이번 스프린트 추가/변경 **없음**.
+
+### Supabase SQL — 수동 실행 필요 여부
+
+이번 스프린트에서 **신규 SQL 마이그레이션 없음**. 다만 Sprint 3 의 `supabase/migrations/20260605000000_price_inquiry_source_attribution.sql` 가 미적용된 환경이면 즉시 실행 필수. 검증 SQL 은 `docs/QA_SMOKE.md` 의 "Pre-deploy SQL checklist" 섹션 참조.
+
+---
+
 ## 2026-05-05 — Sprint 3: Artwork Passport + Private Room + Inquiry Loop
 
 Opus Sprint Pack 의 세 번째 스프린트. **Living Salon 위에 첫 번째 진정한 가치 루프 — Feed → Artwork Passport → Save / Private Room / Inquiry → Artist 후속조치 — 의 골격 구축.** 결제·체크아웃·자동 발송 AI 일체 미도입.

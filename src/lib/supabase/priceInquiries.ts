@@ -233,7 +233,14 @@ function sanitizeInquirySource(input: InquirySource): {
   let safePayload: Record<string, unknown> | null = null;
   if (input.payload && typeof input.payload === "object" && !Array.isArray(input.payload)) {
     const cleaned: Record<string, unknown> = {};
-    const SECRET_KEY_RE = /(token|password|secret)$|_(token|password|secret)$/i;
+    // Sprint 4 §4.2 — broadened forbidden-key set. Substring match on a
+    // lowercased key so both snake_case (`share_token`, `api_token`)
+    // and camelCase (`apiKey`, `authorization`) variants are caught,
+    // alongside bare keys (`cookie`, `secret`, `password`, `magicLink`).
+    // Defense-in-depth — call sites are supposed to never include these,
+    // but the safety net is cheap.
+    const SECRET_KEY_RE =
+      /(token|password|secret|apikey|authorization|cookie|bearer|magic)/i;
     for (const [k, v] of Object.entries(input.payload)) {
       if (SECRET_KEY_RE.test(k)) continue;
       if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v == null) {

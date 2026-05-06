@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
 import { useParams } from "next/navigation";
 import { getArtworkBack } from "@/lib/artworkBack";
 import { getArtworkArtistLabel, getArtworkPriceDisplay } from "@/lib/supabase/artworks";
@@ -15,7 +14,6 @@ import {
   canViewProvenance,
   deleteArtworkCascade,
   getArtworkById,
-  getArtworkImageUrl,
   getMyClaim,
   getProvenanceClaims,
   recordArtworkView,
@@ -64,6 +62,8 @@ import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
 import { markAiAccepted } from "@/lib/ai/accept";
 import { useActingAs } from "@/context/ActingAsContext";
+import { ArtworkPassportHeader } from "@/components/artwork/ArtworkPassportHeader";
+import { ArtworkImageStage } from "@/components/artwork/ArtworkImageStage";
 
 
 function ArtworkDetailContent() {
@@ -592,80 +592,23 @@ function ArtworkDetailContent() {
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      {/* Sprint 3 — Artwork Passport breadcrumb header.
-          - Quiet uppercase "Artwork record" caption announces page genre
-            without ecommerce framing ("Product details" → never).
-          - Back chain stays muted; "Back to room" is the more specific
-            affordance when the user arrived via ?fromRoom=, so it gets
-            primary visual weight relative to the generic back link. */}
-      <div className="mb-6 flex flex-col gap-1.5">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">
-          {t("artwork.recordTitle")}
-        </p>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
-          {fromRoom ? (
-            <Link
-              href={`/room/${encodeURIComponent(fromRoom)}`}
-              className="text-zinc-700 hover:text-zinc-900"
-            >
-              ← {t("artwork.backToRoom")}
-            </Link>
-          ) : (
-            <Link href={backPath} className="text-zinc-600 hover:text-zinc-900">
-              ← {t(backLabelKey)}
-            </Link>
-          )}
-          {fromRoom && (
-            <>
-              <span className="text-zinc-300">·</span>
-              <Link href={backPath} className="text-zinc-500 hover:text-zinc-800">
-                {t(backLabelKey)}
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
+      <ArtworkPassportHeader
+        fromRoom={fromRoom}
+        backPath={backPath}
+        backLabelKey={backLabelKey}
+      />
+
       <div className="space-y-6">
         <div className="grid gap-6 sm:grid-cols-2">
-          <div
-            className={`aspect-square w-full overflow-hidden rounded-lg bg-zinc-100 ${isDesktop && sortedImages.length > 0 ? "cursor-zoom-in" : ""}`}
-            role={isDesktop && sortedImages.length > 0 ? "button" : undefined}
-            tabIndex={isDesktop && sortedImages.length > 0 ? 0 : undefined}
-            onClick={() => isDesktop && sortedImages.length > 0 && setFullSizeOpen(true)}
-            onKeyDown={(e) => isDesktop && sortedImages.length > 0 && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setFullSizeOpen(true))}
-          >
-            {sortedImages.length > 0 ? (
-              <Image
-                src={getArtworkImageUrl(sortedImages[0].storage_path, "medium")}
-                alt={artwork.title ?? "Artwork"}
-                width={600}
-                height={600}
-                sizes="(max-width: 768px) 100vw, 600px"
-                priority
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
-                {t("artwork.noImage")}
-              </div>
-            )}
-          </div>
-          {fullSizeOpen && sortedImages.length > 0 && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-              role="dialog"
-              aria-modal="true"
-              aria-label={artwork.title ?? "Artwork"}
-              onClick={() => setFullSizeOpen(false)}
-            >
-              <img
-                src={getArtworkImageUrl(sortedImages[0].storage_path, "original")}
-                alt={artwork.title ?? "Artwork"}
-                className="max-h-full max-w-full object-contain"
-                onClick={(e) => e.stopPropagation()}
-              />
-            </div>
-          )}
+          <ArtworkImageStage
+            sortedImages={sortedImages}
+            title={artwork.title}
+            isDesktop={isDesktop}
+            fullSizeOpen={fullSizeOpen}
+            onOpenFullSize={() => setFullSizeOpen(true)}
+            onCloseFullSize={() => setFullSizeOpen(false)}
+          />
+
           <div>
             <h1 className="text-xl font-semibold text-zinc-900">
               {artwork.title ?? t("common.untitled")}

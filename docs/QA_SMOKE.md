@@ -2,6 +2,44 @@
 
 Run after deploying or before a beta cut. Supabase: apply `p0_beta_hardening_wave1.sql` (and prior migrations) first.
 
+## Pre-deploy SQL checklist (read this BEFORE shipping)
+
+Sprint 3 introduced inquiry source attribution that depends on schema columns
+added by the migration below. If any of these are missing, the affected feature
+will fail at insert time.
+
+| Required migration | Why | Fail mode if missing |
+|---|---|---|
+| `supabase/migrations/20260605000000_price_inquiry_source_attribution.sql` | Adds `source_*` columns + `price_inquiries_source_surface_chk` CHECK + `idx_price_inquiries_source_room` partial index | `createPriceInquiry` insert fails (PostgREST 42703 — unknown column `source_surface`) → "Ask about this work" silently breaks for any user arriving via feed/room |
+
+Verify each migration is applied before deploy:
+
+```sql
+-- 20260605000000 — source attribution columns present?
+select count(*) as ok
+from information_schema.columns
+where table_schema='public'
+  and table_name='price_inquiries'
+  and column_name in (
+    'source_surface','source_artwork_id','source_exhibition_id',
+    'source_room_id','source_feed_session_id','source_feed_item_key','source_payload'
+  );
+-- Expect: 7
+
+-- 20260605000000 — CHECK constraint present?
+select pg_get_constraintdef(oid) as def
+from pg_constraint
+where conname = 'price_inquiries_source_surface_chk';
+-- Expect: 1 row matching the closed-set whitelist
+```
+
+After migrating, smoke-test inquiries:
+1. Sign in as inquirer.
+2. Open an artwork in `inquire` pricing mode.
+3. Click "Ask about this work" → submit.
+4. Sign in as the artist → `/my/inquiries` shows the row with no error toast.
+5. Confirm the row exists in `price_inquiries` and `source_surface = 'artwork'`.
+
 ## Automated (Playwright)
 
 ```bash

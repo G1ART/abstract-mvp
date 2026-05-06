@@ -23,10 +23,17 @@ import {
 } from "@/lib/supabase/priceInquiries";
 import { EmptyState } from "@/components/ds/EmptyState";
 import { Chip } from "@/components/ds/Chip";
+import { PageShell } from "@/components/ds/PageShell";
+import { PageHeader } from "@/components/ds/PageHeader";
+import { LaneChips, type LaneOption } from "@/components/ds/LaneChips";
+import { FloorPanel } from "@/components/ds/FloorPanel";
+import { SectionLabel } from "@/components/ds/SectionLabel";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { formatIdentityPair } from "@/lib/identity/format";
 import { InquiryReplyAssist } from "@/components/ai/InquiryReplyAssist";
 import { markAiAccepted } from "@/lib/ai/accept";
 import { ActingAsChip } from "@/components/ActingAsChip";
+import type { InquirySourceSurface } from "@/lib/supabase/priceInquiries";
 
 export default function MyInquiriesPage() {
   const { t, locale } = useT();
@@ -43,6 +50,15 @@ export default function MyInquiriesPage() {
   const [search, setSearch] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
   const [pipelineFilter, setPipelineFilter] = useState<PipelineStage | "all">("all");
+  /**
+   * Sprint 4 §4.1 — quiet source filter. Client-side mask only (the
+   * server-side keyset pagination is unchanged), so the filter says "of
+   * the rows currently loaded, only show these surfaces". Sized to the
+   * minimum: All + the four surfaces actually written by Sprint 3 +
+   * Profile/Exhibition (rare but valid). Direct rows show under "All"
+   * because they have no source attribution to filter on.
+   */
+  const [sourceFilter, setSourceFilter] = useState<InquirySourceSurface | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [messagesByInquiry, setMessagesByInquiry] = useState<Record<string, PriceInquiryMessageRow[]>>({});
   const [notesByInquiry, setNotesByInquiry] = useState<Record<string, InquiryNoteRow[]>>({});
@@ -209,55 +225,106 @@ export default function MyInquiriesPage() {
 
   const unreadCount = useMemo(() => list.filter((r) => r.artist_unread === true).length, [list]);
 
+  // Sprint 4 §4.1 — apply the client-side source filter on top of the
+  // already-server-filtered list. "all" passes through; any other value
+  // matches `source_surface` exactly (legacy/null rows never match a
+  // specific surface, so they correctly disappear from non-"all" views
+  // — that's the desired UX, those rows still show under "All").
+  const visibleList = useMemo(() => {
+    if (sourceFilter === "all") return list;
+    return list.filter((r) => r.source_surface === sourceFilter);
+  }, [list, sourceFilter]);
+
+  // Pre-built lane options. Memoized so identity is stable across renders
+  // (avoids LaneChips re-rendering its child buttons unnecessarily).
+  const statusLaneOptions = useMemo<ReadonlyArray<LaneOption<InquiryStatus | "all">>>(
+    () => [
+      { id: "all", label: t("priceInquiry.filterAll") },
+      { id: "new", label: t("priceInquiry.filterNew") },
+      { id: "open", label: t("priceInquiry.filterOpen") },
+      { id: "replied", label: t("priceInquiry.filterReplied") },
+      { id: "closed", label: t("priceInquiry.filterClosed") },
+    ],
+    [t]
+  );
+  const sourceLaneOptions = useMemo<
+    ReadonlyArray<LaneOption<InquirySourceSurface | "all">>
+  >(
+    () => [
+      { id: "all", label: t("inquiry.source.filterAll") },
+      { id: "feed", label: t("inquiry.source.filterFeed") },
+      { id: "room", label: t("inquiry.source.filterRoom") },
+      { id: "artwork", label: t("inquiry.source.filterArtwork") },
+      { id: "exhibition", label: t("inquiry.source.filterExhibition") },
+      { id: "profile", label: t("inquiry.source.filterProfile") },
+    ],
+    [t]
+  );
+
   return (
     <AuthGate>
-      <main className="mx-auto max-w-2xl px-4 py-8">
-        <Link href="/my" className="mb-6 inline-block text-sm text-zinc-600 hover:text-zinc-900">
+      <PageShell variant="narrow">
+        <Link
+          href="/my"
+          className="mb-6 inline-block text-sm text-zinc-500 hover:text-zinc-900"
+        >
           ← {t("profile.privateBackToMy")}
         </Link>
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-xl font-semibold text-zinc-900">{t("priceInquiry.title")}</h1>
-            {unreadCount > 0 && (
-              <p className="mt-1 text-sm text-amber-700">{t("priceInquiry.unreadBadge").replace("{n}", String(unreadCount))}</p>
-            )}
-          </div>
-        </div>
+        <PageHeader
+          title={t("priceInquiry.title")}
+          lead={
+            unreadCount > 0
+              ? t("priceInquiry.unreadBadge").replace("{n}", String(unreadCount))
+              : null
+          }
+          density="tight"
+        />
 
         <ActingAsChip mode="replying" />
 
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+        {/* Filter rail — calmer than the previous select trio. status is
+            a 5-option lane (all + 4), source is a 6-option lane, search
+            stays as a single input. Pipeline is intentionally still a
+            native select: 7 options is too many for a calm chip rail and
+            would push width past the 2xl content column on mobile. */}
+        <div className="mb-3 mt-4 flex flex-col gap-2.5">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("priceInquiry.searchPlaceholder")}
-            className="w-full rounded border border-zinc-300 px-3 py-2 text-sm sm:max-w-xs"
+            className="w-full rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm focus:border-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300 sm:max-w-xs"
           />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as InquiryStatus | "all")}
-            className="rounded border border-zinc-300 px-3 py-2 text-sm"
-          >
-            <option value="all">{t("priceInquiry.filterAll")}</option>
-            <option value="new">{t("priceInquiry.filterNew")}</option>
-            <option value="open">{t("priceInquiry.filterOpen")}</option>
-            <option value="replied">{t("priceInquiry.filterReplied")}</option>
-            <option value="closed">{t("priceInquiry.filterClosed")}</option>
-          </select>
-          <select
-            value={pipelineFilter}
-            onChange={(e) => setPipelineFilter(e.target.value as PipelineStage | "all")}
-            className="rounded border border-zinc-300 px-3 py-2 text-sm"
-          >
-            <option value="all">{t("priceInquiry.pipelineFilterAll")}</option>
-            <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
-            <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
-            <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
-            <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
-            <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
-            <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
-          </select>
+          <LaneChips
+            variant="sort"
+            ariaLabel={t("priceInquiry.statusLabel")}
+            options={statusLaneOptions}
+            active={statusFilter}
+            onChange={setStatusFilter}
+          />
+          <LaneChips
+            variant="sort"
+            ariaLabel={t("inquiry.source.filterAll")}
+            options={sourceLaneOptions}
+            active={sourceFilter}
+            onChange={setSourceFilter}
+          />
+          <div className="flex items-center gap-2">
+            <SectionLabel as="span">{t("priceInquiry.pipelineLabel")}</SectionLabel>
+            <select
+              value={pipelineFilter}
+              onChange={(e) => setPipelineFilter(e.target.value as PipelineStage | "all")}
+              className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs text-zinc-700 focus:border-zinc-400 focus:outline-none"
+            >
+              <option value="all">{t("priceInquiry.pipelineFilterAll")}</option>
+              <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
+              <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
+              <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
+              <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
+              <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
+              <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
+            </select>
+          </div>
         </div>
 
         {toast && (
@@ -268,11 +335,11 @@ export default function MyInquiriesPage() {
 
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
-        ) : list.length === 0 ? (
+        ) : visibleList.length === 0 ? (
           <EmptyState title={t("priceInquiry.empty")} size="sm" />
         ) : (
           <ul className="space-y-4">
-            {list.map((row) => {
+            {visibleList.map((row) => {
               const expanded = expandedId === row.id;
               const msgs = messagesByInquiry[row.id];
               return (
@@ -315,7 +382,12 @@ export default function MyInquiriesPage() {
                       );
                     })()}
                   </div>
-                  <div className="mb-2 flex flex-wrap items-center gap-2 text-sm text-zinc-600">
+                  {/* Default row meta — Sprint 4 §3.3 progressive disclosure.
+                      Identity + last activity + status summary chip. The
+                      whole pipeline / assignee / next-action / notes UI
+                      moves into the expanded "Manage" panel below so the
+                      list is calm at rest. */}
+                  <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-zinc-600">
                     {(() => {
                       const { primary, secondary } = formatIdentityPair(row.inquirer, t);
                       return (
@@ -325,76 +397,117 @@ export default function MyInquiriesPage() {
                         </span>
                       );
                     })()}
-                    <span className="text-zinc-400">·</span>
+                    <span className="text-zinc-300">·</span>
                     <span className="text-xs text-zinc-500">
                       {row.last_message_at
                         ? new Date(row.last_message_at).toLocaleString()
                         : new Date(row.created_at).toLocaleString()}
                     </span>
-                  </div>
-                  <div className="mb-3 flex flex-wrap items-center gap-3">
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">{t("priceInquiry.statusLabel")}</label>
-                      <select
-                        value={row.inquiry_status ?? "open"}
-                        onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                      >
-                        <option value="new">{t("priceInquiry.filterNew")}</option>
-                        <option value="open">{t("priceInquiry.filterOpen")}</option>
-                        <option value="replied">{t("priceInquiry.filterReplied")}</option>
-                        <option value="closed">{t("priceInquiry.filterClosed")}</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">{t("priceInquiry.pipelineLabel")}</label>
-                      <select
-                        value={row.pipeline_stage ?? "new"}
-                        onChange={(e) => void handlePipelineChange(row.id, e.target.value as PipelineStage)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                      >
-                        <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
-                        <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
-                        <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
-                        <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
-                        <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
-                        <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">{t("priceInquiry.assigneeLabel")}</label>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void updateInquiryPipeline(row.id, { assignee_id: actingAsProfileId ?? undefined });
-                          setList((prev) =>
-                            prev.map((r) => (r.id === row.id ? { ...r, assignee_id: actingAsProfileId } : r))
-                          );
-                        }}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
-                      >
-                        {row.assignee_id ? t("priceInquiry.reassignToMe") : t("priceInquiry.assignToMe")}
-                      </button>
-                      {row.assignee_id && (
-                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700">
-                          {t("priceInquiry.assigneeAssignedHint")}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <label className="text-xs text-zinc-500">{t("priceInquiry.nextActionLabel")}</label>
-                      <input
-                        type="date"
-                        lang={locale}
-                        value={row.next_action_date ?? ""}
-                        onChange={(e) => void handleNextActionDate(row.id, e.target.value)}
-                        className="rounded border border-zinc-300 px-2 py-1 text-xs"
-                      />
-                    </div>
+                    <span className="text-zinc-300">·</span>
+                    {(() => {
+                      const status = row.inquiry_status ?? "open";
+                      const labelKey = (
+                        status === "new"
+                          ? "priceInquiry.statusSummaryNew"
+                          : status === "open"
+                            ? "priceInquiry.statusSummaryOpen"
+                            : status === "replied"
+                              ? "priceInquiry.statusSummaryReplied"
+                              : "priceInquiry.statusSummaryClosed"
+                      ) satisfies MessageKey;
+                      const tone =
+                        status === "replied"
+                          ? "success"
+                          : status === "closed"
+                            ? "muted"
+                            : "neutral";
+                      return (
+                        <Chip tone={tone} size="xs">
+                          {t(labelKey)}
+                        </Chip>
+                      );
+                    })()}
                   </div>
 
                   {expanded && (
-                    <div className="mt-3 border-t border-zinc-100 pt-3">
+                    <div className="mt-3 space-y-4 border-t border-zinc-100 pt-3">
+                      {/* Manage panel: pipeline / assignee / next-action.
+                          Hand-rolled controls collected into a single
+                          FloorPanel so the operator sees them as ONE
+                          area, not four neighbouring strays. */}
+                      <FloorPanel padding="sm" as="div">
+                        <SectionLabel className="mb-2">
+                          {t("priceInquiry.manageTitle")}
+                        </SectionLabel>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+                            <span className="text-zinc-500">{t("priceInquiry.statusLabel")}</span>
+                            <select
+                              value={row.inquiry_status ?? "open"}
+                              onChange={(e) => void handleStatusChange(row.id, e.target.value as InquiryStatus)}
+                              className="rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 text-xs"
+                            >
+                              <option value="new">{t("priceInquiry.filterNew")}</option>
+                              <option value="open">{t("priceInquiry.filterOpen")}</option>
+                              <option value="replied">{t("priceInquiry.filterReplied")}</option>
+                              <option value="closed">{t("priceInquiry.filterClosed")}</option>
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+                            <span className="text-zinc-500">{t("priceInquiry.pipelineLabel")}</span>
+                            <select
+                              value={row.pipeline_stage ?? "new"}
+                              onChange={(e) => void handlePipelineChange(row.id, e.target.value as PipelineStage)}
+                              className="rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 text-xs"
+                            >
+                              <option value="new">{t("priceInquiry.pipelineStage.new")}</option>
+                              <option value="contacted">{t("priceInquiry.pipelineStage.contacted")}</option>
+                              <option value="in_discussion">{t("priceInquiry.pipelineStage.in_discussion")}</option>
+                              <option value="offer_sent">{t("priceInquiry.pipelineStage.offer_sent")}</option>
+                              <option value="closed_won">{t("priceInquiry.pipelineStage.closed_won")}</option>
+                              <option value="closed_lost">{t("priceInquiry.pipelineStage.closed_lost")}</option>
+                            </select>
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void updateInquiryPipeline(row.id, {
+                                  assignee_id: actingAsProfileId ?? undefined,
+                                });
+                                setList((prev) =>
+                                  prev.map((r) =>
+                                    r.id === row.id
+                                      ? { ...r, assignee_id: actingAsProfileId }
+                                      : r
+                                  )
+                                );
+                              }}
+                              className="rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 text-xs text-zinc-600 hover:bg-zinc-50"
+                            >
+                              {row.assignee_id
+                                ? t("priceInquiry.reassignToMe")
+                                : t("priceInquiry.assignToMe")}
+                            </button>
+                            {row.assignee_id && (
+                              <Chip tone="success" size="xs">
+                                {t("priceInquiry.assigneeAssignedHint")}
+                              </Chip>
+                            )}
+                          </div>
+                          <label className="flex items-center gap-1.5 text-xs text-zinc-600">
+                            <span className="text-zinc-500">{t("priceInquiry.nextActionLabel")}</span>
+                            <input
+                              type="date"
+                              lang={locale}
+                              value={row.next_action_date ?? ""}
+                              onChange={(e) => void handleNextActionDate(row.id, e.target.value)}
+                              className="rounded-full border border-zinc-200 bg-white px-2.5 py-0.5 text-xs"
+                            />
+                          </label>
+                        </div>
+                      </FloorPanel>
+
                       {loadingMessages === row.id ? (
                         <p className="text-sm text-zinc-500">{t("common.loading")}</p>
                       ) : msgs && msgs.length > 0 ? (
@@ -439,7 +552,7 @@ export default function MyInquiriesPage() {
                           type="button"
                           disabled={!replyText[row.id]?.trim() || replyingId === row.id}
                           onClick={() => void handleReply(row.id)}
-                          className="mt-2 rounded bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+                          className="mt-2 rounded-full bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
                         >
                           {replyingId === row.id ? t("common.loading") : t("priceInquiry.reply")}
                         </button>
@@ -492,7 +605,7 @@ export default function MyInquiriesPage() {
                             type="button"
                             disabled={!noteText[row.id]?.trim()}
                             onClick={() => void handleAddNote(row.id)}
-                            className="rounded bg-zinc-700 px-3 py-1.5 text-sm text-white hover:bg-zinc-600 disabled:opacity-50"
+                            className="rounded-full bg-zinc-700 px-4 py-1.5 text-sm text-white hover:bg-zinc-600 disabled:opacity-50"
                           >
                             {t("priceInquiry.internalNoteAdd")}
                           </button>
@@ -522,13 +635,13 @@ export default function MyInquiriesPage() {
               type="button"
               disabled={loadingMore}
               onClick={() => void loadMore()}
-              className="rounded border border-zinc-300 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded-full border border-zinc-200 bg-white px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
             >
               {loadingMore ? t("common.loading") : t("priceInquiry.loadMore")}
             </button>
           </div>
         )}
-      </main>
+      </PageShell>
     </AuthGate>
   );
 }
