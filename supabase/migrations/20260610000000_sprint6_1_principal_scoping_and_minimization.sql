@@ -3,13 +3,27 @@
 -- ===========================================================================
 --
 -- Apply note for the operator
---   This file contains 4 PL/pgSQL function bodies. Per
+--   This file contains 1 idempotent table safety net (SECTION 0) plus
+--   4 PL/pgSQL function bodies (SECTIONS 1-4). Per
 --   .cursor/rules/release-workflow.mdc paragraph 1-1, do NOT paste the
 --   whole file at once into the Supabase SQL Editor. Highlight each
---   "-- == SECTION N ==" block separately and press Run. Each section
---   uses a unique letters-only dollar tag (a/b/c/d) and the header
---   comments deliberately avoid single quotes so the dashboard tokenizer
---   does not lose track of string state.
+--   "-- == SECTION N ==" block separately and press Run, in order:
+--   SECTION 0 first (creates / re-asserts the relationship_private_notes
+--   table + RLS so SECTION 3 can reference it as a composite type),
+--   then SECTION 1, 2, 3, 4. Each function section uses a unique
+--   letters-only dollar tag (a/b/c/d) and the header comments
+--   deliberately avoid single quotes so the dashboard tokenizer does
+--   not lose track of string state.
+--
+-- Why SECTION 0 exists
+--   Sprint 6 (20260608) SECTION 3 created the relationship_private_notes
+--   table. If that section was lost to a dashboard splitter mishap
+--   during the original Sprint 6 apply, our SECTION 3 below fails with
+--   "ERROR: 42704: type public.relationship_private_notes does not exist"
+--   because the function declares `returns public.relationship_private_notes`
+--   (Postgres treats every table as a composite type). SECTION 0 makes
+--   this whole file self-sufficient: it idempotently re-emits the
+--   table + indexes + RLS so SECTION 3 always has the type it needs.
 --
 -- What this changes
 --
@@ -48,6 +62,80 @@
 --   * Telemetry contract is unchanged (note body still never logged).
 --   * No client-side access decision is introduced; UI gating still
 --     depends on the resolver-returned visibility object.
+
+-- == SECTION 0 == relationship_private_notes table safety net (idempotent)
+
+-- Defensive: re-emit the relationship_private_notes table and its
+-- owner-only RLS policies BEFORE SECTION 3 references them as a
+-- composite return type. Sprint 6 (20260608) SECTION 3 already creates
+-- this table, but if that section was lost to a dashboard splitter
+-- mishap during the original Sprint 6 apply (the same family of
+-- tokenizer bugs that produced the SECTION 3 hotfix series), the
+-- CREATE FUNCTION in our SECTION 3 below would fail with
+-- "ERROR: 42704: type public.relationship_private_notes does not exist"
+-- because Postgres treats every table as a composite type with the
+-- same name. Re-emitting here is byte-compatible with 20260608 SECTION 3
+-- and is safe to run again.
+create table if not exists public.relationship_private_notes (
+  id                uuid primary key default gen_random_uuid(),
+  owner_profile_id  uuid not null references public.profiles(id) on delete cascade,
+  target_profile_id uuid not null references public.profiles(id) on delete cascade,
+  note              text not null default '',
+  created_by        uuid not null references public.profiles(id) on delete restrict,
+  updated_by        uuid null     references public.profiles(id) on delete set null,
+  created_at        timestamptz not null default now(),
+  updated_at        timestamptz not null default now(),
+  constraint relationship_private_notes_no_self_note
+    check (owner_profile_id <> target_profile_id),
+  constraint relationship_private_notes_unique_pair
+    unique (owner_profile_id, target_profile_id)
+);
+
+comment on table public.relationship_private_notes is
+  'Owner/delegate-only private notes about a related profile. Target user MUST NOT read notes about themselves; note body MUST NEVER appear in telemetry.';
+
+create index if not exists idx_relationship_private_notes_owner
+  on public.relationship_private_notes (owner_profile_id, updated_at desc);
+
+alter table public.relationship_private_notes enable row level security;
+
+drop policy if exists relationship_private_notes_owner_select on public.relationship_private_notes;
+drop policy if exists relationship_private_notes_owner_insert on public.relationship_private_notes;
+drop policy if exists relationship_private_notes_owner_update on public.relationship_private_notes;
+drop policy if exists relationship_private_notes_owner_delete on public.relationship_private_notes;
+
+create policy relationship_private_notes_owner_select on public.relationship_private_notes
+  for select to authenticated
+  using (
+    owner_profile_id = auth.uid()
+    or public.is_active_account_delegate_writer(owner_profile_id)
+  );
+
+create policy relationship_private_notes_owner_insert on public.relationship_private_notes
+  for insert to authenticated
+  with check (
+    (owner_profile_id = auth.uid()
+     or public.is_active_account_delegate_writer(owner_profile_id))
+    and owner_profile_id <> target_profile_id
+  );
+
+create policy relationship_private_notes_owner_update on public.relationship_private_notes
+  for update to authenticated
+  using (
+    owner_profile_id = auth.uid()
+    or public.is_active_account_delegate_writer(owner_profile_id)
+  )
+  with check (
+    owner_profile_id = auth.uid()
+    or public.is_active_account_delegate_writer(owner_profile_id)
+  );
+
+create policy relationship_private_notes_owner_delete on public.relationship_private_notes
+  for delete to authenticated
+  using (
+    owner_profile_id = auth.uid()
+    or public.is_active_account_delegate_writer(owner_profile_id)
+  );
 
 -- == SECTION 1 == get_relationship_desk_for_owner (principal-aware)
 

@@ -119,15 +119,28 @@ select public.get_artwork_passport_for_viewer(null);
 ### Sprint 6.1 — section-by-section apply (REQUIRED)
 
 `20260610000000_sprint6_1_principal_scoping_and_minimization.sql` contains
-**4 PL/pgSQL function bodies** (one per RPC) plus DROPs of the legacy
-overloads. Same dashboard tokenizer hazard as the other multi-function
-files — **do NOT paste the whole file at once.** Open the file,
-highlight each `-- == SECTION N ==` block in turn (1 → 4), paste into
-the SQL Editor, press **Run**. The dollar tags are unique per section
-(`$a$`/`$b$`/`$c$`/`$d$`) and the header comments deliberately avoid
-single quotes so `relation "v_aw" does not exist (42P01)` cannot
-re-occur. Every CREATE / DROP is `IF EXISTS / OR REPLACE`, so a single
-section can be re-applied if it failed once.
+**1 idempotent table safety net (SECTION 0)** plus **4 PL/pgSQL
+function bodies (SECTIONS 1-4)**. Same dashboard tokenizer hazard as
+the other multi-function files — **do NOT paste the whole file at
+once.** Open the file, highlight each `-- == SECTION N ==` block in
+turn (0 → 1 → 2 → 3 → 4), paste into the SQL Editor, press **Run**.
+The dollar tags are unique per function section (`$a$`/`$b$`/`$c$`/`$d$`)
+and the header comments deliberately avoid single quotes so
+`relation "v_aw" does not exist (42P01)` cannot re-occur. Every CREATE /
+DROP is `IF EXISTS / OR REPLACE`, so a single section can be re-applied
+if it failed once.
+
+**Why SECTION 0 exists.** Sprint 6 (20260608) SECTION 3 created the
+`relationship_private_notes` table. If that Sprint 6 SECTION 3 was lost
+to a dashboard splitter mishap during the original Sprint 6 apply,
+SECTION 3 of this file would fail with
+`ERROR: 42704: type "public.relationship_private_notes" does not exist`
+because the note RPC declares `returns public.relationship_private_notes`
+(Postgres treats every table as a composite type). SECTION 0 makes this
+file self-sufficient: it idempotently re-emits the table + indexes +
+RLS so SECTION 3 always has the type it needs. If the table already
+exists from Sprint 6, SECTION 0 is a no-op (everything is `if not
+exists` / `drop policy if exists` → `create policy`).
 
 ### Sprint 6.1 verification SQL
 

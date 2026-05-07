@@ -2,6 +2,28 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 6.1 paste hotfix: relationship_private_notes table safety net
+
+**증상.** 사용자가 SECTION 단위로 Sprint 6.1 SQL 을 paste 하던 중 SECTION 3 (`upsert_relationship_private_note`) 에서:
+
+```
+ERROR: 42704: type "public.relationship_private_notes" does not exist
+```
+
+가 발생.
+
+**근본 원인.** SECTION 3 의 함수가 `returns public.relationship_private_notes` (composite type) 로 선언돼 있는데, 사용자 DB 에 그 이름의 테이블이 없는 상태였음. Sprint 6 (`20260608`) SECTION 3 가 원래 그 테이블을 생성하지만, 당시 dashboard splitter 사고로 그 SECTION 이 누락됐을 가능성 (Sprint 6 hotfix 시리즈를 만들었던 그 동일한 tokenizer 버그 family). Postgres 는 모든 테이블을 같은 이름의 composite type 으로 취급하므로, 테이블이 없으면 `returns ...` 절을 파싱할 때 42704 로 실패.
+
+**해결.** Sprint 6.1 마이그레이션 (`20260610...`) 의 맨 앞에 **SECTION 0 = relationship_private_notes 테이블 + 인덱스 + RLS 정책 멱등 보장** 을 추가. 모든 객체는 `create table if not exists`, `create index if not exists`, `drop policy if exists` → `create policy` 패턴이라 Sprint 6 에서 이미 만들어진 경우 no-op, 누락된 경우 정상 생성. SECTION 0 → 1 → 2 → 3 → 4 순으로 paste 하면 SECTION 3 이 반드시 type 을 찾을 수 있게 됨. 파일 헤더의 paste 가이드와 `docs/QA_SMOKE.md` 의 Sprint 6.1 paste 가이드도 SECTION 0 포함으로 갱신.
+
+**Supabase 적용.** 이미 SECTION 1, 2 를 돌려놓은 상태라면 그건 그대로 두고, **SECTION 0 만 highlight → Run** 후, 다시 SECTION 3 을 highlight → Run, 이어서 SECTION 4 highlight → Run 하면 됨. SECTION 0 은 멱등이라 이미 테이블이 존재하면 no-op.
+
+**환경 변수.** 변경 없음.
+
+**Verified.** 정적 테스트 4종 (sprint6-trust-floor / relationship-desk / sprint6-delegation-principal / relationship-card-privacy) 모두 SECTION 0 추가 후에도 통과.
+
+---
+
 ## 2026-05-07 — Sprint 6.1: Relationship Trust, Delegation Scope & Operator Privacy Polish
 
 **스프린트 성격.** 신규 기능 스프린트 아님. Sprint 6 가 실수로 남긴 5가지 신뢰 갭을 닫는 polish 패치. 추가 기능 없이 기존 기능의 권한·minimization 만 정밀화.
