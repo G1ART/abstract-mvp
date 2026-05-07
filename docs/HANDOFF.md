@@ -2,6 +2,97 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 6: Phase 0 Trust-Floor Closure + Relationship Desk + Persona Action Grammar + Private Room v2 (+ Grant Lifecycle additive)
+
+베이스라인: `84d52cb` (`release: Sprint 5.2 — Access Enforcement and Redaction Hardening`).
+
+Sprint 5.2 가 *데이터 접근 척추* 였다면, Sprint 6 는 그 위에 **관계 기억 surface** 를 올렸다. 동시에 5.2 잔여 trust-floor edge case 3건을 함께 닫았다 (Phase 0 — DTO redaction, gated price inquiry continuity, 룸 토큰 attribution). Sprint 6 는 결제·체크아웃·buyer scoring·CRM 파이프라인을 일절 도입하지 않는다.
+
+### Supabase SQL — 반드시 적용 필요
+
+**`supabase/migrations/20260608000000_sprint6_phase0_and_relationship_desk.sql`** — 7 SECTION:
+- `-- == SECTION 1 == get_artwork_passport_for_viewer (allowlisted DTO redaction)`
+- `-- == SECTION 2 == resolve_room_source_from_token (attribution-safe)`
+- `-- == SECTION 3 == relationship_private_notes (table + RLS)`
+- `-- == SECTION 4 == upsert_relationship_private_note (RPC)`
+- `-- == SECTION 5 == get_relationship_desk_for_owner (RPC)`
+- `-- == SECTION 6 == get_relationship_card_for_owner (RPC)`
+- `-- == SECTION 7 == resolve_access_request_v2 (additive grant lifecycle)`
+
+**Supabase Dashboard SQL Editor 에서 섹션 단위로 highlight → Run** (release-workflow §1-1 — 한꺼번에 paste 금지, dollar tag letters-only). 모든 SECTION 이 idempotent (`create or replace function ...`, `create table if not exists ...`, `create policy ...` 앞에 `drop policy if exists ...`).
+
+### Phase 0 — Trust-Floor Closure
+
+| Audit | 변경 |
+|---|---|
+| Public-safe DTO redaction (P0 닫힘) | `get_artwork_passport_for_viewer` 본문에서 `to_jsonb(p)` 제거. 중첩 `profiles` (소유자) 와 `claims.profiles` / `claims.external_artists` 를 모두 **explicit allowlist** (`jsonb_build_object`) 로 교체. **`external_artists.invite_email` 유출 차단** (가장 큰 hit). 내부 owner 플래그 `is_public` 도 viewer 페이로드에서 제거. TS view-model `RedactedArtworkPassport.profiles` 에서 `is_public` 도 함께 drop. |
+| Gated price inquiry 연속성 | `/artwork/[id]` 가 가격이 redacted 된 viewer (`pricing_mode === null`, `priceResolution.canView === false`) 도 inquiry 폼을 열 수 있게 했다. 기존 조건 (`pricing_mode === 'inquire'` OR `is_price_public === false`) 에 새 trigger `priceIsGated` 를 OR. 인콰이어리 source payload 는 변경 없음 (`sanitizeSourcePayload` 그대로). |
+| 룸 토큰 attribution hardening | 새 RPC `resolve_room_source_from_token(text, uuid)` 가 **`{ room_id, source_surface }` 만** 반환. 토큰을 다시 echo 하지 않고, *해당 작품이 그 룸에 실제로 속해 있어야만* room_id 를 돌려준다 (URL 위조로 임의 작품에 룸 attribution 을 붙이는 시도 차단). artwork detail 의 `getRoomByToken` 호출 제거. |
+
+### Phase A — Persona Action Grammar
+
+**`src/lib/persona/actionGrammar.ts`** + **`docs/product/PERSONA_ACTION_GRAMMAR.md`** 를 신설했다. 5개 mode (`artist | gallery | curator | collector | multi_persona`) 와 15개 first-class verb 를 정의하고 mode 별 first-value path (제목 i18n 키, primary/secondary verb, route, telemetry event, success signal) 를 데이터로 표현한다. 강제 role 선택은 도입하지 않았다 (multi_persona 가 안전한 fallback). 금지 단어 `lead / prospect / hot collector / conversion / pipeline …` 은 `FORBIDDEN_PERSONA_TERMS` + `tests/persona-grammar.test.ts` 로 가드한다.
+
+### Phase B + C — Relationship Desk + Card + Private Notes
+
+- 새 라우트 **`/my/relationships`** (`PageShell variant="studio"`, `PageHeader variant="editorial"`, kicker `RELATIONSHIPS`) — 조용한 owner-only 관계 데스크. `LaneChips` 6칩 (All / Pending requests / Inquiries / Approved viewers / Followers / Notes).
+- 새 RPC **`get_relationship_desk_for_owner(int, int, text)`** — `auth.uid()` 게이트, 5개 explicit relationship source (follows / access_requests / access_grants / price_inquiries / relationship_private_notes) 만 union. **passive surveillance source 일절 미사용** (`artwork_views`, `profile_views`, `buyer_score`, `lead_score` 등 전부 차단). 행 당 `relationship_status / last_activity / counts / private_note_preview(120자)`.
+- 새 테이블 **`relationship_private_notes`** + RLS — owner/delegate-writer 만 SELECT/INSERT/UPDATE/DELETE. **target user 정책 의도적으로 추가하지 않음** (자기 얘기 메모 못 봄). `unique(owner_profile_id, target_profile_id)` 로 upsert 안전.
+- 새 RPC **`upsert_relationship_private_note(uuid, text)`** — 4000자 cap, self-note raise. `relationship_private_note_saved` telemetry 는 본문 미포함.
+- 새 RPC **`get_relationship_card_for_owner(uuid)`** — 단일 프로필 카드 (profile/relationship_status/requests/grants/inquiries/rooms/private_note). 모두 owner-only.
+- 페이지 안에 **drawer** 로 카드 열기. private note 저장은 4000자 cap 적용. **suggested next action** 은 deterministic (pending 요청 → 검토 / 진행 중 inquiry → 답장 / 그 외 → 룸 공유). AI 점수·랭킹·자동승인 0건.
+
+### Phase D — Private Room v2 viewer & owner
+
+- `/room/[token]` 에 `private_room_v2_viewed` 텔레메트리 추가 (token 미포함, `subject_id` + `status` 만). 인증된 viewer 가 보일 때 헤더 아래에 calm CTA **"Ask about a work in this room"** (룸의 첫 번째 작품으로 `?fromRoom=` 어트리뷰션 deep-link). multi-work 룸 인콰이어리는 의도적으로 후속 (Known limitations 참조).
+- `/my/shortlists/[id]` 헤더 아래에 **Relationship Desk 링크** 한 줄 추가 (스튜디오 안에서 룸 → 사람 pivot 가능).
+- 서버측 룸 게이트/redaction 은 5.2 그대로 유지 (`get_room_for_viewer_by_token`).
+
+### Phase E — Access Grant Lifecycle (additive RPC)
+
+새 RPC **`resolve_access_request_v2(p_request_id, p_action, p_grant_subject_type?, p_grant_subject_id?, p_grant_field_key?, p_expires_at?)`** — 기존 `resolve_access_request(uuid, text)` 를 그대로 두고 **추가** RPC 로 grant 좁히기/만료시각 옵션을 도입했다. omit 시 legacy behavior 유지. UI 연동은 후속 sprint 에서 (RPC + wrapper + SQL contract test 만 셋업).
+
+### TypeScript 변경 요약
+
+- `src/lib/visibility/types.ts` — `RedactedArtworkPassport.profiles.is_public` 제거, `RoomSourceFromToken` / `RelationshipDeskRow` / `RelationshipCard*` / `RelationshipDeskFilter` 등 view-model 추가.
+- `src/lib/supabase/relationshipAccess.ts` — `resolveRoomSourceFromToken / getRelationshipDeskForOwner / getRelationshipCardForOwner / upsertRelationshipPrivateNote / resolveAccessRequestV2` wrapper 추가.
+- `src/app/artwork/[id]/page.tsx` — `getRoomByToken` 호출 제거 → `resolveRoomSourceFromToken`. `priceIsGated` trigger 추가.
+- `src/app/room/[token]/page.tsx` — `private_room_v2_viewed` + room-level CTA.
+- `src/app/my/relationships/page.tsx` — Sprint 6 핵심 surface (신설).
+- `src/app/my/page.tsx` — 스튜디오 허브 quiet entry 에 "Relationship Desk" 링크 추가.
+- `src/app/my/shortlists/[id]/page.tsx` — 헤더에 Relationship Desk 링크 한 줄.
+- `src/lib/i18n/messages.ts` — `nav.relationships` + `relationships.*` + `persona.*` + `room.askSelectedWorks / requestRoomAccess / expiresOn` (영/한).
+- `src/lib/beta/logEvent.ts` — Sprint 6 BetaEventName 9건 추가 (`relationship_desk_viewed`, `relationship_card_opened`, `relationship_private_note_saved`, `relationship_next_action_clicked`, `private_room_v2_viewed`, `private_room_selected_work_inquiry_clicked`, `access_grant_lifecycle_changed`, `persona_action_card_clicked`, `persona_action_card_secondary_clicked`).
+
+### 새 테스트 (3건)
+
+- `tests/sprint6-trust-floor.test.ts` — 패스포트 DTO 의 explicit allowlist + `resolve_room_source_from_token` 존재 + artwork page 의 attribution 교체 + gated-price inquiry 트리거 검증.
+- `tests/persona-grammar.test.ts` — 5개 mode + first-value path 완전성 + 금지 단어 누설 검사.
+- `tests/relationship-desk.test.ts` — 테이블/RLS/RPC contract + UI page 가 desk RPC wrapper 와 telemetry 를 사용하는지 + telemetry payload 에 note 본문 미포함 + `resolve_access_request_v2` 옵션 인자 정의.
+
+`package.json` 에 `test:sprint6-trust-floor / test:persona-grammar / test:relationship-desk` 추가.
+
+### Verified
+
+- `npx tsc --noEmit` → 0 errors.
+- `npm run lint` → 34 errors / 49 warnings (= Sprint 5.2 baseline 유지).
+- `npm run build` → 통과, `/my/relationships` 라우트 prerender 확인.
+- 13개 단위 테스트 (`privacy-token-audit, inquiry-source, feed-personalization, feed-living-salon, feed-telemetry, people-reason, relationship-access, access-request, access-enforcement, visibility-sql-contract, sprint6-trust-floor, persona-grammar, relationship-desk`) 전건 통과.
+
+### Known limitations / 후속
+
+- **Multi-work room inquiry**: room v2 의 "ask about a work in this room" CTA 는 현재 룸의 *첫 번째* 작품으로 deep-link 하는 단순 구현. 다중 선택 → 단일 인콰이어리 묶음은 의도적 후속.
+- **Phase E UI**: `resolve_access_request_v2` SQL/wrapper 만 도입했고 owner inbox UI 연동은 다음 sprint. legacy `resolve_access_request` 호출 경로 그대로 작동.
+- **Persona UI seed**: 작업지시서 5.3 의 옵션 카드 (`/my` Studio hub 의 "Start from your role today") 는 scope creep 위험이 있어 이번 patch 에서 도입하지 않음. 모듈 + 문서 + 텔레메트리 이벤트만 셋업, 다음 sprint 에서 안전하게 표시 가능.
+- **외부 작가(`external_artists`) 표시명만 노출**: `display_name` 외 필드 (created_at 등) 는 viewer payload 에서 모두 차단. 만약 다른 합법 필드가 필요해지면 SECTION 1 의 jsonb_build_object 에 explicit add.
+- **Relationship Desk passive signal**: v1 에서는 view/impression 추적 일절 사용하지 않음. 후속에서 owner-only "interested in this work" 시그널이 필요하면 explicit 사용자 액션 (save/like/follow/inquiry/request) 만 사용할 것.
+
+### 환경 변수
+
+추가/변경 없음.
+
+---
+
 ## 2026-05-07 — Sprint 5.2: Access Enforcement & Redaction Hardening
 
 베이스라인: `d269823` (`release: Sprint 5.1 — Visibility hub hot-link on StudioHero + studio tour step`).

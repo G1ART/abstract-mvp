@@ -22,9 +22,13 @@ import type {
   ArtworkPassportForViewer,
   RedactedArtworkPassport,
   RelationshipAudience,
+  RelationshipCard,
+  RelationshipDeskFilter,
+  RelationshipDeskRow,
   RoomForViewer,
   RoomItemForViewer,
   RoomMetaForViewer,
+  RoomSourceFromToken,
   ViewerRelationshipContext,
   VisibilityOwnerSettings,
   VisibilityPolicy,
@@ -483,6 +487,127 @@ export async function cancelAccessRequest(
 ): Promise<{ data: AccessRequest | null; error: Error | null }> {
   const { data, error } = await supabase.rpc("cancel_access_request", {
     p_request_id: requestId,
+  });
+  if (error) return { data: null, error };
+  return { data: (data ?? null) as AccessRequest | null, error: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 6 Phase 0 — minimum attribution resolver
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 0 — replaces the legacy `getRoomByToken` call from the artwork
+ * viewer attribution path. Returns ONLY `{ room_id, source_surface }`
+ * — no room title, description, owner names, or item list. The server
+ * additionally validates that the artwork really belongs to that room
+ * before answering, so a hostile `?fromRoom=` query string can never
+ * inflate room attribution for an unrelated artwork.
+ */
+export async function resolveRoomSourceFromToken(
+  token: string,
+  artworkId: string
+): Promise<{ data: RoomSourceFromToken; error: Error | null }> {
+  const empty: RoomSourceFromToken = { room_id: null, source_surface: null };
+  if (!token || !artworkId) return { data: empty, error: null };
+  const { data, error } = await supabase.rpc("resolve_room_source_from_token", {
+    p_token: token,
+    p_artwork_id: artworkId,
+  });
+  if (error) return { data: empty, error };
+  if (!data) return { data: empty, error: null };
+  const obj = data as Partial<RoomSourceFromToken>;
+  return {
+    data: {
+      room_id: obj.room_id ?? null,
+      source_surface: obj.source_surface === "room" ? "room" : null,
+    },
+    error: null,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 6 — Relationship Desk wrappers (owner/delegate-only)
+// ─────────────────────────────────────────────────────────────────────
+
+export async function getRelationshipDeskForOwner(args?: {
+  limit?: number;
+  offset?: number;
+  filter?: RelationshipDeskFilter;
+}): Promise<{ data: RelationshipDeskRow[]; error: Error | null }> {
+  const filter = args?.filter ?? "all";
+  const { data, error } = await supabase.rpc("get_relationship_desk_for_owner", {
+    p_limit: args?.limit ?? 50,
+    p_offset: args?.offset ?? 0,
+    p_status: filter === "all" ? null : filter,
+  });
+  if (error) return { data: [], error };
+  if (!Array.isArray(data)) return { data: [], error: null };
+  return { data: data as RelationshipDeskRow[], error: null };
+}
+
+export async function getRelationshipCardForOwner(
+  targetProfileId: string
+): Promise<{ data: RelationshipCard | null; error: Error | null }> {
+  const { data, error } = await supabase.rpc("get_relationship_card_for_owner", {
+    p_target_profile_id: targetProfileId,
+  });
+  if (error) return { data: null, error };
+  if (!data) return { data: null, error: null };
+  return { data: data as RelationshipCard, error: null };
+}
+
+export async function upsertRelationshipPrivateNote(args: {
+  targetProfileId: string;
+  note: string;
+}): Promise<{
+  data:
+    | {
+        id: string;
+        owner_profile_id: string;
+        target_profile_id: string;
+        note: string;
+        updated_at: string;
+      }
+    | null;
+  error: Error | null;
+}> {
+  const clean = (args.note ?? "").slice(0, 4000);
+  const { data, error } = await supabase.rpc("upsert_relationship_private_note", {
+    p_target_profile_id: args.targetProfileId,
+    p_note: clean,
+  });
+  if (error) return { data: null, error };
+  return { data: (data ?? null) as never, error: null };
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Sprint 6 Phase E — additive grant lifecycle
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Phase E — additive RPC. Owner approval can narrow the resulting
+ * access_grant: optional `subjectType / subjectId / fieldKey` override
+ * (e.g. approve a profile-wide request only for one artwork's price)
+ * and an optional `expiresAt`. Backwards compatible: omit the optional
+ * params and the legacy behavior is preserved (grant inherits the
+ * request's own subject/field).
+ */
+export async function resolveAccessRequestV2(args: {
+  requestId: string;
+  action: "approve" | "decline";
+  grantSubjectType?: VisibilitySubjectType | null;
+  grantSubjectId?: string | null;
+  grantFieldKey?: string | null;
+  expiresAt?: string | null;
+}): Promise<{ data: AccessRequest | null; error: Error | null }> {
+  const { data, error } = await supabase.rpc("resolve_access_request_v2", {
+    p_request_id: args.requestId,
+    p_action: args.action,
+    p_grant_subject_type: args.grantSubjectType ?? null,
+    p_grant_subject_id: args.grantSubjectId ?? null,
+    p_grant_field_key: args.grantFieldKey ?? null,
+    p_expires_at: args.expiresAt ?? null,
   });
   if (error) return { data: null, error };
   return { data: (data ?? null) as AccessRequest | null, error: null };

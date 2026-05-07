@@ -2363,6 +2363,142 @@ export const messages = {
     "accessRequestInbox.collapseRequest": "Hide details",
     "accessRequestInbox.viewSubject": "View subject",
     "inquiries.accessRequestsChip": "Access requests · {n} pending",
+
+    // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
+    "nav.relationships": "Relationship Desk",
+    "relationships.kicker": "RELATIONSHIPS",
+    "relationships.title": "Relationship Desk",
+    "relationships.subtitle":
+      "Quietly remember the requests, rooms, inquiries, and notes connected to each person.",
+    "relationships.loadFailed": "Couldn't load the desk. Please try again.",
+    "relationships.cardLoadFailed": "Couldn't load the relationship card.",
+    "relationships.signInRequired.title": "Sign in to use the desk",
+    "relationships.signInRequired.desc":
+      "The Relationship Desk is private to your studio.",
+    "relationships.empty.title": "No relationship activity yet",
+    "relationships.empty.desc":
+      "When someone requests access, asks about a work, or follows the studio, you'll see them here.",
+    "relationships.filter.aria": "Filter relationship desk",
+    "relationships.filter.all": "All",
+    "relationships.filter.access_request": "Pending requests",
+    "relationships.filter.inquiry": "Inquiries",
+    "relationships.filter.grant": "Approved viewers",
+    "relationships.filter.follow": "Followers",
+    "relationships.filter.note": "Notes",
+    "relationships.status.none": "Connected",
+    "relationships.status.follower": "Follower",
+    "relationships.status.following": "Following",
+    "relationships.status.mutual": "Mutual connection",
+    "relationships.status.approved": "Approved viewer",
+    "relationships.status.delegate": "Delegate",
+    "relationships.activity.access_request": "Asked for access",
+    "relationships.activity.inquiry": "Asked about a work",
+    "relationships.activity.grant": "Approved access",
+    "relationships.activity.room": "Shared a room",
+    "relationships.activity.follow": "Followed the studio",
+    "relationships.activity.note": "Note updated",
+    "relationships.count.pendingAccess": "pending requests",
+    "relationships.count.openInquiry": "open inquiries",
+    "relationships.count.activeGrant": "active grants",
+    "relationships.notePrefix": "Note",
+    "relationships.openCard": "Open relationship",
+    "relationships.card.kicker": "RELATIONSHIP",
+    "relationships.section.requests": "Access requests",
+    "relationships.section.grants": "Active grants",
+    "relationships.section.inquiries": "Inquiries",
+    "relationships.section.rooms": "Shared rooms",
+    "relationships.section.privateNote": "Private note",
+    "relationships.subjectType.artwork": "Artwork",
+    "relationships.subjectType.artwork_field": "Artwork field",
+    "relationships.subjectType.profile_section": "Profile",
+    "relationships.subjectType.exhibition": "Exhibition",
+    "relationships.subjectType.room": "Room",
+    "relationships.requestType.price_inquiry": "Price",
+    "relationships.requestType.availability_request": "Availability",
+    "relationships.requestType.room_access": "Room access",
+    "relationships.requestType.vip_preview": "Private preview",
+    "relationships.requestType.studio_note_access": "Studio note",
+    "relationships.requestType.general_access": "General access",
+    "relationships.requestStatus.pending": "Pending",
+    "relationships.requestStatus.approved": "Approved",
+    "relationships.requestStatus.declined": "Declined",
+    "relationships.requestStatus.expired": "Expired",
+    "relationships.requestStatus.cancelled": "Cancelled",
+    "relationships.inquiryStatus.new": "New",
+    "relationships.inquiryStatus.open": "Open",
+    "relationships.inquiryStatus.replied": "Replied",
+    "relationships.inquiryStatus.closed": "Closed",
+    "relationships.inquiry.untitled": "Untitled work",
+    "relationships.fieldAll": "Everything",
+    "relationships.grant.expired": "Expired",
+    "relationships.grant.expiresOn": "Expires on",
+    "relationships.grant.noExpiry": "No expiry",
+    "relationships.room.approved": "Approved",
+    "relationships.room.viewed": "Viewed",
+    "relationships.room.shared": "Shared",
+    "relationships.action.reviewRequest": "Review request",
+    "relationships.note.helper":
+      "Only you and approved collaborators can see this note. Never shared with the person it's about.",
+    "relationships.note.placeholder": "A quiet line you'd like to remember…",
+    "relationships.note.save": "Save note",
+    "relationships.note.savedAt": "Saved at",
+    "relationships.note.saveFailed": "Couldn't save the note. Please try again.",
+    "relationships.suggested.reviewRequest": "Review the pending request",
+    "relationships.suggested.replyInquiry": "Reply to the open inquiry",
+    "relationships.suggested.shareRoom": "Share a private room",
+
+    // ─── Sprint 6 — Persona Action Grammar (UI seed copy) ───
+    "persona.artist.recordFirstWork.title": "Record your first work",
+    "persona.artist.recordFirstWork.desc":
+      "Give your studio a private record before anything else.",
+    "persona.artist.preparePrivateViewing.title": "Prepare a private viewing",
+    "persona.artist.preparePrivateViewing.desc":
+      "Pull a few works into a quiet room you can share one-to-one.",
+    "persona.artist.reviewRelationships.title": "Review relationships",
+    "persona.artist.reviewRelationships.desc":
+      "See who's reached out recently and continue the conversation.",
+    "persona.gallery.organizeInventory.title": "Organize the inventory",
+    "persona.gallery.organizeInventory.desc":
+      "Bring the wall and the storage room into one quiet record.",
+    "persona.gallery.sharePrivateRoom.title": "Share a private room",
+    "persona.gallery.sharePrivateRoom.desc":
+      "Send a curated viewing packet to a collector or partner.",
+    "persona.gallery.reviewRequests.title": "Review access requests",
+    "persona.gallery.reviewRequests.desc":
+      "Respond to access requests at your own pace.",
+    "persona.curator.assembleViewing.title": "Assemble a viewing",
+    "persona.curator.assembleViewing.desc":
+      "Gather works into a private room around one idea.",
+    "persona.curator.continueRelationship.title": "Continue a relationship",
+    "persona.curator.continueRelationship.desc":
+      "Open a relationship card and leave a quiet private note.",
+    "persona.collector.discoverAndSave.title": "Discover and save",
+    "persona.collector.discoverAndSave.desc":
+      "Quietly bookmark works that catch your eye.",
+    "persona.collector.askAboutWork.title": "Ask about a work",
+    "persona.collector.askAboutWork.desc":
+      "Open an inquiry that reaches the artist directly.",
+    "persona.collector.followArtist.title": "Follow an artist",
+    "persona.collector.followArtist.desc":
+      "Keep a quiet thread open without performing.",
+    "persona.multi.continueRecentRelationship.title":
+      "Continue a recent relationship",
+    "persona.multi.continueRecentRelationship.desc":
+      "Open the Relationship Desk and pick up where you left off.",
+    "persona.multi.organizeWorks.title": "Organize my works",
+    "persona.multi.organizeWorks.desc":
+      "Return to your studio and add a record.",
+    "persona.multi.discoverAndSave.title": "Discover and save",
+    "persona.multi.discoverAndSave.desc":
+      "Switch into reader mode and quietly bookmark works.",
+
+    // ─── Sprint 6 — Private Room v2 viewer copy ───
+    "room.askSelectedWorks": "Ask about a work in this room",
+    "room.requestRoomAccess": "Request access to this room",
+    "room.expiresOn": "Available until",
+
+    // ─── Sprint 6 — Studio entry to Relationship Desk ───
+    "studio.relationshipsLink": "Relationship Desk",
   },
   ko: {
     "nav.feed": "피드",
@@ -4716,6 +4852,140 @@ export const messages = {
     "accessRequestInbox.collapseRequest": "상세 숨기기",
     "accessRequestInbox.viewSubject": "대상 보기",
     "inquiries.accessRequestsChip": "접근 요청 · {n}건 대기",
+
+    // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
+    "nav.relationships": "관계 데스크",
+    "relationships.kicker": "관계",
+    "relationships.title": "관계 데스크",
+    "relationships.subtitle":
+      "사람별 요청, 룸, 문의, 메모의 맥락을 조용히 정리합니다.",
+    "relationships.loadFailed": "데스크를 불러오지 못했습니다. 다시 시도해 주세요.",
+    "relationships.cardLoadFailed": "관계 카드를 불러오지 못했습니다.",
+    "relationships.signInRequired.title": "데스크 사용을 위해 로그인이 필요합니다",
+    "relationships.signInRequired.desc": "관계 데스크는 본인 스튜디오 전용입니다.",
+    "relationships.empty.title": "아직 관계 활동이 없습니다",
+    "relationships.empty.desc":
+      "접근 요청, 작품 문의, 팔로우가 생기면 여기서 함께 보입니다.",
+    "relationships.filter.aria": "관계 데스크 필터",
+    "relationships.filter.all": "전체",
+    "relationships.filter.access_request": "대기 중인 요청",
+    "relationships.filter.inquiry": "문의",
+    "relationships.filter.grant": "승인된 뷰어",
+    "relationships.filter.follow": "팔로워",
+    "relationships.filter.note": "메모",
+    "relationships.status.none": "연결됨",
+    "relationships.status.follower": "팔로워",
+    "relationships.status.following": "팔로잉",
+    "relationships.status.mutual": "상호 연결",
+    "relationships.status.approved": "승인된 뷰어",
+    "relationships.status.delegate": "대리인",
+    "relationships.activity.access_request": "접근 요청",
+    "relationships.activity.inquiry": "작품 문의",
+    "relationships.activity.grant": "접근 승인",
+    "relationships.activity.room": "룸 공유",
+    "relationships.activity.follow": "스튜디오 팔로우",
+    "relationships.activity.note": "메모 업데이트",
+    "relationships.count.pendingAccess": "건 대기 중",
+    "relationships.count.openInquiry": "건 진행 중",
+    "relationships.count.activeGrant": "건 활성",
+    "relationships.notePrefix": "메모",
+    "relationships.openCard": "관계 열기",
+    "relationships.card.kicker": "관계",
+    "relationships.section.requests": "접근 요청",
+    "relationships.section.grants": "활성 승인",
+    "relationships.section.inquiries": "문의",
+    "relationships.section.rooms": "공유한 룸",
+    "relationships.section.privateNote": "비공개 메모",
+    "relationships.subjectType.artwork": "작품",
+    "relationships.subjectType.artwork_field": "작품 필드",
+    "relationships.subjectType.profile_section": "프로필",
+    "relationships.subjectType.exhibition": "전시",
+    "relationships.subjectType.room": "룸",
+    "relationships.requestType.price_inquiry": "가격",
+    "relationships.requestType.availability_request": "재고",
+    "relationships.requestType.room_access": "룸 접근",
+    "relationships.requestType.vip_preview": "프라이빗 프리뷰",
+    "relationships.requestType.studio_note_access": "스튜디오 노트",
+    "relationships.requestType.general_access": "일반 접근",
+    "relationships.requestStatus.pending": "대기",
+    "relationships.requestStatus.approved": "승인",
+    "relationships.requestStatus.declined": "거절",
+    "relationships.requestStatus.expired": "만료",
+    "relationships.requestStatus.cancelled": "취소",
+    "relationships.inquiryStatus.new": "신규",
+    "relationships.inquiryStatus.open": "진행중",
+    "relationships.inquiryStatus.replied": "답장함",
+    "relationships.inquiryStatus.closed": "종료",
+    "relationships.inquiry.untitled": "무제 작품",
+    "relationships.fieldAll": "전체",
+    "relationships.grant.expired": "만료됨",
+    "relationships.grant.expiresOn": "만료일:",
+    "relationships.grant.noExpiry": "만료 없음",
+    "relationships.room.approved": "승인됨",
+    "relationships.room.viewed": "열람함",
+    "relationships.room.shared": "공유됨",
+    "relationships.action.reviewRequest": "요청 검토",
+    "relationships.note.helper":
+      "본인과 승인된 협업자만 볼 수 있는 메모입니다. 대상에게는 절대 공유되지 않습니다.",
+    "relationships.note.placeholder": "기억해 두고 싶은 한 줄을 적어 주세요…",
+    "relationships.note.save": "메모 저장",
+    "relationships.note.savedAt": "저장 시각",
+    "relationships.note.saveFailed": "메모를 저장하지 못했습니다. 다시 시도해 주세요.",
+    "relationships.suggested.reviewRequest": "대기 중인 요청 검토",
+    "relationships.suggested.replyInquiry": "진행 중인 문의에 답장",
+    "relationships.suggested.shareRoom": "프라이빗 룸 공유",
+
+    // ─── Sprint 6 — Persona Action Grammar (UI seed copy) ───
+    "persona.artist.recordFirstWork.title": "첫 작품 기록",
+    "persona.artist.recordFirstWork.desc":
+      "스튜디오에 우선 한 작품을 조용히 기록해 두세요.",
+    "persona.artist.preparePrivateViewing.title": "프라이빗 뷰잉 준비",
+    "persona.artist.preparePrivateViewing.desc":
+      "한두 점을 골라 일대일로 공유할 룸을 만들어 보세요.",
+    "persona.artist.reviewRelationships.title": "관계 둘러보기",
+    "persona.artist.reviewRelationships.desc":
+      "최근 다가온 사람들을 살펴보고 대화를 이어가세요.",
+    "persona.gallery.organizeInventory.title": "인벤토리 정리",
+    "persona.gallery.organizeInventory.desc":
+      "전시 중인 작품과 보관 작품을 한 화면에 조용히 정리합니다.",
+    "persona.gallery.sharePrivateRoom.title": "프라이빗 룸 공유",
+    "persona.gallery.sharePrivateRoom.desc":
+      "컬렉터·파트너에게 큐레이션된 뷰잉 패킷을 보냅니다.",
+    "persona.gallery.reviewRequests.title": "접근 요청 검토",
+    "persona.gallery.reviewRequests.desc":
+      "여유 있는 호흡으로 요청에 응답합니다.",
+    "persona.curator.assembleViewing.title": "뷰잉 구성",
+    "persona.curator.assembleViewing.desc":
+      "한 가지 아이디어를 중심으로 작품을 모아 룸을 구성합니다.",
+    "persona.curator.continueRelationship.title": "관계 이어가기",
+    "persona.curator.continueRelationship.desc":
+      "관계 카드를 열고 비공개 메모를 한 줄 남기세요.",
+    "persona.collector.discoverAndSave.title": "발견하고 저장",
+    "persona.collector.discoverAndSave.desc":
+      "마음이 가는 작품을 조용히 북마크합니다.",
+    "persona.collector.askAboutWork.title": "작품 문의",
+    "persona.collector.askAboutWork.desc":
+      "작가에게 직접 닿는 문의를 보냅니다.",
+    "persona.collector.followArtist.title": "작가 팔로우",
+    "persona.collector.followArtist.desc":
+      "조용한 실을 한 줄 걸어 두세요.",
+    "persona.multi.continueRecentRelationship.title": "최근 관계 이어가기",
+    "persona.multi.continueRecentRelationship.desc":
+      "관계 데스크에서 멈춰 있던 대화를 다시 엽니다.",
+    "persona.multi.organizeWorks.title": "내 작품 정리",
+    "persona.multi.organizeWorks.desc":
+      "스튜디오로 돌아가 한 점을 기록합니다.",
+    "persona.multi.discoverAndSave.title": "발견하고 저장",
+    "persona.multi.discoverAndSave.desc":
+      "리더 모드로 전환해 작품을 조용히 북마크합니다.",
+
+    // ─── Sprint 6 — Private Room v2 viewer copy ───
+    "room.askSelectedWorks": "이 룸의 작품에 대해 문의하기",
+    "room.requestRoomAccess": "이 룸에 접근 요청",
+    "room.expiresOn": "이용 가능 기간",
+
+    // ─── Sprint 6 — Studio entry to Relationship Desk ───
+    "studio.relationshipsLink": "관계 데스크",
   },
 } as const;
 

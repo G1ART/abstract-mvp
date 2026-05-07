@@ -12,6 +12,58 @@ affected feature will fail at insert / RPC time. **Apply migrations in order**.
 | `supabase/migrations/20260605000000_price_inquiry_source_attribution.sql` | Adds `source_*` columns + `price_inquiries_source_surface_chk` CHECK + `idx_price_inquiries_source_room` partial index | `createPriceInquiry` insert fails (PostgREST 42703 — unknown column `source_surface`) → "Ask about this work" silently breaks for any user arriving via feed/room |
 | `supabase/migrations/20260606000000_relationship_access_layer.sql` (Sprint 5) | Adds 6 tables (`visibility_owner_settings` / `visibility_policies` / `access_requests` / `access_grants` / `audience_lists` / `audience_list_members`) + 8 RPCs (`get_viewer_relationship_context`, `resolve_visibility_for_viewer`, `can_view_by_relationship`, `can_view_by_relationship_dryrun`, `upsert_visibility_policy`, `set_visibility_preset`, `create_access_request`, `resolve_access_request`) + null-safe partial unique indexes + RLS | `/my/visibility` and `/my/access-requests` 500 (`relation does not exist`); GatedField RPC calls `function does not exist`; viewer pages still render content (resolver returns null → fallback to children, but no enforcement) |
 | `supabase/migrations/20260607000000_relationship_access_enforcement_hardening.sql` (Sprint 5.2) | Adds `visibility_subject_belongs_to_owner` validator helper, recreates resolver/upsert/create-request/resolve-request to call it, adds `cancel_access_request` RPC + drops `access_requests_update_requester_cancel` policy, adds `get_artwork_passport_for_viewer` and `get_room_for_viewer_by_token` redacted RPCs, adds `resolve_visibility_for_preview` for owner preview-as | `/artwork/[id]` 500 (`function get_artwork_passport_for_viewer does not exist`); `/room/[token]` 500 (`function get_room_for_viewer_by_token does not exist`); `/my/access-requests` cancel button errors (`function cancel_access_request does not exist`); AccessRequestModal shows generic error because `create_access_request` returns `record` instead of expected `jsonb { request, duplicate }` |
+| `supabase/migrations/20260608000000_sprint6_phase0_and_relationship_desk.sql` (Sprint 6) | Re-emits `get_artwork_passport_for_viewer` with explicit allowlists (drops `external_artists.invite_email` and internal `is_public` from viewer payload). Adds attribution-safe `resolve_room_source_from_token(text, uuid)`. Creates `relationship_private_notes` table + RLS + `upsert_relationship_private_note` RPC. Adds `get_relationship_desk_for_owner` and `get_relationship_card_for_owner` RPCs. Adds additive `resolve_access_request_v2` for grant lifecycle. | Without this: viewer artwork payloads still leak `invite_email`; `/artwork/[id]?fromRoom=...` still pulls full room metadata; `/my/relationships` 500 (`function get_relationship_desk_for_owner does not exist`); private note save errors (`relation does not exist`). |
+
+### Sprint 6 — section-by-section apply (REQUIRED)
+
+`20260608000000_sprint6_phase0_and_relationship_desk.sql` contains **7 PL/pgSQL
+function bodies** + the `relationship_private_notes` table + 4 RLS policies in
+a single file. Same dashboard tokenizer hazard as Sprint 5/5.2 — **do NOT paste
+the whole file at once.** Open the file, highlight each `-- == SECTION N == ...`
+block in turn (1 → 7), paste into the SQL Editor, press **Run**, repeat for all
+7 sections. Every CREATE / DROP is `IF EXISTS / OR REPLACE / IF NOT EXISTS`,
+so individual sections can be re-applied if a single one fails.
+
+### Sprint 6 verification SQL
+
+```sql
+-- Phase 0 — passport DTO no longer surfaces invite_email or is_public?
+-- (Manual sanity: select payload of a public artwork as anon, confirm
+--  json keys do not include invite_email or is_public.)
+select jsonb_pretty(public.get_artwork_passport_for_viewer('<some-public-artwork-id>'::uuid)) limit 1;
+
+-- Phase 0 — attribution-safe room source RPC present?
+select pg_get_function_arguments(p.oid)
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname='public' and p.proname='resolve_room_source_from_token';
+-- Expect: p_token text, p_artwork_id uuid
+
+-- Sprint 6 — relationship_private_notes table + RLS?
+select tablename, rowsecurity
+from pg_tables
+where schemaname='public' and tablename='relationship_private_notes';
+-- Expect: rowsecurity = t
+
+select policyname
+from pg_policies
+where schemaname='public' and tablename='relationship_private_notes'
+order by policyname;
+-- Expect: 4 policies (owner_select, owner_insert, owner_update, owner_delete).
+-- Confirm there is NO policy targeting target_profile_id.
+
+-- Sprint 6 — relationship desk + card + private-note + grant-lifecycle RPCs?
+select count(*) as ok
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname='public'
+  and p.proname in (
+    'get_relationship_desk_for_owner','get_relationship_card_for_owner',
+    'upsert_relationship_private_note','resolve_access_request_v2',
+    'resolve_room_source_from_token'
+  );
+-- Expect: 5
+```
 
 ### Sprint 5.2 — section-by-section apply (REQUIRED)
 
@@ -61,6 +113,33 @@ where schemaname='public'
 select public.get_artwork_passport_for_viewer(null);
 -- Expect: null (no error)
 ```
+
+### Sprint 6 — manual smoke (15 min)
+
+**Phase 0 (trust floor).**
+
+1. Anonymous browser → open any public artwork detail. DevTools → Network → response of `get_artwork_passport_for_viewer`. Confirm the JSON does **not** include `invite_email`, `email`, `magicLink`, `share_token`, `authorization`, `cookie`, `bearer`, `is_public`, or any private nested metadata. Profile sub-object includes only `id / username / display_name / avatar_url / bio / main_role / roles`.
+2. Sign in as a stranger to Artist A. Set A's price audience to **Mutuals** (so price is gated for the stranger). Open A's artwork detail. **UI:** the price block renders the calm gate. Click **Ask about this work**. **UI:** inquiry form opens. Submit a message. **DB / Network:** the inquiry insert succeeds; the inquiry source payload does not contain raw price values; `beta_analytics_events` does not contain the message body.
+3. Sign in as another stranger. Visit `/artwork/<X>?fromRoom=<random-uuid>`. **Network:** `resolve_room_source_from_token` returns `{ room_id: null, source_surface: null }` (the token is unrelated). Visit `/artwork/<Y>?fromRoom=<valid-token-but-Y-not-in-room>`. **Network:** still returns null (artwork-not-in-room guard). Visit `/artwork/<Z>?fromRoom=<valid-token-AND-Z-in-room>`. **Network:** returns `{ room_id: <uuid>, source_surface: 'room' }` only — never `title`, `description`, or `owner_*`.
+
+**Phase B + C (Relationship Desk + Card + Private Notes).**
+
+4. Sign in as Artist A. Visit `/my/relationships`.
+   - **UI:** desk loads with quiet rows for everyone connected (followers, requesters, inquirers, grantees, anyone with a private note). LaneChips filter switches between All / Pending requests / Inquiries / Approved viewers / Followers / Notes.
+   - **Network:** `get_relationship_desk_for_owner` is called with `p_status` matching the active filter. Response is owner-only.
+5. Click **Open relationship** on any row. **UI:** drawer opens with profile header, sections (requests / grants / inquiries / rooms / private note), and a deterministic suggested next-action button at the bottom.
+6. Type a private note (try "remember to follow up after the show"), press **Save note**.
+   - **UI:** "Saved at HH:MM:SS" appears.
+   - **DB:** `relationship_private_notes` row inserted with `owner_profile_id = A.id`.
+   - **DB:** the new `beta_analytics_events` row for `relationship_private_note_saved` has payload `{ surface: "relationship_card", action_kind: "save" }` — **no `note` / `noteDraft` / `private_note` keys**.
+7. Sign in as the *target* user from the previous step. Confirm there is no surface that exposes A's private note about them (open `/u/<A>`, `/people`, search). The note must remain owner-only.
+
+**Phase D (Private Room v2).**
+
+8. Sign in as Artist A. Open `/my/shortlists/<roomId>`. Confirm the calm Relationship Desk link is visible next to the RoomVisibilityPill.
+9. Open the room share link as a stranger.
+   - **Gated state**: gate copy + access request CTA are visible; no items in DOM.
+   - **Authorized state** (after A approves the access request): items grid renders, header shows the new "Ask about a work in this room" CTA. Click it → lands on the first artwork's detail with `?fromRoom=<token>`. **Network:** `private_room_v2_viewed` payload contains `subject_id` + `status` only — no token, no room note.
 
 ### Sprint 5.2 — manual redaction smoke (10 min)
 

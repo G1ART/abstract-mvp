@@ -60,7 +60,17 @@ export type BetaEventName =
   | "preview_as_used"
   | "access_request_created"
   | "access_request_resolved"
-  | "access_grant_created";
+  | "access_grant_created"
+  // ─── Sprint 6 — Relationship Desk / Private Room v2 / Persona ───
+  | "relationship_desk_viewed"
+  | "relationship_card_opened"
+  | "relationship_private_note_saved"
+  | "relationship_next_action_clicked"
+  | "private_room_v2_viewed"
+  | "private_room_selected_work_inquiry_clicked"
+  | "access_grant_lifecycle_changed"
+  | "persona_action_card_clicked"
+  | "persona_action_card_secondary_clicked";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

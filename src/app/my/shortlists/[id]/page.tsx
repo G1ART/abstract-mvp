@@ -188,11 +188,21 @@ function ShortlistDetailContent() {
             {itemsLabel}
             {collaborators.length > 0 ? ` · ${collaborators.length}` : ""}
           </p>
-          <div className="mt-3">
+          <div className="mt-3 flex flex-wrap items-center gap-3">
             <RoomVisibilityPill
               ownerProfileId={shortlist.owner_id}
               roomId={shortlist.id}
             />
+            {/* Sprint 6 Phase D — calm cross-link into the Relationship
+                Desk so the operator can pivot from "this room" to
+                "the people connected to this room" without leaving
+                the studio. */}
+            <Link
+              href="/my/relationships"
+              className="text-xs text-zinc-500 underline-offset-2 hover:text-zinc-700 hover:underline"
+            >
+              {t("nav.relationships")}
+            </Link>
           </div>
         </div>
       )}

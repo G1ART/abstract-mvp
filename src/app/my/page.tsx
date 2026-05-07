@@ -448,6 +448,12 @@ export default function MyPage() {
               >
                 {t("nav.accessRequests")}
               </a>
+              <a
+                href="/my/relationships"
+                className="rounded-full px-2 py-1 hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                {t("nav.relationships")}
+              </a>
             </div>
             {/* Profile materials — Statement + CV. Artist persona only;
                 non-artist studios stay calm without the panel. The two

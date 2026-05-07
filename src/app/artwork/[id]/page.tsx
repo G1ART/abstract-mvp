@@ -51,7 +51,6 @@ import { formatSupabaseError } from "@/lib/errors/supabase";
 import { useT } from "@/lib/i18n/useT";
 import { logFeedEvent, peekFeedSource } from "@/lib/feed/telemetry";
 import { peekRoomSource, setRoomSource } from "@/lib/room/source";
-import { getRoomByToken } from "@/lib/supabase/shortlists";
 import type { InquirySource } from "@/lib/supabase/priceInquiries";
 import { ownershipStatusLabel } from "@/lib/artworks/labels";
 import { formatSizeForLocale } from "@/lib/size/format";
@@ -64,7 +63,10 @@ import { useActingAs } from "@/context/ActingAsContext";
 import { ArtworkPassportHeader } from "@/components/artwork/ArtworkPassportHeader";
 import { ArtworkImageStage } from "@/components/artwork/ArtworkImageStage";
 import { GatedField } from "@/components/visibility/GatedField";
-import { getArtworkPassportForViewer } from "@/lib/supabase/relationshipAccess";
+import {
+  getArtworkPassportForViewer,
+  resolveRoomSourceFromToken,
+} from "@/lib/supabase/relationshipAccess";
 import type {
   ArtworkFieldPresence,
   ViewerRelationshipContext,
@@ -298,14 +300,20 @@ function ArtworkDetailContent() {
   // itself stays in the URL only and never enters long-lived analytics
   // rows. Failure to resolve is silently fine — attribution simply
   // degrades to "no room context".
+  //
+  // Sprint 6 Phase 0 — replaced the legacy `getRoomByToken` (which
+  // returned room title/description/owner names just to extract the
+  // id) with `resolve_room_source_from_token`, which returns ONLY the
+  // attribution-safe `{ room_id, source_surface }` and additionally
+  // validates that the artwork really belongs to the room.
   const [resolvedRoomId, setResolvedRoomId] = useState<string | null>(null);
   useEffect(() => {
     if (!fromRoom || !id) return;
     let cancelled = false;
-    void getRoomByToken(fromRoom).then(({ data }) => {
-      if (cancelled || !data?.id) return;
-      setResolvedRoomId(data.id);
-      setRoomSource({ room_id: data.id, artwork_id: id });
+    void resolveRoomSourceFromToken(fromRoom, id).then(({ data }) => {
+      if (cancelled || !data.room_id) return;
+      setResolvedRoomId(data.room_id);
+      setRoomSource({ room_id: data.room_id, artwork_id: id });
     });
     return () => {
       cancelled = true;
@@ -363,9 +371,20 @@ function ArtworkDetailContent() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [claimDropdownOpen]);
 
+  // Sprint 6 Phase 0 — gated price inquiry continuity. A viewer who
+  // CANNOT see the price (resolution.canView === false) should still be
+  // able to open the inquiry form. The legacy condition required raw
+  // `pricing_mode === 'inquire'` or `is_price_public === false`, but
+  // both fields are nullified server-side when the price is gated, so
+  // the inquiry block silently disappeared for the exact viewers who
+  // most needed it. The new check also accepts a fail-closed price
+  // resolution as a valid trigger.
+  const priceIsGated = Boolean(priceResolution && !priceResolution.canView);
   const showPriceInquiryBlock =
     Boolean(userId && artwork && userId !== artwork.artist_id) &&
-    (artwork?.pricing_mode === "inquire" || artwork?.is_price_public === false);
+    (artwork?.pricing_mode === "inquire" ||
+      artwork?.is_price_public === false ||
+      priceIsGated);
 
   const showArtistInquiryBlock =
     Boolean(userId && artwork && (artwork.pricing_mode === "inquire" || artwork.is_price_public === false)) &&
@@ -382,6 +401,9 @@ function ArtworkDetailContent() {
 
   useEffect(() => {
     if (!id || !showPriceInquiryBlock) return;
+    // Sprint 6 Phase 0 — also re-fetch when `priceIsGated` flips so a
+    // freshly arrived gate (e.g. follow flow ↑↓ that moved the viewer
+    // out of the audience) refreshes the form state to match.
     setPriceInquiryLoading(true);
     getMyInquiryForArtwork(id).then(({ data }) => {
       setMyPriceInquiry(data ?? null);

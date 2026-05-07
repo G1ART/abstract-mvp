@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
@@ -94,6 +94,16 @@ export default function RoomPage() {
       item_count: data.canView ? data.items.length : 0,
       has_description: Boolean(data.room.description),
     });
+    // Sprint 6 Phase D — additional, payload-allowlisted view event for
+    // the v2 viewing-packet surface. Token + room note are intentionally
+    // NEVER included; only the bare room id and the viewer's own access
+    // verdict travel.
+    logBetaEventSync("private_room_v2_viewed", {
+      surface: "room",
+      subject_type: "room",
+      subject_id: data.room.id,
+      status: data.canView ? "approved" : "gated",
+    });
   }, [token, t]);
 
   useEffect(() => {
@@ -118,6 +128,26 @@ export default function RoomPage() {
     },
     [meta]
   );
+
+  // Sprint 6 Phase D — calm "ask about a selected work" CTA at the
+  // header level. Implemented as a deep link into the FIRST artwork
+  // tile in the room with `?fromRoom=` attribution. The room token
+  // never leaves the URL; once the viewer lands on the artwork page,
+  // the new `resolveRoomSourceFromToken` RPC translates the token to
+  // a clean `room_id` for inquiry attribution. Multi-work room
+  // inquiry is intentionally deferred (documented in HANDOFF.md).
+  const firstArtworkId = useMemo(
+    () => items.find((i) => i.artwork_id)?.artwork_id ?? null,
+    [items]
+  );
+  const handleAskAboutSelected = useCallback(() => {
+    if (!firstArtworkId) return;
+    logBetaEventSync("private_room_selected_work_inquiry_clicked", {
+      surface: "room",
+      subject_type: "artwork",
+      subject_id: firstArtworkId,
+    });
+  }, [firstArtworkId]);
 
   if (loading) {
     return (
@@ -170,6 +200,23 @@ export default function RoomPage() {
             <span className="text-zinc-700">{ownerLabel}</span>
           )}
         </p>
+
+        {/* Sprint 6 Phase D — calm room-level CTA for authorized
+            viewers. Anchors a single low-weight link into the first
+            artwork's inquiry path (with sanitized `?fromRoom=` token
+            attribution). Multi-work selection is intentionally NOT
+            shipped in this patch — see HANDOFF "known limitations". */}
+        {roomResolution?.canView && firstArtworkId && (
+          <div className="mt-4">
+            <Link
+              href={`/artwork/${firstArtworkId}?fromRoom=${encodeURIComponent(token)}`}
+              onClick={handleAskAboutSelected}
+              className="inline-block rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100"
+            >
+              {t("room.askSelectedWorks")}
+            </Link>
+          </div>
+        )}
       </div>
 
       {(() => {

@@ -209,6 +209,8 @@ export type RedactedArtworkPassport = {
   artwork_images:
     | { storage_path: string; sort_order?: number | null }[]
     | null;
+  // Sprint 6 Phase 0 — explicit allowlist mirrors the SQL DTO. Internal
+  // owner flags (`is_public`) are no longer surfaced to viewers.
   profiles: {
     id: string;
     username: string | null;
@@ -217,7 +219,6 @@ export type RedactedArtworkPassport = {
     bio: string | null;
     main_role: string | null;
     roles: string[] | null;
-    is_public: boolean | null;
   } | null;
   artwork_likes: { count: number }[] | null;
   claims: unknown[] | null;
@@ -274,4 +275,122 @@ export type RoomForViewer = {
   visibility: VisibilityResolution;
   relationship: ViewerRelationshipContext;
   canView: boolean;
+};
+
+// ─── Sprint 6 — Relationship Desk view models ────────────────────────
+//
+// All Relationship Desk types are owner/delegate-only. The target user
+// MUST NEVER receive any of these payloads. Telemetry rules: never
+// include `private_note*` keys; the desk row preview is treated as
+// owner-only diagnostic copy.
+
+export type RelationshipStatus =
+  | "none"
+  | "follower"
+  | "following"
+  | "mutual"
+  | "approved"
+  | "delegate";
+
+export type RelationshipActivityType =
+  | "access_request"
+  | "inquiry"
+  | "grant"
+  | "room"
+  | "follow"
+  | "note";
+
+export type RelationshipDeskRow = {
+  profile_id: string;
+  display_name: string | null;
+  username: string | null;
+  avatar_url: string | null;
+  role_label: string | null;
+  relationship_status: RelationshipStatus;
+  last_activity_at: string | null;
+  last_activity_type: RelationshipActivityType | null;
+  last_subject_title: string | null;
+  pending_access_request_count: number;
+  open_inquiry_count: number;
+  active_grant_count: number;
+  private_note_preview: string | null;
+};
+
+export type RelationshipDeskFilter =
+  | "all"
+  | "access_request"
+  | "inquiry"
+  | "grant"
+  | "follow"
+  | "note";
+
+export type RelationshipCardRequest = {
+  id: string;
+  subject_type: VisibilitySubjectType;
+  subject_id: string | null;
+  field_key: string;
+  request_type: AccessRequestType;
+  status: AccessRequestStatus;
+  created_at: string;
+  updated_at: string;
+  subject_title: string | null;
+};
+
+export type RelationshipCardGrant = {
+  id: string;
+  subject_type: VisibilitySubjectType;
+  subject_id: string | null;
+  field_key: string;
+  grant_type: AccessGrantType;
+  expires_at: string | null;
+  created_at: string;
+  subject_title: string | null;
+};
+
+export type RelationshipCardInquiry = {
+  id: string;
+  artwork_id: string;
+  inquiry_status: "new" | "open" | "replied" | "closed";
+  created_at: string;
+  last_message_at: string | null;
+  subject_title: string | null;
+};
+
+export type RelationshipCardRoomRef = {
+  room_id: string;
+  title: string;
+  has_active_grant: boolean;
+  last_viewed_at: string | null;
+};
+
+export type RelationshipCardPrivateNote = {
+  id: string;
+  note: string;
+  updated_at: string;
+};
+
+export type RelationshipCard = {
+  profile: {
+    id: string;
+    username: string | null;
+    display_name: string | null;
+    avatar_url: string | null;
+    bio: string | null;
+    main_role: string | null;
+    roles: string[] | null;
+  };
+  relationship_status: RelationshipStatus;
+  requests: RelationshipCardRequest[];
+  grants: RelationshipCardGrant[];
+  inquiries: RelationshipCardInquiry[];
+  rooms: RelationshipCardRoomRef[];
+  private_note: RelationshipCardPrivateNote | null;
+};
+
+/** Phase 0 — minimum attribution-safe room source returned by
+ *  `resolve_room_source_from_token`. Never includes title, description,
+ *  owner names, or token-derived metadata. */
+export type RoomSourceFromToken = {
+  room_id: string | null;
+  source_surface: "room" | null;
 };
