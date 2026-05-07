@@ -2,6 +2,47 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 6 hotfix v3: artwork passport claims schema fix
+
+**증상.** v2 핫픽스를 SQL Editor 에 paste 하고 Run 한 직후, 작품을 클릭하면 enum 에러는 사라졌는데 새 에러가 생김.
+
+```
+column c.role does not exist
+```
+
+역시 모든 viewer (팔로우 관계 무관) 가 동일하게 실패.
+
+**근본 원인.** v1/v2 핫픽스 파일을 작성할 때 내가 `public.claims` 테이블의 컬럼을 잘못 가정해서 `c.role`, `c.is_primary`, `c.sort_order`, `c.profile_id`, `c.artwork_id` 같이 **실제로 존재하지 않는 컬럼**을 사용했음. 실제 스키마 (`p0_claims.sql` + `p0_claims_period_and_price_inquiry_delegates.sql`) 는 `c.claim_type` / `c.subject_profile_id` / `c.artist_profile_id` / `c.external_artist_id` / `c.status` / `c.period_status` / `c.start_date` / `c.end_date` / `c.created_at` 이고, 작품 join 은 `c.work_id` 컬럼으로 한다.
+
+흥미롭게도 Sprint 6 SECTION 1 의 source migration (`20260608...`) 은 *처음부터 올바른* 컬럼을 사용하고 있었어. 핫픽스 파일에서만 잘못 적었고, 그 잘못된 핫픽스가 dashboard 에서 정상이었던 SECTION 1 함수를 덮어버린 결과.
+
+**핫픽스 v3.**
+
+- `supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql` 를 v3 로 재작성. enum cast 수정은 유지하고, `claims` 서브쿼리는 Sprint 5.2 (= 실제 스키마와 일치) 의 형태로 복원하되 Phase 0 의 redaction 목표는 유지 (`external_artists` 는 `display_name` 만, `to_jsonb` 미사용, `invite_email` 누수 없음).
+- `presence` 블록도 함께 복원 (`price` / `availability` / `description` 의 raw value 가 존재하는지를 boolean 으로만 알려주는 채널 — UI 가 "값이 숨겨져 있음" vs "값이 아예 없음" 을 구분하는 데 필요).
+- `tests/sprint6-trust-floor.test.ts` 에 회귀 가드 추가 — 세 SQL 파일 (5.2 마이그레이션, 6 마이그레이션, 핫픽스) 모두에 대해 `c.claim_type`, `c.subject_profile_id`, `c.work_id` 가 존재하고 `c.role`, `c.is_primary`, `c.sort_order`, `c.profile_id`, `c.artwork_id` 가 존재하지 않음을 검증.
+
+**Supabase 적용.** `20260609000000_artwork_passport_enum_cast_hotfix.sql` 한 파일을 통째로 SQL Editor 에 paste → Run. dollar tag `$hotfix$`, 헤더 주석에 작은따옴표 없음. 이전 v2 핫픽스를 이미 돌렸어도 v3 가 그대로 덮어 정상화됨 (`create or replace`). 적용 후 검증:
+
+```sql
+-- 핫픽스 v3 가 적용됐는지 (claim_type 컬럼을 사용하고 c.role 미사용)
+select
+  pg_get_functiondef(p.oid) ilike '%c.claim_type%' as uses_real_column,
+  pg_get_functiondef(p.oid) not ilike '%c.role%'   as no_phantom_column
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname='public' and p.proname='get_artwork_passport_for_viewer';
+-- Expect: uses_real_column = t, no_phantom_column = t
+```
+
+그리고 anonymous browser 에서 피드 → public artwork 클릭 → 정상 렌더 + Network 탭에서 `get_artwork_passport_for_viewer` 응답 200.
+
+**Verified.** `npm run test:sprint6-trust-floor` (cast + claims schema 회귀 가드 모두 통과).
+
+**Known limitations.** Sprint 6 SECTION 1 도 동일한 (정확한) claims 서브쿼리를 가지고 있어서, 핫픽스와 SECTION 1 의 함수 본문은 사실상 동일. 다음에 passport DTO 를 또 변경할 때는 두 파일을 함께 갱신하거나, 한 번에 supersede 하는 단일 마이그레이션으로 정리하는 게 좋다.
+
+---
+
 ## 2026-05-07 — Sprint 6 hotfix: artwork passport enum cast (`artwork_visibility: ""`)
 
 **증상.** Sprint 5.2 + Sprint 6 SQL 을 모두 적용한 직후, 피드에서 작품을 클릭하면 팔로우 관계와 무관하게 모든 viewer (로그인 전·후, 팔로워, stranger) 가 다음 에러를 받았다.

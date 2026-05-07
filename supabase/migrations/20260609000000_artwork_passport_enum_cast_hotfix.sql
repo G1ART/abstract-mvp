@@ -1,5 +1,13 @@
 -- ===========================================================================
--- Hotfix: get_artwork_passport_for_viewer enum/text comparison bug
+-- Hotfix v3: get_artwork_passport_for_viewer
+--   * fix enum/text comparison crash (artwork_visibility: empty-string)
+--   * fix made-up claims columns (c.role / c.is_primary / c.profile_id /
+--     c.artwork_id / c.sort_order do NOT exist; the real columns are
+--     c.claim_type / c.subject_profile_id / c.artist_profile_id /
+--     c.external_artist_id / c.work_id / c.status / c.period_status /
+--     c.start_date / c.end_date / c.created_at).
+--   * keep Phase 0 redaction guarantees (no to_jsonb, no invite_email
+--     in the viewer payload).
 -- ===========================================================================
 --
 -- NOTE FOR THE OPERATOR
@@ -7,25 +15,36 @@
 --   The header comments below intentionally avoid single quotes because
 --   the dashboard SQL splitter tokenizes paste-input client-side and a
 --   stray apostrophe in a line comment can confuse its quote tracker
---   (per .cursor/rules/release-workflow.mdc paragraph 1-1). If you ever
---   see ERROR 42P01 relation v_aw does not exist on a function paste,
---   that is the same class of bug.
+--   (per .cursor/rules/release-workflow.mdc paragraph 1-1). If you see
+--   ERROR 42P01 relation v_aw does not exist on a function paste, that
+--   is the same class of bug.
 --
--- WHAT THIS FIXES
---   Symptom: every viewer (logged in or not, follower or stranger) who
---   clicks an artwork from the feed sees
---     invalid input value for enum artwork_visibility:
---   The Sprint 5.2 and Sprint 6 builds of get_artwork_passport_for_viewer
---   guard the non-public lane with coalesce(v_aw.visibility, empty-text).
---   v_aw.visibility is the artwork_visibility enum, so Postgres tries to
---   cast the empty-text fallback TO the enum and fails with 22P02 before
---   any redaction logic runs.
+-- WHAT THIS FIXES (chronological)
+--   1. Symptom: every viewer (logged in or not, follower or stranger)
+--      who clicked an artwork from the feed saw
+--        invalid input value for enum artwork_visibility:
+--      Cause: coalesce(v_aw.visibility, empty-text) tried to cast the
+--      empty-text fallback TO the artwork_visibility enum and failed
+--      with 22P02 before any redaction logic could run.
+--   2. Symptom: after fixing 1, every viewer saw
+--        column c.role does not exist
+--      Cause: Sprint 6 SECTION 1 rewrote the claims subquery against an
+--      imagined claims schema with c.role / c.is_primary / c.profile_id
+--      / c.artwork_id / c.sort_order. None of those columns exist. The
+--      real schema (p0_claims.sql + p0_claims_period_and_price_inquiry_
+--      delegates.sql) uses c.claim_type / c.subject_profile_id /
+--      c.artist_profile_id / c.external_artist_id / c.work_id /
+--      c.status / c.period_status / c.start_date / c.end_date /
+--      c.created_at. The client ArtworkClaim type in
+--      src/lib/supabase/artworks.ts also expects those keys.
 --
 -- HOW THIS FIXES IT
---   Cast the enum to text before coalescing. The behavior is identical
---   (an artwork with NULL visibility is still treated as non-public,
---   matching the pre-Sprint-5.2 backfill). The DTO body is otherwise
---   100% identical to Sprint 6 SECTION 1.
+--   * Cast the enum to text before coalescing in the visibility gate.
+--   * Restore the Sprint 5.2 claims projection (real columns) but keep
+--     the Phase 0 hardening: external_artists is reduced to display_name
+--     only (no invite_email leak), profiles is reduced to the public
+--     subset the UI already shows.
+--   * No to_jsonb on whole rows anywhere in this RPC.
 
 create or replace function public.get_artwork_passport_for_viewer(
   p_artwork_id uuid
@@ -143,42 +162,37 @@ begin
         jsonb_agg(
           jsonb_build_object(
             'id', c.id,
-            'role', c.role,
-            'is_primary', c.is_primary,
-            'sort_order', c.sort_order,
-            'profiles', case
-              when c.profile_id is not null then (
-                select jsonb_build_object(
-                  'id', cp.id,
-                  'username', cp.username,
-                  'display_name', cp.display_name,
-                  'avatar_url', cp.avatar_url,
-                  'main_role', cp.main_role,
-                  'roles', cp.roles
-                )
-                from public.profiles cp
-                where cp.id = c.profile_id
+            'claim_type', c.claim_type,
+            'subject_profile_id', c.subject_profile_id,
+            'artist_profile_id', c.artist_profile_id,
+            'external_artist_id', c.external_artist_id,
+            'created_at', c.created_at,
+            'status', c.status,
+            'period_status', c.period_status,
+            'start_date', c.start_date,
+            'end_date', c.end_date,
+            'profiles', (
+              select jsonb_build_object(
+                'username', sp.username,
+                'display_name', sp.display_name
               )
-              else null
-            end,
-            'external_artists', case
-              when c.external_artist_id is not null then (
-                select jsonb_build_object(
-                  'id', ea.id,
-                  'display_name', ea.display_name
-                )
-                from public.external_artists ea
-                where ea.id = c.external_artist_id
+              from public.profiles sp
+              where sp.id = c.subject_profile_id
+            ),
+            'external_artists', (
+              select jsonb_build_object(
+                'display_name', ea.display_name
               )
-              else null
-            end
+              from public.external_artists ea
+              where ea.id = c.external_artist_id
+            )
           )
-          order by c.is_primary desc nulls last, c.sort_order nulls last, c.created_at
+          order by c.created_at desc
         ),
         '[]'::jsonb
       )
       from public.claims c
-      where c.artwork_id = v_aw.id
+      where c.work_id = v_aw.id
     )
   );
 
@@ -188,6 +202,17 @@ begin
       'price',        v_price,
       'availability', v_avail,
       'description',  v_desc
+    ),
+    'presence', jsonb_build_object(
+      'price', (
+        v_aw.pricing_mode is not null
+        or v_aw.price_usd is not null
+        or v_aw.price_input_amount is not null
+      ),
+      'availability', (v_aw.ownership_status is not null),
+      'description', (
+        v_aw.story is not null and length(btrim(v_aw.story)) > 0
+      )
     ),
     'relationship', v_relationship,
     'viewer_id',    v_uid

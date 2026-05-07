@@ -153,6 +153,54 @@ function sectionFor(sql: string, fnName: string): string | null {
     );
   }
 
+  // 5 — claims schema regression. The real public.claims table (see
+  // p0_claims.sql + p0_claims_period_and_price_inquiry_delegates.sql)
+  // exposes claim_type / subject_profile_id / artist_profile_id /
+  // external_artist_id / status / period_status / start_date /
+  // end_date / created_at — and joins out via work_id. An earlier
+  // hotfix attempt referenced made-up columns (c.role, c.is_primary,
+  // c.sort_order, c.profile_id, c.artwork_id) that DO NOT EXIST and
+  // produced `column c.role does not exist` on every artwork view.
+  // Pin the canonical column names AND ban the fictional ones across
+  // all three files that ship this RPC body.
+  const REQUIRED_CLAIM_COLS = [
+    "c.claim_type",
+    "c.subject_profile_id",
+    "c.work_id",
+  ];
+  const FORBIDDEN_CLAIM_COLS = [
+    "c.role",
+    "c.is_primary",
+    "c.sort_order",
+    "c.profile_id",
+    "c.artwork_id",
+  ];
+  for (const rel of [
+    MIGRATION_REL,
+    "supabase/migrations/20260607000000_relationship_access_enforcement_hardening.sql",
+    "supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql",
+  ]) {
+    const body = read(rel);
+    if (!body.includes("get_artwork_passport_for_viewer")) continue;
+    const noComments = body
+      .split("\n")
+      .map((line) => line.replace(/--.*$/, ""))
+      .join("\n");
+    for (const col of REQUIRED_CLAIM_COLS) {
+      assert.ok(
+        noComments.includes(col),
+        `${rel} passport must reference real claims column ${col}`
+      );
+    }
+    for (const col of FORBIDDEN_CLAIM_COLS) {
+      assert.ok(
+        !noComments.includes(col),
+        `${rel} passport must NOT reference fictional claims column ${col} ` +
+          `(this is the regression that produced "column c.role does not exist")`
+      );
+    }
+  }
+
   console.log("sprint6-trust-floor.test.ts: ok");
 })().catch((err) => {
   console.error(err);
