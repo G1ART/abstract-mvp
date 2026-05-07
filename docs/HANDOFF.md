@@ -2,6 +2,49 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 6 hotfix: artwork passport enum cast (`artwork_visibility: ""`)
+
+**증상.** Sprint 5.2 + Sprint 6 SQL 을 모두 적용한 직후, 피드에서 작품을 클릭하면 팔로우 관계와 무관하게 모든 viewer (로그인 전·후, 팔로워, stranger) 가 다음 에러를 받았다.
+
+```
+invalid input value for enum artwork_visibility: ""
+```
+
+**근본 원인.** `get_artwork_passport_for_viewer` 의 비공개 차단 가드가
+
+```sql
+if coalesce(v_aw.visibility, '') <> 'public' then
+```
+
+로 작성되어 있었다. `v_aw.visibility` 는 `artwork_visibility` enum 이고, Postgres 가 `coalesce(enum, text)` 의 공통 타입을 추론할 때 `''` 를 enum 으로 캐스팅하려 시도한다. `''` 는 enum 라벨이 아니므로 22P02 가 발생, 모든 RPC 콜이 redaction 로직 도달 전에 실패. 동일한 패턴이 5.2 마이그레이션 (`20260607...`) 과 6 마이그레이션 (`20260608...`) 양쪽에 모두 있어, 둘 중 무엇을 마지막으로 적용했든 같은 에러를 보게 됐다.
+
+**핫픽스.**
+
+- `supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql` 신설 — `get_artwork_passport_for_viewer` 를 단일 PL/pgSQL 함수로 다시 생성. 가드를 `coalesce(v_aw.visibility::text, '') <> 'public'` 로 수정. DTO 본문, 권한 체크, 모든 redaction 로직은 Sprint 6 SECTION 1 과 100% 동일하게 유지.
+- 소스 마이그레이션 두 곳도 같은 cast 로 패치 (`20260607...` §SECTION 7, `20260608...` §SECTION 1) — 새로 클러스터를 부트스트랩할 때 핫픽스에 의존하지 않도록.
+- `tests/sprint6-trust-floor.test.ts` 에 회귀 가드 추가 — 위 세 SQL 파일 중 어느 하나라도 cast 없는 `coalesce(v_aw.visibility, '')` 패턴을 다시 도입하면 즉시 실패.
+
+**Supabase 적용.** `20260609000000_artwork_passport_enum_cast_hotfix.sql` 한 파일을 SQL Editor 에 paste → Run. 단일 함수라 섹션 분할 불필요. 적용 후 검증:
+
+```sql
+-- 1) 함수가 핫픽스 본문으로 교체됐는지 (cast 가 들어간 버전인지)
+select pg_get_functiondef(p.oid) ilike '%v_aw.visibility::text%' as patched
+from pg_proc p
+join pg_namespace n on n.oid = p.pronamespace
+where n.nspname='public' and p.proname='get_artwork_passport_for_viewer';
+-- Expect: patched = t
+
+-- 2) anon 으로 임의 public artwork 를 호출했을 때 에러 없이 jsonb 반환
+select public.get_artwork_passport_for_viewer('<public-artwork-id>'::uuid) is not null as ok;
+-- Expect: t (또는 null — RPC 가 더 이상 22P02 를 raise 하지 않음)
+```
+
+**Verified.** `npm run test:sprint6-trust-floor` 통과 (cast 가드 포함), 다른 sprint6/sprint5.2 정적 테스트도 그린.
+
+**Known limitations.** 핫픽스 마이그레이션은 함수 본문이 Sprint 6 §SECTION 1 과 동일해야 하므로, 이후 passport DTO 를 또 변경할 때는 Sprint 6 마이그레이션과 핫픽스 둘 다 함께 갱신해야 한다 (혹은 다음 패치에서 두 파일을 한 번에 supersede).
+
+---
+
 ## 2026-05-07 — Sprint 6: Phase 0 Trust-Floor Closure + Relationship Desk + Persona Action Grammar + Private Room v2 (+ Grant Lifecycle additive)
 
 베이스라인: `84d52cb` (`release: Sprint 5.2 — Access Enforcement and Redaction Hardening`).

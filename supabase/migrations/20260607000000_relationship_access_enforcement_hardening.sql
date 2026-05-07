@@ -614,7 +614,10 @@ begin
   -- Authorization gate (mirrors the existing public-artwork RLS lane):
   -- non-public artworks must come from owner / delegate-writer only.
   -- Anything else returns null and the UI shows a calm not-found.
-  if coalesce(v_aw.visibility, '') <> 'public' then
+  -- enum→text cast before coalesce so `''` doesn't get cast to the
+  -- artwork_visibility enum (would raise 22P02). See hotfix migration
+  -- 20260609000000_artwork_passport_enum_cast_hotfix.sql for context.
+  if coalesce(v_aw.visibility::text, '') <> 'public' then
     if v_uid is null
        or (v_uid <> v_owner
            and not public.is_active_account_delegate_writer(v_owner)) then

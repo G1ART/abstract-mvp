@@ -77,7 +77,12 @@ begin
 
   v_owner := v_aw.artist_id;
 
-  if coalesce(v_aw.visibility, '') <> 'public' then
+  -- Cast enum to text before coalescing — `coalesce(enum, '')` otherwise
+  -- forces Postgres to cast the literal `''` *to* `artwork_visibility`,
+  -- which fails (`invalid input value for enum artwork_visibility: ""`)
+  -- and crashes every viewer regardless of relationship. See hotfix
+  -- migration 20260609000000_artwork_passport_enum_cast_hotfix.sql.
+  if coalesce(v_aw.visibility::text, '') <> 'public' then
     if v_uid is null
        or (v_uid <> v_owner
            and not public.is_active_account_delegate_writer(v_owner)) then

@@ -123,6 +123,36 @@ function sectionFor(sql: string, fnName: string): string | null {
     "showPriceInquiryBlock must include priceIsGated as a trigger"
   );
 
+  // 4 — enum/text guard regression test. `coalesce(v_aw.visibility, '')`
+  // (with no `::text` cast) makes Postgres try to cast `''` *to* the
+  // artwork_visibility enum, which raises 22P02 on every viewer call and
+  // crashed the artwork detail page for every visitor (regardless of
+  // follow status). The Sprint 6 migration AND the Sprint 5.2 migration
+  // (which both ship this RPC body) MUST cast to text before coalescing.
+  for (const rel of [
+    MIGRATION_REL,
+    "supabase/migrations/20260607000000_relationship_access_enforcement_hardening.sql",
+    "supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql",
+  ]) {
+    const body = read(rel);
+    if (!body.includes("get_artwork_passport_for_viewer")) continue;
+    const noComments = body
+      .split("\n")
+      .map((line) => line.replace(/--.*$/, ""))
+      .join("\n");
+    assert.ok(
+      !/coalesce\s*\(\s*v_aw\.visibility\s*,/i.test(noComments),
+      `${rel} must cast v_aw.visibility::text before coalescing — bare ` +
+        `coalesce(enum, '') triggers "invalid input value for enum ` +
+        `artwork_visibility: \"\"" on every viewer call`
+    );
+    assert.ok(
+      /coalesce\s*\(\s*v_aw\.visibility::text\s*,/i.test(noComments),
+      `${rel} must use coalesce(v_aw.visibility::text, '') in the ` +
+        `passport visibility gate`
+    );
+  }
+
   console.log("sprint6-trust-floor.test.ts: ok");
 })().catch((err) => {
   console.error(err);
