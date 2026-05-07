@@ -32,6 +32,11 @@ so individual sections can be re-applied if a single one fails.
 -- Phase 0 — passport DTO no longer surfaces invite_email or is_public?
 -- (Manual sanity: select payload of a public artwork as anon, confirm
 --  json keys do not include invite_email or is_public.)
+--
+-- IMPORTANT: replace the literal `<some-public-artwork-id>` with a
+-- real UUID from `select id from public.artworks where visibility='public'
+-- limit 1;` before running. Pasting the placeholder verbatim raises
+-- `ERROR: 22P02: invalid input syntax for type uuid`.
 select jsonb_pretty(public.get_artwork_passport_for_viewer('<some-public-artwork-id>'::uuid)) limit 1;
 
 -- Phase 0 — attribution-safe room source RPC present?
