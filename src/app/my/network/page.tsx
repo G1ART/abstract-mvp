@@ -324,19 +324,17 @@ export default function MyNetworkPage() {
         {/* Per-tab guidance — kindly explains what the active tab does
             so newcomers (and returning users post-Sprint 6.2) understand
             why two former pages now live as tabs in here.
-            `break-keep` = `word-break: keep-all` keeps Korean lines
-            from snapping in the middle of an 어절, and `text-pretty`
-            asks the browser to avoid widows / orphans (the "요." at the
-            end of a wrapped line was the original eyesore that
-            triggered this fix). Both are progressive — they degrade
-            gracefully on browsers that don't yet support them.
-            We intentionally do NOT clamp width with `max-w-prose` here
-            — the page already lives inside `max-w-3xl`, and a tighter
-            cap caused awkward early breaks like "수락하거나 거절할 /
-            수 있고" on Korean copy. Letting the paragraph fill the
-            page container gives `break-keep` enough room to land
-            wraps at natural 어절 boundaries. */}
-        <p className="mb-4 break-keep text-pretty text-xs text-zinc-500">
+            `break-keep` = `word-break: keep-all` keeps Korean copy
+            from snapping mid-어절. We intentionally do NOT add
+            `text-pretty` here — Chrome's `text-wrap: pretty` balances
+            line lengths to avoid widows, but the side effect on this
+            short paragraph was an early first-line break with a wide
+            empty gutter on the right (the eyesore that triggered this
+            polish). Without `text-pretty` the paragraph fills the
+            page container `max-w-4xl` end-to-end and only wraps when
+            it actually has to — at a natural 어절 boundary thanks to
+            `break-keep`. */}
+        <p className="mb-4 break-keep text-xs text-zinc-500">
           {activeTab === "followers" && t("network.guide.followers")}
           {activeTab === "following" && t("network.guide.following")}
           {activeTab === "relationships" && t("network.guide.relationships")}
