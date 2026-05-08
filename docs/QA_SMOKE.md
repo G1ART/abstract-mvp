@@ -189,10 +189,19 @@ where n.nspname='public' and p.proname='get_relationship_desk_for_owner';
 -- Expect: t / t
 
 -- 4) Card RPC dropped passive viewer surveillance.
+-- IMPORTANT: ilike '%shortlist_views%' alone matches the rationale
+-- comment inside the function body ("we do NOT join shortlist_views"),
+-- which is a false positive. We instead match the *actual* live SQL
+-- patterns: a real `from / join public.shortlist_views` reference, and
+-- the literal jsonb key `'last_viewed_at',` that would only appear if
+-- the field were emitted.
 select
-  pg_get_functiondef(p.oid) not ilike '%shortlist_views%' as card_no_views_join,
-  pg_get_functiondef(p.oid) not ilike '%last_viewed_at%' as card_no_last_viewed,
-  pg_get_functiondef(p.oid) ilike '%was_shared_or_granted%' as card_uses_shared_flag
+  not (
+    pg_get_functiondef(p.oid) ilike '%from public.shortlist_views%'
+    or pg_get_functiondef(p.oid) ilike '%join public.shortlist_views%'
+  ) as card_no_views_join,
+  pg_get_functiondef(p.oid) not ilike $$%'last_viewed_at',%$$ as card_no_last_viewed_jsonb_key,
+  pg_get_functiondef(p.oid) ilike $$%'was_shared_or_granted',%$$ as card_uses_shared_flag
 from pg_proc p
 join pg_namespace n on n.oid = p.pronamespace
 where n.nspname='public' and p.proname='get_relationship_card_for_owner';
