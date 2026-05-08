@@ -1593,7 +1593,7 @@ export const messages = {
     "network.tabs.requests": "Access requests",
     "network.guide.followers": "People who follow your studio. Tap a row to open their public profile or follow them back.",
     "network.guide.following": "People you follow. Their new works and exhibitions surface in your feed.",
-    "network.guide.relationships": "Your Relationship Desk — every person who has asked, inquired, been granted access, or been added to a private room. Open a card to see the full history with them and add a private note that only you (and your delegates) can read.",
+    "network.guide.relationships": "Your Relationship Desk — every person who has asked, inquired, been granted access, or been added to a private room. Open a card to see the full history with them and add a private note that only you can read.",
     "network.guide.requests": "Pending and resolved access requests for your visibility-locked artworks and profile fields. Approve or decline directly here; approved requests grow into the relationship history shown in the Relationships tab.",
     "network.summary.followers": "followers",
     "network.summary.following": "following",
@@ -2155,7 +2155,7 @@ export const messages = {
       "Each row is a live connection — follow back, open their studio, review a request, or open the relationship card to see the full history.",
     "tour.network.relationships.title": "Relationship Desk",
     "tour.network.relationships.body":
-      "Open the Relationships tab to see every person who has touched your work — request, inquiry, grant, room invite, follow. Tap a row to open their card: full history with you, a calm Suggested Next Action, and a private note that only you (and your delegates) can read. The note body never appears in the row list — only a quiet 'Private note' chip — so the desk stays calm while still letting you remember context.",
+      "Open the Relationships tab to see every person who has touched your work — request, inquiry, grant, room invite, follow. Tap a row to open their card: full history with you, a calm Suggested Next Action, and a private note that only you can read. The note body never appears in the row list — only a quiet 'Private note' chip — so the desk stays calm while still letting you remember context.",
     "tour.network.requests.title": "Access requests inbox",
     "tour.network.requests.body":
       "Switch to the Access requests tab to see every pending request for your visibility-locked artworks and profile fields. Approve and the requester immediately sees the field; decline and they get a calm 'not now'. Resolved requests stay listed below pending ones so you have an audit trail.",
@@ -4113,7 +4113,7 @@ export const messages = {
     "network.tabs.requests": "접근 요청",
     "network.guide.followers": "내 스튜디오를 팔로우한 사람들이에요. 행을 눌러 프로필을 열거나 맞팔할 수 있어요.",
     "network.guide.following": "내가 팔로우한 사람들이에요. 이들의 새 작품과 전시가 피드에 우선 노출돼요.",
-    "network.guide.relationships": "관계 데스크예요. 나에게 접근을 요청했거나, 작품을 문의했거나, 접근 권한을 받았거나, 프라이빗 룸에 초대된 모든 사람이 한 줄씩 모여요. 카드를 열면 그동안의 흐름을 볼 수 있고, 나(와 위임자)만 보는 비공개 메모를 남길 수 있어요.",
+    "network.guide.relationships": "관계 데스크예요. 나에게 접근을 요청했거나, 작품을 문의했거나, 접근 권한을 받았거나, 프라이빗 룸에 초대된 모든 사람이 한 줄씩 모여요. 카드를 열면 그동안의 흐름을 볼 수 있고, 나만 보는 비공개 메모를 남길 수 있어요.",
     "network.guide.requests": "공개 범위가 잠긴 작품·프로필 항목에 대한 접근 요청 모음이에요. 여기서 바로 수락하거나 거절할 수 있고, 수락된 요청은 다음 탭(관계)의 관계 이력으로 이어져요.",
     "network.summary.followers": "팔로워",
     "network.summary.following": "팔로잉",
@@ -4676,7 +4676,7 @@ export const messages = {
       "각 줄이 살아있는 연결이에요. 맞팔하거나 스튜디오를 열거나 요청을 검토하거나 관계 카드를 열어 그동안의 흐름을 한눈에 볼 수 있어요.",
     "tour.network.relationships.title": "관계 데스크",
     "tour.network.relationships.body":
-      "관계 탭을 열면 내 작품에 한 번이라도 닿은 모든 사람(요청·문의·접근 권한·룸 초대·팔로우)이 모여요. 행을 누르면 카드가 열리고, 그 사람과의 흐름·차분한 다음 행동 추천·나(와 위임자)만 보는 비공개 메모를 함께 볼 수 있어요. 메모 본문은 행 목록에 절대 노출되지 않고, '비공개 메모' 작은 칩만 표시돼요. 데스크는 차분하게 두면서도 맥락은 잊지 않도록 한 설계예요.",
+      "관계 탭을 열면 내 작품에 한 번이라도 닿은 모든 사람(요청·문의·접근 권한·룸 초대·팔로우)이 모여요. 행을 누르면 카드가 열리고, 그 사람과의 흐름·차분한 다음 행동 추천·나만 보는 비공개 메모를 함께 볼 수 있어요. 메모 본문은 행 목록에 절대 노출되지 않고, '비공개 메모' 작은 칩만 표시돼요. 데스크는 차분하게 두면서도 맥락은 잊지 않도록 한 설계예요.",
     "tour.network.requests.title": "접근 요청 받은 함",
     "tour.network.requests.body":
       "접근 요청 탭에서는 공개 범위가 잠긴 작품·프로필 항목에 들어온 모든 요청을 볼 수 있어요. 수락하면 요청자가 즉시 해당 항목을 볼 수 있고, 거절하면 차분한 '지금은 어렵다'는 응답이 전달돼요. 처리된 요청은 대기 요청 아래에 그대로 남아 기록으로 쓰여요.",
