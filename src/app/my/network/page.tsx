@@ -321,8 +321,14 @@ export default function MyNetworkPage() {
             asks the browser to avoid widows / orphans (the "요." at the
             end of a wrapped line was the original eyesore that
             triggered this fix). Both are progressive — they degrade
-            gracefully on browsers that don't yet support them. */}
-        <p className="mb-4 max-w-prose break-keep text-pretty text-xs text-zinc-500">
+            gracefully on browsers that don't yet support them.
+            We intentionally do NOT clamp width with `max-w-prose` here
+            — the page already lives inside `max-w-3xl`, and a tighter
+            cap caused awkward early breaks like "수락하거나 거절할 /
+            수 있고" on Korean copy. Letting the paragraph fill the
+            page container gives `break-keep` enough room to land
+            wraps at natural 어절 boundaries. */}
+        <p className="mb-4 break-keep text-pretty text-xs text-zinc-500">
           {activeTab === "followers" && t("network.guide.followers")}
           {activeTab === "following" && t("network.guide.following")}
           {activeTab === "relationships" && t("network.guide.relationships")}
