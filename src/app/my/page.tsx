@@ -39,6 +39,7 @@ import { getBoardSaveSignals, type BoardSaveSignal } from "@/lib/supabase/shortl
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { getRelationshipDeskForOwner } from "@/lib/supabase/relationshipAccess";
 import {
+  FirstValuePathPanel,
   StudioHero,
   StudioHeroPanel,
   StudioMaterialsPanel,
@@ -49,6 +50,8 @@ import {
   type OperationTile,
 } from "@/components/studio";
 import { computeStudioNextActions } from "@/lib/studio/priority";
+import { resolvePersonaMode } from "@/lib/persona/resolvePersonaMode";
+import type { FirstValueSelectorInput } from "@/lib/persona/actionGrammar";
 import { TourTrigger, TourHelpButton } from "@/components/tour";
 import { BetaFeedbackPrompt } from "@/components/beta";
 import { TOUR_IDS } from "@/lib/tours/tourRegistry";
@@ -321,6 +324,45 @@ export default function MyPage() {
     t,
   ]);
 
+  // Sprint 7 Phase B — first-value selector input + persona resolution.
+  // The selector is deterministic; counts default to 0 so a fresh
+  // account still gets guided actions instead of a blank panel.
+  const firstValueSelectorInput = useMemo<FirstValueSelectorInput | null>(() => {
+    if (!profile) return null;
+    const personaMode = resolvePersonaMode({
+      mainRole: profile.main_role ?? null,
+      roles: profile.roles ?? null,
+      actingAs: !!actingAsProfileId,
+      artworkCount: stats?.artworksCount ?? artworks.length ?? 0,
+      savedOrFollowedCount: stats?.followingCount ?? 0,
+    });
+    return {
+      personaMode,
+      actingAs: !!actingAsProfileId,
+      profileCompleteness: computedCompleteness,
+      artworkCount: stats?.artworksCount ?? artworks.length ?? 0,
+      publicArtworkCount: artworks.length,
+      // We don't yet ship a precise "missing context" count from the
+      // server; pass null so the selector treats the signal as
+      // unknown (keeps the action visible until the user clears it).
+      missingArtworkContextCount: null,
+      roomCount: boardSaveSignal?.boards_count ?? null,
+      pendingAccessRequestCount: pendingNetworkActivityCount,
+      relationshipCount: null,
+      hasPrivateNote: null,
+      savedOrFollowedCount: stats?.followingCount ?? 0,
+    };
+  }, [
+    profile,
+    actingAsProfileId,
+    computedCompleteness,
+    artworks.length,
+    stats?.artworksCount,
+    stats?.followingCount,
+    boardSaveSignal?.boards_count,
+    pendingNetworkActivityCount,
+  ]);
+
   // Brief §3 Section 2 — 8 tiles in a strict 2×4 layout.
   //   Row 1 (creation / curation / active operation): 전시 · 작업실 · 보드 · 메시지
   //   Row 2 (relationship / requests / verification / visibility): 문의 · 소유권 · 네트워크 · 프로필 조회
@@ -459,7 +501,19 @@ export default function MyPage() {
                   pendingNetworkActivityCount={pendingNetworkActivityCount}
                 />
               }
-              rail={<StudioNextStepsRail actions={studioActions} />}
+              rail={
+                firstValueSelectorInput ? (
+                  <FirstValuePathPanel
+                    selectorInput={firstValueSelectorInput}
+                    delegateDisplayName={
+                      actingAsProfileId ? profile?.display_name ?? null : null
+                    }
+                    fallback={<StudioNextStepsRail actions={studioActions} />}
+                  />
+                ) : (
+                  <StudioNextStepsRail actions={studioActions} />
+                )
+              }
             />
             <StudioOperationGrid tiles={operationTiles} />
             {/* Profile materials — Statement + CV. Artist persona only;

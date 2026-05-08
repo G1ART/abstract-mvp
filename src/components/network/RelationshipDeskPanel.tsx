@@ -214,8 +214,9 @@ export function RelationshipDeskPanel({ userId, authReady }: Props) {
         <p className="py-8 text-center text-sm text-red-600">{error}</p>
       ) : rows.length === 0 ? (
         <EmptyState
-          title={t("relationships.empty.title")}
-          description={t("relationships.empty.desc")}
+          title={t("empty.relationships.title")}
+          description={`${t("empty.relationships.why")} ${t("empty.relationships.whatNext")}`}
+          action={{ label: t("empty.relationships.cta"), href: "/my/shortlists" }}
         />
       ) : (
         <ul className="divide-y divide-zinc-100 rounded-2xl border border-zinc-200 bg-white">

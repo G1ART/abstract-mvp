@@ -2384,6 +2384,15 @@ export const messages = {
     "accessRequestInbox.openRequest": "Open request",
     "accessRequestInbox.collapseRequest": "Hide details",
     "accessRequestInbox.viewSubject": "View subject",
+    "accessRequestInbox.narrow.label": "Approval scope",
+    "accessRequestInbox.narrow.hint":
+      "Approve as-is, narrow to this work, time-box to 30 days, or decline.",
+    "accessRequestInbox.narrow.all": "Approve",
+    "accessRequestInbox.narrow.thisWork": "Approve for this work",
+    "accessRequestInbox.narrow.thirtyDays": "Approve for 30 days",
+    "accessRequestInbox.narrow.decline": "Decline",
+    "accessRequestInbox.narrow.toggleShow": "Show approval options",
+    "accessRequestInbox.narrow.toggleHide": "Hide approval options",
     "inquiries.accessRequestsChip": "Access requests · {n} pending",
 
     // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
@@ -2522,6 +2531,143 @@ export const messages = {
 
     // ─── Sprint 6 — Studio entry to Relationship Desk ───
     "studio.relationshipsLink": "Relationship Desk",
+
+    // ─── Sprint 7 — FirstValuePathPanel ───
+    "firstValue.kicker": "Today in your studio",
+    "firstValue.kicker.viewing": "Today in your viewing",
+    "firstValue.kicker.delegate": "Today as you act for",
+    "firstValue.title.artist": "Shape your body of work",
+    "firstValue.title.gallery": "Prepare a quiet viewing context",
+    "firstValue.title.curator": "Organize what you are tracking",
+    "firstValue.title.collector": "Remember what moves you",
+    "firstValue.title.multi_persona": "Continue where you left off",
+    "firstValue.subtitle.artist":
+      "Add a few works, give them context, and decide what visitors should see.",
+    "firstValue.subtitle.gallery":
+      "Make sure the people you care about can find the right works at the right moment.",
+    "firstValue.subtitle.curator":
+      "Save what catches your eye, then quietly stitch it into a shortlist or studio note.",
+    "firstValue.subtitle.collector":
+      "Save artists and works you want to come back to. Ask quietly when you are ready.",
+    "firstValue.subtitle.multi_persona":
+      "You move between making, viewing, and organizing. Pick the next quiet step.",
+    "firstValue.allClearHeader": "Studio basics are settled.",
+    "firstValue.allClearHint":
+      "These deeper steps usually matter next:",
+
+    "firstValue.artist.completeProfile.title": "Complete profile basics",
+    "firstValue.artist.completeProfile.desc":
+      "A short bio and main role help visitors place your work in context.",
+    "firstValue.artist.uploadArtwork.title": "Upload your first works",
+    "firstValue.artist.uploadArtwork.desc":
+      "Aim for three pieces so the studio reads as a body of work, not a single image.",
+    "firstValue.artist.addContext.title": "Add story, medium, size",
+    "firstValue.artist.addContext.desc":
+      "A few sentences and material notes turn a thumbnail into something visitors can talk about.",
+    "firstValue.artist.reviewVisibility.title": "Review visibility",
+    "firstValue.artist.reviewVisibility.desc":
+      "Decide which fields stay public and which open only after a request.",
+    "firstValue.artist.createRoom.title": "Create a private room",
+    "firstValue.artist.createRoom.desc":
+      "Group works for a specific collector, curator, or studio visit.",
+    "firstValue.artist.openRelationships.title": "Open the Relationship Desk",
+    "firstValue.artist.openRelationships.desc":
+      "See who has reached out and remember the context for next time.",
+
+    "firstValue.gallery.completeProfile.title": "Set up the gallery profile",
+    "firstValue.gallery.completeProfile.desc":
+      "Make sure the public face matches how you want collectors to find you.",
+    "firstValue.gallery.uploadArtwork.title": "Add available works",
+    "firstValue.gallery.uploadArtwork.desc":
+      "Inventory only matters once it can be quietly shared with the right person.",
+    "firstValue.gallery.createRoom.title": "Create a private room",
+    "firstValue.gallery.createRoom.desc":
+      "Curate a small set of works for a specific collector or curator before sending.",
+    "firstValue.gallery.reviewRequests.title": "Review access requests",
+    "firstValue.gallery.reviewRequests.desc":
+      "Approve as-is, narrow to one work, or time-box for 30 days.",
+    "firstValue.gallery.openRelationships.title": "Open the Relationship Desk",
+    "firstValue.gallery.openRelationships.desc":
+      "Keep notes about how each conversation has unfolded.",
+    "firstValue.gallery.reviewInquiries.title": "Reply to inquiries",
+    "firstValue.gallery.reviewInquiries.desc":
+      "A short, calm reply often carries the relationship further than a price quote.",
+
+    "firstValue.curator.saveOrFollow.title": "Save artists and works",
+    "firstValue.curator.saveOrFollow.desc":
+      "Build a quiet research index before you decide what to assemble.",
+    "firstValue.curator.createRoom.title": "Create a shortlist or room",
+    "firstValue.curator.createRoom.desc":
+      "Group candidates so a future exhibition idea has a starting point.",
+    "firstValue.curator.requestAccess.title": "Request studio context",
+    "firstValue.curator.requestAccess.desc":
+      "Ask the artist for the description, price, or availability you need — politely.",
+    "firstValue.curator.openRelationships.title": "Revisit relationship context",
+    "firstValue.curator.openRelationships.desc":
+      "See what you have already exchanged with each artist or gallery.",
+
+    "firstValue.collector.saveOrFollow.title": "Save works and follow artists",
+    "firstValue.collector.saveOrFollow.desc":
+      "Memory comes first — interest can grow into a quiet inquiry later.",
+    "firstValue.collector.reviewInquiries.title": "Revisit your inquiries",
+    "firstValue.collector.reviewInquiries.desc":
+      "See open conversations with artists and reply when ready.",
+    "firstValue.collector.requestAccess.title": "Request access respectfully",
+    "firstValue.collector.requestAccess.desc":
+      "Ask only when you are interested. The artist decides what to share back.",
+    "firstValue.collector.openRelationships.title": "Open the Relationship Desk",
+    "firstValue.collector.openRelationships.desc":
+      "Keep track of artists and galleries you have already engaged with.",
+
+    "firstValue.multi.uploadArtwork.title": "Add a work from your own studio",
+    "firstValue.multi.uploadArtwork.desc":
+      "Even one work changes how the rest of Abstract reads to you.",
+    "firstValue.multi.saveOrFollow.title": "Save what you want to revisit",
+    "firstValue.multi.saveOrFollow.desc":
+      "Acting as a viewer is just as legitimate as acting as a maker.",
+    "firstValue.multi.createRoom.title": "Create a quiet room",
+    "firstValue.multi.createRoom.desc":
+      "Useful both for showing your own work and for organizing what you are following.",
+    "firstValue.multi.openRelationships.title": "Open the Relationship Desk",
+    "firstValue.multi.openRelationships.desc":
+      "One place for the conversations you want to remember across modes.",
+
+    // ─── Sprint 7 — Gentle mode hints (Phase E) ───
+    "studio.context.studio": "You are organizing your studio.",
+    "studio.context.viewing": "You are viewing as a collector.",
+    "studio.context.delegate": "You are acting for {name}.",
+
+    // ─── Sprint 7 — Persona-aware empty states (Phase C) ───
+    "empty.library.title": "No artworks yet.",
+    "empty.library.why":
+      "Your library is where works become a body of work — searchable, editable, and ready to share.",
+    "empty.library.whatNext":
+      "Upload three works first. You can refine titles, story, and visibility afterwards.",
+    "empty.library.cta": "Upload a work",
+    "empty.shortlists.title": "No rooms yet.",
+    "empty.shortlists.why":
+      "Rooms are how you share works with a specific person or small group, without turning them into a public storefront.",
+    "empty.shortlists.whatNext":
+      "Create a quiet room for one collector, curator, gallery contact, or studio visit.",
+    "empty.shortlists.cta": "Create a room",
+    "empty.relationships.title": "No relationships yet.",
+    "empty.relationships.why":
+      "Relationships begin when someone follows, asks about a work, requests access, or receives a private room.",
+    "empty.relationships.whatNext":
+      "Share a work or build a private room — context will start arriving here on its own.",
+    "empty.relationships.cta": "Create a private room",
+    "empty.requests.title": "No access requests yet.",
+    "empty.requests.why":
+      "Access requests arrive when a viewer asks to see something you have kept private — a price, an availability, or a story.",
+    "empty.requests.whatNext":
+      "Tighten visibility on a work or two so a thoughtful request becomes possible.",
+    "empty.requests.cta": "Review visibility",
+    "empty.visibility.title": "No visibility decisions yet.",
+    "empty.visibility.why":
+      "Visibility decides what arrives publicly and what unlocks only after a quiet request.",
+    "empty.visibility.whatNext":
+      "Start from a preset; you can refine individual fields later, work by work.",
+    "empty.visibility.cta": "Pick a preset",
   },
   ko: {
     "nav.feed": "피드",
@@ -4896,6 +5042,15 @@ export const messages = {
     "accessRequestInbox.openRequest": "요청 열기",
     "accessRequestInbox.collapseRequest": "상세 숨기기",
     "accessRequestInbox.viewSubject": "대상 보기",
+    "accessRequestInbox.narrow.label": "승인 범위",
+    "accessRequestInbox.narrow.hint":
+      "요청 그대로 승인하거나, 이 작품에만 한정하거나, 30일 동안만 열어주거나, 거절할 수 있어요.",
+    "accessRequestInbox.narrow.all": "그대로 승인",
+    "accessRequestInbox.narrow.thisWork": "이 작품만 승인",
+    "accessRequestInbox.narrow.thirtyDays": "30일 동안 승인",
+    "accessRequestInbox.narrow.decline": "거절",
+    "accessRequestInbox.narrow.toggleShow": "승인 옵션 보기",
+    "accessRequestInbox.narrow.toggleHide": "승인 옵션 접기",
     "inquiries.accessRequestsChip": "접근 요청 · {n}건 대기",
 
     // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
@@ -5032,6 +5187,142 @@ export const messages = {
 
     // ─── Sprint 6 — Studio entry to Relationship Desk ───
     "studio.relationshipsLink": "관계 데스크",
+
+    // ─── Sprint 7 — FirstValuePathPanel ───
+    "firstValue.kicker": "오늘 스튜디오에서 시작할 일",
+    "firstValue.kicker.viewing": "오늘 감상하면 좋은 일",
+    "firstValue.kicker.delegate": "지금 위임 받은 작업",
+    "firstValue.title.artist": "작품 세계를 정리하는 다음 단계",
+    "firstValue.title.gallery": "오늘 운영할 관계",
+    "firstValue.title.curator": "전시 후보를 정리하는 방법",
+    "firstValue.title.collector": "감상 기억을 천천히 쌓는 시간",
+    "firstValue.title.multi_persona": "다음 한 걸음을 골라보세요",
+    "firstValue.subtitle.artist":
+      "대표 작품 몇 점에 짧은 설명과 공개 범위를 더하면 방문자가 더 조용히 이해할 수 있어요.",
+    "firstValue.subtitle.gallery":
+      "특정 컬렉터나 큐레이터에게 적절한 작품을 적절한 순간에 보여줄 수 있게 준비해보세요.",
+    "firstValue.subtitle.curator":
+      "관심 있는 작품을 저장하고 묶어두면, 나중에 작가에게 더 정중하게 접근할 수 있어요.",
+    "firstValue.subtitle.collector":
+      "관심 있는 작가와 작품을 저장해두면, 나중에 문의와 프라이빗 뷰잉을 더 자연스럽게 이어갈 수 있어요.",
+    "firstValue.subtitle.multi_persona":
+      "만들기·감상·정리를 자유롭게 오갈 수 있어요. 지금에 어울리는 다음 한 걸음을 골라보세요.",
+    "firstValue.allClearHeader": "스튜디오 기본은 잘 정리되어 있어요.",
+    "firstValue.allClearHint": "다음 단계로는 보통 이런 작업이 어울려요:",
+
+    "firstValue.artist.completeProfile.title": "프로필 기본 정리",
+    "firstValue.artist.completeProfile.desc":
+      "짧은 소개와 메인 역할이 있어야 방문자가 작품의 맥락을 잡을 수 있어요.",
+    "firstValue.artist.uploadArtwork.title": "첫 작품 올리기",
+    "firstValue.artist.uploadArtwork.desc":
+      "최소 세 점은 있어야 한 장면이 아니라 ‘작품 세계’로 읽혀요.",
+    "firstValue.artist.addContext.title": "작품 설명 보강",
+    "firstValue.artist.addContext.desc":
+      "이야기·재료·크기 몇 줄만 적어두어도 작품이 대화의 시작점이 돼요.",
+    "firstValue.artist.reviewVisibility.title": "공개 범위 점검",
+    "firstValue.artist.reviewVisibility.desc":
+      "어떤 정보를 공개로 두고, 어떤 정보는 요청 후에만 열지 결정해보세요.",
+    "firstValue.artist.createRoom.title": "프라이빗 룸 만들기",
+    "firstValue.artist.createRoom.desc":
+      "특정 컬렉터·큐레이터·스튜디오 방문자를 위해 작품 묶음을 준비해요.",
+    "firstValue.artist.openRelationships.title": "관계 데스크 열기",
+    "firstValue.artist.openRelationships.desc":
+      "지금까지 누가 다가왔는지, 다음에 이어갈 맥락을 조용히 정리해요.",
+
+    "firstValue.gallery.completeProfile.title": "갤러리 프로필 정리",
+    "firstValue.gallery.completeProfile.desc":
+      "공개로 보이는 모습이 컬렉터에게 보여주고 싶은 모습과 맞는지 확인해요.",
+    "firstValue.gallery.uploadArtwork.title": "취급 작품 추가",
+    "firstValue.gallery.uploadArtwork.desc":
+      "재고가 의미를 갖는 순간은 적절한 사람에게 조용히 공유할 수 있을 때예요.",
+    "firstValue.gallery.createRoom.title": "프라이빗 룸 만들기",
+    "firstValue.gallery.createRoom.desc":
+      "특정 컬렉터나 큐레이터를 위해 소수의 작품을 정리해 보내보세요.",
+    "firstValue.gallery.reviewRequests.title": "접근 요청 검토",
+    "firstValue.gallery.reviewRequests.desc":
+      "그대로 승인하거나, 한 작품으로 한정하거나, 30일 동안만 열어줄 수 있어요.",
+    "firstValue.gallery.openRelationships.title": "관계 데스크 열기",
+    "firstValue.gallery.openRelationships.desc":
+      "각 대화가 어떻게 이어졌는지 조용히 메모해두세요.",
+    "firstValue.gallery.reviewInquiries.title": "문의에 답하기",
+    "firstValue.gallery.reviewInquiries.desc":
+      "짧고 차분한 답이 가격 견적보다 관계를 더 멀리 끌고 가요.",
+
+    "firstValue.curator.saveOrFollow.title": "작가·작품 저장",
+    "firstValue.curator.saveOrFollow.desc":
+      "조립 전에 조용한 리서치 인덱스를 먼저 쌓아두세요.",
+    "firstValue.curator.createRoom.title": "쇼트리스트·룸 만들기",
+    "firstValue.curator.createRoom.desc":
+      "후보를 묶어두면 나중에 전시 아이디어가 출발할 자리가 생겨요.",
+    "firstValue.curator.requestAccess.title": "스튜디오 맥락 요청",
+    "firstValue.curator.requestAccess.desc":
+      "필요한 설명·가격·소장 가능 여부를 작가에게 정중히 요청해보세요.",
+    "firstValue.curator.openRelationships.title": "관계 맥락 다시 보기",
+    "firstValue.curator.openRelationships.desc":
+      "지금까지 작가·갤러리와 어떤 대화를 나눴는지 한자리에 모아둬요.",
+
+    "firstValue.collector.saveOrFollow.title": "작품 저장·작가 팔로우",
+    "firstValue.collector.saveOrFollow.desc":
+      "기억이 먼저예요. 관심은 천천히 조용한 문의로 자라날 수 있어요.",
+    "firstValue.collector.reviewInquiries.title": "문의 내역 다시 보기",
+    "firstValue.collector.reviewInquiries.desc":
+      "작가와 주고받은 대화를 확인하고 준비됐을 때 답해보세요.",
+    "firstValue.collector.requestAccess.title": "예의 있는 접근 요청",
+    "firstValue.collector.requestAccess.desc":
+      "관심이 분명할 때 요청해보세요. 무엇을 공개할지는 작가가 결정해요.",
+    "firstValue.collector.openRelationships.title": "관계 데스크 열기",
+    "firstValue.collector.openRelationships.desc":
+      "이미 대화를 나눈 작가·갤러리를 한곳에서 추적할 수 있어요.",
+
+    "firstValue.multi.uploadArtwork.title": "내 작업 한 점 올리기",
+    "firstValue.multi.uploadArtwork.desc":
+      "한 점만 올려도 Abstract 의 나머지 화면이 다르게 읽혀요.",
+    "firstValue.multi.saveOrFollow.title": "다시 보고 싶은 것 저장",
+    "firstValue.multi.saveOrFollow.desc":
+      "감상자로서의 사용도 만드는 사람으로서의 사용만큼 정당해요.",
+    "firstValue.multi.createRoom.title": "조용한 룸 만들기",
+    "firstValue.multi.createRoom.desc":
+      "내 작업을 보여줄 때도, 팔로우 중인 작품을 정리할 때도 모두 유용해요.",
+    "firstValue.multi.openRelationships.title": "관계 데스크 열기",
+    "firstValue.multi.openRelationships.desc":
+      "모드를 오가도 잊고 싶지 않은 대화를 한곳에 모아둬요.",
+
+    // ─── Sprint 7 — Gentle mode hints (Phase E) ───
+    "studio.context.studio": "지금은 스튜디오를 운영하는 흐름이에요.",
+    "studio.context.viewing": "지금은 컬렉터처럼 감상하는 흐름이에요.",
+    "studio.context.delegate": "지금은 {name} 님을 위해 작업 중이에요.",
+
+    // ─── Sprint 7 — Persona-aware empty states (Phase C) ───
+    "empty.library.title": "아직 작품이 없어요.",
+    "empty.library.why":
+      "라이브러리는 작품이 ‘작품 세계’가 되는 자리예요. 검색·편집·공유의 출발점이에요.",
+    "empty.library.whatNext":
+      "먼저 세 점 정도를 올려보세요. 제목·이야기·공개 범위는 그 뒤에 천천히 다듬으면 돼요.",
+    "empty.library.cta": "작품 올리기",
+    "empty.shortlists.title": "아직 만든 룸이 없어요.",
+    "empty.shortlists.why":
+      "룸은 작품을 공개 매장으로 바꾸지 않고도, 특정한 한 사람이나 작은 그룹에게 조용히 공유하는 방법이에요.",
+    "empty.shortlists.whatNext":
+      "한 명의 컬렉터·큐레이터·갤러리·스튜디오 방문자에게 어울릴 조용한 룸 하나를 먼저 만들어보세요.",
+    "empty.shortlists.cta": "룸 만들기",
+    "empty.relationships.title": "아직 쌓인 관계가 없어요.",
+    "empty.relationships.why":
+      "관계는 누군가가 작품을 저장하거나 문의하거나 접근을 요청하거나 프라이빗 룸을 받았을 때 쌓이기 시작해요.",
+    "empty.relationships.whatNext":
+      "작품을 공유하거나 프라이빗 룸을 만들면, 맥락은 자연스럽게 이곳에 도착해요.",
+    "empty.relationships.cta": "프라이빗 룸 만들기",
+    "empty.requests.title": "아직 접근 요청이 없어요.",
+    "empty.requests.why":
+      "접근 요청은 비공개로 둔 가격·소장 가능 여부·이야기 같은 정보를 누군가 정중히 보고 싶을 때 도착해요.",
+    "empty.requests.whatNext":
+      "한두 작품의 공개 범위를 좁혀두면, 의미 있는 요청이 자연스럽게 만들어져요.",
+    "empty.requests.cta": "공개 범위 점검",
+    "empty.visibility.title": "아직 공개 범위 결정이 없어요.",
+    "empty.visibility.why":
+      "공개 범위는 무엇이 그대로 도착하고 무엇이 조용한 요청 뒤에 열릴지 정하는 자리예요.",
+    "empty.visibility.whatNext":
+      "프리셋에서 출발해보세요. 작품마다의 세부 항목은 나중에 천천히 다듬을 수 있어요.",
+    "empty.visibility.cta": "프리셋 고르기",
   },
 } as const;
 

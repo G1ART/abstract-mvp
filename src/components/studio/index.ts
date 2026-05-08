@@ -3,6 +3,7 @@ export { StudioHeroPanel } from "./StudioHeroPanel";
 export { StudioSignals, type StudioSignal } from "./StudioSignals";
 export { StudioNextActions, type NextAction } from "./StudioNextActions";
 export { StudioNextStepsRail } from "./StudioNextStepsRail";
+export { FirstValuePathPanel } from "./FirstValuePathPanel";
 export { StudioSectionNav, type StudioSection } from "./StudioSectionNav";
 export {
   StudioOperationGrid,

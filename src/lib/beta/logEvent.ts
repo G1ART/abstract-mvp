@@ -70,7 +70,20 @@ export type BetaEventName =
   | "private_room_selected_work_inquiry_clicked"
   | "access_grant_lifecycle_changed"
   | "persona_action_card_clicked"
-  | "persona_action_card_secondary_clicked";
+  | "persona_action_card_secondary_clicked"
+  // ─── Sprint 7 — First-Value Activation Telemetry ───
+  // Allowlisted payload keys (see src/lib/persona/activationTelemetry.ts):
+  //   surface, persona_mode, action_id, action_kind, milestone_key,
+  //   acting_as, locale.
+  // Forbidden in payload: profile_id, owner_profile_id, principal_id,
+  // viewer_id, room_token, email, price_amount, note_body, message_body,
+  // relationship_name, inquirer_name. Enforced by the sanitize wrapper.
+  | "first_value_panel_viewed"
+  | "first_value_action_clicked"
+  | "first_value_action_completed"
+  | "persona_mode_hint_seen"
+  | "persona_mode_hint_clicked"
+  | "activation_milestone_reached";
 
 /**
  * Best-effort first-party analytics for beta (RLS: insert own user_id only).

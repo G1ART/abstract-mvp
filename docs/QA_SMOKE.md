@@ -14,6 +14,7 @@ affected feature will fail at insert / RPC time. **Apply migrations in order**.
 | `supabase/migrations/20260607000000_relationship_access_enforcement_hardening.sql` (Sprint 5.2) | Adds `visibility_subject_belongs_to_owner` validator helper, recreates resolver/upsert/create-request/resolve-request to call it, adds `cancel_access_request` RPC + drops `access_requests_update_requester_cancel` policy, adds `get_artwork_passport_for_viewer` and `get_room_for_viewer_by_token` redacted RPCs, adds `resolve_visibility_for_preview` for owner preview-as | `/artwork/[id]` 500 (`function get_artwork_passport_for_viewer does not exist`); `/room/[token]` 500 (`function get_room_for_viewer_by_token does not exist`); `/my/access-requests` cancel button errors (`function cancel_access_request does not exist`); AccessRequestModal shows generic error because `create_access_request` returns `record` instead of expected `jsonb { request, duplicate }` |
 | `supabase/migrations/20260608000000_sprint6_phase0_and_relationship_desk.sql` (Sprint 6) | Re-emits `get_artwork_passport_for_viewer` with explicit allowlists (drops `external_artists.invite_email` and internal `is_public` from viewer payload). Adds attribution-safe `resolve_room_source_from_token(text, uuid)`. Creates `relationship_private_notes` table + RLS + `upsert_relationship_private_note` RPC. Adds `get_relationship_desk_for_owner` and `get_relationship_card_for_owner` RPCs. Adds additive `resolve_access_request_v2` for grant lifecycle. | Without this: viewer artwork payloads still leak `invite_email`; `/artwork/[id]?fromRoom=...` still pulls full room metadata; `/my/relationships` 500 (`function get_relationship_desk_for_owner does not exist`); private note save errors (`relation does not exist`). |
 | `supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql` (Sprint 6 hotfix v3) | Re-emits `get_artwork_passport_for_viewer` to (a) cast the visibility enum to text before coalescing — `coalesce(v_aw.visibility::text, '')` — fixing `invalid input value for enum artwork_visibility: ""` on every viewer call; and (b) restore the real `public.claims` schema in the inner subquery (`c.claim_type` / `c.subject_profile_id` / `c.work_id`) — earlier hotfix attempts referenced fictional columns (`c.role`, `c.is_primary`, `c.sort_order`, `c.profile_id`, `c.artwork_id`) that produced `column c.role does not exist`. Phase 0 redaction is preserved (no `to_jsonb`, no `invite_email`); the `presence` block (`price`/`availability`/`description` boolean signals) is restored to keep the Sprint 5.2 UI gate semantics. **Paste guidance:** dollar tag is `$hotfix$` and the header comments deliberately omit single quotes — see `.cursor/rules/release-workflow.mdc §1-1` (apostrophes inside `--` line comments confuse the dashboard splitter and surface as `relation "v_aw" does not exist (42P01)` on Run). | Without this: every artwork detail click (logged in or out, follower or stranger) fails with either 22P02 (enum) or `column c.role does not exist`. **Apply immediately after Sprint 6 SQL; safe to re-run if v1/v2 of the hotfix was applied.** |
+| `supabase/migrations/20260620000000_sprint7_phase0_passport_owner_minimization.sql` (Sprint 7 Phase 0.1) | Single function redefine for `get_artwork_passport_for_viewer` — when the viewer is not owner / active delegate writer **and** the owner profile is not public (`coalesce(profiles.is_public, true) = false`), the nested `'profiles'` block returns `bio / main_role / roles` as `null`. Identity 4-key (`id / username / display_name / avatar_url`) is preserved so artwork credits still render. DTO shape unchanged — `RedactedArtworkPassport.profiles` already declares all three nullable. **Paste guidance:** single function, dollar tag `$pport$`, no SECTION split. Safe to re-run. | Without this: nested owner profile still leaks `bio / main_role / roles` to anonymous + unrelated viewers regardless of the owner's `is_public` opt-out, defeating the existing public profile gate. **Apply after Sprint 6.1 SQL.** |
 | `supabase/migrations/20260610000000_sprint6_1_principal_scoping_and_minimization.sql` (Sprint 6.1) | Re-emits the Relationship Desk RPC trio (`get_relationship_desk_for_owner`, `get_relationship_card_for_owner`, `upsert_relationship_private_note`) so each accepts `p_owner_profile_id` (default null → `auth.uid()`) and authorizes via `auth.uid() = v_owner OR is_active_account_delegate_writer(v_owner)`. **Drops the legacy 3/1/2-arg overloads** (otherwise PostgREST could resolve to the old un-validated body). Trims the desk row payload (`private_note_preview` → `has_private_note` + `private_note_updated_at`) and removes named viewer surveillance from the card (`shortlist_views` join + `last_viewed_at` gone; `was_shared_or_granted` boolean added). Re-emits `get_artwork_passport_for_viewer` once more to redact `created_by` for non-owner / non-delegate-writer viewers. **Paste guidance:** 4 sections, letters-only `$a$`/`$b$`/`$c$`/`$d$` tags, header comments are apostrophe-free — paste each section separately. | Without this: a delegate-writer using acting-as on `/my/relationships` would still see / write the delegate's OWN desk, not the principal's. Desk lists would still ship the raw 120-char note body. The Relationship Card would still expose `last_viewed_at` (named passive viewer signal). The artwork passport would still echo `created_by` to anonymous viewers. **Apply after the Sprint 6 hotfix.** |
 
 ### Sprint 6 — section-by-section apply (REQUIRED)
@@ -235,6 +236,56 @@ where n.nspname='public' and p.proname='get_artwork_passport_for_viewer';
 **Public artwork passport DTO.**
 
 8. As anonymous (logged-out) browser, open any public artwork. DevTools → response of `get_artwork_passport_for_viewer` → confirm `artwork.created_by` is `null`. Sign in as the artwork's owner → reload → `artwork.created_by` is now the real uploader id. Sign in as a stranger → `created_by` is again `null`.
+
+### Sprint 7 — Persona First-Value & Activation manual smoke (15 min)
+
+Sprint 7 introduces:
+
+- **One Supabase migration** — `20260620000000_sprint7_phase0_passport_owner_minimization.sql` (single function redefine; paste whole file → Run).
+- **FirstValuePathPanel** on `/my` (replaces the rail content next to the StudioHero, with `StudioNextStepsRail` kept as a defence-in-depth fallback).
+- **4-scope grant narrowing UI** inside `/my/network?tab=requests` (default row stays calm; expanded detail offers Approve / Approve for this work / Approve for 30 days / Decline).
+- **6 new activation telemetry events**, all routed through the allowlist sanitizer.
+- **Persona-aware empty states** on `/my/library`, `/my/shortlists`, `/my/network?tab=relationships`, `/my/network?tab=requests`, `/my/visibility`.
+
+**Phase 0.1 — passport owner minimization (5 min).**
+
+1. Apply the new migration in dashboard SQL Editor (paste whole file → Run; dollar tag `$pport$`, no SECTION split needed).
+2. As a private-profile owner (`profiles.is_public = false`) sign in and open one of your own public artworks. DevTools → response of `get_artwork_passport_for_viewer` → confirm `artwork.profiles.bio / main_role / roles` still present (you are the owner).
+3. Sign out, open the same artwork as anonymous viewer. Confirm `artwork.profiles.bio / main_role / roles` are now `null`. `id / username / display_name / avatar_url` remain so the credit line still renders.
+4. As a third sign-in (different user, not delegate-writer for the owner), confirm same redaction as step 3.
+5. Sign in as an active delegate-writer for the owner, reload — confirm `bio / main_role / roles` are visible again (treated as the principal).
+6. As a sanity gate, open a *public* profile owner's artwork (`profiles.is_public = true`) → confirm `bio / main_role / roles` always present regardless of viewer.
+
+**Phase 0.2 — grant v2 narrowing UI (3 min).**
+
+7. Open `/my/network?tab=requests`. Confirm the row default tone is calm (single Approve / Decline with a small "승인 옵션 보기" toggle on the right). Click the toggle → narrowing panel slides open with 4 buttons: 그대로 승인 / 이 작품만 승인 / 30일 동안 승인 / 거절.
+8. Click "이 작품만 승인" on a profile-wide request that targets an artwork — confirm the access_grant row in DB carries `subject_type = 'artwork'` and the right `subject_id`.
+9. Click "30일 동안 승인" on another request — confirm the resulting grant has `expires_at` ~30 days from now (±1h).
+10. Open the network tab Network Activity (DevTools console / Supabase log) — confirm the `access_grant_lifecycle_changed` event fires with `{ scope: <chosen>, surface: "network_hub" }`. **No** `profile_id`, `viewer_id`, or message body in the payload.
+
+**FirstValuePathPanel (`/my`) — per persona (5 min).**
+
+11. **Artist with works (`role = artist`, `artworkCount ≥ 1`)** — open `/my`. Confirm the panel kicker reads *오늘 스튜디오에서 시작할 일*; title *작품 세계를 정리하는 다음 단계*. Top action is a primary dark pill (e.g. *작품 설명 보강*); next two are quiet white pills. Max 3 actions visible.
+12. **Empty/new artist (`profileCompleteness < 70` and `artworkCount = 0`)** — sign in as a freshly created account. Confirm the panel surfaces *프로필 기본 정리* and *첫 작품 올리기* as the primary/secondary actions (no marketing copy, no progress bar).
+13. **Acting-as / gallery-like operator** — flip into acting-as. Confirm:
+    - kicker becomes *지금 위임 받은 작업*;
+    - title becomes *오늘 운영할 관계*;
+    - footer hint reads *지금은 {principal display name} 님을 위해 작업 중이에요* (and the name renders only on screen — not in any telemetry payload);
+    - CTAs route to owner-scoped surfaces (room / access requests / relationship desk for the principal).
+14. **Collector-heavy account (no own artworks, has saves/follows)** — confirm panel kicker reads *오늘 감상하면 좋은 일*; actions emphasise *작품 저장·작가 팔로우* / *문의 내역 다시 보기* / *예의 있는 접근 요청* — never demands the user become an artist.
+15. **All-clear case** — for an account that has done everything (≥3 works, visibility set, room created, followed someone) confirm the panel still shows 3 actions (deeper-value fallbacks: *프라이빗 룸 만들기* / *관계 데스크 열기* / *저장·팔로우*). It must NEVER show "프로필 완성도가 높고…모든 알림·메시지를 체크했어요!" as the terminal state.
+
+**Activation telemetry privacy (2 min).**
+
+16. With DevTools Network tab open, mount `/my`. Confirm a single `first_value_panel_viewed` request fires (POST to `beta_analytics_events`). Inspect the payload — only the keys `surface`, `persona_mode`, `acting_as`, `locale` should be present (and optionally `action_*` for click events).
+17. Click any first-value action pill. Confirm a `first_value_action_clicked` event fires with `action_id`, `action_kind`, `persona_mode`, `acting_as`, `locale` only. **Confirm none of the following appear:** `profile_id`, `owner_profile_id`, `principal_id`, `viewer_id`, `room_token`, `email`, `price_amount`, `note_body`, `message_body`, `relationship_name`, `inquirer_name`.
+18. Repeat under acting-as. Confirm `acting_as: true` is the only signal of delegate context — the principal id is **not** in the payload.
+
+**Empty states (1 min each).**
+
+19. Open `/my/library` on an account with 0 artworks → empty state reads "왜 / 무엇 / 다음" 3-sentence shape with an Upload CTA (no bare "No artworks yet").
+20. Same for `/my/shortlists` (no rooms) and `/my/network?tab=relationships` (no relationships) and `/my/network?tab=requests` (no pending). Each has a quiet primary CTA leading to a meaningful next surface.
+21. Open `/my/visibility` — quiet helper banner above the preset selector explains why visibility matters (no surfacing of "no decisions yet" as a terminal state).
 
 ### Sprint 6.2 — Network Hub manual smoke (10 min)
 

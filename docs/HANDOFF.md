@@ -2,6 +2,122 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 7: Persona First-Value Paths & Activation Learning Loop
+
+**무엇을 바꿨나.** 깊이 있게 만들어둔 관계/가시성/룸 스파인을 사용자 입장에서 "지금 무엇부터 하면 의미가 있는가" 로 번역하는 **first-value translation layer** 도입. Sprint 7 작업지시서 + Addendum 의 UI/UX 계약을 모두 충족하도록 구현했고, Phase 0 의 캐리오버 두 건도 함께 닫음.
+
+### 1. Phase 0 캐리오버 클로저
+
+**0.1 — Passport DTO nested owner profile minimization (SQL).** `get_artwork_passport_for_viewer` 의 nested `'profiles'` 블록이 그동안 `bio / main_role / roles` 를 무조건 노출하던 문제를 해소. 이제는 `viewer = owner` 또는 active delegate writer 가 아니고, 동시에 `coalesce(profiles.is_public, true) = false` 인 경우, 세 필드를 NULL 로 강등. DTO 모양은 그대로 유지(`RedactedArtworkPassport.profiles` 는 이미 세 필드를 nullable 로 선언하고 있어 클라이언트 호환). Identity 4-key (`id / username / display_name / avatar_url`) 는 attribution 을 위해 유지.
+
+**0.2 — Grant v2 narrowing UI 배선.** Sprint 6 에서 API-ready 로 출하된 `resolve_access_request_v2` 를 calmest v1 UI 로 배선. 디폴트 row 는 그대로 single Approve / Decline (calm 유지), expanded detail 안에서 "승인 옵션 보기" 토글을 누르면 4-button narrowing pad 가 등장: **그대로 승인 / 이 작품만 승인 / 30일 동안 승인 / 거절**. 어댑터 (`src/lib/access/resolveV2Adapter.ts`) 가 4 scope 을 RPC 인자로 매핑하므로 호출자는 declarative.
+
+### 2. Phase A — Persona Action Grammar 확장
+
+`src/lib/persona/actionGrammar.ts` 에 Sprint 7 작업지시서가 요구한 `FirstValueAction` / `FirstValueActionKind` / `getFirstValueActions(input)` selector 를 **additively** 추가. 기존 `ActionPath` / `FIRST_VALUE_PATHS` / `getFirstValuePaths` 는 unchanged (인접 호출자/Sprint 6 테스트 깨지지 않음).
+
+핵심 selector 규칙:
+
+- 결정론적 priority + signal-driven urgency boost (예: `pendingAccessRequestCount > 0` 이면 gallery 의 `review_access_requests` 가 top 3 로 부상).
+- 한 번에 최대 3개 반환.
+- "all clear" dead state 방지 — 모든 기본을 마친 사용자에게도 deeper-value 액션 (relationships / room / save_or_follow) 을 fallback 으로 보장.
+- Persona 결정은 `src/lib/persona/resolvePersonaMode.ts` 에 별도 분리: `actingAs` 면 gallery 카탈로그, owner-like + viewer-like 활동이 둘 다 있으면 multi_persona, 그 외엔 가장 owner-leaning 한 역할 우선.
+
+### 3. Phase B — `/my` FirstValuePathPanel
+
+`src/components/studio/FirstValuePathPanel.tsx` 신설. `/my` 의 StudioHeroPanel `rail` 슬롯 (기존 "오늘 하면 좋은 일" 자리) 을 차지. 레이아웃: `[kicker] / [title] / [one-sentence subtitle] / [primary pill] [secondary pill] [secondary pill]`. 디자인 톤은 기존 StudioNextStepsRail 의 zinc-50 + rounded-2xl 패밀리에 맞춤 (절대 marketing banner 화 X).
+
+핵심 안전장치 — selector 가 0 액션을 반환하는 극단의 경우 (e.g. 알 수 없는 페르소나) `StudioNextStepsRail` 을 fallback 으로 자동 렌더 (`fallback={<StudioNextStepsRail …/>}`). 회귀 위험 0.
+
+### 4. Phase C — 페르소나 빈상태 5곳
+
+다음 5곳의 EmptyState 카피를 "왜 이게 의미 있는가 / 무엇을 먼저 하면 되는가 / 다음에 무엇이 일어나는가" 의 3-문장 패턴으로 통일:
+
+- `/my/library` — 작품이 0개일 때 "라이브러리는 작품이 ‘작품 세계’가 되는 자리예요" + Upload CTA.
+- `/my/shortlists` — 룸이 0개일 때 "룸은 작품을 공개 매장으로 바꾸지 않고도…".
+- `/my/network?tab=relationships` (`RelationshipDeskPanel`) — "관계는 누군가가 작품을 저장하거나 문의하거나…" + Create-room CTA.
+- `/my/network?tab=requests` (`AccessRequestsPanel`) — "접근 요청은 비공개로 둔 가격·소장 가능 여부…" + Visibility CTA.
+- `/my/visibility` — preset selector 위에 quiet helper banner 한 줄 추가 ("프리셋에서 출발해보세요…").
+
+### 5. Phase D — Activation Telemetry Spine
+
+`src/lib/persona/activationTelemetry.ts` 신설. 6개 신규 이벤트가 `BetaEventName` 에 추가됨:
+
+```
+first_value_panel_viewed
+first_value_action_clicked
+first_value_action_completed
+persona_mode_hint_seen
+persona_mode_hint_clicked
+activation_milestone_reached
+```
+
+**Defence in depth.** `sanitizeActivationPayload` 가 allowlist (`surface / persona_mode / action_id / action_kind / milestone_key / acting_as / locale`) 외의 모든 키를 런타임에서 strip. Forbidden 키 (`profile_id`, `owner_profile_id`, `principal_id`, `viewer_id`, `room_token`, `email`, `price_amount`, `note_body`, `message_body`, `relationship_name`, `inquirer_name`) 는 호출자가 실수로 넘기더라도 절대 `beta_analytics_events` 테이블에 도달 못 함. `acting_as` 는 strict boolean 으로 강제 coerce. 비-원시 값 (object / array) 도 reject.
+
+### 6. Phase E — Gentle Mode Switching
+
+FirstValuePathPanel 의 kicker / footer 에 차분한 한 줄 컨텍스트 라벨 (i18n `studio.context.{studio|viewing|delegate}`). hard switcher 는 만들지 않음 (Addendum §1 의 "no heavy role switcher" 원칙). `actingAsProfileId` 활성 시 → `studio.context.delegate` ("지금은 {name} 님을 위해 작업 중이에요") 표기. 표시명은 `profile.display_name` (이미 effectiveProfileId 로 fetch 한 principal 의 것). principal id 는 telemetry 에 절대 포함 X.
+
+### 7. 변경된 파일 목록
+
+신규:
+
+- `supabase/migrations/20260620000000_sprint7_phase0_passport_owner_minimization.sql`
+- `src/lib/access/resolveV2Adapter.ts`
+- `src/lib/persona/activationTelemetry.ts`
+- `src/lib/persona/resolvePersonaMode.ts`
+- `src/components/studio/FirstValuePathPanel.tsx`
+- `tests/sprint7-passport-owner-minimization.test.ts`
+- `tests/first-value-paths.test.ts`
+- `tests/activation-telemetry.test.ts`
+- `tests/sprint7-grant-v2-wiring.test.ts`
+
+수정:
+
+- `src/lib/persona/actionGrammar.ts` (FirstValueAction / FirstValueActionKind / FIRST_VALUE_ACTION_KINDS / getFirstValueActions / toTelemetryActionPayload 추가)
+- `src/lib/beta/logEvent.ts` (BetaEventName 에 6개 활성화 이벤트 추가)
+- `src/lib/i18n/messages.ts` (firstValue.* / studio.context.* / empty.* / accessRequestInbox.narrow.* 키 EN+KO 추가)
+- `src/components/network/AccessRequestsPanel.tsx` (4-scope narrowing 토글 + 빈상태)
+- `src/components/network/RelationshipDeskPanel.tsx` (페르소나 빈상태)
+- `src/app/my/library/page.tsx`, `src/app/my/shortlists/page.tsx`, `src/app/my/visibility/page.tsx` (페르소나 빈상태/helper)
+- `src/app/my/page.tsx` (FirstValuePathPanel wire + selector input + delegateDisplayName)
+- `src/components/studio/index.ts` (FirstValuePathPanel export)
+- `package.json` (4개 npm script)
+- `docs/HANDOFF.md`, `docs/QA_SMOKE.md`
+
+### 8. Supabase SQL
+
+**적용 필요.** dashboard SQL Editor 에 `supabase/migrations/20260620000000_sprint7_phase0_passport_owner_minimization.sql` 전체를 paste → Run. 단일 함수 redefine 이라 SECTION 단위 분할 불요. dollar tag 는 letters-only `$pport$` 사용.
+
+### 9. 환경 변수
+
+변경 없음.
+
+### 10. Verified
+
+- `npm run test:sprint7-passport-owner-minimization` ok
+- `npm run test:first-value-paths` ok
+- `npm run test:activation-telemetry` ok
+- `npm run test:sprint7-grant-v2-wiring` ok
+- `npm run test:sprint6-trust-floor` / `test:persona-grammar` / `test:relationship-desk` / `test:sprint6-delegation-principal` / `test:relationship-card-privacy` / `test:privacy-token-audit` / `test:access-enforcement` / `test:visibility-sql-contract` / `test:relationship-access` / `test:access-request` / `test:inquiry-source` / `test:sprint6-2-network-hub` 전부 ok
+- `npx tsc --noEmit` ok
+- `npm run build` ok
+- `npm run lint` — 신규 lint 0건 (기존 baseline 유지)
+
+### 11. Known limitations / next sprint candidates
+
+- `missingArtworkContextCount` / `relationshipCount` / `hasPrivateNote` 는 현재 selector input 으로 `null` 을 넘김 (서버에서 정확한 카운트를 아직 별도 RPC 로 제공하지 않음). selector 는 `null` 을 "unknown → 액션 유지" 로 안전하게 다루지만, 다음 sprint 에서 이 세 카운트를 정밀화하면 `add_artwork_context` / `open_relationships` 의 dismiss 정확도가 더 올라감.
+- `first_value_action_completed` 이벤트는 정의만 추가; emission 은 다음 sprint 의 milestone-detection 작업에서 wire (Sprint 7 은 `first_value_action_clicked` + `activation_milestone_reached` helper 까지만 노출).
+- Phase 0.1 의 SQL 은 함수 1개 redefine 이라 quote 위험 낮지만, `release-workflow.mdc` 의 SECTION 가이드는 "함수 정의 2개 이상" 일 때만 적용되므로 그대로 paste 한 번에 Run 가능.
+
+### 12. Recommended next sprint
+
+- **Activation milestone detection**: 클라이언트가 첫 번째 작품 업로드 / 첫 룸 생성 / 첫 접근 요청 승인을 감지하는 곳에서 `activation_milestone_reached` emission 추가. 이미 panel 에서 `first_value_action_clicked` 를 잡고 있으므로, completion 신호만 붙이면 funnel 이 닫힘.
+- **First-value action ↔ guide tour 연동**: 사용자가 panel 의 한 액션을 따라간 직후 해당 페이지의 mini-tour 를 자동 트리거 (현재 tour 는 사용자가 "도움말 보기" 를 직접 눌러야 함).
+- **Multi-persona explicit hint**: 현재는 자동 detection 만 있음. "지금은 컬렉터로 보고 있어요 — 스튜디오로 전환" 같은 1-tap 컨텍스트 토글을 추가하면 multi-persona 사용자 만족도가 더 올라갈 듯.
+
+---
+
 ## 2026-05-07 — Sprint 6.2 polish: tab reorder + Korean line-wrap fix
 
 **무엇을 바꿨나.** 사용자 피드백 반영 두 건.

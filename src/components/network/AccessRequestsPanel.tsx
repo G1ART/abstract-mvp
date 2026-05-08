@@ -17,15 +17,17 @@ import { useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { supabase } from "@/lib/supabase/client";
-import {
-  listAccessRequestsForMe,
-  resolveAccessRequest,
-} from "@/lib/supabase/relationshipAccess";
+import { listAccessRequestsForMe } from "@/lib/supabase/relationshipAccess";
 import type {
   AccessRequest,
   AccessRequestStatus,
 } from "@/lib/visibility/types";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
+import {
+  ACCESS_GRANT_SCOPES,
+  resolveAccessRequestWithScope,
+  type AccessGrantScope,
+} from "@/lib/access/resolveV2Adapter";
 
 type FilterKey = "all" | "pending" | "resolved";
 
@@ -60,6 +62,7 @@ export function AccessRequestsPanel() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("pending");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showNarrowFor, setShowNarrowFor] = useState<string | null>(null);
   const [actingId, setActingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -103,15 +106,15 @@ export function AccessRequestsPanel() {
     return rows.filter((r) => statusToFilter(r.status) === filter);
   }, [rows, filter]);
 
-  const handleAction = async (
+  const handleScopedAction = async (
     request: AccessRequest,
-    action: "approve" | "decline"
+    scope: AccessGrantScope
   ) => {
     setActingId(request.id);
     setErrorMessage(null);
-    const { data, error } = await resolveAccessRequest({
-      requestId: request.id,
-      action,
+    const { data, error } = await resolveAccessRequestWithScope({
+      request,
+      scope,
     });
     setActingId(null);
     if (error || !data) {
@@ -126,21 +129,42 @@ export function AccessRequestsPanel() {
       status: data.status,
       surface: "access_request_inbox",
     });
-    if (action === "approve") {
+    logBetaEventSync("access_grant_lifecycle_changed", {
+      scope,
+      subject_type: request.subject_type,
+      surface: "network_hub",
+    });
+    if (scope !== "decline") {
       logBetaEventSync("access_grant_created", {
         subject_type: request.subject_type,
         subject_id: request.subject_id ?? undefined,
         field_key: request.field_key,
+        scope,
         surface: "access_request_inbox",
       });
       logBetaEventSync("approved_viewer_added", {
         subject_type: request.subject_type,
         subject_id: request.subject_id ?? undefined,
         field_key: request.field_key,
+        scope,
         surface: "access_request_inbox",
       });
     }
     setRows((prev) => prev.map((r) => (r.id === request.id ? data : r)));
+    setShowNarrowFor(null);
+  };
+
+  const scopeLabelKey = (scope: AccessGrantScope): MessageKey => {
+    switch (scope) {
+      case "all":
+        return "accessRequestInbox.narrow.all";
+      case "this_work":
+        return "accessRequestInbox.narrow.thisWork";
+      case "thirty_days":
+        return "accessRequestInbox.narrow.thirtyDays";
+      case "decline":
+        return "accessRequestInbox.narrow.decline";
+    }
   };
 
   if (!ownerId) {
@@ -168,7 +192,11 @@ export function AccessRequestsPanel() {
           {t("accessRequestInbox.loading")}
         </p>
       ) : visible.length === 0 ? (
-        <EmptyState title={t("accessRequestInbox.empty")} />
+        <EmptyState
+          title={t("empty.requests.title")}
+          description={`${t("empty.requests.why")} ${t("empty.requests.whatNext")}`}
+          action={{ label: t("empty.requests.cta"), href: "/my/visibility" }}
+        />
       ) : (
         <ul className="flex flex-col gap-3">
           {visible.map((row) => {
@@ -240,11 +268,25 @@ export function AccessRequestsPanel() {
                           <span />
                         )}
                         {row.status === "pending" && (
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center justify-end gap-2">
                             <button
                               type="button"
                               onClick={() =>
-                                void handleAction(row, "decline")
+                                setShowNarrowFor((prev) =>
+                                  prev === row.id ? null : row.id
+                                )
+                              }
+                              aria-expanded={showNarrowFor === row.id}
+                              className="rounded-full border border-transparent bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-zinc-500 hover:text-zinc-700"
+                            >
+                              {showNarrowFor === row.id
+                                ? t("accessRequestInbox.narrow.toggleHide")
+                                : t("accessRequestInbox.narrow.toggleShow")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void handleScopedAction(row, "decline")
                               }
                               disabled={actingId === row.id}
                               className="rounded-full border border-zinc-300 bg-white px-3.5 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 disabled:cursor-not-allowed"
@@ -254,7 +296,7 @@ export function AccessRequestsPanel() {
                             <button
                               type="button"
                               onClick={() =>
-                                void handleAction(row, "approve")
+                                void handleScopedAction(row, "all")
                               }
                               disabled={actingId === row.id}
                               className="rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300"
@@ -264,6 +306,43 @@ export function AccessRequestsPanel() {
                           </div>
                         )}
                       </div>
+                      {row.status === "pending" && showNarrowFor === row.id && (
+                        <div className="flex flex-col gap-2 rounded-xl border border-zinc-200/70 bg-zinc-50/60 px-3 py-3">
+                          <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                            {t("accessRequestInbox.narrow.label")}
+                          </p>
+                          <p className="text-xs text-zinc-600">
+                            {t("accessRequestInbox.narrow.hint")}
+                          </p>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            {ACCESS_GRANT_SCOPES.map((scope) => {
+                              const isPrimary = scope === "all";
+                              const isDanger = scope === "decline";
+                              const base =
+                                "rounded-full px-3 py-1.5 text-[11px] font-medium disabled:cursor-not-allowed";
+                              const tone = isPrimary
+                                ? "bg-zinc-900 text-white hover:bg-zinc-800 disabled:bg-zinc-300"
+                                : isDanger
+                                ? "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50"
+                                : "border border-zinc-300 bg-white text-zinc-700 hover:bg-zinc-50";
+                              return (
+                                <button
+                                  key={scope}
+                                  type="button"
+                                  data-scope={scope}
+                                  onClick={() =>
+                                    void handleScopedAction(row, scope)
+                                  }
+                                  disabled={actingId === row.id}
+                                  className={`${base} ${tone}`}
+                                >
+                                  {t(scopeLabelKey(scope))}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </FloorPanel>

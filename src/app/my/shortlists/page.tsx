@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { ConfirmActionDialog } from "@/components/ds/ConfirmActionDialog";
+import { EmptyState } from "@/components/ds/EmptyState";
 import { useT } from "@/lib/i18n/useT";
 import {
   createShortlist,
@@ -139,9 +140,11 @@ function ShortlistsContent() {
       {loading ? (
         <p className="mt-8 text-zinc-500">{t("common.loading")}</p>
       ) : lists.length === 0 ? (
-        <div className="mt-8 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-center">
-          <p className="text-sm font-medium text-zinc-800">{t("boards.empty")}</p>
-          <p className="mt-1 text-xs text-zinc-500">{t("boards.emptyHint")}</p>
+        <div className="mt-8">
+          <EmptyState
+            title={t("empty.shortlists.title")}
+            description={`${t("empty.shortlists.why")} ${t("empty.shortlists.whatNext")}`}
+          />
         </div>
       ) : (
         <ul className="mt-6 space-y-3">

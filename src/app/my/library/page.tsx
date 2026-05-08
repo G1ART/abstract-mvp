@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate } from "@/components/AuthGate";
 import { ArtworkCard } from "@/components/ArtworkCard";
+import { EmptyState } from "@/components/ds/EmptyState";
 import { useT } from "@/lib/i18n/useT";
 import { getSession } from "@/lib/supabase/auth";
 import {
@@ -225,7 +226,11 @@ export default function MyLibraryPage() {
         {loading ? (
           <p className="text-zinc-500">{t("common.loading")}</p>
         ) : items.length === 0 ? (
-          <p className="text-zinc-600">{t("library.empty")}</p>
+          <EmptyState
+            title={t("empty.library.title")}
+            description={`${t("empty.library.why")} ${t("empty.library.whatNext")}`}
+            action={{ label: t("empty.library.cta"), href: "/upload" }}
+          />
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {items.map((a) => (

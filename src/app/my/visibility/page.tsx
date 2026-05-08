@@ -172,6 +172,9 @@ function VisibilityPageInner() {
       />
 
       <div className="flex flex-col gap-6">
+        <p className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 px-4 py-3 text-xs text-zinc-600 break-keep">
+          {t("empty.visibility.why")} {t("empty.visibility.whatNext")}
+        </p>
         <FloorPanel padding="md" aria-labelledby="visibility-preset-label">
           <SectionLabel id="visibility-preset-label" as="h2" className="mb-4">
             {t("visibility.preset.section")}
