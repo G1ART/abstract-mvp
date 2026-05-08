@@ -39,7 +39,9 @@ const ROOT = path.resolve(__dirname, "..");
   // client module loads (top-level `import` would hoist past it).
   const {
     ACTIVATION_EVENT_NAMES,
+    ACTIVATION_MILESTONE_KEYS,
     ALLOWED_ACTIVATION_PAYLOAD_KEYS,
+    deriveActivationMilestones,
     sanitizeActivationPayload,
   } = await import("../src/lib/persona/activationTelemetry");
   // 1 — event allowlist parity.
@@ -176,6 +178,135 @@ const ROOT = path.resolve(__dirname, "..");
       `activationTelemetry.ts must not reference forbidden payload key "${k}"`
     );
   }
+
+  // 8 — Sprint 7.1 Phase E — deriveActivationMilestones is pure,
+  // returns ONLY allowlisted milestone keys, and never derives a key
+  // from missing signals.
+  const expectedMilestones = [
+    "artist_profile_started",
+    "artist_three_works_uploaded",
+    "artist_first_visibility_set",
+    "gallery_first_room_created",
+    "collector_first_save_or_follow",
+    "first_relationship_note_saved",
+  ];
+  assert.deepEqual(
+    [...ACTIVATION_MILESTONE_KEYS].sort(),
+    [...expectedMilestones].sort(),
+    "ACTIVATION_MILESTONE_KEYS must match the Sprint 7.1 work-order allowlist"
+  );
+
+  // Empty input → no milestones.
+  const empty = deriveActivationMilestones({
+    personaMode: "artist",
+    actingAs: false,
+    profileCompleteness: 0,
+    artworkCount: 0,
+    publicArtworkCount: 0,
+    missingArtworkContextCount: 0,
+    roomCount: 0,
+    pendingAccessRequestCount: 0,
+    relationshipCount: 0,
+    hasPrivateNote: false,
+    savedOrFollowedCount: 0,
+  });
+  assert.deepEqual(
+    empty,
+    [],
+    "deriveActivationMilestones must return [] for an empty new account"
+  );
+
+  // Artist with 3 works + 30% profile + 1 public work fires three keys.
+  const artistFlourishing = deriveActivationMilestones({
+    personaMode: "artist",
+    actingAs: false,
+    profileCompleteness: 35,
+    artworkCount: 3,
+    publicArtworkCount: 1,
+    missingArtworkContextCount: 0,
+    roomCount: 0,
+    pendingAccessRequestCount: 0,
+    relationshipCount: 0,
+    hasPrivateNote: false,
+    savedOrFollowedCount: 0,
+  });
+  assert.deepEqual(
+    [...artistFlourishing].sort(),
+    [
+      "artist_first_visibility_set",
+      "artist_profile_started",
+      "artist_three_works_uploaded",
+    ],
+    "artist with 35% profile, 3 works, 1 public must reach the three artist milestones"
+  );
+
+  // Gallery room creation gates on persona == gallery.
+  const ownerWithRooms = deriveActivationMilestones({
+    personaMode: "gallery",
+    actingAs: false,
+    profileCompleteness: 0,
+    artworkCount: 0,
+    publicArtworkCount: 0,
+    missingArtworkContextCount: 0,
+    roomCount: 2,
+    pendingAccessRequestCount: 0,
+    relationshipCount: 0,
+    hasPrivateNote: false,
+    savedOrFollowedCount: 0,
+  });
+  assert.ok(
+    ownerWithRooms.includes("gallery_first_room_created"),
+    "gallery with rooms must reach gallery_first_room_created"
+  );
+  // Same shape but persona artist must NOT reach gallery_first_room_created.
+  const artistWithRooms = deriveActivationMilestones({
+    personaMode: "artist",
+    actingAs: false,
+    profileCompleteness: 0,
+    artworkCount: 0,
+    publicArtworkCount: 0,
+    missingArtworkContextCount: 0,
+    roomCount: 2,
+    pendingAccessRequestCount: 0,
+    relationshipCount: 0,
+    hasPrivateNote: false,
+    savedOrFollowedCount: 0,
+  });
+  assert.ok(
+    !artistWithRooms.includes("gallery_first_room_created"),
+    "artist persona must not derive gallery_first_room_created"
+  );
+
+  // 9 — derived keys are a strict subset of the allowlist.
+  const milestoneSet = new Set<string>(expectedMilestones);
+  const everything = deriveActivationMilestones({
+    personaMode: "gallery",
+    actingAs: true,
+    profileCompleteness: 100,
+    artworkCount: 50,
+    publicArtworkCount: 50,
+    missingArtworkContextCount: 0,
+    roomCount: 5,
+    pendingAccessRequestCount: 5,
+    relationshipCount: 10,
+    hasPrivateNote: true,
+    savedOrFollowedCount: 5,
+  });
+  for (const k of everything) {
+    assert.ok(
+      milestoneSet.has(k),
+      `derived milestone "${k}" must be in the canonical allowlist`
+    );
+  }
+
+  // 10 — wrapper source must use logBetaEventSync via logActivation
+  // (i.e. milestone emission cannot bypass the sanitizer).
+  assert.ok(
+    /emitActivationMilestonesOnce[\s\S]*logActivationMilestoneReached/.test(
+      wrapperSrc
+    ),
+    "emitActivationMilestonesOnce must route through logActivationMilestoneReached"
+  );
 
   console.log("activation-telemetry.test.ts: ok");
 })().catch((err) => {

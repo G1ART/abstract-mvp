@@ -35,9 +35,14 @@ import {
   type ExhibitionWithCredits,
 } from "@/lib/supabase/exhibitions";
 import { getProfileById } from "@/lib/supabase/profiles";
-import { getBoardSaveSignals, type BoardSaveSignal } from "@/lib/supabase/shortlists";
+import {
+  getBoardSaveSignals,
+  listMyShortlists,
+  type BoardSaveSignal,
+} from "@/lib/supabase/shortlists";
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { getRelationshipDeskForOwner } from "@/lib/supabase/relationshipAccess";
+import type { RelationshipDeskRow } from "@/lib/visibility/types";
 import {
   FirstValuePathPanel,
   StudioHero,
@@ -83,6 +88,14 @@ export default function MyPage() {
   // StudioHero "네트워크" pill. Calm presence-only signal — never
   // surfaced as a numeric badge to keep the hero quiet.
   const [pendingNetworkActivityCount, setPendingNetworkActivityCount] = useState<number>(0);
+  // Sprint 7.1 Phase D — real signals for the first-value selector.
+  // `roomCount` is the principal's actual shortlist count (not the
+  // misleading "boards containing this artist's work" proxy).
+  // `relationshipDeskRows` lets us derive `relationshipCount` and
+  // `hasPrivateNote` from the same desk fetch we already perform for
+  // the StudioHero network pill — no extra request, no N+1.
+  const [myShortlistsCount, setMyShortlistsCount] = useState<number | null>(null);
+  const [relationshipDeskRows, setRelationshipDeskRows] = useState<RelationshipDeskRow[]>([]);
   const [computedCompleteness, setComputedCompleteness] = useState<number | null>(null);
   const [, setLoading] = useState(true);
   const [, setError] = useState<string | null>(null);
@@ -200,44 +213,41 @@ export default function MyPage() {
           boardSignalRes,
           delegationsRes,
           deskRes,
+          shortlistsRes,
         ] = await Promise.all([
           getProfileViewsCount(profileData.id, 7),
           getMyPriceInquiryCount(effectiveProfileId ?? undefined),
           getMyPendingClaimsCount(effectiveProfileId ?? undefined),
           effectiveProfileId ? Promise.resolve(0) : getUnreadConnectionMessageCount(),
-          // Only meaningful for the authenticated user's own artwork set.
-          // When acting-as a gallery, suppress to avoid leaking wrong
-          // scope; the signal is scoped to auth.uid()'s works regardless.
           effectiveProfileId
             ? Promise.resolve({ data: { boards_count: 0, savers_count: 0 }, error: null })
             : getBoardSaveSignals(),
-          // Pending inbound count only for the real user; when acting-as,
-          // delegate-side context belongs to the original session, not the
-          // managed account. RPC scopes by auth.uid() either way.
           effectiveProfileId
             ? Promise.resolve({ data: { sent: [], received: [] }, error: null })
             : listMyDelegations(),
-          // Sprint 6.2 — Network Hub activity ping. The desk RPC already
-          // applies the Sprint 6.1 acting-as authorization (delegate
-          // writers get the same view as the principal). We sum
-          // `pending_access_request_count + open_inquiry_count` across
-          // rows; if the user has no related profiles yet the sum is 0
-          // and the hero pill renders without a dot.
           getRelationshipDeskForOwner({
             ownerProfileId: effectiveProfileId ?? profileData.id,
             filter: "all",
           }),
+          // Sprint 7.1 Phase D — principal-aware shortlist count for
+          // first-value `roomCount`. Solo path → forProfileId null
+          // (resolved to auth.uid() server-side). Acting-as path → the
+          // managed principal id. Replaces the misleading proxy that
+          // used `boards_count` (boards containing the user's work).
+          listMyShortlists({ forProfileId: effectiveProfileId }),
         ]);
         setProfileViewsCount(countRes.data);
         setPriceInquiryCount(inquiryCountRes.data ?? 0);
         setPendingClaimsCount(claimsCountRes.data ?? 0);
         setUnreadMessagesCount(messagesUnread ?? 0);
         setBoardSaveSignal(boardSignalRes.data ?? null);
+        setMyShortlistsCount((shortlistsRes.data ?? []).length);
         const received = delegationsRes.data?.received ?? [];
         setPendingInboundDelegations(
           received.filter((d) => d.status === "pending").length
         );
         const deskRows = deskRes.data ?? [];
+        setRelationshipDeskRows(deskRows);
         let networkActivity = 0;
         for (const row of deskRows) {
           networkActivity +=
@@ -336,30 +346,56 @@ export default function MyPage() {
       artworkCount: stats?.artworksCount ?? artworks.length ?? 0,
       savedOrFollowedCount: stats?.followingCount ?? 0,
     });
+
+    // Sprint 7.1 Phase D — replace null/proxy signals with real ones.
+    // - roomCount: principal's actual shortlists, NOT
+    //   `boardSaveSignal.boards_count` (which counts boards
+    //   *containing* the user's work — a different concept).
+    // - relationshipCount / hasPrivateNote: derived from the desk
+    //   rows we already loaded above (no extra request).
+    // - missingArtworkContextCount: lightweight heuristic over the
+    //   artworks array we already have. Counts works whose
+    //   description is empty. This is intentionally narrow to avoid
+    //   unbounded data-layer churn; the selector treats `null` as
+    //   "unknown" so a small sample still beats no signal.
+    const realRoomCount = myShortlistsCount;
+    const deskRowsLoaded = relationshipDeskRows.length > 0;
+    const realRelationshipCount = deskRowsLoaded
+      ? relationshipDeskRows.length
+      : null;
+    const realHasPrivateNote = deskRowsLoaded
+      ? relationshipDeskRows.some((r) => r.has_private_note === true)
+      : null;
+    const realMissingContext =
+      artworks.length === 0
+        ? null
+        : artworks.filter((a) => {
+            const desc = (a as { description?: string | null }).description;
+            return !desc || desc.trim().length === 0;
+          }).length;
+
     return {
       personaMode,
       actingAs: !!actingAsProfileId,
       profileCompleteness: computedCompleteness,
       artworkCount: stats?.artworksCount ?? artworks.length ?? 0,
       publicArtworkCount: artworks.length,
-      // We don't yet ship a precise "missing context" count from the
-      // server; pass null so the selector treats the signal as
-      // unknown (keeps the action visible until the user clears it).
-      missingArtworkContextCount: null,
-      roomCount: boardSaveSignal?.boards_count ?? null,
+      missingArtworkContextCount: realMissingContext,
+      roomCount: realRoomCount,
       pendingAccessRequestCount: pendingNetworkActivityCount,
-      relationshipCount: null,
-      hasPrivateNote: null,
+      relationshipCount: realRelationshipCount,
+      hasPrivateNote: realHasPrivateNote,
       savedOrFollowedCount: stats?.followingCount ?? 0,
     };
   }, [
     profile,
     actingAsProfileId,
     computedCompleteness,
-    artworks.length,
+    artworks,
     stats?.artworksCount,
     stats?.followingCount,
-    boardSaveSignal?.boards_count,
+    myShortlistsCount,
+    relationshipDeskRows,
     pendingNetworkActivityCount,
   ]);
 

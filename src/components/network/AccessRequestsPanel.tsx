@@ -6,6 +6,15 @@
 // render inline as a tab inside the unified Network hub at /my/network.
 // The legacy /my/access-requests route now redirects to
 // /my/network?tab=requests and reuses this same panel.
+//
+// Sprint 7.1 Phase A: principal-aware. When the operator is acting-as
+// a delegate, this panel must read the *principal's* access requests,
+// not `auth.uid()`'s own. We mirror the RelationshipDeskPanel pattern
+// (`effectiveOwnerProfileId = actingAsProfileId ?? sessionUserId`) so
+// both Network Hub tabs share one principal source of truth. The
+// Sprint 5 RLS policies on `access_requests` already allow
+// `is_active_account_delegate_writer(owner_profile_id)`, so passing
+// the principal id is sufficient — no extra elevation required.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -17,11 +26,12 @@ import { useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { requireSessionUid } from "@/lib/supabase/requireSessionUid";
 import { supabase } from "@/lib/supabase/client";
-import { listAccessRequestsForMe } from "@/lib/supabase/relationshipAccess";
-import type {
-  AccessRequest,
-  AccessRequestStatus,
-} from "@/lib/visibility/types";
+import { useActingAs } from "@/context/ActingAsContext";
+import {
+  listAccessRequestsForOwnerEnriched,
+  type AccessRequestRowEnriched,
+} from "@/lib/supabase/relationshipAccess";
+import type { AccessRequestStatus } from "@/lib/visibility/types";
 import { logBetaEventSync } from "@/lib/beta/logEvent";
 import {
   ACCESS_GRANT_SCOPES,
@@ -57,8 +67,9 @@ function relativeTime(iso: string, locale: string): string {
 
 export function AccessRequestsPanel() {
   const { t, locale } = useT();
-  const [ownerId, setOwnerId] = useState<string | null>(null);
-  const [rows, setRows] = useState<AccessRequest[]>([]);
+  const { actingAsProfileId, actingAsLabel } = useActingAs();
+  const [sessionUserId, setSessionUserId] = useState<string | null>(null);
+  const [rows, setRows] = useState<AccessRequestRowEnriched[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterKey>("pending");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -66,10 +77,14 @@ export function AccessRequestsPanel() {
   const [actingId, setActingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const refresh = useCallback(async (uid: string) => {
+  // Sprint 7.1 Phase A — principal scope. Acting-as never swaps
+  // `auth.uid()`; the principal id flows through React context.
+  const effectiveOwnerProfileId = actingAsProfileId ?? sessionUserId;
+
+  const refresh = useCallback(async (ownerProfileId: string) => {
     setLoading(true);
-    const { data } = await listAccessRequestsForMe({
-      ownerProfileId: uid,
+    const { data } = await listAccessRequestsForOwnerEnriched({
+      ownerProfileId,
       status: "all",
       limit: 100,
     });
@@ -87,13 +102,23 @@ export function AccessRequestsPanel() {
         uid = null;
       }
       if (cancelled || !uid) return;
-      setOwnerId(uid);
-      await refresh(uid);
+      setSessionUserId(uid);
     })();
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveOwnerProfileId) return;
+    // Defer the fetch (which calls setState) one frame so the lint
+    // rule `react-hooks/set-state-in-effect` doesn't trip. Mirrors the
+    // RelationshipDeskPanel pattern.
+    const handle = requestAnimationFrame(() => {
+      void refresh(effectiveOwnerProfileId);
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [effectiveOwnerProfileId, refresh]);
 
   const filterOptions: LaneOption<FilterKey>[] = [
     { id: "all", label: t("accessRequestInbox.filter.all") },
@@ -107,7 +132,7 @@ export function AccessRequestsPanel() {
   }, [rows, filter]);
 
   const handleScopedAction = async (
-    request: AccessRequest,
+    request: AccessRequestRowEnriched,
     scope: AccessGrantScope
   ) => {
     setActingId(request.id);
@@ -150,7 +175,11 @@ export function AccessRequestsPanel() {
         surface: "access_request_inbox",
       });
     }
-    setRows((prev) => prev.map((r) => (r.id === request.id ? data : r)));
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === request.id ? { ...data, requester: r.requester } : r
+      )
+    );
     setShowNarrowFor(null);
   };
 
@@ -167,7 +196,7 @@ export function AccessRequestsPanel() {
     }
   };
 
-  if (!ownerId) {
+  if (!effectiveOwnerProfileId) {
     return (
       <p className="py-8 text-center text-sm text-zinc-500">
         {t("common.loading")}
@@ -175,8 +204,21 @@ export function AccessRequestsPanel() {
     );
   }
 
+  const actingAsHint =
+    actingAsProfileId && actingAsLabel
+      ? t("accessRequestInbox.actingAsHint").replace("{label}", actingAsLabel)
+      : null;
+
   return (
     <div data-tour="network-requests-panel">
+      {actingAsHint && (
+        <p
+          data-acting-as="true"
+          className="mb-3 rounded-xl border border-dashed border-zinc-200 bg-zinc-50/70 px-3 py-2 text-[11px] text-zinc-600 break-keep"
+        >
+          {actingAsHint}
+        </p>
+      )}
       <div className="mb-5">
         <LaneChips
           variant="sort"
@@ -230,8 +272,17 @@ export function AccessRequestsPanel() {
                           )}
                         </span>
                       </p>
-                      <p className="mt-0.5 text-[11px] text-zinc-500">
-                        {row.requester_profile_id.slice(0, 8)} ·{" "}
+                      <p className="mt-0.5 text-[11px] text-zinc-500 break-keep">
+                        {(() => {
+                          const r = row.requester;
+                          const name =
+                            r?.display_name?.trim() ||
+                            (r?.username ? `@${r.username}` : null) ||
+                            t("accessRequestInbox.requesterUnknown");
+                          const role = r?.main_role?.trim() || null;
+                          return role ? `${name} · ${role}` : name;
+                        })()}
+                        {" · "}
                         {relativeTime(row.created_at, locale)}
                       </p>
                     </div>

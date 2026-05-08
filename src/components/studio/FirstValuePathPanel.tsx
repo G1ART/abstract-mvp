@@ -31,6 +31,7 @@ import {
   type PersonaMode,
 } from "@/lib/persona/actionGrammar";
 import {
+  emitActivationMilestonesOnce,
   logFirstValueActionClicked,
   logFirstValuePanelViewed,
   logPersonaModeHintSeen,
@@ -115,7 +116,17 @@ export function FirstValuePathPanel({
         locale,
       });
     }
-  }, [actions.length, personaMode, actingAs, locale]);
+    // Sprint 7.1 Phase E — emit activation milestones once per device
+    // per persona. Dedup is handled inside the helper via localStorage,
+    // so re-renders during a single session never re-fire. Payload is
+    // privacy-safe (counts/booleans only — no IDs, names, or notes).
+    emitActivationMilestonesOnce({
+      input: selectorInput,
+      actingAs,
+      locale,
+      surface: "first_value_panel",
+    });
+  }, [actions.length, personaMode, actingAs, locale, selectorInput]);
 
   if (actions.length === 0) {
     return <>{fallback ?? null}</>;

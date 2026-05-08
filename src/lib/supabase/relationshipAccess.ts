@@ -380,6 +380,48 @@ export async function listAccessRequestsForMe(args: {
   return { data: (data ?? []) as AccessRequest[], error: null };
 }
 
+/**
+ * Sprint 7.1 Phase B — Owner-principal-aware enriched access requests
+ * list. Backed by `list_access_requests_for_owner_v2` SECURITY DEFINER
+ * RPC, which validates the caller is owner or active delegate writer
+ * for `ownerProfileId` and joins a small allowlisted set of requester
+ * identity fields. Use this instead of `listAccessRequestsForMe` when
+ * the caller has the owner principal id (acting-as aware) and wants
+ * row-level requester display.
+ */
+export type AccessRequestRowEnriched = AccessRequest & {
+  requester:
+    | {
+        id: string;
+        display_name: string | null;
+        username: string | null;
+        avatar_url: string | null;
+        main_role: string | null;
+      }
+    | null;
+};
+
+export async function listAccessRequestsForOwnerEnriched(args: {
+  ownerProfileId: string;
+  status?: AccessRequestStatus | "all" | "resolved";
+  limit?: number;
+}): Promise<{ data: AccessRequestRowEnriched[]; error: Error | null }> {
+  const { data, error } = await supabase.rpc(
+    "list_access_requests_for_owner_v2",
+    {
+      p_owner_profile_id: args.ownerProfileId,
+      p_status: args.status ?? "all",
+      p_limit: args.limit ?? 100,
+    }
+  );
+  if (error) return { data: [], error };
+  const payload = (data ?? null) as { rows?: unknown } | null;
+  const rows = Array.isArray(payload?.rows)
+    ? (payload!.rows as AccessRequestRowEnriched[])
+    : [];
+  return { data: rows, error: null };
+}
+
 export async function resolveAccessRequest(args: {
   requestId: string;
   action: "approve" | "decline";

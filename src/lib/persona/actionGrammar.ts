@@ -542,11 +542,15 @@ function curatorCatalog(): FirstValueAction[] {
       completionSignal: "curator_first_shortlist_created",
     }),
     build("curator", {
+      // Sprint 7.1 Phase C — request_access is a *requester-side* action.
+      // It is initiated from artwork / artist context, never from the
+      // owner inbox. Route to /feed so the curator can surface a work
+      // that earns the request.
       id: "curator.request_access",
       actionKind: "request_access",
       titleKey: "firstValue.curator.requestAccess.title",
       descriptionKey: "firstValue.curator.requestAccess.desc",
-      href: "/my/network?tab=requests",
+      href: "/feed",
       priority: 30,
       completionSignal: "curator_first_access_request_sent",
     }),
@@ -583,11 +587,14 @@ function collectorCatalog(): FirstValueAction[] {
       completionSignal: "collector_inquiry_reviewed",
     }),
     build("collector", {
+      // Sprint 7.1 Phase C — collectors request access from a saved
+      // work or an artist surface, not from an owner inbox. Route to
+      // /my/library so an existing save becomes the natural entry.
       id: "collector.request_access",
       actionKind: "request_access",
       titleKey: "firstValue.collector.requestAccess.title",
       descriptionKey: "firstValue.collector.requestAccess.desc",
-      href: "/my/network?tab=requests",
+      href: "/my/library",
       priority: 30,
       completionSignal: "collector_access_request_sent",
     }),

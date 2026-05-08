@@ -204,6 +204,46 @@ function emptyInput(persona: PersonaMode) {
     );
   }
 
+  // 9 — Sprint 7.1 Phase C — request_access routing for *requester-side*
+  // personas must not point at the owner inbox. The owner inbox lives
+  // at /my/network?tab=requests; collectors and curators initiate
+  // requests from artwork or feed surfaces instead.
+  for (const persona of ["collector", "curator"] as const) {
+    const actions = getFirstValueActions({
+      ...emptyInput(persona),
+      pendingAccessRequestCount: 3, // make sure urgency doesn't sneak in
+    });
+    const ra = actions.find((a) => a.actionKind === "request_access");
+    if (ra) {
+      assert.ok(
+        !ra.href.includes("/my/network"),
+        `${persona}: request_access href must not point at the owner inbox (got "${ra.href}")`
+      );
+    }
+    // None of this persona's actions should be a review_access_requests.
+    assert.ok(
+      !actions.some((a) => a.actionKind === "review_access_requests"),
+      `${persona}: must not surface review_access_requests (owner inbox)`
+    );
+  }
+
+  // 10 — Sprint 7.1 Phase C — gallery review action MAY route to the
+  // owner inbox (it is the only persona that should).
+  {
+    const galleryUrgent = {
+      ...emptyInput("gallery"),
+      pendingAccessRequestCount: 3,
+    };
+    const top3 = getFirstValueActions(galleryUrgent);
+    const review = top3.find((a) => a.actionKind === "review_access_requests");
+    assert.ok(review, "gallery: must surface review_access_requests under urgency");
+    assert.ok(
+      review!.href.includes("/my/network") &&
+        review!.href.includes("requests"),
+      "gallery: review_access_requests should route to /my/network?tab=requests"
+    );
+  }
+
   console.log("first-value-paths.test.ts: ok");
 })().catch((err) => {
   console.error(err);

@@ -2393,6 +2393,9 @@ export const messages = {
     "accessRequestInbox.narrow.decline": "Decline",
     "accessRequestInbox.narrow.toggleShow": "Show approval options",
     "accessRequestInbox.narrow.toggleHide": "Hide approval options",
+    "accessRequestInbox.actingAsHint":
+      "Managing access requests for {label}.",
+    "accessRequestInbox.requesterUnknown": "Unknown profile",
     "inquiries.accessRequestsChip": "Access requests · {n} pending",
 
     // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
@@ -2599,9 +2602,9 @@ export const messages = {
     "firstValue.curator.createRoom.title": "Create a shortlist or room",
     "firstValue.curator.createRoom.desc":
       "Group candidates so a future exhibition idea has a starting point.",
-    "firstValue.curator.requestAccess.title": "Request studio context",
+    "firstValue.curator.requestAccess.title": "Find a work that earns the request",
     "firstValue.curator.requestAccess.desc":
-      "Ask the artist for the description, price, or availability you need — politely.",
+      "Open the feed, then ask for studio context from the work itself — never from an inbox.",
     "firstValue.curator.openRelationships.title": "Revisit relationship context",
     "firstValue.curator.openRelationships.desc":
       "See what you have already exchanged with each artist or gallery.",
@@ -2612,9 +2615,9 @@ export const messages = {
     "firstValue.collector.reviewInquiries.title": "Revisit your inquiries",
     "firstValue.collector.reviewInquiries.desc":
       "See open conversations with artists and reply when ready.",
-    "firstValue.collector.requestAccess.title": "Request access respectfully",
+    "firstValue.collector.requestAccess.title": "Open a saved work to ask for context",
     "firstValue.collector.requestAccess.desc":
-      "Ask only when you are interested. The artist decides what to share back.",
+      "Start the request from a work you already saved. The artist decides what to share back.",
     "firstValue.collector.openRelationships.title": "Open the Relationship Desk",
     "firstValue.collector.openRelationships.desc":
       "Keep track of artists and galleries you have already engaged with.",
@@ -5051,6 +5054,9 @@ export const messages = {
     "accessRequestInbox.narrow.decline": "거절",
     "accessRequestInbox.narrow.toggleShow": "승인 옵션 보기",
     "accessRequestInbox.narrow.toggleHide": "승인 옵션 접기",
+    "accessRequestInbox.actingAsHint":
+      "{label} 계정의 접근 요청을 관리 중이에요.",
+    "accessRequestInbox.requesterUnknown": "알 수 없는 프로필",
     "inquiries.accessRequestsChip": "접근 요청 · {n}건 대기",
 
     // ─── Sprint 6 — Relationship Desk / Card / Private Notes ───
@@ -5254,9 +5260,9 @@ export const messages = {
     "firstValue.curator.createRoom.title": "쇼트리스트·룸 만들기",
     "firstValue.curator.createRoom.desc":
       "후보를 묶어두면 나중에 전시 아이디어가 출발할 자리가 생겨요.",
-    "firstValue.curator.requestAccess.title": "스튜디오 맥락 요청",
+    "firstValue.curator.requestAccess.title": "요청을 부르는 작품 먼저 찾기",
     "firstValue.curator.requestAccess.desc":
-      "필요한 설명·가격·소장 가능 여부를 작가에게 정중히 요청해보세요.",
+      "피드를 열어 작품 자체에서 스튜디오 맥락을 요청해보세요. 받은 편지함이 시작점이 아니에요.",
     "firstValue.curator.openRelationships.title": "관계 맥락 다시 보기",
     "firstValue.curator.openRelationships.desc":
       "지금까지 작가·갤러리와 어떤 대화를 나눴는지 한자리에 모아둬요.",
@@ -5267,9 +5273,9 @@ export const messages = {
     "firstValue.collector.reviewInquiries.title": "문의 내역 다시 보기",
     "firstValue.collector.reviewInquiries.desc":
       "작가와 주고받은 대화를 확인하고 준비됐을 때 답해보세요.",
-    "firstValue.collector.requestAccess.title": "예의 있는 접근 요청",
+    "firstValue.collector.requestAccess.title": "저장한 작품에서 맥락 요청",
     "firstValue.collector.requestAccess.desc":
-      "관심이 분명할 때 요청해보세요. 무엇을 공개할지는 작가가 결정해요.",
+      "이미 저장한 작품에서 요청을 시작해보세요. 무엇을 공개할지는 작가가 결정해요.",
     "firstValue.collector.openRelationships.title": "관계 데스크 열기",
     "firstValue.collector.openRelationships.desc":
       "이미 대화를 나눈 작가·갤러리를 한곳에서 추적할 수 있어요.",

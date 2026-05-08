@@ -15,6 +15,7 @@ affected feature will fail at insert / RPC time. **Apply migrations in order**.
 | `supabase/migrations/20260608000000_sprint6_phase0_and_relationship_desk.sql` (Sprint 6) | Re-emits `get_artwork_passport_for_viewer` with explicit allowlists (drops `external_artists.invite_email` and internal `is_public` from viewer payload). Adds attribution-safe `resolve_room_source_from_token(text, uuid)`. Creates `relationship_private_notes` table + RLS + `upsert_relationship_private_note` RPC. Adds `get_relationship_desk_for_owner` and `get_relationship_card_for_owner` RPCs. Adds additive `resolve_access_request_v2` for grant lifecycle. | Without this: viewer artwork payloads still leak `invite_email`; `/artwork/[id]?fromRoom=...` still pulls full room metadata; `/my/relationships` 500 (`function get_relationship_desk_for_owner does not exist`); private note save errors (`relation does not exist`). |
 | `supabase/migrations/20260609000000_artwork_passport_enum_cast_hotfix.sql` (Sprint 6 hotfix v3) | Re-emits `get_artwork_passport_for_viewer` to (a) cast the visibility enum to text before coalescing — `coalesce(v_aw.visibility::text, '')` — fixing `invalid input value for enum artwork_visibility: ""` on every viewer call; and (b) restore the real `public.claims` schema in the inner subquery (`c.claim_type` / `c.subject_profile_id` / `c.work_id`) — earlier hotfix attempts referenced fictional columns (`c.role`, `c.is_primary`, `c.sort_order`, `c.profile_id`, `c.artwork_id`) that produced `column c.role does not exist`. Phase 0 redaction is preserved (no `to_jsonb`, no `invite_email`); the `presence` block (`price`/`availability`/`description` boolean signals) is restored to keep the Sprint 5.2 UI gate semantics. **Paste guidance:** dollar tag is `$hotfix$` and the header comments deliberately omit single quotes — see `.cursor/rules/release-workflow.mdc §1-1` (apostrophes inside `--` line comments confuse the dashboard splitter and surface as `relation "v_aw" does not exist (42P01)` on Run). | Without this: every artwork detail click (logged in or out, follower or stranger) fails with either 22P02 (enum) or `column c.role does not exist`. **Apply immediately after Sprint 6 SQL; safe to re-run if v1/v2 of the hotfix was applied.** |
 | `supabase/migrations/20260620000000_sprint7_phase0_passport_owner_minimization.sql` (Sprint 7 Phase 0.1) | Single function redefine for `get_artwork_passport_for_viewer` — when the viewer is not owner / active delegate writer **and** the owner profile is not public (`coalesce(profiles.is_public, true) = false`), the nested `'profiles'` block returns `bio / main_role / roles` as `null`. Identity 4-key (`id / username / display_name / avatar_url`) is preserved so artwork credits still render. DTO shape unchanged — `RedactedArtworkPassport.profiles` already declares all three nullable. **Paste guidance:** single function, dollar tag `$pport$`, no SECTION split. Safe to re-run. | Without this: nested owner profile still leaks `bio / main_role / roles` to anonymous + unrelated viewers regardless of the owner's `is_public` opt-out, defeating the existing public profile gate. **Apply after Sprint 6.1 SQL.** |
+| `supabase/migrations/20260621000000_sprint7_1_access_request_row_identity.sql` (Sprint 7.1 Phase B) | Adds `public.list_access_requests_for_owner_v2(uuid, text, int)` SECURITY DEFINER. Validates caller as owner OR `is_active_account_delegate_writer(p_owner_profile_id)` inside the function body and LEFT JOINs `profiles` on the requester id. Returns a strict allowlist (`display_name`, `username`, `avatar_url`, `main_role`) — no email, bio, roles[], is_public, audience-list membership, or private notes. Single function, dollar tag `$larq$`, safe to re-run. **Apply after Sprint 7 Phase 0.1 SQL** (and depends on the Sprint 5 `access_requests` table existing). | Without this: AccessRequestsPanel falls back to `requester_profile_id.slice(0,8)` UUID fragments instead of human-readable identity, and acting-as principals see 0 rows even when they would otherwise be allowed. |
 | `supabase/migrations/20260610000000_sprint6_1_principal_scoping_and_minimization.sql` (Sprint 6.1) | Re-emits the Relationship Desk RPC trio (`get_relationship_desk_for_owner`, `get_relationship_card_for_owner`, `upsert_relationship_private_note`) so each accepts `p_owner_profile_id` (default null → `auth.uid()`) and authorizes via `auth.uid() = v_owner OR is_active_account_delegate_writer(v_owner)`. **Drops the legacy 3/1/2-arg overloads** (otherwise PostgREST could resolve to the old un-validated body). Trims the desk row payload (`private_note_preview` → `has_private_note` + `private_note_updated_at`) and removes named viewer surveillance from the card (`shortlist_views` join + `last_viewed_at` gone; `was_shared_or_granted` boolean added). Re-emits `get_artwork_passport_for_viewer` once more to redact `created_by` for non-owner / non-delegate-writer viewers. **Paste guidance:** 4 sections, letters-only `$a$`/`$b$`/`$c$`/`$d$` tags, header comments are apostrophe-free — paste each section separately. | Without this: a delegate-writer using acting-as on `/my/relationships` would still see / write the delegate's OWN desk, not the principal's. Desk lists would still ship the raw 120-char note body. The Relationship Card would still expose `last_viewed_at` (named passive viewer signal). The artwork passport would still echo `created_by` to anonymous viewers. **Apply after the Sprint 6 hotfix.** |
 
 ### Sprint 6 — section-by-section apply (REQUIRED)
@@ -236,6 +237,45 @@ where n.nspname='public' and p.proname='get_artwork_passport_for_viewer';
 **Public artwork passport DTO.**
 
 8. As anonymous (logged-out) browser, open any public artwork. DevTools → response of `get_artwork_passport_for_viewer` → confirm `artwork.created_by` is `null`. Sign in as the artwork's owner → reload → `artwork.created_by` is now the real uploader id. Sign in as a stranger → `created_by` is again `null`.
+
+### Sprint 7.1 — First-Value Principal & Routing polish manual smoke (10 min)
+
+Sprint 7.1 hardens Sprint 7's first-value layer along five axes. None of the
+Sprint 7 surfaces should *behave* differently for solo users; the visible
+deltas are concentrated in the acting-as / delegate workflow, in
+`/my/network?tab=requests` row identity, and in the curator/collector
+first-value rail.
+
+- **One Supabase migration** — `20260621000000_sprint7_1_access_request_row_identity.sql` (single SECURITY DEFINER function; paste whole file → Run, dollar tag `$larq$`). Depends on the Sprint 5 `access_requests` table existing.
+- **AccessRequestsPanel acting-as principal scope** — owner / delegate writer parity with RelationshipDeskPanel.
+- **AccessRequestsPanel row identity** — `{display_name} · {role}` instead of UUID 8-char fragment.
+- **First-value routing** — collector/curator `request_access` no longer points at `/my/network?tab=requests`.
+- **First-value signals** — `roomCount` / `relationshipCount` / `hasPrivateNote` derived from real loaded data.
+- **Activation milestone wiring** — 6 new milestone keys, dedup'd per device per persona.
+
+**Phase A + B — acting-as principal + row identity (4 min).**
+
+1. Apply the new migration via dashboard SQL Editor (paste whole file → Run). Verify `select count(*) from public.list_access_requests_for_owner_v2(auth.uid(), 'all', 1);` runs without error after auth.
+2. Sign in as a delegate writer for an owner that has at least one pending access request. Open `/my/network?tab=requests`. Confirm the **calm context line** at the top reads `{owner display name} 계정의 접근 요청을 관리 중이에요.` (KO) / `Managing access requests for {owner display name}.` (EN).
+3. Confirm the rows displayed are the **owner's** access requests, not the delegate's own (cross-check by switching off acting-as in the chip — list should change).
+4. Confirm each row's secondary line is `{display name} · {role}` instead of an 8-character hex fragment. Approve / decline still works (no regression).
+5. As a viewer signed in to a *non-owner / non-delegate* account, attempt the RPC directly via DevTools (`supabase.rpc('list_access_requests_for_owner_v2', { p_owner_profile_id: '<some-other-owner>' })`) → confirm `42501` "not allowed" error.
+
+**Phase C — first-value routing per persona (3 min).**
+
+6. Sign in as a **curator** (role only `curator`). Open `/my`. Confirm the FirstValuePathPanel pill labelled "Find a work that earns the request" / "요청을 부르는 작품 먼저 찾기" routes to **`/feed`** (not `/my/network?tab=requests`). The Network tab should not appear as a first-value action for this persona.
+7. Sign in as a **collector** (role only `collector`). Confirm the equivalent pill routes to **`/my/library`** (not the owner inbox).
+8. Sign in as a **gallery** persona with at least one pending access request. Confirm the urgency-boosted pill `Review pending access requests` routes to `/my/network?tab=requests` (this is the only persona allowed to point there).
+
+**Phase D — real signals (1 min).**
+
+9. As an artist with 0 shortlists / 0 desk relationships, confirm `roomCount` / `relationshipCount` in the FirstValuePathPanel selector input are real zeros (not the misleading "boards containing my work" proxy). Create one shortlist via `/my/shortlists` then reload `/my` — the `create_room` action should now suppress (the underlying signal is real).
+
+**Phase E — milestone telemetry (2 min).**
+
+10. With DevTools open and Supabase request panel filtered to `beta_analytics_events`, reload `/my` as an artist with ≥3 works. Confirm exactly one `activation_milestone_reached` event fires per qualifying milestone (`artist_three_works_uploaded`, etc.), each with payload keys ⊆ `{ surface, persona_mode, milestone_key, acting_as, locale }` and **never** `profile_id` / `owner_profile_id` / `note_body`.
+11. Reload `/my` again — the same milestone events should NOT re-fire (dedup via localStorage `abstract.activation.milestones.v1:{persona}`).
+12. Open DevTools localStorage; confirm the stored value is a JSON array of milestone keys only, no IDs or names.
 
 ### Sprint 7 — Persona First-Value & Activation manual smoke (15 min)
 

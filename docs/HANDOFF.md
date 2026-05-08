@@ -2,6 +2,83 @@
 
 Last updated: 2026-05-07
 
+## 2026-05-07 — Sprint 7.1: First-Value Principal, Routing & Activation Polish
+
+**무엇을 바꿨나.** Sprint 7 의 first-value 레이어가 production-ready 가 되도록 5개 phase 의 정밀 하드닝 패치를 수행했다. 이미 잘 동작하는 부분은 보존하면서, 위임/라우팅/신호 정확성/마일스톤 측정의 작은 누수만 닫는 폴리싱 스프린트.
+
+### 변경 사항 요약
+
+- **Phase A — AccessRequestsPanel 위임 principal 정합** ([src/components/network/AccessRequestsPanel.tsx](src/components/network/AccessRequestsPanel.tsx))
+  - `useActingAs()` 도입 후 `effectiveOwnerProfileId = actingAsProfileId ?? sessionUserId` 패턴으로 교체. 위임자가 acting-as 한 상태에서도 본인이 아닌 **principal 의 access requests** 를 보게 된다 (RelationshipDeskPanel 과 동일한 패턴).
+  - acting-as 활성 시 panel 상단에 조용한 컨텍스트 라인 ("{display_name} 계정의 접근 요청을 관리 중이에요.") 추가. 큰 경고 배너 아님.
+  - `i18n` 키: `accessRequestInbox.actingAsHint`, `accessRequestInbox.requesterUnknown` (EN/KO).
+
+- **Phase B — Access Request Row Identity (SECURITY DEFINER RPC)** ([supabase/migrations/20260621000000_sprint7_1_access_request_row_identity.sql](supabase/migrations/20260621000000_sprint7_1_access_request_row_identity.sql) + [src/lib/supabase/relationshipAccess.ts](src/lib/supabase/relationshipAccess.ts))
+  - 신규 RPC `public.list_access_requests_for_owner_v2(p_owner_profile_id, p_status, p_limit)`. SECURITY DEFINER, 함수 본문에서 caller 가 owner 또는 active delegate writer 인지 직접 검증, profiles 와 LEFT JOIN.
+  - 반환되는 requester 식별 필드는 4개로 strict allowlist: `display_name`, `username`, `avatar_url`, `main_role`. 비공개 프로필이면 `avatar_url` / `main_role` 도 NULL (단, 자기 자신이 보면 노출).
+  - **명시적 비반환**: `email`, `bio`, `roles[]`, `is_public`, `private_note`, audience-list membership.
+  - Client wrapper: `listAccessRequestsForOwnerEnriched` + `AccessRequestRowEnriched` DTO 타입 신설. Panel 의 row UI 가 UUID 8자 fragment 대신 `{display_name} · {role}` 형식으로 렌더.
+
+- **Phase C — First-Value Routing Correction** ([src/lib/persona/actionGrammar.ts](src/lib/persona/actionGrammar.ts) + [src/lib/i18n/messages.ts](src/lib/i18n/messages.ts))
+  - `curator.request_access` href: `/my/network?tab=requests` → `/feed`. Curator 는 owner inbox 가 아니라 **작품/작가 surface 에서** 요청을 시작해야 한다.
+  - `collector.request_access` href: `/my/network?tab=requests` → `/my/library`. Collector 는 **이미 저장한 작품**에서 요청을 시작.
+  - i18n title/desc 도 destination 에 맞게 다듬음 (EN/KO).
+  - `gallery.review_access_requests` 만 owner inbox (`/my/network?tab=requests`) 로 라우팅 (작업지시서 §5 명시).
+
+- **Phase D — 신호 프록시 교체** ([src/app/my/page.tsx](src/app/my/page.tsx))
+  - `roomCount`: `boardSaveSignal.boards_count` (= "내 작품을 담은 보드 수") → `listMyShortlists({ forProfileId })` 로 교체. 진짜 principal 의 shortlist 수.
+  - `relationshipCount`: 항상 `null` → 이미 fetch 중인 `relationshipDeskRows.length` 사용.
+  - `hasPrivateNote`: 항상 `null` → `relationshipDeskRows.some(r => r.has_private_note === true)` 사용.
+  - `missingArtworkContextCount`: `null` → 로드된 `artworks` 의 description 누락 카운트 (lightweight heuristic).
+  - 추가 N+1 없음 — desk rows 는 이미 StudioHero 네트워크 핀의 dot 신호용으로 1회 fetch 중이었음.
+
+- **Phase E — Activation Milestone wiring** ([src/lib/persona/activationTelemetry.ts](src/lib/persona/activationTelemetry.ts) + [src/components/studio/FirstValuePathPanel.tsx](src/components/studio/FirstValuePathPanel.tsx))
+  - `deriveActivationMilestones(input)` 신설 — 순수 deterministic, 입력으로 `FirstValueSelectorInput` 의 카운트/불리언만 사용 (ID/이름/노트 본문 절대 미접근).
+  - 6개 마일스톤 키만 emit 가능: `artist_profile_started`, `artist_three_works_uploaded`, `artist_first_visibility_set`, `gallery_first_room_created`, `collector_first_save_or_follow`, `first_relationship_note_saved`.
+  - `emitActivationMilestonesOnce()` — localStorage 기반 dedup (per-persona). 같은 세션 내 매 렌더마다 재발사 안 됨. 저장값은 마일스톤 키 + persona 만 (식별자 없음).
+  - FirstValuePathPanel 의 view-once effect 에서 1회 호출.
+
+### 신규 / 갱신 테스트
+
+- **신규**: `tests/sprint7-1-principal-network.test.ts` — Phase A + B 의 정합성 정적 검증.
+- **갱신**: `tests/first-value-paths.test.ts` (#9, #10) — collector/curator `request_access` 가 owner inbox 로 라우팅되지 않음을 강제, gallery review action 만 owner inbox 허용.
+- **갱신**: `tests/activation-telemetry.test.ts` (#8–10) — `deriveActivationMilestones` 의 keys allowlist, persona gating, 그리고 emit 경로가 sanitizer 를 우회 못 함을 검증.
+
+### 빌드 / 타입 / 린트
+
+| 검증 | 결과 |
+|---|---|
+| `npm run test:sprint7-1-principal-network` | OK |
+| `npm run test:first-value-paths` | OK |
+| `npm run test:activation-telemetry` | OK |
+| `npm run test:sprint7-passport-owner-minimization` | OK (회귀) |
+| `npm run test:sprint7-grant-v2-wiring` | OK (회귀) |
+| `npm run test:sprint6-2-network-hub` | OK (회귀) |
+| `npm run test:sprint6-delegation-principal` | OK (회귀) |
+| `npm run test:relationship-card-privacy` | OK (회귀) |
+| `npm run test:privacy-token-audit` | OK (335 files / 81 telemetry sites scanned) |
+| `npm run test:inquiry-source` | OK (회귀) |
+| `npx tsc --noEmit` | OK |
+| `npm run lint` | 83 problems (baseline 84 → 1 감소; 우리가 worsen 시키지 않음) |
+| `npm run build` | OK |
+
+### Supabase SQL (적용 필요)
+
+- **`supabase/migrations/20260621000000_sprint7_1_access_request_row_identity.sql`** — Phase B 의 `list_access_requests_for_owner_v2` SECURITY DEFINER 함수. 단일 함수 정의이므로 `apply_migration` MCP 로 한 번에 적용 가능 (이전 sprint 와 동일한 방식).
+
+### ⚠️ 발견된 별도 이슈 (Sprint 7.1 외 범위)
+
+- Production DB 에 **`access_requests`, `access_grants`, `access_audit_events` 등 Sprint 5/6 테이블이 실제로 존재하지 않음** (information_schema 확인 결과 `[]`). 이는 Sprint 5 의 `20260606000000_relationship_access_layer.sql` 을 비롯한 `20260607/20260608/20260610` 마이그레이션이 dashboard 에서 실행되지 않은 것으로 보인다.
+- 결과적으로 AccessRequestsPanel / RelationshipDeskPanel 이 production 에서 항상 빈 결과만 받아왔을 가능성. 본 sprint 의 책임 범위는 아니지만, **사용자가 dashboard SQL Editor 에서 Sprint 5/6/6.1 마이그레이션을 모두 적용한 뒤 본 sprint 7.1 마이그레이션을 적용해야** 한다 (apply_migration MCP 로 일괄 가능).
+
+### 알려진 한계 / 다음 후보
+
+- `missingArtworkContextCount` 는 description 누락만 카운트 (medium/size/story 까진 미포함). 정밀 신호가 필요할 때 가벼운 SQL 카운트 RPC 로 대체 가능.
+- `first_access_request_sent` / `first_access_request_approved` 마일스톤은 신호 부재로 v1 에서 제외 (작업지시서 §7 의 "if signal exists" 단서 따름).
+- 다음 추천: **Sprint 8 — Guided Onboarding & Persona-Specific First Session** (작업지시서 §12).
+
+---
+
 ## 2026-05-07 — Sprint 7: Persona First-Value Paths & Activation Learning Loop
 
 **무엇을 바꿨나.** 깊이 있게 만들어둔 관계/가시성/룸 스파인을 사용자 입장에서 "지금 무엇부터 하면 의미가 있는가" 로 번역하는 **first-value translation layer** 도입. Sprint 7 작업지시서 + Addendum 의 UI/UX 계약을 모두 충족하도록 구현했고, Phase 0 의 캐리오버 두 건도 함께 닫음.
