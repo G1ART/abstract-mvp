@@ -1339,7 +1339,7 @@ export default function BulkUploadPage() {
                     />
                   </th>
                   <th className="p-2 text-left"> </th>
-                  <th className="p-2 text-left">{t("bulk.tableTitle")}</th>
+                  <th className="min-w-[220px] p-2 text-left">{t("bulk.tableTitle")}</th>
                   <th className="p-2 text-left">{t("bulk.year")}</th>
                   <th className="p-2 text-left">{t("bulk.medium")}</th>
                   <th className="p-2 text-left">{t("bulk.ownershipStatus")}</th>
@@ -1370,11 +1370,11 @@ export default function BulkUploadPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-2">
+                      <td className="min-w-[220px] p-2">
                         <input
                           type="text"
                           defaultValue={d.title ?? ""}
-                          className="w-full rounded border border-zinc-300 px-2 py-1"
+                          className="w-full min-w-[200px] rounded border border-zinc-300 px-2 py-1"
                           onBlur={(e) => updateDraftField(d.id, "title", e.target.value)}
                         />
                       </td>

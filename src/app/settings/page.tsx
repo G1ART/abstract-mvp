@@ -304,6 +304,13 @@ export default function SettingsPage() {
   const profileDetailsRef = useRef<HTMLDivElement>(null);
   const initialBaseRef = useRef<Record<string, unknown> | null>(null);
   const initialDetailsRef = useRef<Record<string, unknown> | null>(null);
+  // QA: 커버/아바타/포커스/스테이트먼트-히어로 같은 미디어 필드는 변경 즉시
+  // 자동 저장된다 (persistIdentityField). 그래서 그 필드만 바꾼 뒤 [저장] 을
+  // 누르면 base/details diff 가 비어 "저장할 변경 사항이 없습니다" 가 떴는데,
+  // 실제로는 이미 저장된 상태라 사용자가 실패로 오인했다. 이 ref 로 "마지막
+  // 전체 저장 이후 미디어가 자동 저장된 적 있음" 을 추적해, no-op 저장이라도
+  // 성공 안내를 띄운다.
+  const mediaSavedSinceSaveRef = useRef(false);
   const [maxSelectMessage, setMaxSelectMessage] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -674,6 +681,7 @@ export default function SettingsPage() {
         setIdentityErr(msg);
         throw new Error(msg);
       }
+      mediaSavedSinceSaveRef.current = true;
       setIdentityNotice(t("settings.saveSuccess"));
       setTimeout(() => setIdentityNotice(null), 1500);
     },
@@ -944,7 +952,14 @@ export default function SettingsPage() {
     basePatch = omitUndefined(basePatch);
 
     if (Object.keys(basePatch).length === 0 && Object.keys(detailsPatch).length === 0) {
-      setInfo(t("common.noChanges"));
+      // 폼 필드 변경분은 없지만 헤더/아바타 등 미디어가 자동 저장된 적이 있다면
+      // "변경 없음" 대신 저장 완료로 안내한다 (이미 DB 에 반영된 상태).
+      if (mediaSavedSinceSaveRef.current) {
+        mediaSavedSinceSaveRef.current = false;
+        setSaved(true);
+      } else {
+        setInfo(t("common.noChanges"));
+      }
       return;
     }
 
@@ -973,6 +988,7 @@ export default function SettingsPage() {
       setSaving(false);
       return;
     }
+    mediaSavedSinceSaveRef.current = false;
     try {
       const { data: refreshed } = await getMyProfile();
       const ref = refreshed;

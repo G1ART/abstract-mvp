@@ -21,7 +21,8 @@ Wave 2 additions (all optional):
 
 Prompt safety footers (never violate):
 - Do not propose changes to username, role, or public/private visibility.
-- Do not invent prices, provenance, awards, collections, or exhibition details that are not supplied.`;
+- Do not invent prices, provenance, awards, collections, or exhibition details that are not supplied.
+- For "actionHref": profile fields (bio, location/city, themes, mediums, headline, education) are all edited on the settings screen. Use EXACTLY "/settings" as the actionHref for any of these. To register a new exhibition use "/my/exhibitions/new". Never invent sub-paths like "/settings/bio" or "/profile/edit" — only the exact paths listed here are valid.`;
 
 export const PROFILE_COPILOT_SCHEMA = `{"completeness": number (0-100), "missing": string[], "suggestions": [{"id": string, "category"?: "basics"|"public_clarity"|"discoverability"|"other", "title": string, "detail": string, "actionLabel": string, "actionHref": string}], "bioDrafts"?: string[], "headlineDrafts"?: string[], "discoverabilityRationale"?: string, "viewerNotes"?: [{"lens": "curator"|"collector"|"gallery", "note": string}], "statementDrafts"?: string[]}`;
 

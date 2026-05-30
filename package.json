@@ -36,7 +36,8 @@
     "test:sprint7-grant-v2-wiring": "tsx tests/sprint7-grant-v2-wiring.test.ts",
     "test:sprint7-1-principal-network": "tsx tests/sprint7-1-principal-network.test.ts",
     "test:auth-password-recovery": "tsx tests/auth-password-recovery.test.ts",
-    "test:exhibition-cover-enrichment": "tsx tests/exhibition-cover-enrichment.test.ts"
+    "test:exhibition-cover-enrichment": "tsx tests/exhibition-cover-enrichment.test.ts",
+    "test:ai-action-href-sanitize": "tsx tests/ai-action-href-sanitize.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

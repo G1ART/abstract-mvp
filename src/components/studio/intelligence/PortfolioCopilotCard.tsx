@@ -7,6 +7,7 @@ import { SectionTitle } from "@/components/ds/SectionTitle";
 import { useT } from "@/lib/i18n/useT";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
+import { sanitizeActionHref } from "@/lib/ai/sanitizeActionHref";
 import {
   AiCopyButton,
   AiDisclosureNote,
@@ -216,6 +217,9 @@ export function PortfolioCopilotCard({
                   <ul className="mt-2 flex flex-col gap-2">
                     {items.map((s) => {
                       const isReviewed = !!reviewed[s.id];
+                      // Reject hallucinated paths; only render the CTA when
+                      // it points at a real internal route.
+                      const safeActionHref = sanitizeActionHref(s.actionHref);
                       return (
                         <li
                           key={s.id}
@@ -265,9 +269,9 @@ export function PortfolioCopilotCard({
                             </div>
                           )}
                           <div className="mt-2 flex flex-wrap items-center gap-2">
-                            {s.actionHref && (
+                            {safeActionHref && (
                               <Link
-                                href={s.actionHref}
+                                href={safeActionHref}
                                 onClick={() => {
                                   markAiAccepted(aiEventId, {
                                     feature: "portfolio_copilot",
@@ -277,7 +281,7 @@ export function PortfolioCopilotCard({
                                 className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
                               >
                                 {resolvePortfolioActionLabel(
-                                  s.actionHref,
+                                  safeActionHref,
                                   s.actionLabel,
                                   t,
                                 )}

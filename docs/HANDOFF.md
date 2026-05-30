@@ -1,6 +1,47 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-05-09
+Last updated: 2026-05-29
+
+## 2026-05-29 — QA 오류 리포트 3건 핫픽스 (일괄 업로드 / 설정 저장 / AI 제안 404)
+
+### 1. 일괄 업로드 — 제목 입력칸이 너무 작음 (오류, 2026-05-18)
+
+- **위치**: `src/app/upload/bulk/page.tsx` 초안 목록 테이블의 제목 `<input>`.
+- **원인**: `table-auto` + 8개 컬럼 구조에서 제목 컬럼에만 최소 너비가 없어, 상태 컬럼의 긴 "누락: …" 텍스트가 가로폭을 잠식하면 제목 칸이 ~150px로 쪼그라들었다. `w-full` 은 td 너비의 100%일 뿐 td 자체를 넓혀주지 못함.
+- **수정**: 제목 `<th>`/`<td>` 에 `min-w-[220px]`, input 에 `min-w-[200px]` 부여. 순수 시각, 데이터 흐름 변경 0.
+
+### 2. 헤더 이미지만 수정 후 저장 → "변경 사항 없음" 오메시지 (오류, 2026-05-18)
+
+- **위치**: `src/app/settings/page.tsx`.
+- **원인(데이터 손실 아님, 메시지 오인)**: 커버/아바타/포커스/스테이트먼트-히어로 같은 미디어 필드는 변경 즉시 `persistIdentityField` 로 **자동 저장**된다. 그래서 그 필드만 바꾼 뒤 [저장] 을 누르면 base/details diff 가 비어 `common.noChanges` ("저장할 변경 사항이 없습니다") 가 떴고, 실제로는 이미 저장된 상태라 사용자가 실패로 오인.
+- **수정**: `mediaSavedSinceSaveRef` 도입. 미디어 자동저장 성공 시(`persistIdentityField`) `true`, 전체 저장 성공 시 `false` 리셋. 메인 저장이 diff 없음이지만 미디어가 자동저장된 적 있으면 → "변경 없음" 대신 **성공 메시지(`setSaved(true)` → 초록색 `settings.saveSuccess`)** 표시.
+
+### 3. 프로필 AI 제안 → "작가 소개문/거주도시 추가" 클릭 시 404 (오류, 2026-05-28) — P0
+
+- **위치**: `src/components/studio/intelligence/ProfileCopilotCard.tsx` (+ `PortfolioCopilotCard.tsx`), AI 라우트 `/api/ai/profile-copilot`.
+- **원인**: 제안의 `actionHref` 는 **LLM 이 자유 생성**하는데 실존 경로 allowlist 가 없어, `/settings/bio`·`/profile/edit`·`/settings/location` 같은 **환각 경로**가 그대로 `<Link>` 로 렌더 → 404. ("새로고침만 계속됨" 은 404 페이지 재시도.) `actionHref` 는 코드 어디에서도 검증되지 않았음.
+- **수정**:
+  - 신규 `src/lib/ai/sanitizeActionHref.ts` — `src/app/**` 실존 경로(static set + dynamic regex)로 href 검증. 외부/프로토콜상대/미지 경로는 거부. query/hash 는 보존.
+  - `ProfileCopilotCard`: 무효 href → **`/settings` 폴백** (버튼 항상 동작). bio/location/themes/mediums 는 모두 `/settings` 에서 편집되므로 안전.
+  - `PortfolioCopilotCard`: 무효 href → **버튼 숨김** (보편 폴백이 없는 작품-단위 액션이므로).
+  - 프롬프트(`PROFILE_COPILOT_SYSTEM`) 에 허용 경로 명시(`/settings`, `/my/exhibitions/new`)로 이중 안전장치.
+- **테스트**: `npm run test:ai-action-href-sanitize` (정적/동적/쿼리 통과 + 환각·외부 경로 거부 케이스).
+
+### 검증
+
+- `npm run test:ai-action-href-sanitize` ✅
+- `npx tsc --noEmit` — 신규 에러 0 (사전 `.next/types/routes.d 2.ts` 중복파일 노이즈만)
+- 변경 6개 파일 ESLint — 신규 문제 0 (settings 의 `finalRoles`/`detailsPatch`/`payloadEqual`/useEffect-dep 4건은 사전 노이즈, 이번 diff 무관)
+
+### Supabase SQL
+
+이번 패치는 **코드/UI 변경만**. 새/수정 마이그레이션 없음.
+
+### 환경 변수
+
+변경 없음.
+
+---
 
 ## 2026-05-09 — 피드 누락 전시 핫픽스: cover_image_paths 부족분 자동 채움 (display-only)
 

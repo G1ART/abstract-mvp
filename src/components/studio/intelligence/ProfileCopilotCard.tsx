@@ -8,6 +8,7 @@ import { useT } from "@/lib/i18n/useT";
 import type { MessageKey } from "@/lib/i18n/messages";
 import { aiApi } from "@/lib/ai/browser";
 import { markAiAccepted } from "@/lib/ai/accept";
+import { sanitizeActionHref } from "@/lib/ai/sanitizeActionHref";
 import {
   AiCopyButton,
   AiDisclosureNote,
@@ -307,23 +308,25 @@ function SuggestionRow({
   const onAccept = () => {
     markAiAccepted(aiEventId, { feature: "profile_copilot", via: "link" });
   };
+  // Never trust the model's href. Profile fields (bio / location / themes /
+  // mediums) are all edited on /settings, so any unknown/hallucinated path
+  // falls back there instead of 404-ing.
+  const safeHref = sanitizeActionHref(suggestion.actionHref) ?? "/settings";
   return (
     <li className="rounded-xl border border-zinc-200 bg-white p-3">
       <p className="text-sm font-medium text-zinc-900">{suggestion.title}</p>
       {suggestion.detail && (
         <p className="mt-1 text-xs text-zinc-600">{suggestion.detail}</p>
       )}
-      {suggestion.actionHref && (
-        <div className="mt-2">
-          <Link
-            href={suggestion.actionHref}
-            onClick={onAccept}
-            className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
-          >
-            {suggestion.actionLabel || t("ai.action.apply")}
-          </Link>
-        </div>
-      )}
+      <div className="mt-2">
+        <Link
+          href={safeHref}
+          onClick={onAccept}
+          className="inline-flex items-center rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-800"
+        >
+          {suggestion.actionLabel || t("ai.action.apply")}
+        </Link>
+      </div>
     </li>
   );
 }
