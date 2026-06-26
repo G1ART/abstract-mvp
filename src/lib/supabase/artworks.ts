@@ -58,7 +58,21 @@ export type ArtworkRow = {
   provenance_visible?: boolean | null;
 };
 
-export type ArtworkImage = { storage_path: string; sort_order?: number };
+export type ArtworkImageViewType =
+  | "wall_mounted"
+  | "detail"
+  | "angle"
+  | "in_situ"
+  | "other";
+
+export type ArtworkImage = {
+  storage_path: string;
+  sort_order?: number;
+  /** QA 2026-06-26 (#5) — perspective tag for the carousel label.
+   *  Always defined post-migration; legacy reads fall back to
+   *  `wall_mounted` (the historical implicit value). */
+  view_type?: ArtworkImageViewType | string | null;
+};
 export type ArtistProfile = {
   id?: string;
   username: string;
@@ -330,7 +344,7 @@ const ARTWORK_SELECT = `
   provenance_visible,
   website_import_provenance,
   likes_count,
-  artwork_images(storage_path, sort_order),
+  artwork_images(storage_path, sort_order, view_type),
   profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles, is_public),
   artwork_likes(count),
   claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
@@ -1083,7 +1097,7 @@ export async function getArtworkById(
       artist_sort_order,
       created_at,
       provenance_visible,
-      artwork_images(storage_path, sort_order),
+      artwork_images(storage_path, sort_order, view_type),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
       claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
@@ -1127,7 +1141,7 @@ export async function getArtworksByIds(
       artist_sort_order,
       created_at,
       provenance_visible,
-      artwork_images(storage_path, sort_order),
+      artwork_images(storage_path, sort_order, view_type),
       profiles!artist_id(id, username, display_name, avatar_url, bio, main_role, roles),
       artwork_likes(count),
       claims(id, claim_type, subject_profile_id, artist_profile_id, external_artist_id, created_at, status, period_status, start_date, end_date, profiles!subject_profile_id(username, display_name), external_artists(display_name, invite_email))
@@ -1145,12 +1159,19 @@ export async function getArtworksByIds(
 
 export async function attachArtworkImage(
   artworkId: string,
-  storagePath: string
+  storagePath: string,
+  opts?: {
+    sortOrder?: number;
+    /** QA 2026-06-26 (#5) — perspective tag for the carousel.
+     *  Falls back to 'wall_mounted' (the historical implicit value). */
+    viewType?: ArtworkImageViewType | string | null;
+  },
 ) {
   return supabase.from("artwork_images").insert({
     artwork_id: artworkId,
     storage_path: storagePath,
-    sort_order: 0,
+    sort_order: opts?.sortOrder ?? 0,
+    view_type: opts?.viewType ?? "wall_mounted",
   });
 }
 

@@ -163,7 +163,7 @@ export async function listShortlistItems(
   const { data, error } = await supabase
     .from("shortlist_items")
     .select(
-      "*, artworks!artwork_id(id, title, artist_id, artwork_images(storage_path, sort_order)), projects!exhibition_id(id, title)"
+      "*, artworks!artwork_id(id, title, artist_id, artwork_images(storage_path, sort_order, view_type)), projects!exhibition_id(id, title)"
     )
     .eq("shortlist_id", shortlistId)
     .order("position")

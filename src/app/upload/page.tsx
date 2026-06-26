@@ -8,6 +8,7 @@ import {
   attachArtworkImage,
   createArtwork,
   deleteArtwork,
+  type ArtworkImageViewType,
   type CreateArtworkPayload,
 } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadArtworkImage } from "@/lib/supabase/storage";
@@ -100,8 +101,19 @@ function UploadPageContent() {
   const [externalArtistName, setExternalArtistName] = useState(preselectedExternalName ?? "");
   const [externalArtistEmail, setExternalArtistEmail] = useState(preselectedExternalEmail ?? "");
 
-  // Form
-  const [image, setImage] = useState<File | null>(null);
+  // Form — QA 2026-06-26 (#2/#5): support multiple images per work,
+  // each tagged with a `view_type`. Order in the array becomes the
+  // carousel order on the artwork detail page. The first image is the
+  // primary canvas (the one that surfaces in feeds, profiles, etc).
+  type PendingImage = {
+    /** Stable client-side id so React keys survive re-orders. */
+    id: string;
+    file: File;
+    viewType: ArtworkImageViewType;
+    /** Object URL for preview thumbnails — revoked on remove/unmount. */
+    previewUrl: string;
+  };
+  const [images, setImages] = useState<PendingImage[]>([]);
   const [title, setTitle] = useState("");
   const [year, setYear] = useState("");
   const [medium, setMedium] = useState("");
@@ -140,10 +152,31 @@ function UploadPageContent() {
       externalName: preselectedExternalName ?? null,
     });
     if (pending?.files.length === 1) {
-      setImage(pending.files[0]);
+      setImages([
+        {
+          id: crypto.randomUUID(),
+          file: pending.files[0],
+          viewType: "wall_mounted",
+          previewUrl: URL.createObjectURL(pending.files[0]),
+        },
+      ]);
       setStep("form");
     }
   }, [fromExhibition, addToExhibitionId, preselectedArtistId, preselectedExternalName]);
+
+  // Object-URL hygiene: release blobs when the user removes an image
+  // (handled per-action) and on unmount (handled here). Without this
+  // the page leaks one allocation per file across navigations.
+  useEffect(() => {
+    return () => {
+      images.forEach((img) => {
+        try {
+          URL.revokeObjectURL(img.previewUrl);
+        } catch {}
+      });
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const doSearchArtists = useCallback(async () => {
     const q = artistSearch.trim();
@@ -195,7 +228,7 @@ function UploadPageContent() {
   function handleFormNext(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!image || !title.trim() || !year || !medium.trim() || !size.trim()) {
+    if (images.length === 0 || !title.trim() || !year || !medium.trim() || !size.trim()) {
       setError(t("common.pleaseFillRequired"));
       return;
     }
@@ -227,7 +260,7 @@ function UploadPageContent() {
     if (isSubmitting) return;
     setError(null);
 
-    if (!image || !userId) {
+    if (images.length === 0 || !userId) {
       setError(!userId ? t("common.notAuthenticated") : t("common.pleaseSelectImage"));
       return;
     }
@@ -350,30 +383,45 @@ function UploadPageContent() {
         }
       }
 
-      let storagePath: string | null = null;
-      try {
-        // When acting-as, route the image into the *principal's* folder
-        // so lifecycle (delete/replace/cleanup) stays principal-rooted
-        // even if the operator's delegation is later revoked. Storage
-        // RLS allows account-scope writer delegates to upload into the
-        // principal's folder (see 20260510000000_artworks_storage_account_delegate.sql).
-        const storageOwner = actingAsProfileId ?? userId;
-        storagePath = await uploadArtworkImage(image, storageOwner);
-      } catch (uploadErr) {
-        await deleteArtwork(artworkId);
-        setError(formatSingleUploadFailure(uploadErr, t));
-        setIsSubmitting(false);
-        return;
-      }
+      // QA 2026-06-26 (#2/#5) — multi-image upload. We upload + attach
+      // images in input order; each gets `sort_order = i` so the
+      // detail page carousel renders them in the user's chosen order.
+      // The first image is the "primary" canvas (the one feeds /
+      // profile thumbnails pick up). When acting-as, storage path is
+      // rooted on the principal so lifecycle stays principal-rooted.
+      const storageOwner = actingAsProfileId ?? userId;
+      const uploadedPaths: string[] = [];
+      const rollback = async () => {
+        for (const p of uploadedPaths) {
+          try { await removeStorageFile(p); } catch {}
+        }
+        try { await deleteArtwork(artworkId); } catch {}
+      };
 
-      const { error: attachErr } = await attachArtworkImage(artworkId, storagePath);
-      if (attachErr) {
-        await removeStorageFile(storagePath);
-        await deleteArtwork(artworkId);
-        logSupabaseError("attachArtworkImage", attachErr);
-        setError(formatSupabaseError(attachErr, t, "errors.failedAttachImage"));
-        setIsSubmitting(false);
-        return;
+      for (let i = 0; i < images.length; i++) {
+        const pending = images[i];
+        let storagePath: string | null = null;
+        try {
+          storagePath = await uploadArtworkImage(pending.file, storageOwner);
+          uploadedPaths.push(storagePath);
+        } catch (uploadErr) {
+          await rollback();
+          setError(formatSingleUploadFailure(uploadErr, t));
+          setIsSubmitting(false);
+          return;
+        }
+        const { error: attachErr } = await attachArtworkImage(
+          artworkId,
+          storagePath,
+          { sortOrder: i, viewType: pending.viewType },
+        );
+        if (attachErr) {
+          await rollback();
+          logSupabaseError("attachArtworkImage", attachErr);
+          setError(formatSupabaseError(attachErr, t, "errors.failedAttachImage"));
+          setIsSubmitting(false);
+          return;
+        }
       }
 
       if (addToExhibitionId?.trim()) {
@@ -573,26 +621,162 @@ function UploadPageContent() {
               <label className="mb-1 block text-sm font-medium">{t("common.imageLabel")}</label>
               <input
                 type="file"
-                accept="image/*"
-                required
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                multiple
                 onChange={(e) => {
-                  const f = e.target.files?.[0] ?? null;
-                  if (f && f.size > UPLOAD_MAX_IMAGE_BYTES) {
+                  const files = Array.from(e.target.files ?? []);
+                  e.target.value = "";
+                  const oversize = files.find((f) => f.size > UPLOAD_MAX_IMAGE_BYTES);
+                  if (oversize) {
                     setError(
-                      t("upload.fileTooLarge").replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL)),
+                      t("upload.fileTooLarge").replace(
+                        "{maxMb}",
+                        String(UPLOAD_MAX_IMAGE_MB_LABEL),
+                      ),
                     );
-                    setImage(null);
-                    e.target.value = "";
                     return;
                   }
                   setError(null);
-                  setImage(f);
+                  // First added image keeps view_type = wall_mounted
+                  // (primary canvas); subsequent ones default to
+                  // `detail` since users overwhelmingly add detail
+                  // shots as the second slide. They can change it
+                  // per-image inline.
+                  setImages((prev) => {
+                    const startedEmpty = prev.length === 0;
+                    const next = [...prev];
+                    files.forEach((f, idx) => {
+                      next.push({
+                        id: crypto.randomUUID(),
+                        file: f,
+                        viewType:
+                          startedEmpty && idx === 0
+                            ? "wall_mounted"
+                            : "detail",
+                        previewUrl: URL.createObjectURL(f),
+                      });
+                    });
+                    return next;
+                  });
                 }}
                 className="w-full rounded border border-zinc-300 px-3 py-2 text-sm"
               />
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                {t("upload.screenSizeHint").replace("{maxMb}", String(UPLOAD_MAX_IMAGE_MB_LABEL))}
+                {t("upload.multiImageHint").replace(
+                  "{maxMb}",
+                  String(UPLOAD_MAX_IMAGE_MB_LABEL),
+                )}
               </p>
+              {images.length > 0 && (
+                <ul className="mt-3 space-y-2">
+                  {images.map((img, idx) => (
+                    <li
+                      key={img.id}
+                      className="flex items-center gap-3 rounded-md border border-zinc-200 bg-white px-2 py-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.previewUrl}
+                        alt=""
+                        className="h-14 w-14 shrink-0 rounded object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs text-zinc-700">
+                          {idx === 0 && (
+                            <span className="mr-1 rounded bg-zinc-900 px-1 py-0.5 text-[10px] font-medium text-white">
+                              {t("upload.imagePrimaryChip")}
+                            </span>
+                          )}
+                          {img.file.name}
+                        </div>
+                        <label className="mt-1 flex items-center gap-2 text-[11px] text-zinc-500">
+                          <span>{t("upload.imageViewTypeLabel")}</span>
+                          <select
+                            value={img.viewType}
+                            onChange={(e) => {
+                              const v = e.target.value as ArtworkImageViewType;
+                              setImages((prev) =>
+                                prev.map((p) =>
+                                  p.id === img.id ? { ...p, viewType: v } : p,
+                                ),
+                              );
+                            }}
+                            className="rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] text-zinc-800"
+                          >
+                            <option value="wall_mounted">
+                              {t("upload.viewType.wall_mounted")}
+                            </option>
+                            <option value="detail">
+                              {t("upload.viewType.detail")}
+                            </option>
+                            <option value="angle">
+                              {t("upload.viewType.angle")}
+                            </option>
+                            <option value="in_situ">
+                              {t("upload.viewType.in_situ")}
+                            </option>
+                            <option value="other">
+                              {t("upload.viewType.other")}
+                            </option>
+                          </select>
+                        </label>
+                      </div>
+                      <div className="flex shrink-0 flex-col gap-1">
+                        <button
+                          type="button"
+                          disabled={idx === 0}
+                          onClick={() => {
+                            setImages((prev) => {
+                              if (idx === 0) return prev;
+                              const next = [...prev];
+                              const [moved] = next.splice(idx, 1);
+                              next.splice(idx - 1, 0, moved);
+                              return next;
+                            });
+                          }}
+                          className="rounded px-2 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100 disabled:opacity-30"
+                          aria-label={t("upload.imageMoveUp")}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={idx === images.length - 1}
+                          onClick={() => {
+                            setImages((prev) => {
+                              if (idx === prev.length - 1) return prev;
+                              const next = [...prev];
+                              const [moved] = next.splice(idx, 1);
+                              next.splice(idx + 1, 0, moved);
+                              return next;
+                            });
+                          }}
+                          className="rounded px-2 py-0.5 text-[11px] text-zinc-600 hover:bg-zinc-100 disabled:opacity-30"
+                          aria-label={t("upload.imageMoveDown")}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImages((prev) => {
+                            const removed = prev.find((p) => p.id === img.id);
+                            if (removed) {
+                              try { URL.revokeObjectURL(removed.previewUrl); } catch {}
+                            }
+                            return prev.filter((p) => p.id !== img.id);
+                          });
+                        }}
+                        className="rounded px-2 py-0.5 text-[11px] text-rose-600 hover:bg-rose-50"
+                        aria-label={t("upload.imageRemove")}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelTitle")}</label>

@@ -136,7 +136,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { data: artworks, error: aErr } = await auth.supabase
     .from("artworks")
-    .select("id, artist_id, visibility, artwork_images(storage_path, sort_order)")
+    .select("id, artist_id, visibility, artwork_images(storage_path, sort_order, view_type)")
     .in("id", idsToProcess.length ? idsToProcess : artworkIds);
 
   if (aErr || !artworks) {
