@@ -1,6 +1,97 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-06-05
+Last updated: 2026-06-26
+
+## 2026-06-26 — QA 12건 일괄 수정·업그레이드 (Wave 1-4)
+
+5-wave 패치 묶음. Wave 0 (배포·도메인 설정) 은 사용자 액션 의존이라
+별도 진행 중. Wave 5 (멀티이미지/대체뷰/단위·매체 i18n/CV PDF) 는
+이어서 진행 예정.
+
+### Wave 1 — 퀵픽스 3건
+
+- **#7 일괄 업로드 스크롤·포커스 튐** (`src/app/upload/bulk/page.tsx`)
+  - `fetchDrafts(opts?: { silent?: boolean })` 도입. 필드 저장 / 일괄
+    적용 / 웹사이트 import 새로고침은 `silent: true` → `<table>` 가
+    더 이상 `Loading…` 으로 언마운트되지 않아 스크롤·포커스 유지.
+  - 초기 로드와 발행 후 새로고침만 정상 로딩 게이트 유지.
+- **#9 위임 권한 모달 닫힘 루프** (`src/app/my/delegations/page.tsx`)
+  - 드로어 `onClose` 에서 `?openId&action=update` 쿼리 정리,
+    `consumedDeepLinkRef` 1회 가드 추가 → 알림 딥링크 1회만 소비,
+    X 클릭 후 모달 재오픈 차단.
+- **#11 [관리하기] 라우팅 정리** (`src/lib/delegation/manageDestination.ts`)
+  - 모든 mutation 가능 project preset → `/my/exhibitions/{id}` 허브로
+    통일 (이전: `/edit` 또는 `/add` 직행). `project_review` 는 기존
+    view-only stay 유지.
+
+### Wave 2 — Publish failed 근본수정 + 부분성공 UX (#8)
+
+- **근본 원인**: `publishArtworksWithProvenance` 가 claim RPC 에
+  `work_id` + `project_id` 동시 전달 → DB invariant
+  `exactly one of work_id, project_id required` 로 모든 CURATED 일괄
+  publish 가 실패. 토스트는 `error instanceof Error` 분기라
+  PostgREST 에러를 못 잡고 "Publish failed"만 노출.
+- **수정** (`src/lib/supabase/artworks.ts`, `src/app/upload/page.tsx`,
+  `src/app/upload/bulk/page.tsx`):
+  - `PublishWithProvenanceOptions.projectId` 제거, claim 호출에서도
+    `projectId` 미전달. 전시 연결은 기존 `addWorkToExhibition` 로 일원화.
+  - 결과를 per-work `PublishWithProvenanceResult.results` 배열로 반환
+    → 부분 성공 토스트("N점 중 M점만 게시했어요. X점은 게시하지 못했어요
+    — <사유>") + 실패분은 draft 유지·성공분만 public.
+  - `formatSupabaseError(error, t, "upload.publishFallback")` 로 사유별
+    친화 메시지 (권한/용량/네트워크) — `upload.publishFallback /
+    publishAllFailed / publishPartial` i18n EN/KO 추가.
+  - 단일 업로드 기존작가 경로의 claim 에서도 동일한 `projectId` 제거.
+
+### Wave 3 — Header sticky 상단 고정 (#1)
+
+- `src/components/Header.tsx`: staleCleared / acting-as 배너 + 메인 바를
+  하나의 `sticky top-0 z-40 bg-white` 컨테이너로 감쌈. 깊은 링크 / SSR
+  스크롤 진입에서도 첫 페인트부터 헤더가 보이도록 보장. `z-40` 으로 두어
+  모달(z-50+) 이 자연스럽게 위로 떠 동작 보존.
+
+### Wave 4 — project-scope 위임 작품 업로드 (#10)
+
+- **SQL 마이그레이션 필요**: `supabase/migrations/20260626000000_qa_project_delegate_artwork_upload.sql`
+  (Supabase SQL Editor 에서 **섹션별로 실행** — PL/pgSQL 함수 3개 포함).
+  본 작업에서 `apply_migration` MCP 로 production DB 에 이미 적용 완료.
+- **추가된 helper**:
+  - `is_active_project_delegate_works_writer(p_owner uuid)` — project-scope
+    delegations 중 `manage_works` 보유한 활성 위임이 있으면 true.
+  - `is_active_writer_for(p_owner uuid)` — account-scope writer OR
+    project-scope works writer. claim RPC 에서 사용.
+- **확장된 RLS / RPC**:
+  - `can_manage_artworks_storage_path` — Shape 4 (principal folder 에
+    project-scope writer 가 쓸 수 있음) 추가.
+  - `artworks_update_project_delegate` / `artworks_delete_project_delegate`
+    정책 신설.
+  - `artwork_images_insert_project_delegate` / `_update_` / `_delete_`
+    정책 신설.
+  - `create_claim_for_existing_artist` / `create_external_artist_and_claim`
+    SECURITY DEFINER 가드를 `is_active_writer_for` 로 일원화 — project-scope
+    writer 도 CURATED claim 을 principal 명의로 등록 가능.
+- **UI 정리** (`src/components/delegation/UpdatePermissionsModal.tsx`):
+  project-scope 위임 권한 편집에서 RLS 효과가 없는 account-wide 토큰
+  (manage_artworks 등) 을 가림 → `view / edit_metadata / manage_works`
+  3 종으로 축소. `DelegationDetailDrawer` 에서 `scopeType` 전달.
+
+### 검증
+- `npx tsc --noEmit` 통과.
+- 새 회귀 테스트: `tests/delegation-manage-destination.test.ts`,
+  `tests/publish-with-provenance-no-project.test.ts`,
+  `tests/header-sticky.test.ts`,
+  `tests/project-delegate-artwork-upload.test.ts` (모두 통과).
+
+### Supabase SQL 적용 필요 (재현용)
+- `supabase/migrations/20260626000000_qa_project_delegate_artwork_upload.sql`
+  — production 은 이미 `apply_migration` 으로 적용 완료(`schema_migrations`
+  에 `20260626000000` 등록). 로컬/스테이징 환경에 동기화 시 동일 파일
+  실행 필요 (SQL Editor 에서 **섹션 단위 실행** 권장).
+
+### 환경 변수
+- 추가 없음.
+
+---
 
 ## 2026-06-05 — QA 오류/제안 리포트 3건 (availability 게이트 / 문구 한국어화 / 프로비넌스 온보딩 가드)
 

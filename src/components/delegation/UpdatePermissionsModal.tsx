@@ -36,9 +36,32 @@ const ALL_PERMISSIONS = [
 ] as const;
 type Permission = (typeof ALL_PERMISSIONS)[number];
 
+// QA 2026-06-26 (#10) — project-scope delegations only express
+// project-bounded permissions. Account-wide tokens (manage_artworks,
+// manage_claims, manage_inquiries, manage_exhibitions,
+// edit_profile_public_content) have no RLS effect on a single project
+// and were just noise that confused senders into thinking they were
+// granting more than they were. With Wave 4's helper extension,
+// `manage_works` on a project-scope delegation now ALSO covers
+// uploading new works attributed to the principal for that project,
+// so the relevant pool collapses to: view / edit_metadata / manage_works.
+const PROJECT_SCOPE_PERMISSIONS: ReadonlySet<Permission> = new Set([
+  "view",
+  "edit_metadata",
+  "manage_works",
+]);
+
 export type UpdatePermissionsModalProps = {
   open: boolean;
   delegationId: string | null;
+  /** Scope of the delegation being edited. When "project" we hide
+   *  account-wide permission tokens that have no RLS effect on a
+   *  single project — see PROJECT_SCOPE_PERMISSIONS above.
+   *
+   *  Accepts the full `DelegationScopeType` enum (incl. legacy
+   *  "inventory" / "exhibition" tokens that older rows may still
+   *  carry) so we can stay forward-compatible without an enum import. */
+  scopeType?: string | null;
   initialPermissions: string[];
   /** Pre-fill diff (used when the sender opens the editor from a
    *  recipient's "권한 변경 요청" notification). The proposed set is
@@ -59,6 +82,7 @@ export type UpdatePermissionsModalProps = {
 export function UpdatePermissionsModal({
   open,
   delegationId,
+  scopeType = "account",
   initialPermissions,
   proposedPermissions,
   responseMode = false,
@@ -85,7 +109,16 @@ export function UpdatePermissionsModal({
     lastDelegationRef.current = delegationId;
   }, [open, delegationId, initialPermissions, proposedPermissions]);
 
-  const ordered = ALL_PERMISSIONS;
+  // Filter to the scope-relevant subset so the sender only sees
+  // permissions that actually have RLS impact for THIS delegation.
+  const ordered = useMemo(() => {
+    if (scopeType === "project") {
+      return ALL_PERMISSIONS.filter((p) =>
+        PROJECT_SCOPE_PERMISSIONS.has(p)
+      );
+    }
+    return ALL_PERMISSIONS;
+  }, [scopeType]);
 
   const dirty = useMemo(() => {
     if (!open) return false;

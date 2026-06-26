@@ -327,6 +327,7 @@ export function DelegationDetailDrawer({
         <UpdatePermissionsModal
           open={updateOpen}
           delegationId={detail.delegation.id}
+          scopeType={detail.delegation.scope_type}
           initialPermissions={currentPermissions}
           proposedPermissions={effectiveProposed}
           responseMode={!!effectiveProposed}
