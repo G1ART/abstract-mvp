@@ -30,7 +30,8 @@ import { PageShellSkeleton } from "@/components/ds/PageShellSkeleton";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
-import { parseSizeWithUnit } from "@/lib/size/format";
+import { detectSizeUnit, parseSizeWithUnit, setSizeUnitSuffix, type SizeUnit } from "@/lib/size/format";
+import { TAXONOMY } from "@/lib/profile/taxonomy";
 import { getAndClearPendingExhibitionFiles } from "@/lib/pendingExhibitionUpload";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { UPLOAD_MAX_IMAGE_BYTES, UPLOAD_MAX_IMAGE_MB_LABEL } from "@/lib/upload/limits";
@@ -804,14 +805,25 @@ function UploadPageContent() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelMedium")}</label>
+              {/* QA 2026-06-26 (#4) — datalist of canonical mediums
+                  so the user gets one-click pick from the taxonomy
+                  the rest of the app already knows about (filters,
+                  AI categorisation, etc.), while still allowing
+                  free-form text for niche or hybrid materials. */}
               <input
                 type="text"
                 value={medium}
                 onChange={(e) => setMedium(e.target.value)}
                 required
                 placeholder={t("upload.placeholderMedium")}
+                list="upload-medium-suggestions"
                 className="w-full rounded border border-zinc-300 px-3 py-2"
               />
+              <datalist id="upload-medium-suggestions">
+                {TAXONOMY.mediumOptions.map((opt) => (
+                  <option key={opt.value} value={t(opt.labelKey)} />
+                ))}
+              </datalist>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelSize")}</label>
@@ -864,14 +876,40 @@ function UploadPageContent() {
                   )}
                 </div>
               )}
-              <input
-                type="text"
-                value={size}
-                onChange={(e) => setSize(e.target.value)}
-                required
-                placeholder={t("upload.placeholderSize")}
-                className="w-full rounded border border-zinc-300 px-3 py-2"
-              />
+              <div className="flex items-stretch gap-2">
+                <input
+                  type="text"
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  required
+                  placeholder={t("upload.placeholderSize")}
+                  className="flex-1 rounded border border-zinc-300 px-3 py-2"
+                />
+                {/* QA 2026-06-26 (#4) — explicit unit toggle so the
+                    user declares cm vs in. Clicking re-anchors the
+                    suffix on the size string via setSizeUnitSuffix,
+                    which parseSizeWithUnit then round-trips into the
+                    size_unit column at save time. Hosu-prefilled
+                    values are left alone (they are cm-anchored). */}
+                {(() => {
+                  const currentUnit: SizeUnit = detectSizeUnit(size, locale);
+                  return (["cm", "in"] as const).map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      aria-pressed={currentUnit === u}
+                      onClick={() => setSize(setSizeUnitSuffix(size, u))}
+                      className={`rounded border px-3 text-xs font-medium ${
+                        currentUnit === u
+                          ? "border-zinc-900 bg-zinc-900 text-white"
+                          : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ));
+                })()}
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">{t("upload.labelStory")}</label>

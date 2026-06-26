@@ -18,6 +18,51 @@ export function inToCm(inVal: number): number {
   return inVal * 2.54;
 }
 
+/**
+ * QA 2026-06-26 (#4) — rewrite the unit suffix of a size string so the
+ * UI's "cm / in" toggle is round-trippable with `parseSizeWithUnit`.
+ *
+ * The transform is idempotent and conservative:
+ *   - If the string is a hosu (e.g. "30F (90.9 x 72.7 cm)"), we leave
+ *     it untouched: hosu is always cm-anchored.
+ *   - If the string already ends in cm/in, we replace the suffix with
+ *     the target unit. We do NOT numerically convert; the user is
+ *     declaring intent, not transforming values. ("30 x 40 cm" → "in"
+ *     yields "30 x 40 in"; users who want the converted number can do
+ *     that themselves.)
+ *   - If the string ends in raw numbers (unitless), we append the unit.
+ *   - If it doesn't look like a size at all, we return it as-is so we
+ *     never silently destroy free-form notes.
+ */
+export function setSizeUnitSuffix(size: string, unit: SizeUnit): string {
+  const raw = size.trim();
+  if (!raw) return raw;
+  // Hosu values are cm-anchored and have their own canonical format
+  // (e.g. "30F (90.9 x 72.7 cm)"). We anchor on the start of the
+  // string and require an uppercase hosu type letter so we don't
+  // accidentally match the "c" / "m" of a trailing "cm" suffix.
+  if (/^\s*\d+\s*[FPMS]\b/.test(raw)) return raw;
+  const withSuffix = raw.replace(
+    /(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*(?:cm|in(?:ch(?:es)?)?))?\s*$/i,
+    (_, w, h) => `${w} × ${h} ${unit}`,
+  );
+  return withSuffix;
+}
+
+/** Heuristic: pick a default unit when the user opens the form to a
+ *  saved size string. Prefers the explicit suffix, falls back to
+ *  locale (KO → cm, others → in). */
+export function detectSizeUnit(
+  size: string | null | undefined,
+  locale: string,
+): SizeUnit {
+  if (size) {
+    if (/\bin(?:ch(?:es)?)?\b\s*$/i.test(size)) return "in";
+    if (/\bcm\b\s*$/i.test(size)) return "cm";
+  }
+  return locale.startsWith("ko") ? "cm" : "in";
+}
+
 /** 파싱 결과 + 사용자 입력 단위. 표시 시 locale 변환에 사용 */
 export type ParsedSizeWithUnit = { parsed: ParsedSize; unit: SizeUnit | null };
 

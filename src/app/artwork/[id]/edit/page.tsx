@@ -23,7 +23,8 @@ import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { sendArtistInviteEmailClient } from "@/lib/email/artistInvite";
 import { findHosuSize } from "@/lib/size/hosu";
-import { parseSizeWithUnit } from "@/lib/size/format";
+import { detectSizeUnit, parseSizeWithUnit, setSizeUnitSuffix, type SizeUnit } from "@/lib/size/format";
+import { TAXONOMY } from "@/lib/profile/taxonomy";
 import { formatDisplayName, formatUsername } from "@/lib/identity/format";
 import { useActingAs } from "@/context/ActingAsContext";
 import { ActingAsChip } from "@/components/ActingAsChip";
@@ -66,7 +67,7 @@ type ArtistOption = { id: string; username: string | null; display_name: string 
 function EditArtworkContent() {
   const params = useParams();
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
   const id = typeof params.id === "string" ? params.id : "";
   const { actingAsProfileId } = useActingAs();
 
@@ -478,14 +479,22 @@ function EditArtworkContent() {
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">{t("artwork.field.medium")} *</label>
+            {/* QA 2026-06-26 (#4) — datalist suggestions from the
+                canonical taxonomy. Free-form input is preserved. */}
             <input
               type="text"
               value={medium}
               onChange={(e) => setMedium(e.target.value)}
               required
               placeholder={t("artwork.field.mediumPlaceholder")}
+              list="edit-medium-suggestions"
               className="w-full rounded border border-zinc-300 px-3 py-2"
             />
+            <datalist id="edit-medium-suggestions">
+              {TAXONOMY.mediumOptions.map((opt) => (
+                <option key={opt.value} value={t(opt.labelKey)} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">{t("artwork.field.size")} *</label>
@@ -536,14 +545,35 @@ function EditArtworkContent() {
                 <p className="mt-1 text-xs text-amber-700">{hosuWarning}</p>
               )}
             </div>
-            <input
-              type="text"
-              value={size}
-              onChange={(e) => setSize(e.target.value)}
-              required
-              placeholder={t("artwork.field.sizePlaceholder")}
-              className="w-full rounded border border-zinc-300 px-3 py-2"
-            />
+            <div className="flex items-stretch gap-2">
+              <input
+                type="text"
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                required
+                placeholder={t("artwork.field.sizePlaceholder")}
+                className="flex-1 rounded border border-zinc-300 px-3 py-2"
+              />
+              {/* QA 2026-06-26 (#4) — see /upload page comment. */}
+              {(() => {
+                const currentUnit: SizeUnit = detectSizeUnit(size, locale);
+                return (["cm", "in"] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    aria-pressed={currentUnit === u}
+                    onClick={() => setSize(setSizeUnitSuffix(size, u))}
+                    className={`rounded border px-3 text-xs font-medium ${
+                      currentUnit === u
+                        ? "border-zinc-900 bg-zinc-900 text-white"
+                        : "border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+                    }`}
+                  >
+                    {u}
+                  </button>
+                ));
+              })()}
+            </div>
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium">{t("artwork.field.story")}</label>
