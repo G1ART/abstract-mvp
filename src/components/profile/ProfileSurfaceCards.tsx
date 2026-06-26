@@ -26,6 +26,7 @@ import Link from "next/link";
 import { useT } from "@/lib/i18n/useT";
 import { getArtworkImageUrl } from "@/lib/supabase/artworks";
 import type { CvEntry } from "@/lib/supabase/profiles";
+import { getProfileCvPdfUrl } from "@/lib/supabase/storage";
 
 type Props = {
   statement: string | null | undefined;
@@ -34,6 +35,8 @@ type Props = {
   exhibitionsCv: CvEntry[] | null | undefined;
   awards: CvEntry[] | null | undefined;
   residencies: CvEntry[] | null | undefined;
+  // QA 2026-06-26 (#6): optional CV PDF download path (artworks bucket).
+  cvPdfPath?: string | null | undefined;
   isOwner: boolean;
   ownerStatementHref?: string;
   ownerCvHref?: string;
@@ -53,6 +56,7 @@ export function ProfileSurfaceCards({
   exhibitionsCv,
   awards,
   residencies,
+  cvPdfPath,
   isOwner,
   ownerStatementHref = "/settings#statement",
   ownerCvHref = "/settings#cv",
@@ -74,12 +78,17 @@ export function ProfileSurfaceCards({
   );
 
   const hasCv = cvSections.some((s) => s.entries.length > 0);
+  // QA 2026-06-26 (#6): the CV PDF download counts as CV content too,
+  // so the visitor-side surface stays visible when the artist only
+  // uploaded a PDF without filling in the structured editor.
+  const cvPdfUrl = getProfileCvPdfUrl(cvPdfPath ?? null);
+  const hasCvAny = hasCv || !!cvPdfUrl;
 
   // Visitor with both surfaces empty → render nothing.
-  if (!isOwner && !hasStatement && !hasCv) return null;
+  if (!isOwner && !hasStatement && !hasCvAny) return null;
 
   const showStatementButton = isOwner || hasStatement;
-  const showCvButton = isOwner || hasCv;
+  const showCvButton = isOwner || hasCvAny;
 
   return (
     <section className="mb-6">
@@ -100,13 +109,13 @@ export function ProfileSurfaceCards({
         {showCvButton && (
           <SurfaceCardButton
             label={
-              hasCv || !isOwner
+              hasCvAny || !isOwner
                 ? t("profile.surface.cvButton")
                 : t("profile.surface.cvOwnerEmptyButton")
             }
             hint={t("profile.surface.cvHint")}
             icon={<CvIcon />}
-            empty={isOwner && !hasCv}
+            empty={isOwner && !hasCvAny}
             onClick={() => setOpen("cv")}
           />
         )}
@@ -129,8 +138,9 @@ export function ProfileSurfaceCards({
         <CvBody
           sections={cvSections}
           isOwner={isOwner}
-          hasAny={hasCv}
+          hasAny={hasCvAny}
           ownerEditHref={ownerCvHref}
+          cvPdfUrl={cvPdfUrl}
         />
       </SurfaceModal>
     </section>
@@ -379,9 +389,10 @@ type CvBodyProps = {
   isOwner: boolean;
   hasAny: boolean;
   ownerEditHref: string;
+  cvPdfUrl?: string | null;
 };
 
-function CvBody({ sections, isOwner, hasAny, ownerEditHref }: CvBodyProps) {
+function CvBody({ sections, isOwner, hasAny, ownerEditHref, cvPdfUrl }: CvBodyProps) {
   const { t } = useT();
 
   if (!hasAny) {
@@ -404,6 +415,24 @@ function CvBody({ sections, isOwner, hasAny, ownerEditHref }: CvBodyProps) {
 
   return (
     <div className="space-y-7">
+      {/* QA 2026-06-26 (#6) — surface the downloadable CV PDF at the
+          top of the modal so visitors can grab it without scrolling
+          through the structured entries first. */}
+      {cvPdfUrl && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50/60 px-4 py-3">
+          <span className="text-xs uppercase tracking-wider text-zinc-500">
+            {t("cv.pdf.title")}
+          </span>
+          <a
+            href={cvPdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm font-medium text-zinc-900 underline-offset-4 hover:underline"
+          >
+            {t("profile.public.cvPdf")}
+          </a>
+        </div>
+      )}
       {sections
         .filter((s) => s.entries.length > 0)
         .map((s) => (

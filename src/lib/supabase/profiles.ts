@@ -79,6 +79,8 @@ export type ProfilePublic = {
   exhibitions_cv?: CvEntry[] | null;
   awards?: CvEntry[] | null;
   residencies?: CvEntry[] | null;
+  // QA 2026-06-26 (#6): optional CV PDF download path (artworks bucket).
+  cv_pdf_path?: string | null;
 };
 
 /**
@@ -184,6 +186,7 @@ export async function lookupPublicProfileByUsername(username: string): Promise<{
     exhibitions_cv: cvArrayOrNull(raw?.exhibitions_cv),
     awards: cvArrayOrNull(raw?.awards),
     residencies: cvArrayOrNull(raw?.residencies),
+    cv_pdf_path: stringFieldOrNull(raw?.cv_pdf_path),
   };
 
   return {
@@ -335,6 +338,7 @@ export async function getMyProfileAsPublic(): Promise<{
     artist_statement: stringFieldOrNull(row?.artist_statement),
     artist_statement_hero_image_url: stringFieldOrNull(row?.artist_statement_hero_image_url),
     artist_statement_updated_at: stringFieldOrNull(row?.artist_statement_updated_at),
+    cv_pdf_path: stringFieldOrNull(row?.cv_pdf_path),
   };
   return { data: parsed, error: null };
 }

@@ -82,6 +82,43 @@ export type UpdateProfileCvPayload = Partial<ProfileCvSlice>;
  * column untouched (handled SQL-side via `case when ... is not null`).
  * Empty array `[]` is still a valid clear.
  */
+// QA 2026-06-26 (Wave 5 #6) — CV PDF helpers.
+//
+// `cv_pdf_path` is the storage path under the `artworks` bucket
+// (e.g. `{userId}/profile/cv/{uuid}-{safeName}`). The actual file
+// upload lives in storage.ts (`uploadProfileCvPdf`); these helpers
+// handle the profile column side: read + write + clear.
+
+export async function getMyCvPdfPath(): Promise<{
+  path: string | null;
+  error: unknown;
+}> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.user?.id) {
+    return { path: null, error: new Error("Not authenticated") };
+  }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("cv_pdf_path")
+    .eq("id", session.user.id)
+    .maybeSingle();
+  if (error || !data) return { path: null, error };
+  const raw = (data as { cv_pdf_path?: string | null }).cv_pdf_path ?? null;
+  return { path: raw ? raw : null, error: null };
+}
+
+export async function updateMyCvPdfPath(
+  path: string | null,
+): Promise<{ ok: true } | { ok: false; error: unknown }> {
+  const { error } = await supabase.rpc("update_my_cv_pdf_path", {
+    p_path: path,
+  });
+  if (error) return { ok: false, error };
+  return { ok: true };
+}
+
 export async function updateMyProfileCv(
   payload: UpdateProfileCvPayload,
 ): Promise<{ ok: true } | { ok: false; error: unknown }> {

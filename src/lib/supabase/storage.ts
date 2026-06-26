@@ -141,3 +141,71 @@ export async function removeProfileMedia(path: string | null | undefined): Promi
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   return !error;
 }
+
+// ─── QA 2026-06-26 (#6) Profile CV PDF ──────────────────────────────
+// Stores a single downloadable resume PDF per artist. Lives in the
+// same `artworks` bucket under the owner folder, so the existing
+// `can_manage_artworks_storage_path` Shape 1 lets the owner upload,
+// replace, and delete it without new RLS work. The path scheme is
+// `{userId}/profile/cv/{uuid}-{safeName}` (kind-namespaced so it
+// peer-coexists with avatar/cover/statement media).
+
+const CV_PDF_MIMES = new Set(["application/pdf"]);
+/** Hard cap so the public download surface doesn't accidentally serve
+ *  a 100 MB scanned PDF. 10 MB is plenty for an artist resume. */
+export const PROFILE_CV_MAX_BYTES = 10 * 1024 * 1024;
+
+export class ProfileCvValidationError extends Error {
+  readonly code: "size" | "mime" | "user";
+  readonly limitBytes?: number;
+  constructor(code: "size" | "mime" | "user", message: string, limitBytes?: number) {
+    super(message);
+    this.code = code;
+    this.limitBytes = limitBytes;
+    this.name = "ProfileCvValidationError";
+  }
+}
+
+export async function uploadProfileCvPdf(file: File, userId: string): Promise<string> {
+  if (!userId) {
+    throw new ProfileCvValidationError("user", "userId is required");
+  }
+  if (!CV_PDF_MIMES.has(file.type)) {
+    throw new ProfileCvValidationError(
+      "mime",
+      `Unsupported file type (${file.type || "unknown"}). Please upload a PDF.`,
+    );
+  }
+  if (file.size > PROFILE_CV_MAX_BYTES) {
+    throw new ProfileCvValidationError(
+      "size",
+      `File is too large (limit ${(PROFILE_CV_MAX_BYTES / (1024 * 1024)).toFixed(0)} MB).`,
+      PROFILE_CV_MAX_BYTES,
+    );
+  }
+  const safeName = sanitizeFilename(file.name);
+  const path = `${userId}/profile/cv/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+    upsert: false,
+    contentType: "application/pdf",
+    cacheControl: "3600",
+  });
+  if (error) throw error;
+  return path;
+}
+
+/** Best-effort delete of a previous CV PDF storage path. */
+export async function removeProfileCvPdf(path: string | null | undefined): Promise<boolean> {
+  if (!path || !path.trim()) return true;
+  const { error } = await supabase.storage.from(BUCKET).remove([path]);
+  return !error;
+}
+
+/** Resolve a CV PDF storage path to a public URL. Returns null when
+ *  the input is empty so callers can render a single ternary
+ *  without a temporary intermediate. */
+export function getProfileCvPdfUrl(path: string | null | undefined): string | null {
+  const p = path?.trim();
+  if (!p) return null;
+  return getPublicImageUrl(p);
+}

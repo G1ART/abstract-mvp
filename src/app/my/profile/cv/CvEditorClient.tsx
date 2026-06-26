@@ -35,6 +35,7 @@ import {
 import type { CvEntry } from "@/lib/supabase/profiles";
 import { FloorPanel } from "@/components/ds/FloorPanel";
 import { CvImportWizard } from "./CvImportWizard";
+import { CvPdfUploader } from "./CvPdfUploader";
 
 type SectionKind = "education" | "exhibitions" | "awards" | "residencies";
 
@@ -223,6 +224,11 @@ export function CvEditorClient() {
           onRemove={(idx) => removeEntry(kind, idx)}
         />
       ))}
+
+      {/* QA 2026-06-26 (#6) — downloadable CV PDF, sits at the bottom
+          so the structured editor stays the primary surface but
+          artists still get a one-click upload path. */}
+      <CvPdfUploader />
 
       <SaveBar
         dirty={dirty}

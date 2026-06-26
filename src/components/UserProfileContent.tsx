@@ -573,6 +573,7 @@ export function UserProfileContent({
           exhibitionsCv={profile.exhibitions_cv ?? null}
           awards={profile.awards ?? null}
           residencies={profile.residencies ?? null}
+          cvPdfPath={profile.cv_pdf_path ?? null}
           isOwner={isOwner}
         />
       )}
