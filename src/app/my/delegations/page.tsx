@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AuthGate } from "@/components/AuthGate";
 import { useT } from "@/lib/i18n/useT";
 import { useActingAs } from "@/context/ActingAsContext";
@@ -101,6 +101,16 @@ export default function MyDelegationsPage() {
   const { t } = useT();
   const { setActingAs } = useActingAs();
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  // QA 2026-06-26 (#9) — deep-link consumption guard. Without this,
+  // closing the detail drawer was followed by the deep-link effect
+  // re-opening it (because `?openId&action=update` was still on the
+  // URL), and DelegationDetailDrawer would then re-trigger the
+  // permission modal — an infinite "X → modal → X → modal" loop. We
+  // also strip the query params on close so a stale URL never reopens
+  // the drawer after the user explicitly dismissed it.
+  const consumedDeepLinkRef = useRef<string | null>(null);
   const [data, setData] = useState<ListMyDelegationsResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<ReceivedTab>("pending");
@@ -232,11 +242,17 @@ export default function MyDelegationsPage() {
     const openId = searchParams?.get("openId");
     if (!openId || !data) return;
     if (detailId === openId) return;
+    // QA 2026-06-26 (#9) — only honour the deep-link the FIRST time we
+    // see it. Once the user closes the drawer (which strips the URL
+    // params), the consumed-ref tracks that this id has already been
+    // shown and we won't reopen it even if the same URL re-mounts.
+    if (consumedDeepLinkRef.current === openId) return;
     const inSent = data.sent.find((r) => r.id === openId);
     const inRecv = data.received.find((r) => r.id === openId);
     const target = inSent ?? inRecv;
     if (!target) return;
     const action = searchParams.get("action");
+    consumedDeepLinkRef.current = openId;
     setDetailOwnerView(!!inSent);
     setDetailInitialAction(action === "update" && inSent ? "update" : null);
     setDetailId(openId);
@@ -437,6 +453,18 @@ export default function MyDelegationsPage() {
         onClose={() => {
           setDetailId(null);
           setDetailInitialAction(null);
+          // QA 2026-06-26 (#9) — strip openId/action so the deep-link
+          // effect can't immediately reopen the drawer (and with it
+          // the permission modal). Preserve unrelated query params.
+          const sp = new URLSearchParams(searchParams?.toString() ?? "");
+          if (sp.has("openId") || sp.has("action")) {
+            sp.delete("openId");
+            sp.delete("action");
+            const qs = sp.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname, {
+              scroll: false,
+            });
+          }
         }}
         onChanged={load}
       />

@@ -211,15 +211,26 @@ export default function BulkUploadPage() {
     [t],
   );
 
-  const fetchDrafts = useCallback(async () => {
-    setLoading(true);
-    const { data } = await listMyDraftArtworks({
-      limit: BULK_MY_DRAFTS_QUERY_LIMIT,
-      forProfileId: actingAsProfileId ?? undefined,
-    });
-    setDrafts(data ?? []);
-    setLoading(false);
-  }, [actingAsProfileId]);
+  // QA 2026-06-26 (#7) — `silent` keeps the table mounted while we
+  // refetch after per-row edits / bulk apply / website import. The old
+  // behaviour toggled `loading` on every save → the `<table>` was
+  // replaced by `<p>Loading…</p>` for one frame → page height collapsed,
+  // uncontrolled inputs lost focus, and the scroll position jumped to
+  // the top mid-typing. We still show the skeleton for the *first*
+  // load and for user-initiated destructive flows (delete/publish).
+  const fetchDrafts = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent === true;
+      if (!silent) setLoading(true);
+      const { data } = await listMyDraftArtworks({
+        limit: BULK_MY_DRAFTS_QUERY_LIMIT,
+        forProfileId: actingAsProfileId ?? undefined,
+      });
+      setDrafts(data ?? []);
+      if (!silent) setLoading(false);
+    },
+    [actingAsProfileId],
+  );
 
   useEffect(() => {
     fetchDrafts();
@@ -386,7 +397,9 @@ export default function BulkUploadPage() {
         auditAction: "bulk.artwork.update",
       });
     }
-    await fetchDrafts();
+    // QA 2026-06-26 (#7) — silent so the table doesn't flash through a
+    // loading state while the user is still in the bulk-apply panel.
+    await fetchDrafts({ silent: true });
   }
 
   async function handleApply(field: string, value: unknown) {
@@ -425,7 +438,9 @@ export default function BulkUploadPage() {
         }
       );
     }
-    await fetchDrafts();
+    // QA 2026-06-26 (#7) — silent so the open bulk-apply panel does not
+    // unmount the row inputs the user just edited.
+    await fetchDrafts({ silent: true });
     setPendingBulk(null);
     setToast(t("bulk.applyTitleBulk"));
     setTimeout(() => setToast(null), 2000);
@@ -658,7 +673,9 @@ export default function BulkUploadPage() {
       actingSubjectProfileId: actingAsProfileId ?? null,
       auditAction: "bulk.artwork.update",
     });
-    await fetchDrafts();
+    // QA 2026-06-26 (#7) — silent refetch so the row keeps its DOM and
+    // the focused input does not lose focus / push the page to top.
+    await fetchDrafts({ silent: true });
   }
 
   const readyCount = drafts.filter((d) => validatePublish(d).ok).length;
@@ -887,7 +904,7 @@ export default function BulkUploadPage() {
             actingAsProfileId={actingAsProfileId}
             drafts={drafts}
             stagedArtworkIds={stagedArtworkIds}
-            onApplied={fetchDrafts}
+            onApplied={() => fetchDrafts({ silent: true })}
             onApplyToast={(n) => {
               setToast(t("bulk.wi.appliedToast").replace("{n}", String(n)));
               setTimeout(() => setToast(null), 3200);

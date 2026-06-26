@@ -60,32 +60,24 @@ export function resolveManageDestination(
     if (!d.project_id) {
       return { kind: "stay", messageKey: "delegation.manage.missingProject" };
     }
+    // QA 2026-06-26 (#11) — every mutation-capable project preset now
+    // lands on the exhibition hub page (`/my/exhibitions/{id}`). The
+    // old `/edit` / `/add` deep-links forced the delegate one click
+    // away from the place where they actually wanted to be (browse
+    // works, add new ones, manage media). The hub already surfaces
+    // both "Edit exhibition" and "Add work" affordances, so the
+    // delegate can self-route into the narrower screens. RLS still
+    // gates each mutation regardless of where they land.
     switch (d.preset) {
       case "project_review":
         // View-only — there is no curator-side surface to land on.
-        // The hub already shows the title/preset; we surface a friendly
-        // note and let the user explore via the public exhibition link
-        // surfaced in the detail drawer.
         return { kind: "stay", messageKey: "delegation.manage.reviewOnly" };
       case "project_works_only":
-        return {
-          kind: "navigate",
-          href: `/my/exhibitions/${d.project_id}/add`,
-          activateActingAs: true,
-        };
       case "project_co_edit":
-        return {
-          kind: "navigate",
-          href: `/my/exhibitions/${d.project_id}/edit`,
-          activateActingAs: true,
-        };
       default:
-        // Legacy / unknown preset: treat as co-edit so users with rows
-        // created before presets existed don't get stuck. RLS will
-        // still gate any mutation attempts.
         return {
           kind: "navigate",
-          href: `/my/exhibitions/${d.project_id}/edit`,
+          href: `/my/exhibitions/${d.project_id}`,
           activateActingAs: true,
         };
     }
