@@ -13,8 +13,11 @@ import { join } from "node:path";
 const root = join(__dirname, "..");
 const migrationsDir = join(root, "supabase", "migrations");
 
+// Target the original 1차 dedupe migration specifically (the Phase 1
+// "완결편" lives in *_external_artist_dedupe_phase1.sql and is covered by
+// its own test), so this assertion isn't shadowed by the newer file.
 const mig = readdirSync(migrationsDir)
-  .filter((n) => n.includes("external_artist_dedupe"))
+  .filter((n) => n.endsWith("_external_artist_dedupe.sql"))
   .sort()
   .pop();
 assert.ok(mig, "expected external_artist_dedupe migration to exist");

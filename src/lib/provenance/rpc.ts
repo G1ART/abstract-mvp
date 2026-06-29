@@ -64,17 +64,16 @@ export async function createExternalArtist(
     data: { session },
   } = await supabase.auth.getSession();
   if (!session?.user?.id) return { data: null, error: new Error("Not authenticated") };
-  const { data, error } = await supabase
-    .from("external_artists")
-    .insert({
-      display_name: args.displayName.trim(),
-      invite_email: args.inviteEmail?.trim() || null,
-      invited_by: session.user.id,
-    })
-    .select("id")
-    .single();
+  // Route through the SECURITY DEFINER dedupe RPC so the edit screen reuses an
+  // existing external_artists row for the same (inviter, email|name) instead of
+  // minting a fresh random-id row per edit (QA 2026-07-01). The partial unique
+  // indexes make this race-safe; the RPC swallows unique_violation and re-reads.
+  const { data, error } = await supabase.rpc("get_or_create_external_artist", {
+    p_display_name: args.displayName.trim(),
+    p_invite_email: args.inviteEmail?.trim() || null,
+  });
   if (error) return { data: null, error };
-  return { data: (data as { id: string } | null)?.id ?? null, error: null };
+  return { data: (data as string | null) ?? null, error: null };
 }
 
 /**

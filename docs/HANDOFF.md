@@ -1,6 +1,46 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-06-30
+Last updated: 2026-07-01
+
+## 2026-07-01 — 데이터구조 업그레이드 Phase 1 (외부작가 정규화 완결 + 정합성)
+
+데이터 구조 심층 점검 후, 벌크/전시/보드/비온보딩작가/프로비넌스가 충돌 없이
+돌아가도록 단계적 업그레이드를 시작(Phase 1). **D안(작가 정체성 비정규화)은
+의도적으로 제외** — 갤러리 운영자=작가 같은 멀티 페르소나 조합이 정당하므로
+claims 기반 유연 모델을 유지한다.
+
+### 적용 SQL (production 적용 완료, MCP)
+- **`20260701000000_external_artist_dedupe_phase1.sql`**
+  - 2차 병합: 같은 `(invited_by, 이메일)`은 이름 표기 변형까지 한 사람으로 통합,
+    이메일 없는 `(invited_by, 이름)` 중복도 병합. **서로 다른 이메일은 병합 금지**
+    (복수계정 가능성 — 사용자 규칙).
+  - 부분 유니크 인덱스 2개: `uq_external_artists_inviter_email`,
+    `uq_external_artists_inviter_name_noemail` (claimed 행 제외) → 중복 재발 차단.
+  - `get_or_create_external_artist(p_display_name, p_invite_email)` RPC 추가
+    (race-safe: unique_violation 시 재조회). `create_external_artist_and_claim`
+    이 이를 재사용. 편집 화면의 `createExternalArtist`도 직접 insert 대신 이 RPC 경유.
+- **`20260701000001_provenance_integrity_phase1.sql`**
+  - `claims.project_id` FK → **ON DELETE CASCADE** (전시 삭제 풋건 제거;
+    `exhibition_works`/`exhibition_media`와 동작 일관).
+  - `claims`/`external_artists`/`projects`에 `updated_at` + `tg_set_updated_at` 트리거.
+
+### 검증
+- 병합 후 잔여 중복 0 확인. 라이브 스키마에 FK CASCADE / 유니크 인덱스 2 /
+  updated_at 3 / helper 1 반영 확인.
+- `test:external-artist-dedupe`, `test:external-artist-dedupe-phase1` 통과.
+  `tsc --noEmit`·`next build` 통과.
+
+### 수동 검토 권장(미병합, 안전상 보류)
+- `oh jeong`: 같은 갤러리가 `aniimal2@naver.com` / `aniimal2js@gmail.com` 두
+  주소로 초대 → 복수계정/동일인 여부 확인 후 수동 처리.
+- `april ej oh`: `apriloh8@gmail.com` 외에 `"april"`(오타성 이메일)·이메일無 행 혼재.
+
+### 다음 (예정)
+- Phase 2: 초대 이메일 필수화(단일/벌크/편집) + 소유자용 외부작가→온보딩 프로필
+  연결/병합 RPC·UI + 온보딩 후 이미지 관리용 스토리지 RLS.
+- Phase 3: `claim_type` enum/CHECK + 작가식별 XOR + work당 CREATED 1개 무결성.
+
+
 
 ## 2026-06-30 — 전시 페이지 "← 피드" 백 링크 진입경로 인식
 
