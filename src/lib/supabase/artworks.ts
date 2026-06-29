@@ -247,6 +247,58 @@ export function getArtworkArtistLabel(
   return { label, profileUsername: username };
 }
 
+/**
+ * The claim whose `external_artists.display_name` is used as the artwork's
+ * displayed artist label (first such claim — mirrors `getArtworkArtistLabel`).
+ * Returns null for works authored by an onboarded artist.
+ */
+export function getExternalArtistClaim(
+  artwork: Artwork | ArtworkWithLikes
+): (ArtworkClaim & { external_artists?: { display_name?: string | null } }) | null {
+  const claims = (artwork as any).claims as ArtworkClaim[] | undefined;
+  if (!claims || claims.length === 0) return null;
+  const found = claims.find(
+    (c) =>
+      (c as any).external_artists &&
+      typeof (c as any).external_artists.display_name === "string" &&
+      (c as any).external_artists.display_name.trim() !== ""
+  );
+  return (found as (ArtworkClaim & { external_artists?: { display_name?: string | null } }) | undefined) ?? null;
+}
+
+/**
+ * True when the credited artist is an external (invited, not-yet-onboarded)
+ * artist rather than an onboarded profile. In that case the artwork's
+ * `artist_id`/`profiles` point at the uploading account (e.g. a gallery), and
+ * the real artist name lives on the external claim.
+ */
+export function isExternalArtistArtwork(
+  artwork: Artwork | ArtworkWithLikes
+): boolean {
+  return getExternalArtistClaim(artwork) != null;
+}
+
+/**
+ * Stable grouping key for "by artist" sections (exhibition pages).
+ *
+ * External invited artists must group by their `external_artist_id` so that
+ * several different invited artists uploaded by a single gallery (which share
+ * the gallery's `artist_id`) don't collapse into one section credited to the
+ * first artist. Onboarded artists keep grouping by `artist_id`.
+ */
+export function getArtworkArtistGroupKey(
+  artwork: Artwork | ArtworkWithLikes
+): string {
+  const externalClaim = getExternalArtistClaim(artwork);
+  if (externalClaim?.external_artist_id) {
+    return `ext:${externalClaim.external_artist_id}`;
+  }
+  const artistId = (artwork as any).artist_id as string | null | undefined;
+  if (artistId) return artistId;
+  const { label } = getArtworkArtistLabel(artwork);
+  return `ext:${label ?? "unknown"}`;
+}
+
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$", KRW: "₩", EUR: "€", GBP: "£", JPY: "¥",
 };

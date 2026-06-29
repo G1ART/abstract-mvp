@@ -1,6 +1,65 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-06-27
+Last updated: 2026-06-29
+
+## 2026-06-29 — QA 3건: 전시 작가 그룹핑 / 외부 작가명 게시물 단위 / 온보딩 배너 루프
+
+### 이슈 1 — 전시 페이지에서 여러 작가 작품이 "한 작가"로 묶임
+- **원인:** 전시 작가별 섹션 그룹 키가 `artwork.artist_id`(= 업로더 갤러리,
+  외부 작가 작품끼리 동일)였다. `artist_id`가 항상 truthy라 서로 다른 외부
+  작가(예: 최지인·이의연) 작품이 한 버킷으로 합쳐지고 섹션 헤더에 첫 작품의
+  작가명만 표시됨.
+- **수정:** `getArtworkArtistGroupKey()` 공통 헬퍼(`src/lib/supabase/artworks.ts`)
+  추가 — 외부 작가는 `external_artist_id` 기준으로 분리, 온보딩 작가는 기존
+  `artist_id` 유지. `src/app/e/[id]/page.tsx`, `src/app/my/exhibitions/[id]/page.tsx`
+  적용.
+
+### 이슈 3 — 외부(미온보딩) 작가명이 게시물 단위에서 업로더명으로 표시 + 링크 오연결
+- **원인:** 피드는 외부 작가명을 맞게 표시했지만, 작품 상세 헤더는
+  `formatIdentityPair(artwork.profiles)`(갤러리)가 `getArtworkArtistLabel`보다
+  우선 표시됐고, 피드의 작가명 링크는 `artistProfile.username`(갤러리)로 갔다.
+  룸/숏리스트 RPC는 `prof.display_name`(artist_id=갤러리)만 사용.
+- **수정:**
+  1. 공통 컴포넌트 `src/components/artwork/ArtworkArtistName.tsx` — 표시명은
+     **항상 작가명**. 온보딩 작가는 `/u/<handle>` 직접 링크, **외부 작가는
+     클릭 시 "아직 온보딩이 완료되지 않은 작가예요 …" 확인 모달(ConfirmActionDialog)
+     후** 업로드한 계정으로 이동. 링크 대상 없으면 일반 텍스트.
+  2. `FeedArtworkCard`, 작품 상세 헤더(`artwork/[id]/page.tsx`)가 이 컴포넌트
+     사용. 상세는 외부 작가일 때 갤러리 핸들/역할뱃지/팔로우 숨김.
+  3. **마이그레이션** `supabase/migrations/20260629000000_external_artist_name_everywhere.sql`
+     (**production 적용 완료 + schema_migrations 동기화**):
+     - 헬퍼 `artwork_display_artist_name(work_id, fallback)` — 공개/confirmed
+       claim의 외부 작가명(CREATED 우선) 반환, 없으면 업로더명.
+     - 룸 RPC `get_room_for_viewer_by_token`, 숏리스트 RPC
+       `get_shortlist_items_by_token`가 이 헬퍼로 `artwork_artist_name` 해석.
+  4. i18n `artwork.externalArtistRedirect.*`(EN/KO) 추가.
+
+### 이슈 2 — 신규 가입 "한 단계만 더 남았어요" 배너 무한 루프 / 스튜디오 진입 불가
+- **원인:** `RandomIdBanner`·`Header`가 루트 레이아웃에 상주하면서 프로필을
+  **마운트 시 1회만** 읽음. App Router는 클라이언트 이동 시 루트 레이아웃을
+  리마운트하지 않으므로, 온보딩 저장이 DB에 반영돼도 배너는 placeholder 상태로
+  남고 "내 스튜디오" 링크가 계속 `/onboarding/identity`를 가리켜 루프.
+- **수정:**
+  - 저장 SSOT `saveProfileUnified` 성공 시 `window` `profile-updated` 이벤트
+    디스패치(SSR 가드).
+  - `RandomIdBanner`: `profile-updated` + `auth.onAuthStateChange` 구독해
+    재조회, 체크에 `main_role` 포함(서버 `get_my_auth_state`와 정렬).
+  - `Header`: `profile-updated` 구독해 username/아바타(=내 스튜디오 링크) 갱신.
+  - 온보딩 저장 라우팅에 read-after-write 방어 재조회(`getMyProfile` completeNow).
+- **SQL:** 이슈 2는 코드 전용(추가 SQL 없음).
+
+### Supabase SQL
+- 적용 필요: `20260629000000_external_artist_name_everywhere.sql` →
+  **이미 production 적용 + schema_migrations 동기화 완료** (헬퍼 동작 검증:
+  이의연/Namu Choi 등 외부명 정상 해석).
+
+### Verified
+- `tests/external-artist-name-everywhere.test.ts`,
+  `tests/onboarding-banner-refresh.test.ts`,
+  `tests/external-artist-public-credit.test.ts` 통과.
+- `tsc --noEmit` 통과, `next build` 통과.
+
+
 
 ## 2026-06-27 — 외부(초대 전) 작가 표기명이 제3자에게 안 보이던 버그 (QA)
 

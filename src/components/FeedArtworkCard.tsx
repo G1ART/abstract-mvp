@@ -28,6 +28,7 @@ import {
   parseSizeWithUnit,
 } from "@/lib/size/format";
 import { LikeButton } from "./LikeButton";
+import { ArtworkArtistName } from "@/components/artwork/ArtworkArtistName";
 import { Chip } from "@/components/ds";
 
 /**
@@ -294,20 +295,20 @@ export function FeedArtworkCard({
         </div>
       ) : (
         <div className="flex flex-1 flex-col gap-0.5 pt-3">
-          {/* Artist identity — single line, never wraps. */}
+          {/* Artist identity — single line, never wraps. The name is ALWAYS the
+              artist's (external invited artist name or onboarded artist). For
+              external artists the link routes to the uploading account only
+              after an explicit confirm (handled by ArtworkArtistName). */}
           <div className="flex min-w-0 items-center gap-2">
             <span className="min-w-0 truncate text-sm font-medium tracking-tight text-zinc-900">
-              {artistUsername ? (
-                <Link
-                  href={`/u/${artistUsername}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="hover:underline"
-                >
-                  {artistName}
-                </Link>
-              ) : (
-                <span>{formatDisplayName(artistIdentityInput, t)}</span>
-              )}
+              <ArtworkArtistName
+                name={externalName ? artistName : (artistName || formatDisplayName(artistIdentityInput, t))}
+                isExternal={!!externalName}
+                artistUsername={externalName ? null : artistUsername}
+                uploader={artistProfile}
+                stopPropagation
+                className="hover:underline"
+              />
             </span>
             {showRoleChip && artistRoleChips[0] && (
               <Chip

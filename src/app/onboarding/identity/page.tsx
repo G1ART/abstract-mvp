@@ -271,6 +271,35 @@ function IdentityInner() {
     await ensureFreeEntitlement(session.user.id);
     const freshState = await getMyAuthState();
     setSaving(false);
+
+    // Defensive: the auth-state RPC can briefly lag a just-committed
+    // upsert_my_profile (read-after-write), which would bounce the user right
+    // back to this screen. If the profile row itself is concretely complete,
+    // trust that and proceed — mirrors the load-time guard above.
+    if (freshState?.needs_identity_setup) {
+      const { data: profileNow } = await getMyProfile();
+      const pn = profileNow as
+        | {
+            username?: string | null;
+            display_name?: string | null;
+            roles?: string[] | null;
+            main_role?: string | null;
+          }
+        | null;
+      const completeNow =
+        !!pn &&
+        !!pn.username &&
+        !isPlaceholderUsername(pn.username) &&
+        !!pn.display_name?.trim() &&
+        Array.isArray(pn.roles) &&
+        pn.roles.length > 0 &&
+        !!pn.main_role?.trim();
+      if (completeNow) {
+        router.replace(nextPath ?? "/feed?tab=all&sort=latest");
+        return;
+      }
+    }
+
     const { to } = routeByAuthState(freshState, { nextPath, sessionPresent: true });
     router.replace(to);
   }

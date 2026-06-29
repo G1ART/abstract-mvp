@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useParams } from "next/navigation";
 import { getArtworkBack } from "@/lib/artworkBack";
-import { getArtworkArtistLabel, getArtworkPriceDisplay } from "@/lib/supabase/artworks";
+import { getArtworkArtistLabel, getArtworkPriceDisplay, isExternalArtistArtwork } from "@/lib/supabase/artworks";
+import { ArtworkArtistName } from "@/components/artwork/ArtworkArtistName";
 import { getSession } from "@/lib/supabase/auth";
 import {
   type ArtworkWithLikes,
@@ -707,6 +708,7 @@ function ArtworkDetailContent() {
   const artist = artwork.profiles;
   const { label: artistLabel, profileUsername } = getArtworkArtistLabel(artwork);
   const username = profileUsername ?? "";
+  const isExternalArtist = isExternalArtistArtwork(artwork);
 
   const { path: backPath, labelKey: backLabelKey } = getArtworkBack();
   const sizeDisplay =
@@ -740,6 +742,24 @@ function ArtworkDetailContent() {
             {(() => {
               const identity = formatIdentityPair(artist ?? null);
               const chips = formatRoleChips(artist ?? null, t, { max: 2 });
+              // External (invited, not-yet-onboarded) artist: the artist_id /
+              // profiles point at the uploading account (e.g. a gallery), so we
+              // must NOT show that account's handle / role badges / follow as if
+              // they were the artist. Show only the artist's name; tapping it
+              // confirms before routing to the uploading account.
+              if (isExternalArtist) {
+                if (!artistLabel) return null;
+                return (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <ArtworkArtistName
+                      name={artistLabel}
+                      isExternal
+                      uploader={artist ?? null}
+                      className="text-sm font-semibold text-zinc-900 hover:underline"
+                    />
+                  </div>
+                );
+              }
               if (!artistLabel && !identity.primary) return null;
               return (
                 <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1075,6 +1095,7 @@ function ArtworkDetailContent() {
                               artwork={{
                                 title: artwork.title ?? null,
                                 artistName:
+                                  artistLabel ||
                                   formatIdentityPair(artist ?? null).primary,
                               }}
                               thread={(artistInquiryMessages[row.id] ?? [])

@@ -8,7 +8,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { getMyProfile } from "@/lib/supabase/profiles";
 import { useT } from "@/lib/i18n/useT";
@@ -24,33 +24,59 @@ export function RandomIdBanner() {
     setMounted(true);
   }, []);
 
+  const refresh = useCallback(async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session?.user?.id) {
+      setShow(false);
+      return;
+    }
+    const { data } = await getMyProfile();
+    const profile = data as
+      | {
+          username?: string | null;
+          display_name?: string | null;
+          roles?: string[] | null;
+          main_role?: string | null;
+        }
+      | null;
+    const username = profile?.username ?? null;
+    const displayName = profile?.display_name ?? null;
+    const roles = profile?.roles ?? null;
+    const mainRole = profile?.main_role ?? null;
+    // Mirror the server SSOT (get_my_auth_state.needs_identity_setup): show
+    // the banner when the username is missing/placeholder, OR display_name,
+    // roles, or main_role are unset.
+    const needsSetup =
+      !username ||
+      isPlaceholderUsername(username) ||
+      !displayName?.trim() ||
+      !roles?.length ||
+      !mainRole?.trim();
+    setShow(needsSetup);
+  }, []);
+
   useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
     let cancelled = false;
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (cancelled || !session?.user?.id) {
-        setShow(false);
-        return;
-      }
-      getMyProfile().then(({ data }) => {
-        if (cancelled) return;
-        const profile = data as { username?: string | null; display_name?: string | null; roles?: string[] | null } | null;
-        const username = profile?.username ?? null;
-        const displayName = profile?.display_name ?? null;
-        const roles = profile?.roles ?? null;
-        // Show banner when username is null/empty, placeholder, or identity is incomplete
-        const needsSetup =
-          !username ||
-          isPlaceholderUsername(username) ||
-          !displayName?.trim() ||
-          !roles?.length;
-        setShow(needsSetup);
-      });
-    });
+    const run = () => {
+      if (cancelled) return;
+      void refresh();
+    };
+    run();
+    // Re-evaluate when the profile is saved (onboarding completion) or when the
+    // auth session changes — the root layout never remounts on client
+    // navigation, so a one-shot mount read would otherwise stay stale and
+    // trap the user in the onboarding banner loop.
+    window.addEventListener("profile-updated", run);
+    const { data: sub } = supabase.auth.onAuthStateChange(() => run());
     return () => {
       cancelled = true;
+      window.removeEventListener("profile-updated", run);
+      sub.subscription.unsubscribe();
     };
-  }, [mounted]);
+  }, [mounted, refresh]);
 
   if (!show) return null;
 

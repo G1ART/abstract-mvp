@@ -19,7 +19,7 @@ import {
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
-import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, getArtworkArtistGroupKey, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { getSession } from "@/lib/supabase/auth";
 import { listMyDelegations } from "@/lib/supabase/delegations";
 import { SaveToShortlistModal } from "@/components/SaveToShortlistModal";
@@ -109,7 +109,11 @@ export default function PublicExhibitionPage() {
     const order: string[] = [];
     for (const a of ordered) {
       const { label } = getArtworkArtistLabel(a);
-      const key = a.artist_id || `ext:${label ?? "unknown"}`;
+      // Group by external_artist_id when present so that several invited
+      // (not-yet-onboarded) artists uploaded by one gallery — which share the
+      // gallery's artist_id — each get their own section instead of collapsing
+      // under the first artist's name.
+      const key = getArtworkArtistGroupKey(a);
       if (!map.has(key)) {
         map.set(key, []);
         nameMap.set(key, label ?? t("artwork.artistFallback"));

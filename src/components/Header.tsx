@@ -58,13 +58,27 @@ export function Header() {
       setUnreadCount(0);
       return;
     }
+    let cancelled = false;
+    const loadProfile = () => {
+      getMyProfile().then(({ data }) => {
+        if (cancelled) return;
+        const p = data as { username?: string | null; avatar_url?: string | null } | null;
+        setProfileUsername(p?.username ?? null);
+        setAvatarUrl(p?.avatar_url ?? null);
+        setProfileLoaded(true);
+      });
+    };
     setProfileLoaded(false);
-    getMyProfile().then(({ data }) => {
-      const p = data as { username?: string | null; avatar_url?: string | null } | null;
-      setProfileUsername(p?.username ?? null);
-      setAvatarUrl(p?.avatar_url ?? null);
-      setProfileLoaded(true);
-    });
+    loadProfile();
+    // After onboarding/profile saves the username changes (placeholder →
+    // chosen handle). The root layout doesn't remount on client navigation,
+    // so without this the "내 스튜디오" link stays pinned to /onboarding/identity
+    // and the user can never reach their studio (QA loop 2026-06-29).
+    window.addEventListener("profile-updated", loadProfile);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("profile-updated", loadProfile);
+    };
   }, [session?.user?.id]);
 
   function fetchUnread() {

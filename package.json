@@ -37,7 +37,9 @@
     "test:sprint7-1-principal-network": "tsx tests/sprint7-1-principal-network.test.ts",
     "test:auth-password-recovery": "tsx tests/auth-password-recovery.test.ts",
     "test:exhibition-cover-enrichment": "tsx tests/exhibition-cover-enrichment.test.ts",
-    "test:ai-action-href-sanitize": "tsx tests/ai-action-href-sanitize.test.ts"
+    "test:ai-action-href-sanitize": "tsx tests/ai-action-href-sanitize.test.ts",
+    "test:external-artist-name-everywhere": "tsx tests/external-artist-name-everywhere.test.ts",
+    "test:onboarding-banner-refresh": "tsx tests/onboarding-banner-refresh.test.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

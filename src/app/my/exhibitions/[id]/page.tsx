@@ -28,7 +28,7 @@ import {
   type ExhibitionRow,
   type ExhibitionWorkRow,
 } from "@/lib/supabase/exhibitions";
-import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, type ArtworkWithLikes } from "@/lib/supabase/artworks";
+import { getArtworksByIds, getArtworkImageUrl, getArtworkArtistLabel, getArtworkArtistGroupKey, type ArtworkWithLikes } from "@/lib/supabase/artworks";
 import { removeStorageFile, uploadExhibitionMedia } from "@/lib/supabase/storage";
 import { logSupabaseError } from "@/lib/supabase/errors";
 import { formatSupabaseError } from "@/lib/errors/supabase";
@@ -138,7 +138,9 @@ export default function ExhibitionDetailPage() {
     const artistOrder: string[] = [];
     for (const art of orderedArtworks) {
       const { label } = getArtworkArtistLabel(art);
-      const key = art.artist_id || `ext:${label ?? "unknown"}`;
+      // Group by external_artist_id when present so multiple invited artists
+      // uploaded by one gallery don't collapse into a single section.
+      const key = getArtworkArtistGroupKey(art);
       if (!listByArtist.has(key)) {
         listByArtist.set(key, []);
         artistOrder.push(key);

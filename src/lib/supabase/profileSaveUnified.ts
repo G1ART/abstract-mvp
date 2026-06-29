@@ -157,6 +157,21 @@ export async function saveProfileUnified(args: ProfileSaveUnifiedArgs): Promise<
   if (data == null || typeof data !== "object") {
     return { ok: false, message: "RPC returned no data", step: "unified_upsert" };
   }
+
+  // Notify always-mounted shells (RandomIdBanner, Header) that the profile
+  // changed so they re-read instead of showing stale onboarding state. Next.js
+  // App Router does NOT remount the root layout on client navigation, so
+  // without this the "한 단계만 더 남았어요" banner and the "내 스튜디오" link
+  // keep their initial placeholder state after a successful onboarding save —
+  // the loop QA reported on 2026-06-29.
+  if (typeof window !== "undefined") {
+    try {
+      window.dispatchEvent(new Event("profile-updated"));
+    } catch {
+      /* best-effort */
+    }
+  }
+
   return { ok: true, data: data as Record<string, unknown> };
 }
 
