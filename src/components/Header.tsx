@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { BuildStamp } from "./BuildStamp";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { isShellRoute } from "@/lib/shell/routes";
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { signOut } from "@/lib/supabase/auth";
@@ -27,6 +28,10 @@ const linkClass = "text-sm text-zinc-600 hover:text-zinc-900";
 
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
+  // On AppShell routes the desktop (lg+) chrome is the left sidebar, so we
+  // hide the top nav there. Mobile keeps the proven Header + hamburger.
+  const shellRoute = isShellRoute(pathname);
   const { t, locale, setLocale } = useT();
   const [ready, setReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
@@ -293,7 +298,11 @@ export function Header() {
           </span>
         </div>
       )}
-      <header className="relative flex h-14 items-center justify-between border-b border-zinc-200 px-4">
+      <header
+        className={`relative h-14 items-center justify-between border-b border-zinc-200 px-4 ${
+          shellRoute ? "flex lg:hidden" : "flex"
+        }`}
+      >
       <div className="flex items-center gap-6">
         <Link
           href="/feed?tab=all&sort=latest"

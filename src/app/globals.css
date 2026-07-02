@@ -42,9 +42,10 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  /* Geist is Latin-only; Hangul must fall through to system CJK fonts (avoids wrong glyphs). */
-  --font-sans: var(--font-geist-sans), system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic",
-    "Noto Sans KR", "Segoe UI", sans-serif;
+  /* SUIT (brand typeface) covers Hangul + Latin, so it leads the stack for
+     every locale. Geist / system CJK remain as graceful fallbacks. */
+  --font-sans: var(--font-suit), var(--font-geist-sans), system-ui, -apple-system,
+    "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
@@ -58,6 +59,6 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic",
-    "Noto Sans KR", "Segoe UI", sans-serif;
+  font-family: var(--font-suit), var(--font-geist-sans), system-ui, -apple-system,
+    "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", "Segoe UI", sans-serif;
 }

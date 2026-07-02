@@ -1,6 +1,44 @@
 # Abstract MVP — HANDOFF (Single Source of Truth)
 
-Last updated: 2026-07-01
+Last updated: 2026-07-02
+
+## 2026-07-02 — UI/UX 리디자인 1차: 3단 AppShell + SUIT 폰트
+
+UI/UX팀 와이어프레임(데스크톱 3단) 기반 공통 셸을 도입. 이번 1차는 **구조/셸
+적용까지**이며, 각 페이지 내부 로직/기능은 무수정으로 감싸 기능 크래시가 없도록 함.
+
+### 무엇을 했나
+1. **SUIT 폰트 전역 적용** — `next/font/local` 로 self-host(Light~ExtraBold 6웨이트,
+   `src/app/fonts/`). `--font-suit` 를 `--font-sans` 스택 최상위로(`globals.css`),
+   `layout.tsx` body 에 변수 주입. 한글·라틴 커버, 모노는 기존 유지.
+2. **3단 AppShell** (`src/components/shell/`)
+   - `AppShell.tsx`: `[좌 사이드바(lg+) | 중앙 본문 | 우 레일(xl+)]`. 중앙은 각
+     페이지의 기존 `<main>`/컨테이너를 그대로 감싸 nested `<main>` 회피.
+   - `AppSidebar.tsx`: 세로 네비(Theo 로고, Upload/Profile/Notifications/Messages/
+     Insights/Explore, 하단 EN·KO 토글/Setting/계정전환/Logout·Login). Header의
+     세션·위임·미읽음 로직 재사용. Insights→`/my`(Studio 지표).
+   - `RightRail.tsx`: 검색창(→`/people?q=`) + "Theo News" **정적 플레이스홀더**
+     (데이터 미연결, 추후 실데이터 교체 시 item 소스만 교체).
+3. **셸 적용 라우트** — `/feed`, `/u/[username]`, `/artwork/[id]`, `/e/[id]` 에
+   `layout.tsx` 추가로 `AppShell` 래핑. `src/lib/shell/routes.ts`(`isShellRoute`).
+4. **반응형/크롬 정리** (`Header.tsx`) — 셸 라우트에서 **데스크톱 상단 네비만 숨김**
+   (`lg:hidden`), 모바일은 기존 Header+햄버거 유지. 위임(acting-as) 배너 유지.
+5. i18n 키 추가(en/ko): `nav.*`, `shell.*`.
+
+### 검증
+- 데스크톱(1440): 프로필/작품/전시 모두 3단 셸 정상. 작품 사이즈 변환 표시 정상
+  (`47.2 × 47.2 in`, EN).
+- 모바일(390, CDP 측정): `innerWidth 390`, 양쪽 `<aside> display:none`, 본문 풀폭,
+  기존 상단 헤더 노출. → 반응형 정상.
+- `/feed` 로그아웃 시 `/login` 리다이렉트(기존 동작 유지).
+- `tsc --noEmit` 통과, `npm run build` 통과. SQL·환경변수 변경 없음.
+
+### 아직 안 한 것(다음 턴 후보)
+- 와이어프레임 **페이지 내부 콘텐츠 세부 정렬**(예: Explore 탭 택소노미
+  For you/Artworks/Artists/Exhibitions 로 교체, 작품 상세 이미지 대형 배치 등)은
+  기존 기능(피드 all/following·latest/popular 등) 크래시 위험 + 와이어프레임 원본
+  재확인 필요로 **보류**. 진행하려면 와이어프레임 재공유 필요.
+- 셸의 점진 확산(나머지 라우트).
 
 ## 2026-07-01 — 헤더 알림 배지 잘림 수정
 
