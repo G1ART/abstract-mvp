@@ -343,26 +343,31 @@ export function Header() {
               <button
                 type="button"
                 onClick={() => setAvatarOpen((o) => !o)}
-                className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100 hover:bg-zinc-200"
+                className="relative flex h-8 w-8 items-center justify-center rounded-full hover:opacity-90"
                 aria-expanded={avatarOpen}
                 aria-haspopup="true"
                 aria-label={unreadCount > 0 ? t("notifications.link") + ` (${unreadCount})` : undefined}
               >
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl.startsWith("http") ? avatarUrl : getArtworkImageUrl(avatarUrl, "avatar")}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <span className="text-sm font-medium text-zinc-600">
-                    {isPlaceholderProfile || !profileUsername
-                      ? "?"
-                      : profileUsername.charAt(0).toUpperCase()}
-                  </span>
-                )}
+                {/* Inner wrapper clips the avatar into a circle. Keeping
+                    overflow-hidden OFF the button lets the unread badge
+                    overflow the avatar edge and stay fully visible. */}
+                <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-100">
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl.startsWith("http") ? avatarUrl : getArtworkImageUrl(avatarUrl, "avatar")}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-medium text-zinc-600">
+                      {isPlaceholderProfile || !profileUsername
+                        ? "?"
+                        : profileUsername.charAt(0).toUpperCase()}
+                    </span>
+                  )}
+                </span>
                 {unreadCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium text-white">
+                  <span className="pointer-events-none absolute -right-1 -top-1 z-10 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white ring-2 ring-white">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
